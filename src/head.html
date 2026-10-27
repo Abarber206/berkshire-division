@@ -250,12 +250,57 @@ details.keys kbd{color:var(--brass)}
   #toast{top:calc(env(safe-area-inset-top,0px) + 48px);width:min(50vw,340px)}
   .toast{font-size:11px;padding:5px 9px}
 }
+/* ---------- multiplayer ---------- */
+.mp{display:flex;flex-direction:column;gap:6px}
+.mpRow{display:flex;gap:6px;align-items:center;min-width:0}
+.mpIn{flex:1;min-width:0;height:34px;border:1px solid var(--rule);border-radius:5px;background:var(--steel-2);color:var(--ink);
+  font:600 14px var(--f-ui);padding:0 9px;-webkit-user-select:text;user-select:text;touch-action:manipulation}
+.mpIn:focus{outline:2px solid var(--brass);outline-offset:1px}
+.mpIn.code{flex:0 0 84px;font-family:var(--f-num);letter-spacing:2px;text-transform:uppercase;text-align:center}
+.mpRow .btn{white-space:nowrap;padding:9px 10px;flex:none}
+.mpRow .btn:disabled{opacity:.45}
+.mpCode{font-family:var(--f-num);font-size:22px;font-weight:600;letter-spacing:4px;color:var(--brass);flex:1;min-width:0}
+.mpStatus{font-size:11.5px;color:var(--ink-dim);line-height:1.35}
+@media (pointer:coarse){.mpIn{font-size:16px}}
+#btnPlayers{width:auto;padding:0 8px;display:flex;gap:4px;align-items:center}
+#mpCount{font-family:var(--f-num);font-size:12px;font-weight:600;color:var(--brass)}
+#mpPanel{position:absolute;z-index:7;right:calc(env(safe-area-inset-right,0px) + 10px);top:calc(env(safe-area-inset-top,0px) + 54px);
+  width:min(340px,calc(100vw - 20px));max-height:calc(100vh - 70px);overflow:auto;padding:10px;display:flex;flex-direction:column;gap:8px}
+.mpHead{display:flex;gap:8px;align-items:center}
+.mpHead>span{flex:1;font-size:12px;color:var(--ink-dim);letter-spacing:1px;text-transform:uppercase}
+.mpHead>span b{font-family:var(--f-num);color:var(--brass);letter-spacing:2px;font-size:14px}
+.mpHead .btn{padding:6px 9px;font-size:10px}
+#mpList{display:flex;flex-direction:column;gap:4px}
+.mpP{display:flex;gap:8px;align-items:center;padding:6px 6px;border-radius:5px;background:rgba(255,255,255,.03)}
+.mpP>i{width:10px;height:10px;border-radius:50%;flex:none}
+.mpN{flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.2}
+.mpN b{font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mpN span{font-size:11px;color:var(--ink-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mpS{font-family:var(--f-num);font-size:11px;color:var(--ink-dim);white-space:nowrap}
+.mpP .btn{padding:6px 8px;font-size:10px}
+#mpLog{max-height:96px;overflow:auto;font-size:12px;line-height:1.35;display:flex;flex-direction:column;gap:2px;-webkit-user-select:text;user-select:text}
+#mpLog:empty{display:none}
+#mpQuick{display:flex;gap:4px;flex-wrap:wrap}
+#mpQuick button{border:1px solid var(--rule);background:var(--steel-2);border-radius:14px;padding:5px 10px;font-size:12px}
+#mpTags{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+.mpTag{position:absolute;left:0;top:0;padding:2px 8px;border-radius:11px;background:rgba(10,14,17,.74);border:1px solid rgba(255,255,255,.14);
+  font-size:12px;font-weight:600;white-space:nowrap;display:flex;gap:6px;align-items:center;will-change:transform}
+.mpTag i{width:8px;height:8px;border-radius:50%}
+.mpTag small{color:var(--ink-dim);font-weight:500;font-family:var(--f-num);font-size:10px}
+#mpWatch{position:absolute;left:50%;transform:translateX(-50%);top:calc(env(safe-area-inset-top,0px) + 62px);padding:6px 6px 6px 12px;display:flex;gap:10px;align-items:center;font-size:12px;z-index:6}
+#mpWatch .btn{padding:6px 9px;font-size:10px}
+@media (max-height:500px) and (orientation:landscape){
+  #mpPanel{top:calc(env(safe-area-inset-top,0px) + 42px);right:calc(env(safe-area-inset-right,0px) + 6px);max-height:calc(100vh - 50px);width:min(320px,52vw)}
+  #mpWatch{top:calc(env(safe-area-inset-top,0px) + 44px)}
+  #btnPlayers{padding:0 6px}
+}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 
 <canvas id="gl" tabindex="0" aria-label="3D railway view"></canvas>
 
 <div id="hud" hidden>
+  <div id="mpTags"></div>
   <div id="tl">
     <div id="speedBox" class="hud-box">
       <div class="lbl">Speed</div>
@@ -272,6 +317,7 @@ details.keys kbd{color:var(--brass)}
   </div>
   <div id="tr">
     <div class="btns">
+      <button class="icon-btn" id="btnPlayers" hidden aria-label="Players in the room"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"/><path d="M3 19c0-3.3 2.7-6 6-6s6 2.7 6 6"/><circle cx="17" cy="9" r="2.5"/><path d="M15.6 13.3c2.9.3 5.4 2.6 5.4 5.7"/></svg><span id="mpCount">1</span></button>
       <button class="icon-btn" id="btnCam" aria-label="Change camera"><svg viewBox="0 0 24 24"><path d="M3 8h4l2-3h6l2 3h4v11H3z"/><circle cx="12" cy="13" r="3.5"/></svg></button>
       <button class="icon-btn" id="btnMap" aria-label="Open track map"><svg viewBox="0 0 24 24"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/></svg></button>
       <button class="icon-btn" id="btnCine" aria-label="Hide controls"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 15h18"/></svg></button>
@@ -281,6 +327,14 @@ details.keys kbd{color:var(--brass)}
     <div id="camName">Chase</div>
   </div>
   <div id="toast"></div>
+  <div id="mpWatch" class="hud-box" hidden><span>Watching <b id="mpWatchName"></b></span><button class="btn" id="mpWatchBack">My train</button></div>
+  <div id="mpPanel" class="hud-box" hidden>
+    <div class="mpHead"><span>Room <b id="mpPanelCode"></b></span><button class="btn" id="mpShare2">Invite</button><button class="btn" id="mpPanelClose" aria-label="Close">Close</button></div>
+    <div id="mpList"></div>
+    <div id="mpLog" aria-live="polite"></div>
+    <div class="mpRow"><input id="mpChatIn" class="mpIn" maxlength="80" placeholder="Message the room" autocomplete="off" spellcheck="false" aria-label="Message the room"><button class="btn" id="mpSend">Send</button></div>
+    <div id="mpQuick"><button data-q="👋">👋</button><button data-q="Highball!">Highball!</button><button data-q="Clear ahead">Clear ahead</button><button data-q="Hold up!">Hold up!</button><button data-q="Meet me at Fostoria">Meet at Fostoria</button></div>
+  </div>
   <div id="stand">
     <div id="gaugeWrap" class="hud-box" role="button" tabindex="0" aria-label="Gauges, tap to shrink or expand"><canvas id="gauges" width="680" height="232"></canvas><div id="gaugeMini"></div></div>
     <div id="ctrls">
@@ -324,6 +378,14 @@ details.keys kbd{color:var(--brass)}
       <p class="help" id="helpText">Fire up, set the <b>reverser</b> forward, release the <b>train brake</b> to RUN, then ease the <b>throttle</b> open. Heavy throttle on a wet rail will slip the drivers. Check the switch card before every turnout: diverging routes are 30 mph.</p>
     </div>
     <div class="form">
+      <div class="fgroup" id="grpMP"><span class="lbl">Multiplayer</span>
+        <div class="mp">
+          <div class="mpRow"><input id="mpName" class="mpIn" maxlength="16" placeholder="Your name" autocomplete="off" spellcheck="false" aria-label="Your name"></div>
+          <div class="mpRow" id="mpSolo"><button class="btn prim" id="mpCreate" type="button" disabled>Create room</button><input id="mpCode" class="mpIn code" maxlength="6" placeholder="CODE" autocomplete="off" spellcheck="false" autocapitalize="characters" aria-label="Room code"><button class="btn" id="mpJoin" type="button" disabled>Join</button></div>
+          <div class="mpRow" id="mpInRoom" hidden><span class="mpCode" id="mpCodeBig"></span><button class="btn" id="mpShare" type="button">Share link</button><button class="btn" id="mpLeave" type="button">Leave</button></div>
+          <div class="mpStatus" id="mpStatus">Loading the railroad…</div>
+        </div>
+      </div>
       <div class="fgroup"><span class="lbl">Locomotive</span><div class="seg" id="optLoco"></div></div>
       <div class="fgroup" id="grpUnits" hidden><span class="lbl">Locomotives in the lashup</span><div class="seg" id="optUnits"></div></div>
       <div class="fgroup" id="grpLivery" hidden><span class="lbl">Paint</span><div class="seg paint" id="optLivery"></div>

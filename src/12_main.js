@@ -66,6 +66,7 @@ async function loadWorld() {
   prog(1, `${(ROUTE.mainLen / MILE).toFixed(1)} mi mainline · ${NET.switches.length} switches · ${WORLD.treeCount.toLocaleString()} trees`);
   GAME.ready = true;
   $('btnStart').disabled = false;
+  MP.worldReady();
   const hot = window.claude && window.claude.hot;
   if (hot && hot.snapshot) hot.snapshot(() => GAME.snapshot());
   const resume = data => { if (data && data.running) GAME.restore(data); };
@@ -85,23 +86,35 @@ function makeTrain() {
   if (GAME.train) GAME.train.dispose();
   const t = new Train(scene, GAME.settings.loco, GAME.settings.consist, dieselOpts());
   GAME.train = t;
-  const sw = name => NET.switches.find(s => s.name === name);
-  for (const s of NET.switches) { s.state = 0; s.anim = 0; }
-  sw('Yard ladder E2').state = sw('Yard ladder E2').anim = 1;
-  sw('Bellevue East').state = sw('Bellevue East').anim = 1;
-  const line = ROUTE.lines['Yard 2'];
-  const loc = line.locate(line.len - 175);
-  const tp = new TrackPos(loc.edge, loc.s, 1);
-  t.place(tp);
-  for (const v of t.vehicles) linearizeObject(v.root);
-  if (t.diesel) t.units.forEach(m => m.trucks.forEach(linearizeObject)); else { linearizeObject(t.loco.leadTruck); applySteamFinish(GAME.settings.finish); }
-  for (const im of [t.tSix, t.tFour, ...(t.ax6 || []), ...(t.ax4 || [])]) if (im) linearizeObject(im);
-  for (const v of t.vehicles) v.brake = { AR: 90, BC: 0, BP: 90, emerg: false, released: true };
+  let line = ROUTE.lines['Yard 2'], sFront = line.len - 175;
+  GAME.spawnName = 'Yard 2, Bellevue';
+  if (MP.on) {
+    // in a room the switches belong to everyone, so leave them alone and find an empty track
+    const slot = MP.spawnSlot(t);
+    if (slot) { line = slot.line; sFront = slot.s; GAME.spawnName = slot.name; }
+    MP.spawned = true; MP.needSpawn = false; MP.dirty = true;
+  } else {
+    const sw = name => NET.switches.find(s => s.name === name);
+    for (const s of NET.switches) { s.state = 0; s.anim = 0; }
+    sw('Yard ladder E2').state = sw('Yard ladder E2').anim = 1;
+    sw('Bellevue East').state = sw('Bellevue East').anim = 1;
+  }
+  const loc = line.locate(sFront);
+  t.place(new TrackPos(loc.edge, loc.s, 1));
+  prepareTrain(t);
+  if (!t.diesel) applySteamFinish(GAME.settings.finish);
   resetState();
   S.limit = Math.min(...t.pts.map(p => p.tp.e.limit));
   buildWhistleIfReady();
   CAM.init = false;
   GAME.jointMem = new Map();
+}
+/* colour-space fix-up and fresh brakes for a newly built train (ours or another player's) */
+function prepareTrain(t) {
+  for (const v of t.vehicles) linearizeObject(v.root);
+  if (t.diesel) t.units.forEach(m => m.trucks.forEach(linearizeObject)); else linearizeObject(t.loco.leadTruck);
+  for (const im of [t.tSix, t.tFour, ...(t.ax6 || []), ...(t.ax4 || [])]) if (im) linearizeObject(im);
+  for (const v of t.vehicles) v.brake = { AR: 90, BC: 0, BP: 90, emerg: false, released: true };
 }
 function dieselOpts() {
   const g = GAME.settings, custom = g.livery === 'custom';
@@ -115,7 +128,7 @@ function applyLiveriesLive() {
 const SAVE_KEYS = ['loco', 'consist', 'time', 'weather', 'fire', 'units', 'livery', 'mix', 'finish', 'custom', 'number'];
 function saveSettings() { try { const o = {}; for (const k of SAVE_KEYS) o[k] = GAME.settings[k]; localStorage.setItem('bd_settings', JSON.stringify(o)); } catch (e) {} }
 function loadSettings() { try { const o = JSON.parse(localStorage.getItem('bd_settings') || 'null'); if (o) for (const k of SAVE_KEYS) if (o[k] !== undefined) GAME.settings[k] = o[k]; } catch (e) {} if (!LOCO_SPEC[GAME.settings.loco]) GAME.settings.loco = '765'; if (!LIVERIES[GAME.settings.livery]) GAME.settings.livery = 'ss'; }
-GAME.needNewTrain = function () { const t = GAME.train, g = GAME.settings; return !t || t.locoKey !== g.loco || t.consistKey !== g.consist || (t.diesel && t.nUnits !== (+g.units || 1)); };
+GAME.needNewTrain = function () { const t = GAME.train, g = GAME.settings; return !t || MP.needSpawn || t.locoKey !== g.loco || t.consistKey !== g.consist || (t.diesel && t.nUnits !== (+g.units || 1)); };
 function buildWhistleIfReady() { if (!AU.on) return; buildWhistle(WHISTLES[LOCO_SPEC[GAME.settings.loco].whistle]); }
 
 /* ---------------- menu ---------------- */
@@ -131,6 +144,7 @@ function segButtons(id, opts, key, onPick) {
 }
 function buildMenu() {
   loadSettings();
+  MP.init();
   const locoOpts = { '765': { name: 'NKP 765', sub: 'S-2 · Lima 1944' }, '1225': { name: 'PM 1225', sub: 'N-1 · Lima 1941' }, 'diesel': { name: 'Wide-cab diesel', sub: 'AC · 4,400 hp' } };
   segButtons('optLoco', locoOpts, 'loco', () => { specGrid(); startLabel(); refreshMenuGroups(); saveSettings(); });
   const livOpts = {}; for (const k in LIVERIES) { const L = LIVERIES[k]; livOpts[k] = { name: L.name, sub: L.sub, swatch: `linear-gradient(90deg, ${hexCss(k === 'custom' ? GAME.settings.custom.body : L.body)} 0 64%, ${hexCss(k === 'custom' ? GAME.settings.custom.accent : L.accent)} 64% 100%)` }; }
@@ -184,6 +198,9 @@ function refreshMenuGroups() {
 }
 
 GAME.start = function () {
+  // just joined a room: give the others a moment to report where their trains are before ours is made up
+  const wait = MP.spawnWait();
+  if (wait > 0) { $('btnStart').disabled = true; $('btnStart').textContent = 'Joining…'; setTimeout(() => { $('btnStart').disabled = false; GAME.start(); }, wait); return; }
   audioInit(); buildWhistleIfReady();
   if (!GAME.running || GAME.needNewTrain()) {
     makeTrain(); GAME.train.consistKey = GAME.settings.consist;
@@ -199,7 +216,8 @@ GAME.start = function () {
   try { navigator.wakeLock && navigator.wakeLock.request('screen').catch(() => {}); } catch (e) {}
 };
 GAME.intro = function () {
-  setTimeout(() => toast('Yard 2, Bellevue. The ladder is lined out to the main.', '', 5000), 600);
+  if (MP.on) setTimeout(() => toast(`Made up on ${GAME.spawnName}. The switches are shared with everyone in the room.`, '', 5600), 600);
+  else setTimeout(() => toast('Yard 2, Bellevue. The ladder is lined out to the main.', '', 5000), 600);
   if (GAME.train && GAME.train.diesel) setTimeout(() => toast((GAME.train.nUnits > 1 ? GAME.train.nUnits + ' units in multiple: they all answer the lead cab. ' : '') + 'Reverser to forward, engine brake off, then notch out the throttle.', '', 6500), 5200);
   else setTimeout(() => toast('Reverser forward, engine brake off, then ease the throttle open.', '', 6000), 5200);
 };
@@ -259,7 +277,9 @@ GAME.occupied = function (sw) {
 };
 GAME.throwSwitch = function (sw) {
   if (GAME.occupied(sw)) { toast(`${sw.name} is occupied by your train. Clear it before throwing.`, 'bad', 3200, 'occ'); return; }
-  sw.state = 1 - sw.state; sndThrow();
+  const who = MP.occupant(sw);
+  if (who) { toast(`${who}'s train is on ${sw.name}. Wait until it clears.`, 'bad', 3200, 'occ'); return; }
+  sw.state = 1 - sw.state; sndThrow(); MP.noteThrow(sw);
   toast(`${sw.name} lined for ${sw.lined}.`, sw.state ? 'warn' : 'good', 2600);
   if (MAP.visible) MAP.draw();
 };
@@ -370,7 +390,7 @@ function simStep(dt, T) {
             if (div && mph > sw.divLimit * 1.75) GAME.derail(`Took the ${sw.name} turnout at ${Math.round(mph)} mph. The diverging route is good for ${sw.divLimit} mph.`);
             else if (div && mph > sw.divLimit + 4) toast(`Over turnout speed at ${sw.name}: ${Math.round(mph)} mph (limit ${sw.divLimit}).`, 'warn', 3000, 'tov');
           },
-          onRunThrough: sw => { GAME.stats.runThrough++; toast(`Ran through ${sw.name}. The points were forced over.`, 'bad', 3800, 'rt' + sw.id); },
+          onRunThrough: sw => { GAME.stats.runThrough++; MP.noteThrow(sw); toast(`Ran through ${sw.name}. The points were forced over.`, 'bad', 3800, 'rt' + sw.id); },
           onBlocked: () => {
             const mph2 = Math.abs(S.v) / MPH;
             if (mph2 > 7) GAME.derail(`Hit the bumping post at ${Math.round(mph2)} mph. Bumpers are rated for a gentle shove, about 5 mph.`, 'Collision');
@@ -405,6 +425,8 @@ function renderStep(dt, T) {
   // visuals
   updateSwitchVisuals(dt); updateSignals();
   T.update(dt, S.theta, S.reverser);
+  MP.frame(dt);
+  if (GAME.running && !S.paused && !S.derailed) MP.contact(T);
   // headlight & glows
   const night = SKY.night;
   T.head.intensity = S.light === 0 ? 0 : (S.light === 1 ? (night ? 1.6 : 0.4) : (night ? 6 : 1.4));
@@ -427,7 +449,7 @@ function renderStep(dt, T) {
   const pb = $('btnWhistle').querySelector('.pull i'), pw = Math.round(S.whistle * 100) + '%'; if (pb.style.width !== pw) pb.style.width = pw;
   T.cabLight.intensity = night ? 0.6 : 0;
   // camera
-  updateCamera(camera, T, dt);
+  updateCamera(camera, MP.view() || T, dt);
   if (CAM.shakeHit) { camera.position.x += (Math.random() - 0.5) * CAM.shakeHit; camera.position.y += (Math.random() - 0.5) * CAM.shakeHit; CAM.shakeHit = Math.max(0, CAM.shakeHit - dt * 1.5); }
   if (!GAME.running) { // attract mode orbit while the menu is up
     CAM.yaw = -0.95 + Math.sin(S.time * 0.05 + performance.now() * 0.00005) * 0.55; CAM.mode = 'chase'; CAM.dist = 21; CAM.pitch = 0.09;
@@ -437,11 +459,12 @@ function renderStep(dt, T) {
   SKY.clouds.position.set(camera.position.x, camera.position.y + 1600, camera.position.z);
   SKY.clouds.material.map.offset.x += dt * 0.0006; SKY.clouds.material.map.offset.y += dt * 0.0003;
   SKY.moon.position.copy(SKY.sunDir).multiplyScalar(7000).add(camera.position);
-  const lp = T.vehicles[0].pos;
+  const lp = (MP.view() || T).vehicles[0].pos;
   SKY.sun.target.position.copy(lp); SKY.sun.position.copy(lp).addScaledVector(SKY.sunDir, 300);
   updateTrackLOD(camera); updateDetailLOD(camera, scene, dt);
   // effects & sound
   effectsAndSound(dt, T);
+  MP.post(dt);
   updateFX(dt, camera);
   if (GAME.running) updateHUD(dt);
   renderer.render(scene, camera);

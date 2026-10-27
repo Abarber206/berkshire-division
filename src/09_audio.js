@@ -56,8 +56,12 @@ const WHISTLES = {
   k5: { kind: 'horn', notes: [311.1, 370.0, 415.3, 493.9, 622.3], harm: [1, 0.92, 0.8, 0.7, 0.6, 0.52, 0.45, 0.38, 0.32, 0.27, 0.22, 0.18, 0.15, 0.12], breath: 0.035, breathF: 1300, vib: [0, 0], quill: 0, attack: 0.015, beat: 1.004, pres: 1500 },
 };
 function buildWhistle(def) {
+  if (AU.whistle) AU.whistle.kill();
+  AU.whistle = makeWhistle(def);
+}
+/* one whistle or horn voice set; other players' trains get their own */
+function makeWhistle(def) {
   const ctx = AU.ctx;
-  if (AU.whistle) { try { AU.whistle.out.disconnect(); AU.whistle.stop(); } catch (e) {} }
   const horn = def.kind === 'horn';
   const out = ctx.createGain(); out.gain.value = 0;
   const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 140; hp.Q.value = 0.7;
@@ -85,7 +89,8 @@ function buildWhistle(def) {
   const bf = ctx.createBiquadFilter(); bf.type = 'bandpass'; bf.frequency.value = def.breathF; bf.Q.value = 0.7;
   const bg = ctx.createGain(); bg.gain.value = def.breath;
   br.connect(bf); bf.connect(bg); bg.connect(out); br.start(0, Math.random()); nodes.push(br);
-  AU.whistle = { out, voices, lp, kind: def.kind, quill: def.quill, attack: def.attack, stop: () => nodes.forEach(n => { try { n.stop(); } catch (e) {} }) };
+  const stop = () => nodes.forEach(n => { try { n.stop(); } catch (e) {} });
+  return { out, voices, lp, kind: def.kind, quill: def.quill, attack: def.attack, stop, kill: () => { try { out.disconnect(); lp.disconnect(); stop(); } catch (e) {} } };
 }
 /* Diesel prime mover (V12 four-stroke), turbocharger, traction motors, dynamic brake blowers */
 function buildDieselAudio() {
@@ -149,17 +154,17 @@ function envTone(t, dur, f, gain, dest, type = 'sine', f2) {
   o.connect(g); g.connect(dest); o.start(t); o.stop(t + dur + 0.05);
 }
 /* one exhaust beat */
-function sndChuff(k, n, intensity) {
+function sndChuff(k, n, intensity, dest = AU.loco, cocks = S.cocks) {
   if (!AU.on) return;
   const t = AU.ctx.currentTime + 0.005;
   const dur = clamp(0.38 / (1 + n * 0.85), 0.055, 0.34);
   const limp = (k % 4 === 1 || k % 4 === 3) ? 0.82 : 1;
   const g = intensity * limp;
-  const fl = envNoise(t, dur, 340 + 90 * (k % 2) + n * 40, 0.9, 0.95 * g, AU.loco, 'bandpass', AU.noise, 0.004 + 0.01 / (1 + n));
+  const fl = envNoise(t, dur, 340 + 90 * (k % 2) + n * 40, 0.9, 0.95 * g, dest, 'bandpass', AU.noise, 0.004 + 0.01 / (1 + n));
   fl.frequency.exponentialRampToValueAtTime(160, t + dur);
-  envNoise(t, dur * 0.7, 1800, 0.7, 0.18 * g, AU.loco, 'bandpass', AU.white, 0.003);
-  envTone(t, Math.min(0.12, dur), 62, 0.55 * g, AU.loco, 'sine', 38);
-  if (S.cocks) envNoise(t, Math.min(0.5, dur * 1.8), 2600, 0.6, 0.35 * Math.min(1, intensity + 0.3), AU.loco, 'highpass', AU.white, 0.01);
+  envNoise(t, dur * 0.7, 1800, 0.7, 0.18 * g, dest, 'bandpass', AU.white, 0.003);
+  envTone(t, Math.min(0.12, dur), 62, 0.55 * g, dest, 'sine', 38);
+  if (cocks) envNoise(t, Math.min(0.5, dur * 1.8), 2600, 0.6, 0.35 * Math.min(1, intensity + 0.3), dest, 'highpass', AU.white, 0.01);
 }
 function sndClank(n) {
   if (!AU.on) return; const t = AU.ctx.currentTime + 0.003;
@@ -176,11 +181,32 @@ function sndPump(phase) {
   if (phase % 2) envNoise(t, 0.22, 800, 1.2, 0.22, AU.loco, 'bandpass', AU.noise, 0.02);
   else { envNoise(t, 0.16, 300, 1, 0.3, AU.loco, 'lowpass', AU.noise, 0.01); envTone(t, 0.1, 90, 0.12, AU.loco); }
 }
-function sndBell(diesel) {
+function sndBell(diesel, dest = AU.loco) {
   if (!AU.on) return; const t = AU.ctx.currentTime + 0.005;
   const f = diesel ? 640 : 435;
-  for (const [r, g, d] of [[1, 0.5, 2.6], [2.02, 0.28, 1.8], [2.74, 0.22, 1.3], [3.95, 0.14, 0.9], [5.41, 0.08, 0.6], [0.5, 0.18, 2.0]]) envTone(t, d, f * r, g * 0.55, AU.loco, 'sine');
-  envNoise(t, 0.03, 4000, 2, 0.15, AU.loco, 'bandpass', AU.white, 0.001);
+  for (const [r, g, d] of [[1, 0.5, 2.6], [2.02, 0.28, 1.8], [2.74, 0.22, 1.3], [3.95, 0.14, 0.9], [5.41, 0.08, 0.6], [0.5, 0.18, 2.0]]) envTone(t, d, f * r, g * 0.55, dest, 'sine');
+  envNoise(t, 0.03, 4000, 2, 0.15, dest, 'bandpass', AU.white, 0.001);
+}
+/* a sound bus for another player's train: distance gain and air absorption, its own rolling roar,
+   and for a diesel a small prime-mover voice */
+function makeRemoteBus(diesel) {
+  const ctx = AU.ctx;
+  const g = ctx.createGain(); g.gain.value = 0;
+  const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 8000;
+  g.connect(lp); lp.connect(AU.master);
+  const send = ctx.createGain(); send.gain.value = 0.2; lp.connect(send); send.connect(AU.verbIn);
+  const nodes = [];
+  const rs = ctx.createBufferSource(); rs.buffer = AU.noise; rs.loop = true; const rf = ctx.createBiquadFilter(); rf.type = 'lowpass'; rf.frequency.value = 260; rf.Q.value = 0.7;
+  const roar = ctx.createGain(); roar.gain.value = 0; rs.connect(rf); rf.connect(roar); roar.connect(g); rs.start(0, Math.random()); nodes.push(rs);
+  let eng = null;
+  if (diesel) {
+    const o1 = ctx.createOscillator(); o1.type = 'sawtooth'; const o2 = ctx.createOscillator(); o2.type = 'square';
+    const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 380; f.Q.value = 1;
+    const eg = ctx.createGain(); eg.gain.value = 0; const g2 = ctx.createGain(); g2.gain.value = 0.4;
+    o1.connect(f); o2.connect(g2); g2.connect(f); f.connect(eg); eg.connect(g); o1.start(); o2.start(); nodes.push(o1, o2);
+    eng = { o1, o2, f, g: eg };
+  }
+  return { g, lp, roar, eng, kill: () => { try { g.disconnect(); lp.disconnect(); nodes.forEach(n => n.stop()); } catch (e) {} } };
 }
 function sndClunk(gain, delay) { if (!AU.on || gain < 0.01) return; const t = AU.ctx.currentTime + 0.01 + delay; envNoise(t, 0.16, 650, 3, 0.6 * gain, AU.world, 'bandpass', AU.noise, 0.003); envTone(t, 0.12, 75, 0.5 * gain, AU.world, 'sine', 45); }
 function sndThrow() { if (!AU.on) return; const t = AU.ctx.currentTime + 0.01; envNoise(t, 0.18, 900, 4, 0.25, AU.world, 'bandpass', AU.white, 0.003); envNoise(t + 0.25, 0.12, 1400, 5, 0.2, AU.world, 'bandpass', AU.white, 0.002); }

@@ -79,13 +79,17 @@ class Train {
     }
     this.pts.sort((p, q) => p.a - q.a);
     this.frames = this.pts.map(() => newFrame());
-    // headlight
-    this.head = new THREE.SpotLight(0xfff0d0, 0, 420, 0.2, 0.55, 1.3);
-    this.head.castShadow = false;
-    scene.add(this.head); scene.add(this.head.target);
-    this.fireLight = new THREE.PointLight(0xff7a2a, 0, 7, 2);
-    L.body.add(this.fireLight); this.fireLight.position.set(ax(15.0), 2.55, 0.1);
-    this.cabLight = new THREE.PointLight(0xffd09a, 0, 5, 2); L.body.add(this.cabLight); if (L.cabLightPos) this.cabLight.position.copy(L.cabLightPos); else this.cabLight.position.set(ax(15.8), 4.1, 0);
+    // headlight. Another player's train (opts.remote) gets no real lights: adding lights
+    // to the scene would recompile every shader, and its lamp glow is drawn without them.
+    this.remote = !!opts.remote;
+    if (!this.remote) {
+      this.head = new THREE.SpotLight(0xfff0d0, 0, 420, 0.2, 0.55, 1.3);
+      this.head.castShadow = false;
+      scene.add(this.head); scene.add(this.head.target);
+      this.fireLight = new THREE.PointLight(0xff7a2a, 0, 7, 2);
+      L.body.add(this.fireLight); this.fireLight.position.set(ax(15.0), 2.55, 0.1);
+      this.cabLight = new THREE.PointLight(0xffd09a, 0, 5, 2); L.body.add(this.cabLight); if (L.cabLightPos) this.cabLight.position.copy(L.cabLightPos); else this.cabLight.position.set(ax(15.8), 4.1, 0);
+    } else { this.head = null; this.fireLight = null; this.cabLight = null; }
     this.markerMats = [];
     for (const v of this.vehicles) if (v.markers) for (const p of v.markers) { const m = new THREE.Mesh(new THREE.CircleGeometry(0.07, 12), new THREE.MeshBasicMaterial({ color: 0xff2a1e })); m.position.copy(p); m.rotation.y = -Math.PI / 2; v.root.add(m); this.markerMats.push(m); }
   }
@@ -156,8 +160,10 @@ class Train {
     // headlight follows the lamp
     const L = this.loco;
     L.root.updateMatrixWorld(true);
-    this.head.position.copy(L.headlightPos).applyMatrix4(L.root.matrixWorld);
-    this.head.target.position.copy(L.headlightPos).add(new THREE.Vector3(60, -3.2, 0)).applyMatrix4(L.root.matrixWorld);
+    if (this.head) {
+      this.head.position.copy(L.headlightPos).applyMatrix4(L.root.matrixWorld);
+      this.head.target.position.copy(L.headlightPos).add(new THREE.Vector3(60, -3.2, 0)).applyMatrix4(L.root.matrixWorld);
+    }
   }
   worldOf(local, out = new THREE.Vector3()) { return out.copy(local).applyMatrix4(this.loco.root.matrixWorld); }
   unitWorld(m, local, out = new THREE.Vector3()) { return out.copy(local).applyMatrix4(m.root.matrixWorld); }
@@ -165,7 +171,20 @@ class Train {
     for (const v of this.vehicles) { this.scene.remove(v.root); }
     if (this.diesel) this.units.forEach(m => m.trucks.forEach(t => this.scene.remove(t))); else this.scene.remove(this.loco.leadTruck);
     for (const im of [this.tSix, this.tFour, ...(this.ax6 || []), ...(this.ax4 || [])]) if (im) this.scene.remove(im);
-    this.scene.remove(this.head); this.scene.remove(this.head.target);
+    if (this.head) { this.scene.remove(this.head); this.scene.remove(this.head.target); }
+  }
+  /* free GPU memory for a train that is going away for good (another player's) */
+  disposeDeep() {
+    this.dispose();
+    const seen = new Set(), roots = [...this.vehicles.map(v => v.root), this.tSix, this.tFour, ...(this.ax6 || []), ...(this.ax4 || [])];
+    if (this.diesel) this.units.forEach(m => roots.push(...m.trucks)); else roots.push(this.loco.leadTruck);
+    for (const r of roots) if (r) r.traverse(o => { if (o.geometry && !seen.has(o.geometry)) { seen.add(o.geometry); o.geometry.dispose(); } });
+    if (this.diesel) for (const m of this.units) for (const k in m.skin) { const mt = m.skin[k]; if (mt.map) mt.map.dispose(); mt.dispose(); }
+  }
+  setVisible(v) {
+    for (const x of this.vehicles) x.root.visible = v;
+    for (const im of [this.tSix, this.tFour, ...(this.ax6 || []), ...(this.ax4 || [])]) if (im) im.visible = v;
+    if (this.diesel) this.units.forEach(m => m.trucks.forEach(t => { t.visible = v; })); else this.loco.leadTruck.visible = v;
   }
 }
 

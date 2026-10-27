@@ -170,6 +170,7 @@ function setupButtons() {
   $('btnThrowMini').addEventListener('click', () => GAME.throwAhead());
   const keys = {};
   addEventListener('keydown', e => {
+    if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
     if (e.repeat && !['KeyW', 'KeyS', 'KeyQ', 'KeyE', 'KeyZ', 'KeyC', 'KeyA', 'KeyD', 'ArrowUp', 'ArrowDown'].includes(e.code)) return;
     if ($('menu').hidden === false) return;
     keys[e.code] = true;
@@ -285,6 +286,7 @@ function drawNet(g, W, H, cx, cn, sc, opt) {
     T.vehicles.forEach((v, i) => { const x = tx(v.pos.x), y = ty(-v.pos.z); i ? g.lineTo(x, y) : g.moveTo(x, y); }); g.stroke();
     const p = T.vehicles[0].pos; g.fillStyle = '#ffffff'; g.beginPath(); g.arc(tx(p.x), ty(-p.z), 3.5 * opt.w, 0, TAU); g.fill();
   }
+  MP.drawMap(g, tx, ty, opt);
   return { tx, ty };
 }
 function drawMinimap() {

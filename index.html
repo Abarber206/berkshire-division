@@ -258,6 +258,50 @@ details.keys kbd{color:var(--brass)}
   #toast{top:calc(env(safe-area-inset-top,0px) + 48px);width:min(50vw,340px)}
   .toast{font-size:11px;padding:5px 9px}
 }
+/* ---------- multiplayer ---------- */
+.mp{display:flex;flex-direction:column;gap:6px}
+.mpRow{display:flex;gap:6px;align-items:center;min-width:0}
+.mpIn{flex:1;min-width:0;height:34px;border:1px solid var(--rule);border-radius:5px;background:var(--steel-2);color:var(--ink);
+  font:600 14px var(--f-ui);padding:0 9px;-webkit-user-select:text;user-select:text;touch-action:manipulation}
+.mpIn:focus{outline:2px solid var(--brass);outline-offset:1px}
+.mpIn.code{flex:0 0 84px;font-family:var(--f-num);letter-spacing:2px;text-transform:uppercase;text-align:center}
+.mpRow .btn{white-space:nowrap;padding:9px 10px;flex:none}
+.mpRow .btn:disabled{opacity:.45}
+.mpCode{font-family:var(--f-num);font-size:22px;font-weight:600;letter-spacing:4px;color:var(--brass);flex:1;min-width:0}
+.mpStatus{font-size:11.5px;color:var(--ink-dim);line-height:1.35}
+@media (pointer:coarse){.mpIn{font-size:16px}}
+#btnPlayers{width:auto;padding:0 8px;display:flex;gap:4px;align-items:center}
+#mpCount{font-family:var(--f-num);font-size:12px;font-weight:600;color:var(--brass)}
+#mpPanel{position:absolute;z-index:7;right:calc(env(safe-area-inset-right,0px) + 10px);top:calc(env(safe-area-inset-top,0px) + 54px);
+  width:min(340px,calc(100vw - 20px));max-height:calc(100vh - 70px);overflow:auto;padding:10px;display:flex;flex-direction:column;gap:8px}
+.mpHead{display:flex;gap:8px;align-items:center}
+.mpHead>span{flex:1;font-size:12px;color:var(--ink-dim);letter-spacing:1px;text-transform:uppercase}
+.mpHead>span b{font-family:var(--f-num);color:var(--brass);letter-spacing:2px;font-size:14px}
+.mpHead .btn{padding:6px 9px;font-size:10px}
+#mpList{display:flex;flex-direction:column;gap:4px}
+.mpP{display:flex;gap:8px;align-items:center;padding:6px 6px;border-radius:5px;background:rgba(255,255,255,.03)}
+.mpP>i{width:10px;height:10px;border-radius:50%;flex:none}
+.mpN{flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.2}
+.mpN b{font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mpN span{font-size:11px;color:var(--ink-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mpS{font-family:var(--f-num);font-size:11px;color:var(--ink-dim);white-space:nowrap}
+.mpP .btn{padding:6px 8px;font-size:10px}
+#mpLog{max-height:96px;overflow:auto;font-size:12px;line-height:1.35;display:flex;flex-direction:column;gap:2px;-webkit-user-select:text;user-select:text}
+#mpLog:empty{display:none}
+#mpQuick{display:flex;gap:4px;flex-wrap:wrap}
+#mpQuick button{border:1px solid var(--rule);background:var(--steel-2);border-radius:14px;padding:5px 10px;font-size:12px}
+#mpTags{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+.mpTag{position:absolute;left:0;top:0;padding:2px 8px;border-radius:11px;background:rgba(10,14,17,.74);border:1px solid rgba(255,255,255,.14);
+  font-size:12px;font-weight:600;white-space:nowrap;display:flex;gap:6px;align-items:center;will-change:transform}
+.mpTag i{width:8px;height:8px;border-radius:50%}
+.mpTag small{color:var(--ink-dim);font-weight:500;font-family:var(--f-num);font-size:10px}
+#mpWatch{position:absolute;left:50%;transform:translateX(-50%);top:calc(env(safe-area-inset-top,0px) + 62px);padding:6px 6px 6px 12px;display:flex;gap:10px;align-items:center;font-size:12px;z-index:6}
+#mpWatch .btn{padding:6px 9px;font-size:10px}
+@media (max-height:500px) and (orientation:landscape){
+  #mpPanel{top:calc(env(safe-area-inset-top,0px) + 42px);right:calc(env(safe-area-inset-right,0px) + 6px);max-height:calc(100vh - 50px);width:min(320px,52vw)}
+  #mpWatch{top:calc(env(safe-area-inset-top,0px) + 44px)}
+  #btnPlayers{padding:0 6px}
+}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 
@@ -267,6 +311,7 @@ details.keys kbd{color:var(--brass)}
 <canvas id="gl" tabindex="0" aria-label="3D railway view"></canvas>
 
 <div id="hud" hidden>
+  <div id="mpTags"></div>
   <div id="tl">
     <div id="speedBox" class="hud-box">
       <div class="lbl">Speed</div>
@@ -283,6 +328,7 @@ details.keys kbd{color:var(--brass)}
   </div>
   <div id="tr">
     <div class="btns">
+      <button class="icon-btn" id="btnPlayers" hidden aria-label="Players in the room"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"/><path d="M3 19c0-3.3 2.7-6 6-6s6 2.7 6 6"/><circle cx="17" cy="9" r="2.5"/><path d="M15.6 13.3c2.9.3 5.4 2.6 5.4 5.7"/></svg><span id="mpCount">1</span></button>
       <button class="icon-btn" id="btnCam" aria-label="Change camera"><svg viewBox="0 0 24 24"><path d="M3 8h4l2-3h6l2 3h4v11H3z"/><circle cx="12" cy="13" r="3.5"/></svg></button>
       <button class="icon-btn" id="btnMap" aria-label="Open track map"><svg viewBox="0 0 24 24"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/></svg></button>
       <button class="icon-btn" id="btnCine" aria-label="Hide controls"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 15h18"/></svg></button>
@@ -292,6 +338,14 @@ details.keys kbd{color:var(--brass)}
     <div id="camName">Chase</div>
   </div>
   <div id="toast"></div>
+  <div id="mpWatch" class="hud-box" hidden><span>Watching <b id="mpWatchName"></b></span><button class="btn" id="mpWatchBack">My train</button></div>
+  <div id="mpPanel" class="hud-box" hidden>
+    <div class="mpHead"><span>Room <b id="mpPanelCode"></b></span><button class="btn" id="mpShare2">Invite</button><button class="btn" id="mpPanelClose" aria-label="Close">Close</button></div>
+    <div id="mpList"></div>
+    <div id="mpLog" aria-live="polite"></div>
+    <div class="mpRow"><input id="mpChatIn" class="mpIn" maxlength="80" placeholder="Message the room" autocomplete="off" spellcheck="false" aria-label="Message the room"><button class="btn" id="mpSend">Send</button></div>
+    <div id="mpQuick"><button data-q="👋">👋</button><button data-q="Highball!">Highball!</button><button data-q="Clear ahead">Clear ahead</button><button data-q="Hold up!">Hold up!</button><button data-q="Meet me at Fostoria">Meet at Fostoria</button></div>
+  </div>
   <div id="stand">
     <div id="gaugeWrap" class="hud-box" role="button" tabindex="0" aria-label="Gauges, tap to shrink or expand"><canvas id="gauges" width="680" height="232"></canvas><div id="gaugeMini"></div></div>
     <div id="ctrls">
@@ -335,6 +389,14 @@ details.keys kbd{color:var(--brass)}
       <p class="help" id="helpText">Fire up, set the <b>reverser</b> forward, release the <b>train brake</b> to RUN, then ease the <b>throttle</b> open. Heavy throttle on a wet rail will slip the drivers. Check the switch card before every turnout: diverging routes are 30 mph.</p>
     </div>
     <div class="form">
+      <div class="fgroup" id="grpMP"><span class="lbl">Multiplayer</span>
+        <div class="mp">
+          <div class="mpRow"><input id="mpName" class="mpIn" maxlength="16" placeholder="Your name" autocomplete="off" spellcheck="false" aria-label="Your name"></div>
+          <div class="mpRow" id="mpSolo"><button class="btn prim" id="mpCreate" type="button" disabled>Create room</button><input id="mpCode" class="mpIn code" maxlength="6" placeholder="CODE" autocomplete="off" spellcheck="false" autocapitalize="characters" aria-label="Room code"><button class="btn" id="mpJoin" type="button" disabled>Join</button></div>
+          <div class="mpRow" id="mpInRoom" hidden><span class="mpCode" id="mpCodeBig"></span><button class="btn" id="mpShare" type="button">Share link</button><button class="btn" id="mpLeave" type="button">Leave</button></div>
+          <div class="mpStatus" id="mpStatus">Loading the railroad…</div>
+        </div>
+      </div>
       <div class="fgroup"><span class="lbl">Locomotive</span><div class="seg" id="optLoco"></div></div>
       <div class="fgroup" id="grpUnits" hidden><span class="lbl">Locomotives in the lashup</span><div class="seg" id="optUnits"></div></div>
       <div class="fgroup" id="grpLivery" hidden><span class="lbl">Paint</span><div class="seg paint" id="optLivery"></div>
@@ -2793,8 +2855,8 @@ function updateDetailLOD(cam, scene, dt) {
    dimensions: 69 in drivers, 36 in lead truck, 36/43 in trailing truck,
    25 x 34 in cylinders, 89 in boiler, 100 ft 8-3/4 in over couplers,
    15 ft 8 in tall, Baker valve gear. Tender: 22,000 gal / 22 t on two
-   six-wheel trucks. The PM engine carries its bell on the smokebox door
-   and its headlight on top of the smokebox, as 1225 does today.
+   six-wheel trucks. Both carry the bell on top of the smokebox front and
+   the headlight in the middle of the smokebox door.
    ========================================================================== */
 const RMAT = {};
 function rollingMaterials() {
@@ -2916,7 +2978,7 @@ function rodGeo(L, h0, h1, t, boss0, boss1) {
 }
 
 /* =================== THE BERKSHIRE =================== */
-const LOCO_SPEC = {
+const LOCO_SPEC = {   // bellOnFront: the PM's round door lamp, plate beside it and cast numerals
   '765': { road: 'NICKEL PLATE ROAD', num: '765', short: 'NKP', cls: 'S-2', built: 'Lima, Sept 1944', weight: 440800, adhesive: 264300, te: 64135, fw: 'Worthington', whistle: 'deep6', bellOnFront: false },
   'diesel': { road: 'SANDUSKY & SCIOTO', num: '4401', short: 'S&S', cls: 'AC44', built: '2026', weight: 420000, adhesive: 420000, te: 183000, diesel: true, whistle: 'k5' },
   '1225': { road: 'PERE MARQUETTE', num: '1225', short: 'PM', cls: 'N-1', built: 'Lima, Oct 1941', weight: 442500, adhesive: 264000, te: 69350, fw: 'Worthington', whistle: 'bright3', bellOnFront: true },
@@ -3011,7 +3073,6 @@ function buildBerkshire(key) {
   gb.add('graphite', lathe([[0, 0.82], [0.06, 0.82], [0.14, 0.6], [0.17, 0.0]], 1.5));
   for (const dy of [0.35, -0.35]) gb.box('dark', 0.04, 0.06, 0.62, ax(1.4), yB + dy, -0.42);           // hinge straps
   for (let i = 0; i < 18; i++) { const t = (i + 0.5) / 18 * TAU; gb.add('dark', new THREE.BoxGeometry(0.06, 0.13, 0.07), M(ax(1.475), yB + 0.9 * Math.cos(t), 0.9 * Math.sin(t), t, 0, 0)); }   // door dogs
-  if (!spec.bellOnFront) gb.add('rod', new THREE.CylinderGeometry(0.03, 0.03, 0.5, 8).rotateZ(Math.PI / 2).translate(ax(1.22), yB, 0));
   // boiler courses: front ring, conical course, rear courses
   gb.add('black', new THREE.CylinderGeometry(1.0, 1.0, 2.9, 40, 1, true).rotateZ(Math.PI / 2).translate(ax(5.95), yB, 0));
   gb.add('black', new THREE.CylinderGeometry(1.0, 1.13, 1.6, 40, 1, true).rotateZ(Math.PI / 2).translate(ax(8.2), yB + 0.06, 0));
@@ -3052,36 +3113,37 @@ function buildBerkshire(key) {
   gb.cyl('brass', 0.09, 0.09, 0.5, 16, ax(10.1), yB + 1.36, 0.42); gb.cyl('brass', 0.12, 0.12, 0.06, 16, ax(10.1), yB + 1.62, 0.42); gb.cyl('brass', 0.05, 0.05, 0.25, 8, ax(10.1), yB + 1.05, 0.42);
   // turbo-generator
   gb.cylX('black', 0.18, 0.18, 0.62, 16, ax(3.9), yB + 1.08, -0.42); gb.cyl('dark', 0.05, 0.05, 0.3, 8, ax(3.7), yB + 1.3, -0.42);
-  // bell
-  // bell: hung on the smokebox door of the Pere Marquette engine, on top of the boiler on the Nickel Plate
-  const bellA = 7.6;
-  if (spec.bellOnFront) {
-    const by = yB + 0.04, bx = ax(1.06);
-    gb.add('brass', new THREE.LatheGeometry([[0, 0.25], [0.08, 0.25], [0.15, 0.22], [0.2, 0.12], [0.235, 0.0]].map(p => new THREE.Vector2(p[0], p[1])), 24).translate(bx, by, 0));
-    gb.box('black', 0.3, 0.06, 0.08, ax(1.2), by + 0.34, 0);
-    gb.box('black', 0.08, 0.05, 0.6, bx, by + 0.34, 0);
-    for (const z of [-0.27, 0.27]) gb.box('black', 0.05, 0.3, 0.04, bx, by + 0.2, z);
-  } else {
-    gb.add('brass', new THREE.LatheGeometry([[0, 0.3], [0.09, 0.3], [0.17, 0.26], [0.23, 0.14], [0.27, 0.0]].map(p => new THREE.Vector2(p[0], p[1])), 20).translate(ax(bellA), yB + 1.14, 0));
-    for (const z of [-0.33, 0.33]) gb.box('black', 0.08, 0.6, 0.06, ax(bellA), yB + 1.32, z);
-    gb.box('black', 0.1, 0.06, 0.72, ax(bellA), yB + 1.62, 0);
+  // bell up on top of the smokebox front, hung in a yoke on a bracket, in front of the feedwater heater
+  {
+    const by = yB + 0.86, bx = ax(1.3);
+    gb.add('brass', new THREE.LatheGeometry([[0, 0.27], [0.09, 0.27], [0.16, 0.24], [0.21, 0.13], [0.25, 0.0]].map(p => new THREE.Vector2(p[0], p[1])), 24).translate(bx, by, 0));
+    for (const z of [-0.3, 0.3]) gb.box('black', 0.06, 0.38, 0.05, bx, by + 0.2, z);
+    gb.box('black', 0.08, 0.06, 0.66, bx, by + 0.4, 0);
+    gb.box('black', 0.34, 0.08, 0.1, ax(1.47), by + 0.4, 0);
   }
-  // headlight with number boards
-  const hlY = spec.bellOnFront ? yB + 0.98 : 3.6;     // PM: high on top of the smokebox front
-  gb.box('black', 0.55, 0.62, 0.62, ax(1.25), hlY, 0);
-  gb.add('black', new THREE.CylinderGeometry(0.29, 0.29, 0.12, 24).rotateZ(Math.PI / 2).translate(ax(0.98), hlY, 0));
-  gb.box('black', 0.32, 0.06, 0.66, ax(0.95), hlY + 0.36, 0);
+  // headlight in the middle of the smokebox door: the NKP's square lamp with number boards either side,
+  // the PM's round lamp with a brass rim and a white number plate beside it
+  const hlY = yB + 0.14;
+  if (!spec.bellOnFront) {
+    gb.box('black', 0.55, 0.62, 0.62, ax(1.25), hlY, 0);
+    gb.add('black', new THREE.CylinderGeometry(0.29, 0.29, 0.12, 24).rotateZ(Math.PI / 2).translate(ax(0.98), hlY, 0));
+    gb.box('black', 0.32, 0.06, 0.66, ax(0.95), hlY + 0.36, 0);
+  } else {
+    gb.add('black', new THREE.CylinderGeometry(0.31, 0.33, 0.5, 28).rotateZ(Math.PI / 2).translate(ax(1.17), hlY, 0));
+    gb.add('brass', new THREE.TorusGeometry(0.29, 0.035, 8, 28).rotateY(Math.PI / 2).translate(ax(0.92), hlY, 0));
+    gb.box('black', 0.26, 0.05, 0.5, ax(0.98), hlY + 0.33, 0);
+  }
   const numMat = decalMat(128, 64, (g, w, h) => { g.fillStyle = '#f2efe4'; g.fillRect(0, 0, w, h); g.fillStyle = '#121212'; g.font = 'bold 44px Arial'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(spec.num, w / 2, h / 2 + 2); });
   RMAT['num' + key] = numMat;
   if (!spec.bellOnFront) for (const z of [-0.45, 0.45]) { gb.box('black', 0.5, 0.3, 0.12, ax(1.3), hlY, z); gb.add('num' + key, new THREE.PlaneGeometry(0.42, 0.22), M(ax(1.04), hlY, z, 0, Math.PI / 2, 0)); }
-  else { gb.box('black', 0.5, 0.24, 0.5, ax(1.38), hlY - 0.4, 0); gb.add('num' + key, new THREE.PlaneGeometry(0.34, 0.18), M(ax(1.345), yB + 0.06, 0.4, 0, Math.PI / 2, 0)); }
-  // number plate on smokebox door
+  else gb.add('num' + key, new THREE.PlaneGeometry(0.34, 0.18), M(ax(1.345), hlY - 0.04, 0.52, 0, Math.PI / 2, 0));
+  // engine number low on the door: a round plate on the NKP, cast numerals on the PM
   const plate = decalMat(128, 128, (g, w, h) => { g.fillStyle = '#121212'; g.beginPath(); g.arc(64, 64, 62, 0, TAU); g.fill(); g.strokeStyle = '#d9d5c7'; g.lineWidth = 6; g.beginPath(); g.arc(64, 64, 55, 0, TAU); g.stroke(); g.fillStyle = '#e8e4d6'; g.font = 'bold 40px Arial'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(spec.num, 64, 66); });
   RMAT['plate' + key] = plate;
-  if (!spec.bellOnFront) gb.add('plate' + key, new THREE.CircleGeometry(0.3, 28), M(ax(1.33), yB - 0.45, 0, 0, Math.PI / 2, 0));
-  else {   // cast numerals on the door, under the bell
+  if (!spec.bellOnFront) gb.add('plate' + key, new THREE.CircleGeometry(0.26, 28), M(ax(1.335), yB - 0.5, 0, 0, Math.PI / 2, 0));
+  else {
     RMAT['digits' + key] = decalMat(256, 96, (g, w, h) => { g.fillStyle = '#e9e6dc'; g.font = 'bold 74px "Times New Roman", Georgia, serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; if (g.letterSpacing !== undefined) g.letterSpacing = '4px'; g.fillText(spec.num, w / 2, h / 2 + 4); });
-    gb.add('digits' + key, new THREE.PlaneGeometry(0.66, 0.25), M(ax(1.345), yB - 0.42, 0, 0, Math.PI / 2, 0));
+    gb.add('digits' + key, new THREE.PlaneGeometry(0.66, 0.25), M(ax(1.345), yB - 0.38, 0.06, 0, Math.PI / 2, 0));
   }
   // classification lamps
   for (const z of [-0.85, 0.85]) { gb.box('black', 0.22, 0.26, 0.2, ax(1.62), yB + 0.75, z); gb.add('lensOff', new THREE.CircleGeometry(0.06, 10), M(ax(1.5), yB + 0.75, z, 0, Math.PI / 2, 0)); }
@@ -3962,13 +4024,17 @@ class Train {
     }
     this.pts.sort((p, q) => p.a - q.a);
     this.frames = this.pts.map(() => newFrame());
-    // headlight
-    this.head = new THREE.SpotLight(0xfff0d0, 0, 420, 0.2, 0.55, 1.3);
-    this.head.castShadow = false;
-    scene.add(this.head); scene.add(this.head.target);
-    this.fireLight = new THREE.PointLight(0xff7a2a, 0, 7, 2);
-    L.body.add(this.fireLight); this.fireLight.position.set(ax(15.0), 2.55, 0.1);
-    this.cabLight = new THREE.PointLight(0xffd09a, 0, 5, 2); L.body.add(this.cabLight); if (L.cabLightPos) this.cabLight.position.copy(L.cabLightPos); else this.cabLight.position.set(ax(15.8), 4.1, 0);
+    // headlight. Another player's train (opts.remote) gets no real lights: adding lights
+    // to the scene would recompile every shader, and its lamp glow is drawn without them.
+    this.remote = !!opts.remote;
+    if (!this.remote) {
+      this.head = new THREE.SpotLight(0xfff0d0, 0, 420, 0.2, 0.55, 1.3);
+      this.head.castShadow = false;
+      scene.add(this.head); scene.add(this.head.target);
+      this.fireLight = new THREE.PointLight(0xff7a2a, 0, 7, 2);
+      L.body.add(this.fireLight); this.fireLight.position.set(ax(15.0), 2.55, 0.1);
+      this.cabLight = new THREE.PointLight(0xffd09a, 0, 5, 2); L.body.add(this.cabLight); if (L.cabLightPos) this.cabLight.position.copy(L.cabLightPos); else this.cabLight.position.set(ax(15.8), 4.1, 0);
+    } else { this.head = null; this.fireLight = null; this.cabLight = null; }
     this.markerMats = [];
     for (const v of this.vehicles) if (v.markers) for (const p of v.markers) { const m = new THREE.Mesh(new THREE.CircleGeometry(0.07, 12), new THREE.MeshBasicMaterial({ color: 0xff2a1e })); m.position.copy(p); m.rotation.y = -Math.PI / 2; v.root.add(m); this.markerMats.push(m); }
   }
@@ -4039,8 +4105,10 @@ class Train {
     // headlight follows the lamp
     const L = this.loco;
     L.root.updateMatrixWorld(true);
-    this.head.position.copy(L.headlightPos).applyMatrix4(L.root.matrixWorld);
-    this.head.target.position.copy(L.headlightPos).add(new THREE.Vector3(60, -3.2, 0)).applyMatrix4(L.root.matrixWorld);
+    if (this.head) {
+      this.head.position.copy(L.headlightPos).applyMatrix4(L.root.matrixWorld);
+      this.head.target.position.copy(L.headlightPos).add(new THREE.Vector3(60, -3.2, 0)).applyMatrix4(L.root.matrixWorld);
+    }
   }
   worldOf(local, out = new THREE.Vector3()) { return out.copy(local).applyMatrix4(this.loco.root.matrixWorld); }
   unitWorld(m, local, out = new THREE.Vector3()) { return out.copy(local).applyMatrix4(m.root.matrixWorld); }
@@ -4048,7 +4116,20 @@ class Train {
     for (const v of this.vehicles) { this.scene.remove(v.root); }
     if (this.diesel) this.units.forEach(m => m.trucks.forEach(t => this.scene.remove(t))); else this.scene.remove(this.loco.leadTruck);
     for (const im of [this.tSix, this.tFour, ...(this.ax6 || []), ...(this.ax4 || [])]) if (im) this.scene.remove(im);
-    this.scene.remove(this.head); this.scene.remove(this.head.target);
+    if (this.head) { this.scene.remove(this.head); this.scene.remove(this.head.target); }
+  }
+  /* free GPU memory for a train that is going away for good (another player's) */
+  disposeDeep() {
+    this.dispose();
+    const seen = new Set(), roots = [...this.vehicles.map(v => v.root), this.tSix, this.tFour, ...(this.ax6 || []), ...(this.ax4 || [])];
+    if (this.diesel) this.units.forEach(m => roots.push(...m.trucks)); else roots.push(this.loco.leadTruck);
+    for (const r of roots) if (r) r.traverse(o => { if (o.geometry && !seen.has(o.geometry)) { seen.add(o.geometry); o.geometry.dispose(); } });
+    if (this.diesel) for (const m of this.units) for (const k in m.skin) { const mt = m.skin[k]; if (mt.map) mt.map.dispose(); mt.dispose(); }
+  }
+  setVisible(v) {
+    for (const x of this.vehicles) x.root.visible = v;
+    for (const im of [this.tSix, this.tFour, ...(this.ax6 || []), ...(this.ax4 || [])]) if (im) im.visible = v;
+    if (this.diesel) this.units.forEach(m => m.trucks.forEach(t => { t.visible = v; })); else this.loco.leadTruck.visible = v;
   }
 }
 
@@ -4362,8 +4443,12 @@ const WHISTLES = {
   k5: { kind: 'horn', notes: [311.1, 370.0, 415.3, 493.9, 622.3], harm: [1, 0.92, 0.8, 0.7, 0.6, 0.52, 0.45, 0.38, 0.32, 0.27, 0.22, 0.18, 0.15, 0.12], breath: 0.035, breathF: 1300, vib: [0, 0], quill: 0, attack: 0.015, beat: 1.004, pres: 1500 },
 };
 function buildWhistle(def) {
+  if (AU.whistle) AU.whistle.kill();
+  AU.whistle = makeWhistle(def);
+}
+/* one whistle or horn voice set; other players' trains get their own */
+function makeWhistle(def) {
   const ctx = AU.ctx;
-  if (AU.whistle) { try { AU.whistle.out.disconnect(); AU.whistle.stop(); } catch (e) {} }
   const horn = def.kind === 'horn';
   const out = ctx.createGain(); out.gain.value = 0;
   const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 140; hp.Q.value = 0.7;
@@ -4391,7 +4476,8 @@ function buildWhistle(def) {
   const bf = ctx.createBiquadFilter(); bf.type = 'bandpass'; bf.frequency.value = def.breathF; bf.Q.value = 0.7;
   const bg = ctx.createGain(); bg.gain.value = def.breath;
   br.connect(bf); bf.connect(bg); bg.connect(out); br.start(0, Math.random()); nodes.push(br);
-  AU.whistle = { out, voices, lp, kind: def.kind, quill: def.quill, attack: def.attack, stop: () => nodes.forEach(n => { try { n.stop(); } catch (e) {} }) };
+  const stop = () => nodes.forEach(n => { try { n.stop(); } catch (e) {} });
+  return { out, voices, lp, kind: def.kind, quill: def.quill, attack: def.attack, stop, kill: () => { try { out.disconnect(); lp.disconnect(); stop(); } catch (e) {} } };
 }
 /* Diesel prime mover (V12 four-stroke), turbocharger, traction motors, dynamic brake blowers */
 function buildDieselAudio() {
@@ -4455,17 +4541,17 @@ function envTone(t, dur, f, gain, dest, type = 'sine', f2) {
   o.connect(g); g.connect(dest); o.start(t); o.stop(t + dur + 0.05);
 }
 /* one exhaust beat */
-function sndChuff(k, n, intensity) {
+function sndChuff(k, n, intensity, dest = AU.loco, cocks = S.cocks) {
   if (!AU.on) return;
   const t = AU.ctx.currentTime + 0.005;
   const dur = clamp(0.38 / (1 + n * 0.85), 0.055, 0.34);
   const limp = (k % 4 === 1 || k % 4 === 3) ? 0.82 : 1;
   const g = intensity * limp;
-  const fl = envNoise(t, dur, 340 + 90 * (k % 2) + n * 40, 0.9, 0.95 * g, AU.loco, 'bandpass', AU.noise, 0.004 + 0.01 / (1 + n));
+  const fl = envNoise(t, dur, 340 + 90 * (k % 2) + n * 40, 0.9, 0.95 * g, dest, 'bandpass', AU.noise, 0.004 + 0.01 / (1 + n));
   fl.frequency.exponentialRampToValueAtTime(160, t + dur);
-  envNoise(t, dur * 0.7, 1800, 0.7, 0.18 * g, AU.loco, 'bandpass', AU.white, 0.003);
-  envTone(t, Math.min(0.12, dur), 62, 0.55 * g, AU.loco, 'sine', 38);
-  if (S.cocks) envNoise(t, Math.min(0.5, dur * 1.8), 2600, 0.6, 0.35 * Math.min(1, intensity + 0.3), AU.loco, 'highpass', AU.white, 0.01);
+  envNoise(t, dur * 0.7, 1800, 0.7, 0.18 * g, dest, 'bandpass', AU.white, 0.003);
+  envTone(t, Math.min(0.12, dur), 62, 0.55 * g, dest, 'sine', 38);
+  if (cocks) envNoise(t, Math.min(0.5, dur * 1.8), 2600, 0.6, 0.35 * Math.min(1, intensity + 0.3), dest, 'highpass', AU.white, 0.01);
 }
 function sndClank(n) {
   if (!AU.on) return; const t = AU.ctx.currentTime + 0.003;
@@ -4482,11 +4568,32 @@ function sndPump(phase) {
   if (phase % 2) envNoise(t, 0.22, 800, 1.2, 0.22, AU.loco, 'bandpass', AU.noise, 0.02);
   else { envNoise(t, 0.16, 300, 1, 0.3, AU.loco, 'lowpass', AU.noise, 0.01); envTone(t, 0.1, 90, 0.12, AU.loco); }
 }
-function sndBell(diesel) {
+function sndBell(diesel, dest = AU.loco) {
   if (!AU.on) return; const t = AU.ctx.currentTime + 0.005;
   const f = diesel ? 640 : 435;
-  for (const [r, g, d] of [[1, 0.5, 2.6], [2.02, 0.28, 1.8], [2.74, 0.22, 1.3], [3.95, 0.14, 0.9], [5.41, 0.08, 0.6], [0.5, 0.18, 2.0]]) envTone(t, d, f * r, g * 0.55, AU.loco, 'sine');
-  envNoise(t, 0.03, 4000, 2, 0.15, AU.loco, 'bandpass', AU.white, 0.001);
+  for (const [r, g, d] of [[1, 0.5, 2.6], [2.02, 0.28, 1.8], [2.74, 0.22, 1.3], [3.95, 0.14, 0.9], [5.41, 0.08, 0.6], [0.5, 0.18, 2.0]]) envTone(t, d, f * r, g * 0.55, dest, 'sine');
+  envNoise(t, 0.03, 4000, 2, 0.15, dest, 'bandpass', AU.white, 0.001);
+}
+/* a sound bus for another player's train: distance gain and air absorption, its own rolling roar,
+   and for a diesel a small prime-mover voice */
+function makeRemoteBus(diesel) {
+  const ctx = AU.ctx;
+  const g = ctx.createGain(); g.gain.value = 0;
+  const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 8000;
+  g.connect(lp); lp.connect(AU.master);
+  const send = ctx.createGain(); send.gain.value = 0.2; lp.connect(send); send.connect(AU.verbIn);
+  const nodes = [];
+  const rs = ctx.createBufferSource(); rs.buffer = AU.noise; rs.loop = true; const rf = ctx.createBiquadFilter(); rf.type = 'lowpass'; rf.frequency.value = 260; rf.Q.value = 0.7;
+  const roar = ctx.createGain(); roar.gain.value = 0; rs.connect(rf); rf.connect(roar); roar.connect(g); rs.start(0, Math.random()); nodes.push(rs);
+  let eng = null;
+  if (diesel) {
+    const o1 = ctx.createOscillator(); o1.type = 'sawtooth'; const o2 = ctx.createOscillator(); o2.type = 'square';
+    const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 380; f.Q.value = 1;
+    const eg = ctx.createGain(); eg.gain.value = 0; const g2 = ctx.createGain(); g2.gain.value = 0.4;
+    o1.connect(f); o2.connect(g2); g2.connect(f); f.connect(eg); eg.connect(g); o1.start(); o2.start(); nodes.push(o1, o2);
+    eng = { o1, o2, f, g: eg };
+  }
+  return { g, lp, roar, eng, kill: () => { try { g.disconnect(); lp.disconnect(); nodes.forEach(n => n.stop()); } catch (e) {} } };
 }
 function sndClunk(gain, delay) { if (!AU.on || gain < 0.01) return; const t = AU.ctx.currentTime + 0.01 + delay; envNoise(t, 0.16, 650, 3, 0.6 * gain, AU.world, 'bandpass', AU.noise, 0.003); envTone(t, 0.12, 75, 0.5 * gain, AU.world, 'sine', 45); }
 function sndThrow() { if (!AU.on) return; const t = AU.ctx.currentTime + 0.01; envNoise(t, 0.18, 900, 4, 0.25, AU.world, 'bandpass', AU.white, 0.003); envNoise(t + 0.25, 0.12, 1400, 5, 0.2, AU.world, 'bandpass', AU.white, 0.002); }
@@ -4879,6 +4986,7 @@ function setupButtons() {
   $('btnThrowMini').addEventListener('click', () => GAME.throwAhead());
   const keys = {};
   addEventListener('keydown', e => {
+    if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
     if (e.repeat && !['KeyW', 'KeyS', 'KeyQ', 'KeyE', 'KeyZ', 'KeyC', 'KeyA', 'KeyD', 'ArrowUp', 'ArrowDown'].includes(e.code)) return;
     if ($('menu').hidden === false) return;
     keys[e.code] = true;
@@ -4994,6 +5102,7 @@ function drawNet(g, W, H, cx, cn, sc, opt) {
     T.vehicles.forEach((v, i) => { const x = tx(v.pos.x), y = ty(-v.pos.z); i ? g.lineTo(x, y) : g.moveTo(x, y); }); g.stroke();
     const p = T.vehicles[0].pos; g.fillStyle = '#ffffff'; g.beginPath(); g.arc(tx(p.x), ty(-p.z), 3.5 * opt.w, 0, TAU); g.fill();
   }
+  MP.drawMap(g, tx, ty, opt);
   return { tx, ty };
 }
 function drawMinimap() {
@@ -5083,6 +5192,681 @@ function drawDieselGauges(g, dial, b, lastBP) {
 }
 
 /* ============================================================================
+   Multiplayer. Everyone in a room drives their own train on the same railroad,
+   sees the others move, hears their whistles and bells, and shares the switches.
+
+   Each player broadcasts one small absolute state about eight times a second:
+   where the front of their train is on the track, what the train is, speed,
+   reverser, whistle, bell, lights, exhaust, a switch vector and the latest chat
+   line. Other players' trains are built locally from the same models and follow
+   that state along the track with dead reckoning, so they glide between updates.
+
+   Two transports carry the same messages:
+   - MQTT over WebSockets through two free public brokers. Works from any web
+     page, phones on cellular included, no accounts. A small MQTT 3.1.1 client
+     is built in below.
+   - Inside claude.ai, the artifact's `room` capability (presence only).
+   Switches carry a version each (higher wins, ties go to the lower player id),
+   so everyone settles on the same switch positions without a server.
+   ========================================================================== */
+const MQ_TE = new TextEncoder(), MQ_TD = new TextDecoder();
+function mqStr(s) { const b = typeof s === 'string' ? MQ_TE.encode(s) : s; const o = new Uint8Array(2 + b.length); o[0] = b.length >> 8; o[1] = b.length & 255; o.set(b, 2); return o; }
+function mqPacket(head, parts) {
+  let n = 0; for (const p of parts) n += p.length;
+  const len = []; let x = n;
+  do { let d = x % 128; x = Math.floor(x / 128); if (x > 0) d |= 128; len.push(d); } while (x > 0);
+  const out = new Uint8Array(1 + len.length + n); out[0] = head; out.set(len, 1);
+  let o = 1 + len.length; for (const p of parts) { out.set(p, o); o += p.length; }
+  return out;
+}
+class MiniMQTT {
+  constructor(url, clientId, will, onMessage, onStatus) {
+    Object.assign(this, { url, clientId, will, onMessage, onStatus });
+    this.subs = []; this.ok = false; this.closed = false; this.everOk = false; this.dead = false; this.fails = 0; this.pid = 1; this.buf = new Uint8Array(0);
+    this.open();
+  }
+  open() {
+    if (this.closed) return;
+    let ws;
+    try { ws = new WebSocket(this.url, ['mqtt']); } catch (e) { this.retry(); return; }
+    this.ws = ws; ws.binaryType = 'arraybuffer'; this.buf = new Uint8Array(0);
+    ws.onopen = () => {
+      const flags = 0x02 | (this.will ? 0x04 : 0);                 // clean session, optional last will (QoS 0)
+      const parts = [mqStr('MQTT'), Uint8Array.of(4, flags, 0, 30), mqStr(this.clientId)];
+      if (this.will) parts.push(mqStr(this.will.topic), mqStr(MQ_TE.encode(this.will.payload)));
+      ws.send(mqPacket(0x10, parts));
+    };
+    ws.onmessage = ev => { if (typeof ev.data !== 'string') this.feed(new Uint8Array(ev.data)); };
+    ws.onclose = () => { if (this.ws !== ws) return; const was = this.ok; this.ok = false; clearInterval(this.pingT); if (was && this.onStatus) this.onStatus(); this.retry(); };
+    ws.onerror = () => {};
+  }
+  retry() {
+    if (this.closed) return;
+    this.fails++;
+    if (!this.everOk && this.fails >= 4) { this.dead = true; if (this.onStatus) this.onStatus(); return; }
+    this.retryT = setTimeout(() => this.open(), Math.min(15000, 1000 * Math.pow(2, Math.min(4, this.fails - 1))));
+  }
+  feed(chunk) {
+    const b = new Uint8Array(this.buf.length + chunk.length); b.set(this.buf); b.set(chunk, this.buf.length);
+    let i = 0;
+    while (b.length - i >= 2) {
+      let mult = 1, len = 0, k = i + 1, byte = 0, complete = false;
+      while (k < b.length) { byte = b[k++]; len += (byte & 127) * mult; mult *= 128; if (!(byte & 128)) { complete = true; break; } if (mult > 2097152) break; }
+      if (!complete || k + len > b.length) break;
+      this.packet(b[i], b.subarray(k, k + len));
+      i = k + len;
+    }
+    this.buf = b.slice(i);
+  }
+  packet(head, body) {
+    const type = head >> 4;
+    if (type === 2) {                                              // CONNACK
+      if (body[1] !== 0) { try { this.ws.close(); } catch (e) {} return; }
+      this.ok = true; this.everOk = true; this.fails = 0;
+      for (const t of this.subs) this.sendSub(t);
+      clearInterval(this.pingT); this.pingT = setInterval(() => this.raw(Uint8Array.of(0xC0, 0)), 15000);
+      if (this.onStatus) this.onStatus();
+    } else if (type === 3 && this.onMessage) {                     // PUBLISH
+      const qos = (head >> 1) & 3, tl = (body[0] << 8) | body[1];
+      const topic = MQ_TD.decode(body.subarray(2, 2 + tl));
+      this.onMessage(topic, MQ_TD.decode(body.subarray(2 + tl + (qos ? 2 : 0))));
+    }
+  }
+  raw(p) { if (this.ws && this.ws.readyState === 1) { try { this.ws.send(p); } catch (e) {} } }
+  sendSub(topic) { const id = this.pid = (this.pid % 65535) + 1; this.raw(mqPacket(0x82, [Uint8Array.of(id >> 8, id & 255), mqStr(topic), Uint8Array.of(0)])); }
+  subscribe(topic) { this.subs.push(topic); if (this.ok) this.sendSub(topic); }
+  publish(topic, text) { if (this.ok) this.raw(mqPacket(0x30, [mqStr(topic), MQ_TE.encode(text)])); }
+  close() {
+    this.closed = true; clearTimeout(this.retryT); clearInterval(this.pingT);
+    if (this.ws) { try { if (this.ok) this.ws.send(Uint8Array.of(0xE0, 0)); this.ws.close(); } catch (e) {} }
+    this.ok = false;
+  }
+}
+
+/* The artifact's room capability: presence carries the same state object. */
+async function mpRoomLink(code, onState, onGone) {
+  const c = window.claude;
+  if (!c || typeof c.use !== 'function') return null;
+  let room = null, r = null;
+  try { room = await c.use('room'); } catch (e) { return null; }
+  if (!room) return null;
+  try { r = await room.join('bd-' + code.toLowerCase()); } catch (e) { return null; }
+  const ids = new Map();
+  const unsub = r.onPeers(ch => {
+    for (const p of [...ch.joined, ...ch.updated]) {
+      if (p.isMe && p.sameTab) continue;
+      const st = p.presence && p.presence.st;
+      if (st && typeof st === 'object') { ids.set(p.peer, st.id); onState(st); }
+    }
+    for (const p of ch.left) { const id = ids.get(p.peer); if (id) { ids.delete(p.peer); onGone(id); } }
+  }, () => {});
+  return {
+    send: st => { r.presence({ st }).catch(() => {}); },
+    ok: () => { try { return r.connected(); } catch (e) { return false; } },
+    close: () => { try { unsub(); r.leave(); } catch (e) {} },
+  };
+}
+
+const MP_COLORS = ['#5ec2e8', '#ee6a5e', '#7fd67a', '#c58cf0', '#f08cc0', '#5ee8c4', '#f2924b', '#9fb4ff'];
+const MP_ME = '#ffe08a';   // our own train is always drawn pale yellow
+const MP_CODE = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+/* where new trains are made up in a room, in order of preference (negative = from the end of the line) */
+const MP_SPAWNS = [['Yard 2', -175], ['Yard 3', -140], ['Yard 4', -112], ['Yard 1', -200], ['Fostoria Siding', -320], ['Kenton Siding', -220], ['Main', 3200], ['Main', 9800], ['Main', 16000], ['Quarry Branch', -700]];
+const MP_SPAWN_NAMES = { 'Yard 2': 'Yard 2, Bellevue', 'Yard 3': 'Yard 3, Bellevue', 'Yard 4': 'Yard 4, Bellevue', 'Yard 1': 'Yard 1, Bellevue', 'Fostoria Siding': 'the Fostoria siding', 'Kenton Siding': 'the Kenton siding', 'Main': 'the main line', 'Quarry Branch': 'the quarry branch' };
+const MP = {
+  on: false, ready: false, code: '', id: '', name: '', color: '', peers: new Map(), links: [], room: null, topic: '',
+  q: 0, sentAt: 0, dirty: false, spawned: false, needSpawn: false, swv: null, seen: null, pend: new Map(), lt: null,
+  chatN: 0, chat: null, log: [], watching: null, edges: null, panelT: 0, joinedAt: 0, autoJoin: '', last: null,
+  brokers: ['wss://broker.hivemq.com:8884/mqtt', 'wss://broker.emqx.io:8084/mqtt'],
+};
+const _mpA = new THREE.Vector3(), _mpB = new THREE.Vector3(), _mpC = new THREE.Vector3(), _mpD = new THREE.Vector3();
+function mpHash(s) { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
+/* control, bidi, zero-width and private-use characters are dropped from names and chat */
+const MP_STRIP = new RegExp('[' + [[0, 31], [127, 159], [173, 173], [8203, 8204], [8206, 8207], [8232, 8238], [8288, 8292], [8298, 8303], [57344, 63743], [65279, 65279], [65529, 65531]].map(([a, b]) => String.fromCharCode(a) + '-' + String.fromCharCode(b)).join('') + ']', 'g');
+function mpText(x, n) {
+  if (typeof x !== 'string') return '';
+  const t = x.replace(MP_STRIP, '').replace(/[ ]+/g, ' ').trim();
+  return Array.from(t).slice(0, n).join('');
+}
+/* everything another player sends is checked and clamped before use */
+function mpClean(r) {
+  if (!r || typeof r !== 'object' || typeof r.id !== 'string' || !/^[a-z0-9]{6,16}$/.test(r.id)) return null;
+  const n = (x, lo, hi, d = 0) => (typeof x === 'number' && isFinite(x)) ? clamp(x, lo, hi) : d;
+  const o = { id: r.id, q: Math.round(n(r.q, 0, 1e12)), bye: r.bye ? 1 : 0 };
+  if (o.bye) return o;
+  o.nm = mpText(r.nm, 16) || 'Engineer';
+  o.e = Number.isInteger(r.e) && MP.edges && MP.edges.has(r.e) ? r.e : -1;
+  if (o.e >= 0) {
+    o.lk = LOCO_SPEC[r.lk] ? r.lk : '765'; o.ck = CONSISTS[r.ck] ? r.ck : 'light';
+    o.u = Math.round(n(r.u, 1, 3, 1)); o.lv = LIVERIES[r.lv] ? r.lv : 'ss'; o.mx = r.mx ? 1 : 0;
+    o.cu = Array.isArray(r.cu) && r.cu.length === 3 ? r.cu.map(c => Math.round(n(c, 0, 0xffffff))) : null;
+    o.no = Math.round(n(r.no, 0, 9999));
+    o.s = n(r.s, 0, 1e5); o.o = r.o < 0 ? -1 : 1; o.v = n(r.v, -60, 60); o.rv = n(r.rv, -1, 1);
+    o.wh = n(r.wh, 0, 1); o.bl = r.bl ? 1 : 0; o.hl = Math.round(n(r.hl, 0, 2, 1)); o.dl = r.dl ? 1 : 0;
+    o.ex = n(r.ex, 0, 1.5); o.rpm = n(r.rpm, 0, 1200); o.dr = r.dr ? 1 : 0;
+  }
+  o.pz = r.pz ? 1 : 0;
+  o.sw = Array.isArray(r.sw) && r.sw.length === NET.switches.length ? r.sw.map(x => Math.round(n(x, 0, 2e9))) : null;
+  o.lt = Array.isArray(r.lt) && r.lt.length === 2 ? [Math.round(n(r.lt[0], 0, 255)), Math.round(n(r.lt[1], 0, 1e9))] : null;
+  o.ch = Array.isArray(r.ch) && r.ch.length === 2 ? [Math.round(n(r.ch[0], 0, 1e9)), mpText(r.ch[1], 80)] : null;
+  return o;
+}
+/* signed distance along the track from a to b, in a's facing sense; null if not within reach */
+function trackDelta(a, b, maxD = 70) {
+  if (a.e === b.e) return (b.s - a.s) * a.o;
+  for (const dir of [1, -1]) {
+    const c = a.clone(); let acc = 0;
+    for (let hop = 0; hop < 3 && acc < maxD; hop++) {
+      const toEnd = (c.o * dir > 0) ? c.e.len - c.s : c.s, step = toEnd + 1e-3;
+      if (c.advance(dir * step, null)) break;
+      acc += step;
+      if (c.e === b.e) { const r = (b.s - c.s) * c.o * dir; if (r > -0.5) return dir * (acc + r); break; }
+    }
+  }
+  return null;
+}
+function mpSegDist(p, a, b) {
+  _mpC.subVectors(b, a); const L2 = _mpC.lengthSq();
+  const t = L2 > 1e-9 ? clamp(_mpD.subVectors(p, a).dot(_mpC) / L2, 0, 1) : 0;
+  return _mpD.copy(a).addScaledVector(_mpC, t).distanceTo(p);
+}
+/* the two coupler ends of a train, extrapolated from its first and last tracked points */
+function mpEnds(T, front, rear) {
+  const p0 = T.pts[0], pl = T.pts[T.pts.length - 1];
+  front.copy(p0.F.p).addScaledVector(p0.F.f, p0.a);
+  rear.copy(pl.F.p).addScaledVector(pl.F.f, -(T.length - pl.a));
+}
+function mpShade(h, k) { const r = (h >> 16) & 255, g = (h >> 8) & 255, b = h & 255; return (Math.round(r * k) << 16) | (Math.round(g * k) << 8) | Math.round(b * k); }
+function mpOpts(st) {
+  const cu = st.cu ? { body: st.cu[0], accent: st.cu[1], letter: st.cu[2], rail: st.cu[1], roof: mpShade(st.cu[0], 0.78) } : null;
+  return { units: st.u, livery: st.lv, mix: !!st.mx, custom: cu, number: st.lv === 'custom' ? (st.no || 4401) : null };
+}
+function mpLocoLabel(st) {
+  if (!st || st.e < 0) return 'In the menu';
+  const loco = st.lk === 'diesel' ? (st.lv === 'custom' ? 'Custom' : LIVERIES[st.lv].init) + ' diesel' + (st.u > 1 ? ' ×' + st.u : '') : (st.lk === '765' ? 'NKP 765' : 'PM 1225');
+  return loco + ' · ' + CONSISTS[st.ck].name;
+}
+function mpJoints(T, mem, speed, cp) {
+  for (const v of T.vehicles) {
+    const dv = v.pos.distanceTo(cp); if (dv > 110) continue;
+    const g = Math.min(1, Math.abs(speed) / 7) / (1 + Math.pow(dv / 13, 1.4));
+    const pts = (v.kind === 'loco' || v.kind === 'loco2') ? (T.diesel ? [[v.fp[0], 3, DG.axle], [v.fp[1], 3, DG.axle]] : [[v.leadPt, 1, 0], [v.fp[0], 4, 1.855]]) : v.tp.map((p, i) => [p, v.trucks[i].type === 'six' ? 3 : 2, v.trucks[i].type === 'six' ? 1.676 : 1.73]);
+    for (const [p, axles, sp] of pts) {
+      const j = Math.floor(p.tp.s / 11.89), prev = mem.get(p);
+      if (prev && prev.e === p.tp.e && prev.j !== j) for (let a = 0; a < axles; a++) sndJoint(g * (a === 0 ? 1 : 0.8), a * sp / Math.max(0.5, Math.abs(speed)));
+      mem.set(p, { e: p.tp.e, j });
+    }
+  }
+}
+
+/* ---------------- another player's train ---------------- */
+class RemoteTrain {
+  constructor(peer, st) {
+    this.peer = peer;
+    this.key = `${st.lk}|${st.ck}|${st.u}`; this.paint = `${st.lv}|${st.mx}|${st.cu}|${st.no}`;
+    this.train = new Train(scene, st.lk, st.ck, Object.assign(mpOpts(st), { remote: true }));
+    prepareTrain(this.train);
+    this.a0 = this.train.pts[0].a;
+    this.tp = null; this.err = 0; this.v = 0; this.theta = 0; this.chuffQ = null; this.idleT = 0; this.bellT = 0.8; this.updT = 0;
+    this.mem = new Map(); this.visible = true; this.placed = false; this.poly = []; this.lastFx = 0;
+    this.tv = new THREE.Vector3(); this.wp = new THREE.Vector3();
+  }
+  repaint(st) {
+    const p = `${st.lv}|${st.mx}|${st.cu}|${st.no}`; if (p === this.paint) return; this.paint = p;
+    if (!this.train.diesel) return;
+    const o = mpOpts(st);
+    this.train.units.forEach((m, u) => { const lv = dieselLiveryFor(o, u); applyLivery(m, lv, (o.number || lv.num) + u); });
+  }
+  target(st) {
+    const e = MP.edges.get(st.e); if (!e) return;
+    const tp = new TrackPos(e, clamp(st.s, 0, e.len), st.o);
+    if (!this.tp) { this.tp = tp; this.err = 0; }
+    else { const d = trackDelta(this.tp, tp); if (d === null || Math.abs(d) > 45) { this.tp = tp; this.err = 0; } else this.err = d; }
+    this.v = st.v;
+  }
+  frame(dt, st, cam, force) {
+    if (!this.tp) return;
+    const c = this.err * Math.min(1, dt * 5); this.err -= c;
+    const step = this.v * dt + c;
+    if (step) this.tp.advance(step, null);
+    const T = this.train;
+    T.dist += step; this.theta -= step / LG.rD;
+    this.tp.pose(FR);
+    const far = !force && FR.p.distanceTo(cam) > 2600 + T.length;
+    if (far) { if (this.visible) { T.setVisible(false); this.visible = false; } this.updT += dt; if (this.placed && this.updT < 0.5) return; }
+    else if (!this.visible) { T.setVisible(true); this.visible = true; }
+    this.updT = 0;
+    for (const p of T.pts) { if (p.tp) p.tp.copy(this.tp); else p.tp = this.tp.clone(); const off = p.a - this.a0; if (off) p.tp.advance(-off, null); }
+    T.update(dt, this.theta, st.rv || 0);
+    // polyline for contact tests: front coupler, every tracked point, rear coupler
+    const n = T.pts.length + 2;
+    while (this.poly.length < n) this.poly.push(new THREE.Vector3());
+    mpEnds(T, this.poly[0], this.poly[n - 1]);
+    for (let i = 0; i < T.pts.length; i++) this.poly[i + 1].copy(T.pts[i].F.p);
+    this.polyN = n;
+    this.placed = true;
+  }
+  fx(dt, st, cam) {
+    if (!this.placed || !this.visible) return;
+    const T = this.train, L = T.loco, night = SKY.night;
+    const head = T.vehicles[0].pos, d = head.distanceTo(cam);
+    this.tv.copy(T.vehicles[0].fwd).multiplyScalar(this.v);
+    // lamps
+    const hl = st.hl;
+    L.beam.material.opacity = hl === 0 ? 0 : (night ? (hl === 2 ? 0.075 : 0.035) : (SKY.weather !== 'clear' ? 0.02 : 0));
+    L.halo.material.opacity = hl === 0 ? 0 : (night ? 1 : 0.35) * (hl === 2 ? 1 : 0.6);
+    if (T.diesel) {
+      const ph = Math.floor(performance.now() / 385) % 2, flash = st.wh > 0.05 || st.bl, on = st.dl && hl > 0;
+      L.ditch.forEach((dd, k) => { const b = !on ? 0.12 : (flash ? (ph === k ? 1 : 0.15) : 0.85); dd.lens.material.color.setScalar(0.25 + 0.75 * b); dd.halo.material.opacity = b * (night ? 1 : 0.45); });
+    } else {
+      const fl = 0.85 + 0.15 * Math.sin(performance.now() * 0.023);
+      L.fire.material.color.setRGB(fl, 0.4 * fl + 0.1, 0.1); L.ash.material.opacity = night ? 0.3 * fl : 0;
+    }
+    // exhaust
+    if (d < 1500) {
+      if (T.diesel) {
+        this.idleT += dt;
+        if (this.idleT > 0.09 && st.rpm > 60) {
+          this.idleT = 0;
+          const rf = clamp((st.rpm - 300) / 750, 0, 1), a = 0.12 + 0.25 * rf * st.ex;
+          for (const m of T.units) emit(T.unitWorld(m, m.stackPos, this.wp), _mpA.set(this.tv.x + (Math.random() - 0.5) * 0.6, 4 + 9 * rf, this.tv.z + (Math.random() - 0.5) * 0.6), 2.5 + Math.random() * 1.5, 0.7, 3.5 + 3 * rf, a, [0.62, 0.62, 0.63], 0.5, 1.1);
+        }
+      } else {
+        const q = Math.floor(-this.theta / (Math.PI / 2));
+        if (this.chuffQ === null) this.chuffQ = q;
+        if (q !== this.chuffQ) {
+          const steps = Math.min(4, Math.abs(q - this.chuffQ)), n = Math.abs(this.v) / DRIVER_C, inten = st.ex;
+          if (inten > 0.05) for (let i = 0; i < steps; i++) {
+            if (this.bus && d < 900) sndChuff(q - i, n, inten * (0.6 + 0.4 * Math.min(1, n * 1.2)), this.bus.g, false);
+            const stack = T.worldOf(L.stackPos, this.wp);
+            for (let j = 0; j < 2; j++) emit(stack, _mpA.set(this.tv.x + (Math.random() - 0.5) * 1.5, 7 + 13 * inten + Math.random() * 3, this.tv.z + (Math.random() - 0.5) * 1.5), 4 + Math.random() * 3 + inten * 2, 1.1, 7 + inten * 7, 0.55 + 0.25 * inten, [0.7, 0.69, 0.67], 0.9, 1.1);
+          }
+          this.chuffQ = q;
+        }
+        this.idleT += dt;
+        if (this.idleT > 0.14) { this.idleT = 0; if (st.ex < 0.05) emit(T.worldOf(L.stackPos, this.wp), _mpA.set(this.tv.x, 2.8, this.tv.z), 5 + Math.random() * 2, 1.0, 5.5, 0.12, [0.55, 0.53, 0.5], 0.7, 0.9); }
+      }
+    }
+    // sound
+    if (!AU.on) return;
+    if (!this.bus) this.bus = makeRemoteBus(T.diesel);
+    const t = AU.ctx.currentTime, gL = d > 1000 ? 0 : 1 / (1 + Math.pow(d / 26, 1.25));
+    setG(this.bus.g, gL, 0.1); this.bus.lp.frequency.setTargetAtTime(clamp(16000 / (1 + d / 80), 900, 16000), t, 0.1);
+    setG(this.bus.roar, 0.3 * Math.min(1, Math.abs(this.v) / 22), 0.2);
+    if (this.bus.eng) {
+      const E = this.bus.eng, rpm = Math.max(300, st.rpm || 0), fire = rpm / 60 * 6, rf = clamp((rpm - 300) / 750, 0, 1);
+      E.o1.frequency.setTargetAtTime(fire, t, 0.1); E.o2.frequency.setTargetAtTime(fire / 2, t, 0.1); E.f.frequency.setTargetAtTime(260 + 700 * rf + 400 * rf * st.ex, t, 0.1);
+      setG(E.g, st.rpm > 20 ? (0.2 + 0.3 * rf) * (1 + 0.28 * (st.u - 1)) : 0, 0.15);
+    }
+    if (st.bl) { this.bellT += dt; if (this.bellT > (T.diesel ? 1.05 : 0.86)) { this.bellT = 0; if (gL > 0.01) sndBell(T.diesel, this.bus.g); } } else this.bellT = 0.8;
+    if (st.wh > 0.02 && !this.wh) this.wh = makeWhistle(WHISTLES[LOCO_SPEC[st.lk].whistle]);
+    if (this.wh) {
+      const W = this.wh, src = T.worldOf(T.diesel ? L.hornPos : L.whistlePos, this.wp);
+      const toCam = _mpA.subVectors(cam, src), dist = toCam.length(); toCam.normalize();
+      const riding = CAM.mode !== 'side' && !MP.watching && GAME.train;
+      const vl = riding ? _mpB.copy(GAME.train.vehicles[0].fwd).multiplyScalar(S.v).dot(toCam) : 0;
+      const dop = 343 / (343 - clamp(this.tv.dot(toCam) - vl, -60, 60));
+      setG(W.out, (1 / (1 + Math.pow(dist / 90, 1.1))) * Math.pow(st.wh, T.diesel ? 0.5 : 0.8) * 0.95, W.attack);
+      const bend = 1 - W.quill * (1 - st.wh);
+      for (const v of W.voices) { const f = v.f * bend * dop; v.o1.frequency.setTargetAtTime(f, t, 0.04); v.o2.frequency.setTargetAtTime(f * v.ratio2, t, 0.04); }
+      W.lp.frequency.setTargetAtTime(clamp(11000 / (1 + dist / 160), 1800, 7000), t, 0.1);
+    }
+    if (d < 160 && Math.abs(this.v) > 0.6) mpJoints(T, this.mem, this.v, cam);
+  }
+  dispose() {
+    this.train.disposeDeep();
+    if (this.bus) this.bus.kill(); if (this.wh) this.wh.kill();
+  }
+}
+
+/* ---------------- rooms ---------------- */
+MP.init = function () {
+  let id = ''; for (let i = 0; i < 10; i++) id += 'abcdefghijkmnpqrstuvwxyz23456789'[(Math.random() * 32) | 0];
+  MP.id = id; MP.color = MP_ME;
+  let nm = ''; try { nm = localStorage.getItem('bd_name') || ''; } catch (e) {}
+  MP.name = mpText(nm, 16) || 'Engineer ' + (10 + ((Math.random() * 89) | 0));
+  try {
+    const q = new URLSearchParams(location.search);
+    const code = (q.get('room') || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (code.length >= 4 && code.length <= 6) MP.autoJoin = code;
+    const b = q.get('broker') || '';
+    if (/^wss?:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/[\w\-/]*)?$/.test(b)) MP.brokers = [b];
+  } catch (e) {}
+  const nameIn = $('mpName'), codeIn = $('mpCode');
+  nameIn.value = MP.name;
+  nameIn.addEventListener('input', () => { MP.name = mpText(nameIn.value, 16) || 'Engineer'; try { localStorage.setItem('bd_name', MP.name); } catch (e) {} MP.dirty = true; });
+  if (MP.autoJoin) codeIn.value = MP.autoJoin;
+  codeIn.addEventListener('input', () => { const v = codeIn.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6); if (v !== codeIn.value) codeIn.value = v; });
+  codeIn.addEventListener('keydown', e => { if (e.key === 'Enter') $('mpJoin').click(); });
+  $('mpCreate').addEventListener('click', () => MP.create());
+  $('mpJoin').addEventListener('click', () => { const c = codeIn.value.toUpperCase().replace(/[^A-Z0-9]/g, ''); if (c.length < 4) { MP.say('Type the room code your friend sent you.', true); codeIn.focus(); return; } MP.join(c); });
+  $('mpLeave').addEventListener('click', () => MP.leave());
+  for (const id2 of ['mpShare', 'mpShare2']) $(id2).addEventListener('click', () => MP.share());
+  $('btnPlayers').addEventListener('click', () => { const p = $('mpPanel'); p.hidden = !p.hidden; if (!p.hidden) MP.panel(); });
+  $('mpPanelClose').addEventListener('click', () => { $('mpPanel').hidden = true; });
+  $('mpWatchBack').addEventListener('click', () => MP.unwatch());
+  const send = () => { const t = mpText($('mpChatIn').value, 80); if (!t) return; $('mpChatIn').value = ''; MP.talk(t); };
+  $('mpSend').addEventListener('click', send);
+  $('mpChatIn').addEventListener('keydown', e => { if (e.key === 'Enter') send(); e.stopPropagation(); });
+  for (const b of document.querySelectorAll('#mpQuick button')) b.addEventListener('click', () => MP.talk(b.dataset.q));
+  addEventListener('pagehide', () => { if (MP.on) MP.bye(); });
+  // keep reporting while the page is in the background (animation frames stop there)
+  setInterval(() => { if (MP.on && performance.now() - MP.sentAt > 900) { MP.sentAt = performance.now(); MP.send(); } }, 1000);
+  MP.ui();
+};
+MP.worldReady = function () {
+  MP.ready = true;
+  MP.edges = new Map(NET.edges.map(e => [e.id, e]));
+  MP.ui();
+  if (MP.autoJoin) MP.join(MP.autoJoin);
+};
+MP.create = function () {
+  let c = ''; for (let i = 0; i < 5; i++) c += MP_CODE[(Math.random() * MP_CODE.length) | 0];
+  MP.connect(c, true);
+};
+MP.join = function (code) { MP.connect(code, false); };
+MP.connect = function (code, creator) {
+  if (!MP.ready) { MP.autoJoin = code; MP.ui(); return; }
+  if (MP.on) MP.leave(true);
+  MP.on = true; MP.code = code; MP.creator = creator; MP.joinedAt = performance.now(); MP.onSince = 0;
+  MP.swv = NET.switches.map(() => creator ? 1 : 0); MP.seen = NET.switches.map(() => 0); MP.pend.clear(); MP.lt = null;
+  MP.spawned = creator && GAME.running; MP.needSpawn = !MP.spawned;
+  MP.topic = 'bdiv/v1/' + code;
+  const will = { topic: MP.topic, payload: JSON.stringify({ id: MP.id, bye: 1 }) };
+  MP.links = MP.brokers.map((url, i) => { const l = new MiniMQTT(url, 'bd-' + MP.id + '-' + i, will, (t, txt) => MP.onText(txt), () => MP.ui()); l.subscribe(MP.topic); return l; });
+  mpRoomLink(code, st => MP.receive(st), id => MP.drop(id, 'left')).then(link => { if (link && MP.on && MP.code === code) { MP.room = link; MP.ui(); } else if (link) link.close(); });
+  try { history.replaceState(null, '', location.pathname + '?room=' + code); } catch (e) {}
+  MP.dirty = true; MP.ui(); startLabel();
+  setTimeout(() => MP.ui(), 2500); setTimeout(() => MP.ui(), 9000);
+};
+MP.bye = function () {
+  const txt = JSON.stringify({ id: MP.id, bye: 1 });
+  for (const l of MP.links) l.publish(MP.topic, txt);
+};
+MP.leave = function (quiet) {
+  if (!MP.on) return;
+  MP.bye();
+  for (const l of MP.links) l.close();
+  if (MP.room) MP.room.close();
+  MP.links = []; MP.room = null; MP.on = false; MP.code = ''; MP.needSpawn = false; MP.spawned = false;
+  for (const id of [...MP.peers.keys()]) MP.drop(id, null);
+  MP.unwatch(); $('mpPanel').hidden = true;
+  try { history.replaceState(null, '', location.pathname); } catch (e) {}
+  if (!quiet) toast('Left the room. You are driving solo.', '', 3000);
+  MP.ui(); startLabel();
+};
+MP.share = function () {
+  const inClaude = !!(window.claude && window.claude.use);
+  const url = location.origin + location.pathname + '?room=' + MP.code;
+  const text = `Drive with me on Berkshire Division. Room ${MP.code}`;
+  if (!inClaude && navigator.share) { navigator.share({ title: 'Berkshire Division', text, url }).catch(() => {}); return; }
+  const what = inClaude ? MP.code : url;
+  const done = () => toast(inClaude ? `Room code ${MP.code} copied.` : 'Room link copied. Send it to your friends.', 'good', 3000);
+  try { navigator.clipboard.writeText(what).then(done, () => toast(`Room code: ${MP.code}`, '', 6000)); } catch (e) { toast(`Room code: ${MP.code}`, '', 6000); }
+};
+MP.status = function () {
+  if (!MP.on) return 'off';
+  if (MP.links.some(l => l.ok) || (MP.room && MP.room.ok())) return 'on';
+  if (MP.links.every(l => l.dead) && !MP.room) return 'failed';
+  return 'connecting';
+};
+/* how long to hold a new train back after joining, so we know where everyone else is first */
+MP.spawnWait = function () {
+  if (!MP.on || !MP.needSpawn) return 0;
+  const now = performance.now(), st = MP.status();
+  if (st === 'on') { if (!MP.onSince) MP.onSince = now; return Math.max(0, 1500 - (now - MP.onSince)); }
+  if (st === 'connecting' && now - MP.joinedAt < 9000) return 400;
+  return 0;
+};
+MP.ui = function () {
+  const st = MP.status(), n = MP.peers.size + 1;
+  if (st === 'on' && !MP.onSince) MP.onSince = performance.now();
+  $('mpSolo').hidden = MP.on; $('mpInRoom').hidden = !MP.on;
+  $('mpCreate').disabled = $('mpJoin').disabled = !MP.ready;
+  $('mpCodeBig').textContent = MP.code;
+  $('mpShare').textContent = window.claude && window.claude.use ? 'Copy code' : 'Share link';
+  const s = $('mpStatus');
+  s.textContent = !MP.ready ? 'Loading the railroad…' : st === 'off' ? 'Drive with friends: create a room, then send them the link or the code.'
+    : st === 'connecting' ? `Connecting to room ${MP.code}…` : st === 'failed' ? "Couldn't reach the room server. Check your connection, then try again."
+    : n === 1 ? `In room ${MP.code}. Nobody else yet: send your friends the link.` : `In room ${MP.code} with ${n - 1} other${n > 2 ? 's' : ''}.`;
+  $('btnPlayers').hidden = !MP.on;
+  $('mpCount').textContent = n;
+  $('mpPanelCode').textContent = MP.code;
+};
+MP.say = function (msg, warn) { const s = $('mpStatus'); s.textContent = msg; if (warn) s.style.color = 'var(--approach)'; setTimeout(() => { s.style.color = ''; MP.ui(); }, 3500); };
+MP.talk = function (text) {
+  if (!MP.on) return;
+  MP.chatN++; MP.chat = [MP.chatN, text]; MP.dirty = true;
+  MP.addLog(MP.name, MP.color, text);
+};
+MP.addLog = function (name, color, text) {
+  MP.log.push({ name, color, text }); if (MP.log.length > 30) MP.log.shift();
+  const box = $('mpLog'); if (!box) return;
+  const row = document.createElement('div'); const b = document.createElement('b'); b.textContent = name + ': '; b.style.color = color; row.appendChild(b); row.appendChild(document.createTextNode(text)); box.appendChild(row);
+  while (box.children.length > 30) box.removeChild(box.firstChild);
+  box.scrollTop = box.scrollHeight;
+};
+
+/* ---------------- messages ---------------- */
+MP.onText = function (txt) { if (txt.length > 4000) return; let r; try { r = JSON.parse(txt); } catch (e) { return; } MP.receive(r); };
+MP.receive = function (raw) {
+  if (!MP.on || !MP.ready) return;
+  const st = mpClean(raw);
+  if (!st || st.id === MP.id) return;
+  if (st.bye) { MP.drop(st.id, 'left'); return; }
+  let p = MP.peers.get(st.id);
+  if (!p) {
+    if (MP.peers.size >= 8) return;
+    p = { id: st.id, q: -1, color: MP_COLORS[mpHash(st.id) % MP_COLORS.length], st, at: 0, rt: null, tag: null, lastCh: st.ch ? st.ch[0] : 0 };
+    MP.peers.set(st.id, p);
+    toast(performance.now() - MP.joinedAt < 3000 ? `${st.nm} is in the room.` : `${st.nm} joined the room.`, 'good', 3200);
+    MP.ui();
+  } else if (st.q <= p.q) return;
+  p.q = st.q; p.st = st; p.at = performance.now();
+  if (st.sw) MP.mergeSwitches(p, st.sw);
+  if (st.ch && st.ch[0] !== p.lastCh) { p.lastCh = st.ch[0]; if (st.ch[1]) { toast(`${st.nm}: ${st.ch[1]}`, '', 5200); MP.addLog(st.nm, p.color, st.ch[1]); } }
+  if (st.e < 0) { if (p.rt) { if (MP.watching === p.id) MP.unwatch(); p.rt.dispose(); p.rt = null; } return; }
+  const key = `${st.lk}|${st.ck}|${st.u}`;
+  if (p.rt && p.rt.key !== key) { p.rt.dispose(); p.rt = null; }
+  if (!p.rt) { try { p.rt = new RemoteTrain(p, st); } catch (e) { console.warn('remote train', e); return; } }
+  p.rt.repaint(st);
+  p.rt.target(st);
+};
+MP.drop = function (id, why) {
+  const p = MP.peers.get(id); if (!p) return;
+  if (MP.watching === id) MP.unwatch();
+  if (p.rt) p.rt.dispose();
+  if (p.tag) p.tag.remove();
+  MP.peers.delete(id);
+  if (why) toast(`${p.st.nm} left the room.`, '', 3000);
+  MP.ui();
+};
+MP.state = function () {
+  const T = GAME.train, g = GAME.settings;
+  const st = { id: MP.id, q: ++MP.q, nm: MP.name, e: -1, pz: (S.paused || !GAME.running) ? 1 : 0 };
+  if (MP.spawned && T) {
+    const f = T.pts[0].tp;
+    Object.assign(st, {
+      lk: T.locoKey, ck: T.consistKey, u: T.nUnits || 1, lv: g.livery, mx: g.mix ? 1 : 0, cu: g.livery === 'custom' ? [g.custom.body, g.custom.accent, g.custom.letter] : 0, no: g.livery === 'custom' ? (+g.number || 0) : 0,
+      e: f.e.id, s: +f.s.toFixed(2), o: f.o, v: +S.v.toFixed(2), rv: +S.reverser.toFixed(2), wh: +S.whistle.toFixed(2), bl: S.bell ? 1 : 0, hl: S.light, dl: S.ditch ? 1 : 0,
+      ex: T.diesel ? +S.load.toFixed(2) : (S.Psc > 6 && S.cut > 0 && S.throttle > 0.02 ? +clamp((S.Psc / 245) * (0.35 + S.cut * 1.25), 0, 1.3).toFixed(2) : 0),
+      rpm: T.diesel && S.engineRun ? Math.round(S.rpm) : 0, dr: S.derailed ? 1 : 0,
+    });
+  }
+  st.sw = NET.switches.map((sw, i) => MP.swv[i] * 2 + sw.state);
+  if (MP.lt) st.lt = MP.lt;
+  if (MP.chat) st.ch = MP.chat;
+  return st;
+};
+MP.send = function () {
+  const st = MP.state(); MP.last = st;
+  const txt = JSON.stringify(st);
+  for (const l of MP.links) l.publish(MP.topic, txt);
+  if (MP.room) MP.room.send(st);
+};
+
+/* ---------------- switches ---------------- */
+MP.mergeSwitches = function (p, vec) {
+  NET.switches.forEach((sw, i) => {
+    const pv = Math.floor(vec[i] / 2), ps = vec[i] & 1, lv = MP.swv[i];
+    if (pv > MP.seen[i]) MP.seen[i] = pv;
+    if (!(pv > lv || (pv === lv && ps !== sw.state && p.id < MP.id))) return;
+    if (ps !== sw.state && GAME.train && GAME.occupied(sw)) { const pd = MP.pend.get(i); if (!pd || pd.v <= pv) MP.pend.set(i, { v: pv, s: ps }); return; }
+    if (ps !== sw.state) MP.setSwitch(sw, ps, pv > lv && pv > 1 ? MP.thrower(i, pv) : null);
+    MP.swv[i] = pv; MP.pend.delete(i);
+  });
+};
+MP.thrower = function (i, v) { for (const p of MP.peers.values()) if (p.st.lt && p.st.lt[0] === i && p.st.lt[1] === v) return p.st.nm; return null; };
+MP.setSwitch = function (sw, state, who) {
+  sw.state = state;
+  if (who) toast(`${who} threw ${sw.name}: lined for ${sw.lined}.`, '', 2800);
+  if (MAP.visible) MAP.draw();
+};
+MP.noteThrow = function (sw) {
+  if (!MP.on) return;
+  const i = NET.switches.indexOf(sw); if (i < 0) return;
+  MP.swv[i] = Math.max(MP.swv[i], MP.seen[i]) + 1; MP.seen[i] = MP.swv[i];
+  MP.lt = [i, MP.swv[i]]; MP.pend.delete(i); MP.dirty = true;
+};
+MP.occupant = function (sw) {
+  if (!MP.on) return null;
+  for (const p of MP.peers.values()) {
+    const rt = p.rt; if (!rt || !rt.placed) continue;
+    for (const q of rt.train.pts) for (const att of sw.node.att) { if (q.tp.e !== att.edge) continue; const d = att.end === 0 ? q.tp.s : att.edge.len - q.tp.s; if (d < 38) return p.st.nm; }
+  }
+  return null;
+};
+
+/* ---------------- spawning ---------------- */
+MP.spawnSlot = function (T) {
+  // make sure every train we have heard about is placed before looking for room
+  for (const p of MP.peers.values()) if (p.rt && p.rt.tp && !p.rt.placed) p.rt.frame(0, p.st, camera.position, true);
+  const others = [];
+  for (const p of MP.peers.values()) if (p.rt && p.rt.placed) for (let i = 0; i < p.rt.polyN; i++) others.push(p.rt.poly[i]);
+  for (const [name, off] of MP_SPAWNS) {
+    const line = ROUTE.lines[name]; if (!line) continue;
+    const sF = off < 0 ? line.len + off : off;
+    if (!line.loop && sF - T.length < 5) continue;
+    let clear = true;
+    for (let s = sF + 30; s >= sF - T.length - 30 && clear; s -= 6) {
+      const P = line.poseAt(s);
+      for (const q of others) if (Math.hypot(q.x - P.X, -q.z - P.N) < 3.4) { clear = false; break; }
+    }
+    if (clear) return { line, s: sF, name: MP_SPAWN_NAMES[name] || name };
+  }
+  return null;
+};
+
+/* ---------------- per frame ---------------- */
+MP.frame = function (dt) {
+  if (!MP.on) return;
+  const now = performance.now(), cam = camera.position;
+  for (const p of [...MP.peers.values()]) if (now - p.at > 15000) MP.drop(p.id, 'left');
+  if (MP.pend.size && GAME.train) for (const [i, pd] of [...MP.pend]) {
+    const sw = NET.switches[i]; if (GAME.occupied(sw)) continue;
+    MP.pend.delete(i);
+    if (pd.v >= MP.swv[i]) { if (pd.s !== sw.state) MP.setSwitch(sw, pd.s, MP.thrower(i, pd.v)); MP.swv[i] = pd.v; }
+  }
+  for (const p of MP.peers.values()) if (p.rt) p.rt.frame(dt, p.st, cam, MP.watching === p.id);
+  // by the wall clock, so a slow device still reports eight times a second
+  if (now - MP.sentAt >= 125 || (MP.dirty && now - MP.sentAt > 40)) { MP.sentAt = now; MP.dirty = false; MP.send(); }
+  MP.panelT += dt; if (MP.panelT > 0.5) { MP.panelT = 0; if (!$('mpPanel').hidden) MP.panel(); MP.ui(); }
+};
+MP.post = function (dt) {
+  if (!MP.on) return;
+  const cam = camera.position;
+  for (const p of MP.peers.values()) if (p.rt) p.rt.fx(dt, p.st, cam);
+  MP.tags();
+};
+/* buffers and collisions with other players' trains (checked against our own two couplers) */
+MP.contact = function (T) {
+  if (!MP.on || !MP.spawned || !T) return;
+  const front = _mpA, rear = _mpB; mpEnds(T, front, rear);
+  const fwd = T.vehicles[0].fwd;
+  for (const p of MP.peers.values()) {
+    const rt = p.rt; if (!rt || !rt.placed || !rt.polyN) continue;
+    if (front.distanceTo(rt.poly[0]) > T.length + rt.train.length + 60) continue;
+    for (const [end, sg] of [[front, 1], [rear, -1]]) {
+      let d = 1e9; for (let i = 0; i < rt.polyN - 1; i++) { const x = mpSegDist(end, rt.poly[i], rt.poly[i + 1]); if (x < d) d = x; }
+      if (d > 1.25) continue;
+      const theirs = rt.train.vehicles[0].fwd.dot(fwd) * rt.v, closing = sg * (S.v - theirs);
+      if (closing > 2.7) { GAME.derail(`Collided with ${p.st.nm}'s train at ${Math.round(closing / MPH)} mph. Back away before you try again.`, 'Collision'); return; }
+      if (closing > 0.02) { S.v = 0; S.vw = 0; toast(`Buffered up against ${p.st.nm}'s train.`, 'warn', 2600, 'mpbump'); }
+    }
+  }
+};
+MP.view = function () {
+  if (!MP.watching) return null;
+  const p = MP.peers.get(MP.watching);
+  if (!p || !p.rt || !p.rt.placed) { MP.unwatch(); return null; }
+  return p.rt.train;
+};
+MP.watch = function (id) {
+  const p = MP.peers.get(id); if (!p || !p.rt) return;
+  MP.watching = id; CAM.init = false; CAM.side = null;
+  $('mpWatchName').textContent = p.st.nm; $('mpWatch').hidden = false; $('mpPanel').hidden = true;
+};
+MP.unwatch = function () { if (!MP.watching) return; MP.watching = null; CAM.init = false; CAM.side = null; $('mpWatch').hidden = true; };
+MP.tags = function () {
+  const W = innerWidth, H = innerHeight, cam = camera.position, box = $('mpTags');
+  for (const p of MP.peers.values()) {
+    const rt = p.rt; let el = p.tag;
+    const show = rt && rt.placed && rt.visible && MP.watching !== p.id;
+    if (!show) { if (el) el.style.display = 'none'; continue; }
+    if (!el) {
+      el = p.tag = document.createElement('div'); el.className = 'mpTag';
+      const dot = document.createElement('i'); dot.style.background = p.color; el.appendChild(dot);
+      el.appendChild(document.createElement('span')); el.appendChild(document.createElement('small')); box.appendChild(el);
+    }
+    const L = rt.train.loco;
+    _mpC.set(L.cabEye ? L.cabEye.x : 0, 6.3, 0).applyMatrix4(L.root.matrixWorld);
+    const d = _mpC.distanceTo(cam);
+    _mpD.copy(_mpC).project(camera);
+    if (d > 4500 || _mpD.z > 1 || _mpD.z < -1 || Math.abs(_mpD.x) > 1.1 || Math.abs(_mpD.y) > 1.1) { el.style.display = 'none'; continue; }
+    el.style.display = '';
+    el.style.transform = `translate(${Math.round((_mpD.x * 0.5 + 0.5) * W)}px,${Math.round((-_mpD.y * 0.5 + 0.5) * H)}px) translate(-50%,-100%)`;
+    const nm = p.st.nm + (p.st.pz ? ' (in menu)' : ''), ds = fmtMi(d);
+    if (el.children[1].textContent !== nm) el.children[1].textContent = nm;
+    if (el.children[2].textContent !== ds) el.children[2].textContent = ds;
+  }
+};
+MP.panel = function () {
+  const box = $('mpList'); if (!box) return;
+  const T = GAME.train, me = T && MP.spawned ? T.vehicles[0].pos : null;
+  box.textContent = '';
+  const row = (color, name, sub, right, peerId) => {
+    const r = document.createElement('div'); r.className = 'mpP';
+    const dot = document.createElement('i'); dot.style.background = color; r.appendChild(dot);
+    const mid = document.createElement('div'); mid.className = 'mpN';
+    const b = document.createElement('b'); b.textContent = name; mid.appendChild(b);
+    const s = document.createElement('span'); s.textContent = sub; mid.appendChild(s); r.appendChild(mid);
+    const rr = document.createElement('span'); rr.className = 'mpS'; rr.textContent = right; r.appendChild(rr);
+    if (peerId) { const w = document.createElement('button'); w.className = 'btn'; w.textContent = 'Watch'; w.disabled = !(MP.peers.get(peerId).rt); w.addEventListener('click', () => MP.watch(peerId)); r.appendChild(w); }
+    box.appendChild(r);
+  };
+  row(MP.color, MP.name + ' (you)', MP.last ? mpLocoLabel(MP.last) : 'In the menu', MP.spawned ? Math.round(Math.abs(S.v) / MPH) + ' mph' : '');
+  for (const p of MP.peers.values()) {
+    const st = p.st;
+    let right = st.e >= 0 ? Math.round(Math.abs(st.v) / MPH) + ' mph' : '';
+    if (st.dr) right = 'Derailed'; else if (st.pz && st.e >= 0) right = 'In the menu';
+    if (me && p.rt && p.rt.placed) right += ' · ' + fmtMi(me.distanceTo(p.rt.train.vehicles[0].pos));
+    row(p.color, st.nm, mpLocoLabel(st), right, p.id);
+  }
+};
+MP.drawMap = function (g, tx, ty, opt) {
+  if (!MP.on) return;
+  for (const p of MP.peers.values()) {
+    const rt = p.rt; if (!rt || !rt.placed) continue;
+    const T = rt.train;
+    g.strokeStyle = p.color; g.lineWidth = 4 * opt.w; g.beginPath();
+    T.vehicles.forEach((v, i) => { const x = tx(v.pos.x), y = ty(-v.pos.z); i ? g.lineTo(x, y) : g.moveTo(x, y); }); g.stroke();
+    const q = T.vehicles[0].pos, x = tx(q.x), y = ty(-q.z);
+    g.fillStyle = '#ffffff'; g.beginPath(); g.arc(x, y, 3 * opt.w, 0, TAU); g.fill();
+    if (opt.labels) { g.font = `700 ${opt.fs}px "IBM Plex Sans Condensed", sans-serif`; g.textAlign = 'left'; g.lineWidth = 3; g.strokeStyle = 'rgba(0,0,0,0.75)'; g.strokeText(p.st.nm, x + 7, y - 7); g.fillStyle = p.color; g.fillText(p.st.nm, x + 7, y - 7); }
+  }
+};
+
+/* ============================================================================
    Game: boot, world loading, main loop, rules, HUD
    ========================================================================== */
 const GAME = {
@@ -5150,6 +5934,7 @@ async function loadWorld() {
   prog(1, `${(ROUTE.mainLen / MILE).toFixed(1)} mi mainline · ${NET.switches.length} switches · ${WORLD.treeCount.toLocaleString()} trees`);
   GAME.ready = true;
   $('btnStart').disabled = false;
+  MP.worldReady();
   const hot = window.claude && window.claude.hot;
   if (hot && hot.snapshot) hot.snapshot(() => GAME.snapshot());
   const resume = data => { if (data && data.running) GAME.restore(data); };
@@ -5169,23 +5954,35 @@ function makeTrain() {
   if (GAME.train) GAME.train.dispose();
   const t = new Train(scene, GAME.settings.loco, GAME.settings.consist, dieselOpts());
   GAME.train = t;
-  const sw = name => NET.switches.find(s => s.name === name);
-  for (const s of NET.switches) { s.state = 0; s.anim = 0; }
-  sw('Yard ladder E2').state = sw('Yard ladder E2').anim = 1;
-  sw('Bellevue East').state = sw('Bellevue East').anim = 1;
-  const line = ROUTE.lines['Yard 2'];
-  const loc = line.locate(line.len - 175);
-  const tp = new TrackPos(loc.edge, loc.s, 1);
-  t.place(tp);
-  for (const v of t.vehicles) linearizeObject(v.root);
-  if (t.diesel) t.units.forEach(m => m.trucks.forEach(linearizeObject)); else { linearizeObject(t.loco.leadTruck); applySteamFinish(GAME.settings.finish); }
-  for (const im of [t.tSix, t.tFour, ...(t.ax6 || []), ...(t.ax4 || [])]) if (im) linearizeObject(im);
-  for (const v of t.vehicles) v.brake = { AR: 90, BC: 0, BP: 90, emerg: false, released: true };
+  let line = ROUTE.lines['Yard 2'], sFront = line.len - 175;
+  GAME.spawnName = 'Yard 2, Bellevue';
+  if (MP.on) {
+    // in a room the switches belong to everyone, so leave them alone and find an empty track
+    const slot = MP.spawnSlot(t);
+    if (slot) { line = slot.line; sFront = slot.s; GAME.spawnName = slot.name; }
+    MP.spawned = true; MP.needSpawn = false; MP.dirty = true;
+  } else {
+    const sw = name => NET.switches.find(s => s.name === name);
+    for (const s of NET.switches) { s.state = 0; s.anim = 0; }
+    sw('Yard ladder E2').state = sw('Yard ladder E2').anim = 1;
+    sw('Bellevue East').state = sw('Bellevue East').anim = 1;
+  }
+  const loc = line.locate(sFront);
+  t.place(new TrackPos(loc.edge, loc.s, 1));
+  prepareTrain(t);
+  if (!t.diesel) applySteamFinish(GAME.settings.finish);
   resetState();
   S.limit = Math.min(...t.pts.map(p => p.tp.e.limit));
   buildWhistleIfReady();
   CAM.init = false;
   GAME.jointMem = new Map();
+}
+/* colour-space fix-up and fresh brakes for a newly built train (ours or another player's) */
+function prepareTrain(t) {
+  for (const v of t.vehicles) linearizeObject(v.root);
+  if (t.diesel) t.units.forEach(m => m.trucks.forEach(linearizeObject)); else linearizeObject(t.loco.leadTruck);
+  for (const im of [t.tSix, t.tFour, ...(t.ax6 || []), ...(t.ax4 || [])]) if (im) linearizeObject(im);
+  for (const v of t.vehicles) v.brake = { AR: 90, BC: 0, BP: 90, emerg: false, released: true };
 }
 function dieselOpts() {
   const g = GAME.settings, custom = g.livery === 'custom';
@@ -5199,7 +5996,7 @@ function applyLiveriesLive() {
 const SAVE_KEYS = ['loco', 'consist', 'time', 'weather', 'fire', 'units', 'livery', 'mix', 'finish', 'custom', 'number'];
 function saveSettings() { try { const o = {}; for (const k of SAVE_KEYS) o[k] = GAME.settings[k]; localStorage.setItem('bd_settings', JSON.stringify(o)); } catch (e) {} }
 function loadSettings() { try { const o = JSON.parse(localStorage.getItem('bd_settings') || 'null'); if (o) for (const k of SAVE_KEYS) if (o[k] !== undefined) GAME.settings[k] = o[k]; } catch (e) {} if (!LOCO_SPEC[GAME.settings.loco]) GAME.settings.loco = '765'; if (!LIVERIES[GAME.settings.livery]) GAME.settings.livery = 'ss'; }
-GAME.needNewTrain = function () { const t = GAME.train, g = GAME.settings; return !t || t.locoKey !== g.loco || t.consistKey !== g.consist || (t.diesel && t.nUnits !== (+g.units || 1)); };
+GAME.needNewTrain = function () { const t = GAME.train, g = GAME.settings; return !t || MP.needSpawn || t.locoKey !== g.loco || t.consistKey !== g.consist || (t.diesel && t.nUnits !== (+g.units || 1)); };
 function buildWhistleIfReady() { if (!AU.on) return; buildWhistle(WHISTLES[LOCO_SPEC[GAME.settings.loco].whistle]); }
 
 /* ---------------- menu ---------------- */
@@ -5215,6 +6012,7 @@ function segButtons(id, opts, key, onPick) {
 }
 function buildMenu() {
   loadSettings();
+  MP.init();
   const locoOpts = { '765': { name: 'NKP 765', sub: 'S-2 · Lima 1944' }, '1225': { name: 'PM 1225', sub: 'N-1 · Lima 1941' }, 'diesel': { name: 'Wide-cab diesel', sub: 'AC · 4,400 hp' } };
   segButtons('optLoco', locoOpts, 'loco', () => { specGrid(); startLabel(); refreshMenuGroups(); saveSettings(); });
   const livOpts = {}; for (const k in LIVERIES) { const L = LIVERIES[k]; livOpts[k] = { name: L.name, sub: L.sub, swatch: `linear-gradient(90deg, ${hexCss(k === 'custom' ? GAME.settings.custom.body : L.body)} 0 64%, ${hexCss(k === 'custom' ? GAME.settings.custom.accent : L.accent)} 64% 100%)` }; }
@@ -5268,6 +6066,9 @@ function refreshMenuGroups() {
 }
 
 GAME.start = function () {
+  // just joined a room: give the others a moment to report where their trains are before ours is made up
+  const wait = MP.spawnWait();
+  if (wait > 0) { $('btnStart').disabled = true; $('btnStart').textContent = 'Joining…'; setTimeout(() => { $('btnStart').disabled = false; GAME.start(); }, wait); return; }
   audioInit(); buildWhistleIfReady();
   if (!GAME.running || GAME.needNewTrain()) {
     makeTrain(); GAME.train.consistKey = GAME.settings.consist;
@@ -5283,7 +6084,8 @@ GAME.start = function () {
   try { navigator.wakeLock && navigator.wakeLock.request('screen').catch(() => {}); } catch (e) {}
 };
 GAME.intro = function () {
-  setTimeout(() => toast('Yard 2, Bellevue. The ladder is lined out to the main.', '', 5000), 600);
+  if (MP.on) setTimeout(() => toast(`Made up on ${GAME.spawnName}. The switches are shared with everyone in the room.`, '', 5600), 600);
+  else setTimeout(() => toast('Yard 2, Bellevue. The ladder is lined out to the main.', '', 5000), 600);
   if (GAME.train && GAME.train.diesel) setTimeout(() => toast((GAME.train.nUnits > 1 ? GAME.train.nUnits + ' units in multiple: they all answer the lead cab. ' : '') + 'Reverser to forward, engine brake off, then notch out the throttle.', '', 6500), 5200);
   else setTimeout(() => toast('Reverser forward, engine brake off, then ease the throttle open.', '', 6000), 5200);
 };
@@ -5343,7 +6145,9 @@ GAME.occupied = function (sw) {
 };
 GAME.throwSwitch = function (sw) {
   if (GAME.occupied(sw)) { toast(`${sw.name} is occupied by your train. Clear it before throwing.`, 'bad', 3200, 'occ'); return; }
-  sw.state = 1 - sw.state; sndThrow();
+  const who = MP.occupant(sw);
+  if (who) { toast(`${who}'s train is on ${sw.name}. Wait until it clears.`, 'bad', 3200, 'occ'); return; }
+  sw.state = 1 - sw.state; sndThrow(); MP.noteThrow(sw);
   toast(`${sw.name} lined for ${sw.lined}.`, sw.state ? 'warn' : 'good', 2600);
   if (MAP.visible) MAP.draw();
 };
@@ -5454,7 +6258,7 @@ function simStep(dt, T) {
             if (div && mph > sw.divLimit * 1.75) GAME.derail(`Took the ${sw.name} turnout at ${Math.round(mph)} mph. The diverging route is good for ${sw.divLimit} mph.`);
             else if (div && mph > sw.divLimit + 4) toast(`Over turnout speed at ${sw.name}: ${Math.round(mph)} mph (limit ${sw.divLimit}).`, 'warn', 3000, 'tov');
           },
-          onRunThrough: sw => { GAME.stats.runThrough++; toast(`Ran through ${sw.name}. The points were forced over.`, 'bad', 3800, 'rt' + sw.id); },
+          onRunThrough: sw => { GAME.stats.runThrough++; MP.noteThrow(sw); toast(`Ran through ${sw.name}. The points were forced over.`, 'bad', 3800, 'rt' + sw.id); },
           onBlocked: () => {
             const mph2 = Math.abs(S.v) / MPH;
             if (mph2 > 7) GAME.derail(`Hit the bumping post at ${Math.round(mph2)} mph. Bumpers are rated for a gentle shove, about 5 mph.`, 'Collision');
@@ -5489,6 +6293,8 @@ function renderStep(dt, T) {
   // visuals
   updateSwitchVisuals(dt); updateSignals();
   T.update(dt, S.theta, S.reverser);
+  MP.frame(dt);
+  if (GAME.running && !S.paused && !S.derailed) MP.contact(T);
   // headlight & glows
   const night = SKY.night;
   T.head.intensity = S.light === 0 ? 0 : (S.light === 1 ? (night ? 1.6 : 0.4) : (night ? 6 : 1.4));
@@ -5511,7 +6317,7 @@ function renderStep(dt, T) {
   const pb = $('btnWhistle').querySelector('.pull i'), pw = Math.round(S.whistle * 100) + '%'; if (pb.style.width !== pw) pb.style.width = pw;
   T.cabLight.intensity = night ? 0.6 : 0;
   // camera
-  updateCamera(camera, T, dt);
+  updateCamera(camera, MP.view() || T, dt);
   if (CAM.shakeHit) { camera.position.x += (Math.random() - 0.5) * CAM.shakeHit; camera.position.y += (Math.random() - 0.5) * CAM.shakeHit; CAM.shakeHit = Math.max(0, CAM.shakeHit - dt * 1.5); }
   if (!GAME.running) { // attract mode orbit while the menu is up
     CAM.yaw = -0.95 + Math.sin(S.time * 0.05 + performance.now() * 0.00005) * 0.55; CAM.mode = 'chase'; CAM.dist = 21; CAM.pitch = 0.09;
@@ -5521,11 +6327,12 @@ function renderStep(dt, T) {
   SKY.clouds.position.set(camera.position.x, camera.position.y + 1600, camera.position.z);
   SKY.clouds.material.map.offset.x += dt * 0.0006; SKY.clouds.material.map.offset.y += dt * 0.0003;
   SKY.moon.position.copy(SKY.sunDir).multiplyScalar(7000).add(camera.position);
-  const lp = T.vehicles[0].pos;
+  const lp = (MP.view() || T).vehicles[0].pos;
   SKY.sun.target.position.copy(lp); SKY.sun.position.copy(lp).addScaledVector(SKY.sunDir, 300);
   updateTrackLOD(camera); updateDetailLOD(camera, scene, dt);
   // effects & sound
   effectsAndSound(dt, T);
+  MP.post(dt);
   updateFX(dt, camera);
   if (GAME.running) updateHUD(dt);
   renderer.render(scene, camera);

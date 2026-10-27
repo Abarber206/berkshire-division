@@ -4,8 +4,8 @@
    dimensions: 69 in drivers, 36 in lead truck, 36/43 in trailing truck,
    25 x 34 in cylinders, 89 in boiler, 100 ft 8-3/4 in over couplers,
    15 ft 8 in tall, Baker valve gear. Tender: 22,000 gal / 22 t on two
-   six-wheel trucks. The PM engine carries its bell on the smokebox door
-   and its headlight on top of the smokebox, as 1225 does today.
+   six-wheel trucks. Both carry the bell on top of the smokebox front and
+   the headlight in the middle of the smokebox door.
    ========================================================================== */
 const RMAT = {};
 function rollingMaterials() {
@@ -127,7 +127,7 @@ function rodGeo(L, h0, h1, t, boss0, boss1) {
 }
 
 /* =================== THE BERKSHIRE =================== */
-const LOCO_SPEC = {
+const LOCO_SPEC = {   // bellOnFront: the PM's round door lamp, plate beside it and cast numerals
   '765': { road: 'NICKEL PLATE ROAD', num: '765', short: 'NKP', cls: 'S-2', built: 'Lima, Sept 1944', weight: 440800, adhesive: 264300, te: 64135, fw: 'Worthington', whistle: 'deep6', bellOnFront: false },
   'diesel': { road: 'SANDUSKY & SCIOTO', num: '4401', short: 'S&S', cls: 'AC44', built: '2026', weight: 420000, adhesive: 420000, te: 183000, diesel: true, whistle: 'k5' },
   '1225': { road: 'PERE MARQUETTE', num: '1225', short: 'PM', cls: 'N-1', built: 'Lima, Oct 1941', weight: 442500, adhesive: 264000, te: 69350, fw: 'Worthington', whistle: 'bright3', bellOnFront: true },
@@ -222,7 +222,6 @@ function buildBerkshire(key) {
   gb.add('graphite', lathe([[0, 0.82], [0.06, 0.82], [0.14, 0.6], [0.17, 0.0]], 1.5));
   for (const dy of [0.35, -0.35]) gb.box('dark', 0.04, 0.06, 0.62, ax(1.4), yB + dy, -0.42);           // hinge straps
   for (let i = 0; i < 18; i++) { const t = (i + 0.5) / 18 * TAU; gb.add('dark', new THREE.BoxGeometry(0.06, 0.13, 0.07), M(ax(1.475), yB + 0.9 * Math.cos(t), 0.9 * Math.sin(t), t, 0, 0)); }   // door dogs
-  if (!spec.bellOnFront) gb.add('rod', new THREE.CylinderGeometry(0.03, 0.03, 0.5, 8).rotateZ(Math.PI / 2).translate(ax(1.22), yB, 0));
   // boiler courses: front ring, conical course, rear courses
   gb.add('black', new THREE.CylinderGeometry(1.0, 1.0, 2.9, 40, 1, true).rotateZ(Math.PI / 2).translate(ax(5.95), yB, 0));
   gb.add('black', new THREE.CylinderGeometry(1.0, 1.13, 1.6, 40, 1, true).rotateZ(Math.PI / 2).translate(ax(8.2), yB + 0.06, 0));
@@ -263,36 +262,37 @@ function buildBerkshire(key) {
   gb.cyl('brass', 0.09, 0.09, 0.5, 16, ax(10.1), yB + 1.36, 0.42); gb.cyl('brass', 0.12, 0.12, 0.06, 16, ax(10.1), yB + 1.62, 0.42); gb.cyl('brass', 0.05, 0.05, 0.25, 8, ax(10.1), yB + 1.05, 0.42);
   // turbo-generator
   gb.cylX('black', 0.18, 0.18, 0.62, 16, ax(3.9), yB + 1.08, -0.42); gb.cyl('dark', 0.05, 0.05, 0.3, 8, ax(3.7), yB + 1.3, -0.42);
-  // bell
-  // bell: hung on the smokebox door of the Pere Marquette engine, on top of the boiler on the Nickel Plate
-  const bellA = 7.6;
-  if (spec.bellOnFront) {
-    const by = yB + 0.04, bx = ax(1.06);
-    gb.add('brass', new THREE.LatheGeometry([[0, 0.25], [0.08, 0.25], [0.15, 0.22], [0.2, 0.12], [0.235, 0.0]].map(p => new THREE.Vector2(p[0], p[1])), 24).translate(bx, by, 0));
-    gb.box('black', 0.3, 0.06, 0.08, ax(1.2), by + 0.34, 0);
-    gb.box('black', 0.08, 0.05, 0.6, bx, by + 0.34, 0);
-    for (const z of [-0.27, 0.27]) gb.box('black', 0.05, 0.3, 0.04, bx, by + 0.2, z);
-  } else {
-    gb.add('brass', new THREE.LatheGeometry([[0, 0.3], [0.09, 0.3], [0.17, 0.26], [0.23, 0.14], [0.27, 0.0]].map(p => new THREE.Vector2(p[0], p[1])), 20).translate(ax(bellA), yB + 1.14, 0));
-    for (const z of [-0.33, 0.33]) gb.box('black', 0.08, 0.6, 0.06, ax(bellA), yB + 1.32, z);
-    gb.box('black', 0.1, 0.06, 0.72, ax(bellA), yB + 1.62, 0);
+  // bell up on top of the smokebox front, hung in a yoke on a bracket, in front of the feedwater heater
+  {
+    const by = yB + 0.86, bx = ax(1.3);
+    gb.add('brass', new THREE.LatheGeometry([[0, 0.27], [0.09, 0.27], [0.16, 0.24], [0.21, 0.13], [0.25, 0.0]].map(p => new THREE.Vector2(p[0], p[1])), 24).translate(bx, by, 0));
+    for (const z of [-0.3, 0.3]) gb.box('black', 0.06, 0.38, 0.05, bx, by + 0.2, z);
+    gb.box('black', 0.08, 0.06, 0.66, bx, by + 0.4, 0);
+    gb.box('black', 0.34, 0.08, 0.1, ax(1.47), by + 0.4, 0);
   }
-  // headlight with number boards
-  const hlY = spec.bellOnFront ? yB + 0.98 : 3.6;     // PM: high on top of the smokebox front
-  gb.box('black', 0.55, 0.62, 0.62, ax(1.25), hlY, 0);
-  gb.add('black', new THREE.CylinderGeometry(0.29, 0.29, 0.12, 24).rotateZ(Math.PI / 2).translate(ax(0.98), hlY, 0));
-  gb.box('black', 0.32, 0.06, 0.66, ax(0.95), hlY + 0.36, 0);
+  // headlight in the middle of the smokebox door: the NKP's square lamp with number boards either side,
+  // the PM's round lamp with a brass rim and a white number plate beside it
+  const hlY = yB + 0.14;
+  if (!spec.bellOnFront) {
+    gb.box('black', 0.55, 0.62, 0.62, ax(1.25), hlY, 0);
+    gb.add('black', new THREE.CylinderGeometry(0.29, 0.29, 0.12, 24).rotateZ(Math.PI / 2).translate(ax(0.98), hlY, 0));
+    gb.box('black', 0.32, 0.06, 0.66, ax(0.95), hlY + 0.36, 0);
+  } else {
+    gb.add('black', new THREE.CylinderGeometry(0.31, 0.33, 0.5, 28).rotateZ(Math.PI / 2).translate(ax(1.17), hlY, 0));
+    gb.add('brass', new THREE.TorusGeometry(0.29, 0.035, 8, 28).rotateY(Math.PI / 2).translate(ax(0.92), hlY, 0));
+    gb.box('black', 0.26, 0.05, 0.5, ax(0.98), hlY + 0.33, 0);
+  }
   const numMat = decalMat(128, 64, (g, w, h) => { g.fillStyle = '#f2efe4'; g.fillRect(0, 0, w, h); g.fillStyle = '#121212'; g.font = 'bold 44px Arial'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(spec.num, w / 2, h / 2 + 2); });
   RMAT['num' + key] = numMat;
   if (!spec.bellOnFront) for (const z of [-0.45, 0.45]) { gb.box('black', 0.5, 0.3, 0.12, ax(1.3), hlY, z); gb.add('num' + key, new THREE.PlaneGeometry(0.42, 0.22), M(ax(1.04), hlY, z, 0, Math.PI / 2, 0)); }
-  else { gb.box('black', 0.5, 0.24, 0.5, ax(1.38), hlY - 0.4, 0); gb.add('num' + key, new THREE.PlaneGeometry(0.34, 0.18), M(ax(1.345), yB + 0.06, 0.4, 0, Math.PI / 2, 0)); }
-  // number plate on smokebox door
+  else gb.add('num' + key, new THREE.PlaneGeometry(0.34, 0.18), M(ax(1.345), hlY - 0.04, 0.52, 0, Math.PI / 2, 0));
+  // engine number low on the door: a round plate on the NKP, cast numerals on the PM
   const plate = decalMat(128, 128, (g, w, h) => { g.fillStyle = '#121212'; g.beginPath(); g.arc(64, 64, 62, 0, TAU); g.fill(); g.strokeStyle = '#d9d5c7'; g.lineWidth = 6; g.beginPath(); g.arc(64, 64, 55, 0, TAU); g.stroke(); g.fillStyle = '#e8e4d6'; g.font = 'bold 40px Arial'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(spec.num, 64, 66); });
   RMAT['plate' + key] = plate;
-  if (!spec.bellOnFront) gb.add('plate' + key, new THREE.CircleGeometry(0.3, 28), M(ax(1.33), yB - 0.45, 0, 0, Math.PI / 2, 0));
-  else {   // cast numerals on the door, under the bell
+  if (!spec.bellOnFront) gb.add('plate' + key, new THREE.CircleGeometry(0.26, 28), M(ax(1.335), yB - 0.5, 0, 0, Math.PI / 2, 0));
+  else {
     RMAT['digits' + key] = decalMat(256, 96, (g, w, h) => { g.fillStyle = '#e9e6dc'; g.font = 'bold 74px "Times New Roman", Georgia, serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; if (g.letterSpacing !== undefined) g.letterSpacing = '4px'; g.fillText(spec.num, w / 2, h / 2 + 4); });
-    gb.add('digits' + key, new THREE.PlaneGeometry(0.66, 0.25), M(ax(1.345), yB - 0.42, 0, 0, Math.PI / 2, 0));
+    gb.add('digits' + key, new THREE.PlaneGeometry(0.66, 0.25), M(ax(1.345), yB - 0.38, 0.06, 0, Math.PI / 2, 0));
   }
   // classification lamps
   for (const z of [-0.85, 0.85]) { gb.box('black', 0.22, 0.26, 0.2, ax(1.62), yB + 0.75, z); gb.add('lensOff', new THREE.CircleGeometry(0.06, 10), M(ax(1.5), yB + 0.75, z, 0, Math.PI / 2, 0)); }
