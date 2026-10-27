@@ -153,6 +153,8 @@ function setupButtons() {
   tog('btnInj', () => { GAME.manualFire('injector'); S.injector = !S.injector; });
   tog('btnFire', () => { GAME.manualFire('stoker'); const steps = [0, 0.25, 0.5, 0.75, 1]; let i = steps.findIndex(s => s > S.stoker + 0.05); S.stoker = i < 0 ? 0 : steps[i]; });
   tog('btnBlower', () => { GAME.manualFire('blower'); S.blower = S.blower > 0.3 ? 0 : 0.65; });
+  $('gaugeWrap').addEventListener('click', () => { const g = $('gaugeWrap'); g.classList.toggle('min'); try { localStorage.setItem('bd_gmin', g.classList.contains('min') ? '1' : ''); } catch (e) {} });
+  try { if (localStorage.getItem('bd_gmin')) $('gaugeWrap').classList.add('min'); } catch (e) {}
   $('btnCam').addEventListener('click', () => cycleCamera());
   $('btnMap').addEventListener('click', () => MAP.open());
   $('minimap').addEventListener('click', () => MAP.open());

@@ -42,7 +42,7 @@ button:focus-visible,.lever:focus-visible{outline:2px solid var(--brass);outline
 /* ---------- HUD ---------- */
 #hud{position:fixed;inset:0;pointer-events:none;z-index:5}
 #hud[hidden]{display:none!important}
-.hud-box{pointer-events:auto;background:rgba(14,19,23,.82);border:1px solid var(--rule);border-radius:6px;
+.hud-box{pointer-events:auto;background:rgba(14,19,23,.74);border:1px solid var(--rule);border-radius:6px;
   -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
 #tl{position:absolute;left:calc(env(safe-area-inset-left,0px) + 10px);top:calc(env(safe-area-inset-top,0px) + 10px);
   display:flex;gap:8px;align-items:stretch}
@@ -210,6 +210,48 @@ details.keys kbd{color:var(--brass)}
   .specs{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
 #routeMini{display:none;pointer-events:auto;padding:5px 8px;gap:6px;align-items:center;font-size:11px;max-width:200px}
+#gaugeMini{display:none;font-family:var(--f-num);font-size:11px;padding:4px 6px;gap:10px;white-space:nowrap;font-variant-numeric:tabular-nums}
+#gaugeMini b{color:var(--brass);font-weight:600}
+#gaugeWrap.min #gauges{display:none}
+#gaugeWrap.min #gaugeMini{display:flex}
+#gaugeWrap{cursor:pointer}
+/* Phone landscape: controls hug the edges and the middle of the screen stays clear */
+@media (max-height:500px) and (orientation:landscape){
+  #tl{gap:6px;top:calc(env(safe-area-inset-top,0px) + 6px);left:calc(env(safe-area-inset-left,0px) + 6px)}
+  #speedBox{min-width:0;padding:4px 8px;flex-direction:row;align-items:center;gap:8px}
+  #speedBox>.lbl{display:none}
+  #speedNum{font-size:24px}
+  #speedBox .row{flex-direction:column;align-items:flex-start;gap:2px}
+  #routeBox{min-width:0;max-width:250px;padding:4px 8px;gap:2px}
+  #sigLine{display:none}
+  #stopLine{font-size:10px}
+  #stopLine:not(:has(button)){display:none}
+  #swText{font-size:11px;line-height:1.2}
+  #swText .sub{font-size:10px}
+  #swLamp{width:9px;height:9px}
+  #btnThrow{padding:5px 7px;font-size:10px;letter-spacing:.8px}
+  #tr{top:calc(env(safe-area-inset-top,0px) + 6px);right:calc(env(safe-area-inset-right,0px) + 6px)}
+  #tr .btns{gap:4px}
+  .icon-btn{width:34px;height:30px}
+  .icon-btn svg{width:17px;height:17px}
+  #minimap,#camName{display:none}
+  #stand{inset:0;display:block;padding:0}
+  #ctrls{display:contents}
+  #levers{position:absolute;right:calc(env(safe-area-inset-right,0px) + 6px);top:calc(env(safe-area-inset-top,0px) + 42px);bottom:calc(env(safe-area-inset-bottom,0px) + 6px);gap:3px;padding:4px 3px}
+  #levers{background:rgba(14,19,23,.55)}
+  .lever{width:34px;height:100%}
+  .lever .track{width:10px}
+  .lever .knob{width:30px;height:17px;margin-left:-15px;margin-top:-8px}
+  .lever .lt{font-size:6.5px;letter-spacing:0}
+  .lever .lv{font-size:9px}
+  #keys{position:absolute;left:calc(env(safe-area-inset-left,0px) + 6px);bottom:calc(env(safe-area-inset-bottom,0px) + 6px);grid-template-columns:repeat(5,40px);gap:4px;padding:4px}
+  .key{height:28px;font-size:8px;letter-spacing:.5px}
+  #btnWhistle{grid-row:span 2;height:60px;font-size:9px}
+  #gaugeWrap{position:absolute;left:calc(env(safe-area-inset-left,0px) + 6px);bottom:calc(env(safe-area-inset-bottom,0px) + 80px);padding:3px}
+  #gauges{width:204px;height:70px}
+  #toast{top:calc(env(safe-area-inset-top,0px) + 48px);width:min(50vw,340px)}
+  .toast{font-size:11px;padding:5px 9px}
+}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 
@@ -245,7 +287,7 @@ details.keys kbd{color:var(--brass)}
   </div>
   <div id="toast"></div>
   <div id="stand">
-    <div id="gaugeWrap" class="hud-box"><canvas id="gauges" width="680" height="232"></canvas></div>
+    <div id="gaugeWrap" class="hud-box" role="button" tabindex="0" aria-label="Gauges, tap to shrink or expand"><canvas id="gauges" width="680" height="232"></canvas><div id="gaugeMini"></div></div>
     <div id="ctrls">
       <div id="levers" class="hud-box">
         <div class="lever" id="lvThrottle" tabindex="0" aria-label="Throttle"><div class="lt">Throttle</div><div class="track"><canvas class="ticks"></canvas><div class="knob"></div></div><div class="lv">0%</div></div>
@@ -3679,6 +3721,8 @@ function setupButtons() {
   tog('btnInj', () => { GAME.manualFire('injector'); S.injector = !S.injector; });
   tog('btnFire', () => { GAME.manualFire('stoker'); const steps = [0, 0.25, 0.5, 0.75, 1]; let i = steps.findIndex(s => s > S.stoker + 0.05); S.stoker = i < 0 ? 0 : steps[i]; });
   tog('btnBlower', () => { GAME.manualFire('blower'); S.blower = S.blower > 0.3 ? 0 : 0.65; });
+  $('gaugeWrap').addEventListener('click', () => { const g = $('gaugeWrap'); g.classList.toggle('min'); try { localStorage.setItem('bd_gmin', g.classList.contains('min') ? '1' : ''); } catch (e) {} });
+  try { if (localStorage.getItem('bd_gmin')) $('gaugeWrap').classList.add('min'); } catch (e) {}
   $('btnCam').addEventListener('click', () => cycleCamera());
   $('btnMap').addEventListener('click', () => MAP.open());
   $('minimap').addEventListener('click', () => MAP.open());
@@ -4095,7 +4139,7 @@ let hudT = 0, mapT = 0, gaugeT = 0;
 function updateHUD(dt) {
   hudT += dt; mapT += dt; gaugeT += dt;
   updateLevers();
-  if (gaugeT > 0.066) { gaugeT = 0; drawGauges(); }
+  if (gaugeT > 0.066) { gaugeT = 0; if ($('gaugeWrap').classList.contains('min')) { const m = $('gaugeMini'); const t = `<span><b>${Math.round(S.P)}</b> psi</span><span>glass <b>${Math.round(clamp((S.W + 0.1) / 1.2, 0, 1) * 100)}%</b></span><span>BP <b>${Math.round(GAME.train.vehicles[0].brake.BP)}</b></span>`; if (m.innerHTML !== t) m.innerHTML = t; } else drawGauges(); }
   if (mapT > 0.18) { mapT = 0; drawMinimap(); if (MAP.visible) MAP.draw(); }
   if (hudT < 0.1) return; hudT = 0;
   const mph = Math.abs(S.v) / MPH;
