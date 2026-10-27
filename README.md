@@ -8,9 +8,13 @@ A 3D railway simulator that runs in the browser, phone or desktop. Drive a Lima-
 
 - **NKP 765** (S-2, Lima 1944) and **PM 1225** (N-1, Lima 1941)
 - Built to published dimensions: 69 in drivers, 36 in lead truck, 36/43 in trailing truck, 25 × 34 in cylinders, 245 psi boiler, 100 ft 8¾ in over couplers, 15 ft 8 in tall
-- Working Walschaerts valve gear driven by the reverser, side and main rods, crossheads
+- Working Baker valve gear driven by the reverser (gear frame, reverse yoke, radius bars, gear connecting rod, bell crank), side and main rods, crossheads
+- Cast slotted pilots and smokebox doors with their ring of dogs. PM 1225 carries its bell on the smokebox door and its headlight on top of the smokebox, as it does today
+- Finish options: as delivered (graphite smokebox), excursion white trim (tire faces and running-board edges), or plain black
 - 22,000-gallon tender on six-wheel trucks
-- **S&S 4401**, a modern six-axle AC freight diesel lettered for the fictional Sandusky & Scioto: 4,400 hp, C-C swivel trucks with 42 in wheels, wide safety cab with a working interior view, ditch lights, five-chime horn
+- **A modern six-axle AC freight diesel** in the GE wide-cab style, 4,400 hp: sloped nose with angled corners and stacked headlights, raked windshield under a brow with number boards, one level roofline over the cab, hood and flared radiator wings, open step wells with yellow handrails, ditch lights, Hi-Ad style C-C trucks, and a cab view through the windshield
+- Run **one, two or three diesels in multiple**. Every unit answers the lead cab, and the last unit runs backward so there's a cab at each end
+- **Paint schemes** for five fictional railroads (Sandusky & Scioto, Fostoria & Lake Erie, Kenton & Northern, Delphos Grain Lines, Bellevue Terminal), plus custom colors and road number. Lashups can be matched or mixed, and paint changes apply live
 
 ## The railroad
 
@@ -30,7 +34,7 @@ A 3D railway simulator that runs in the browser, phone or desktop. Drive a Lima-
 - Adhesion and wheel slip, sand
 - Automatic air brake with brake-pipe propagation along the train, independent engine brake, main reservoir and compressor
 - Train resistance, grades, curve drag, turnout speed limits, derailments
-- Synthesized sound: exhaust beats tied to the drivers, multi-chime whistle with Doppler, diesel prime mover, turbocharger and traction motors, five-chime air horn, bell, air pump, rail joints
+- Synthesized sound: exhaust beats tied to the drivers; a different whistle for each engine (765's deep six-chime, 1225's brighter three-chime) with Doppler; a five-chime air horn; V12 prime mover, turbocharger and traction motors, louder with more units; bell, air pump, rail joints
 - Cameras: chase, cab, trackside, overhead, rear car
 - Time of day (morning, midday, golden hour, night) and weather (clear, overcast, snow)
 

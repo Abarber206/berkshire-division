@@ -103,6 +103,7 @@ function canvasTex(w, h, draw, opts = {}) {
   if (opts.srgb !== false) t.encoding = THREE.sRGBEncoding;
   return t;
 }
+const hexCss = h => '#' + ((h >>> 0) & 0xffffff).toString(16).padStart(6, '0');
 function fmtMi(m) { const mi = m / MILE; return mi < 0.1 ? Math.round(m / FT / 10) * 10 + ' ft' : mi.toFixed(mi < 10 ? 1 : 0) + ' mi'; }
 
 /* Three r128 treats hex colours and vertex colours as linear. Everything here is

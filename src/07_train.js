@@ -8,7 +8,7 @@ const CONSISTS = {
 };
 
 class Train {
-  constructor(scene, locoKey, consistKey) {
+  constructor(scene, locoKey, consistKey, opts = {}) {
     this.scene = scene;
     this.locoKey = locoKey; this.consistKey = consistKey;
     this.vehicles = [];
@@ -21,9 +21,19 @@ class Train {
     const engMass = spec.weight * 0.4536; // engine only (lb → kg)
     let L;
     if (this.diesel) {
-      L = buildDiesel(locoKey);
-      scene.add(L.root); L.trucks.forEach(t => scene.add(t));
-      this.vehicles.push({ kind: 'loco', model: L, root: L.root, len: L.len, frame: L.frame, trucks: [], mass: engMass, axles: 6, area: 125, brakeA: 0.6 });
+      // a lashup of one to three units; the last unit runs backward so there is a cab at each end
+      const n = clamp(opts.units || 1, 1, 3);
+      this.units = []; this.nUnits = n;
+      for (let u = 0; u < n; u++) {
+        const lv = dieselLiveryFor(opts, u), num = (opts.number && u === 0 ? opts.number : (opts.number ? opts.number : lv.num)) + u;
+        const m = buildDiesel({ livery: lv, number: num, lead: u === 0 });
+        const wrap = new THREE.Group(); wrap.add(m.root);
+        const reversed = n > 1 && u === n - 1; if (reversed) m.root.rotation.y = Math.PI;
+        scene.add(wrap); m.trucks.forEach(t => scene.add(t));
+        this.vehicles.push({ kind: u === 0 ? 'loco' : 'loco2', model: m, root: wrap, len: m.len, frame: m.frame, trucks: [], mass: engMass, axles: 6, area: u === 0 ? 125 : 0, brakeA: 0.6, reversed });
+        this.units.push(m); m.vehicle = this.vehicles[this.vehicles.length - 1];
+      }
+      L = this.units[0];
       this.tender = null;
     } else {
       L = buildBerkshire(locoKey);
@@ -128,10 +138,11 @@ class Train {
           for (const x of [-0.865, 0.865]) { _m4.copy(_tm).multiply(new THREE.Matrix4().makeTranslation(x, t.R, 0)).multiply(new THREE.Matrix4().makeRotationZ(wAng4)); this.ax4[0].setMatrixAt(a4, _m4); this.ax4[1].setMatrixAt(a4, _m4); a4++; }
         }
       }
-      if (v.kind === 'loco' && this.diesel) {
-        const L = this.loco;
-        L.trucks.forEach((tg, k) => { tg.matrixAutoUpdate = false; frameMatrix(v.fp[k].F, tg.matrix); tg.matrixWorldNeedsUpdate = true; });
-        const wa = -this.dist / DG.rW; for (const w of L.wheels) w.rotation.z = wa;
+      if ((v.kind === 'loco' || v.kind === 'loco2') && this.diesel) {
+        const U = v.model;
+        U.trucks.forEach((tg, k) => { tg.matrixAutoUpdate = false; frameMatrix(v.fp[k].F, tg.matrix); if (v.reversed) tg.matrix.multiply(_m4.makeRotationY(Math.PI)); tg.matrixWorldNeedsUpdate = true; });
+        const wa = (v.reversed ? 1 : -1) * this.dist / DG.rW; for (const w of U.wheels) w.rotation.z = wa;
+        v.root.updateMatrixWorld(true);
       } else if (v.kind === 'loco') {
         const lf = v.leadPt.F;
         const lt = this.loco.leadTruck; lt.matrixAutoUpdate = false; frameMatrix(lf, lt.matrix); lt.matrixWorldNeedsUpdate = true;
@@ -149,10 +160,20 @@ class Train {
     this.head.target.position.copy(L.headlightPos).add(new THREE.Vector3(60, -3.2, 0)).applyMatrix4(L.root.matrixWorld);
   }
   worldOf(local, out = new THREE.Vector3()) { return out.copy(local).applyMatrix4(this.loco.root.matrixWorld); }
+  unitWorld(m, local, out = new THREE.Vector3()) { return out.copy(local).applyMatrix4(m.root.matrixWorld); }
   dispose() {
     for (const v of this.vehicles) { this.scene.remove(v.root); }
-    if (this.diesel) this.loco.trucks.forEach(t => this.scene.remove(t)); else this.scene.remove(this.loco.leadTruck);
+    if (this.diesel) this.units.forEach(m => m.trucks.forEach(t => this.scene.remove(t))); else this.scene.remove(this.loco.leadTruck);
     for (const im of [this.tSix, this.tFour, ...(this.ax6 || []), ...(this.ax4 || [])]) if (im) this.scene.remove(im);
     this.scene.remove(this.head); this.scene.remove(this.head.target);
   }
+}
+
+/* Paint for unit u of a diesel lashup: matched, or each unit in a different scheme. */
+function dieselLiveryFor(opts, u) {
+  const base = opts.livery || 'ss';
+  let key = base;
+  if (opts.mix && u > 0) { const order = LIVERY_ORDER.filter(k => k !== base); key = order[(u - 1) % order.length]; }
+  if (key === 'custom') return Object.assign({}, LIVERIES.custom, opts.custom || {});
+  return LIVERIES[key];
 }

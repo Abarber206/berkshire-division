@@ -2,7 +2,7 @@
    Game: boot, world loading, main loop, rules, HUD
    ========================================================================== */
 const GAME = {
-  settings: { loco: '765', consist: 'passenger', time: 'morning', weather: 'clear', fire: 'auto' },
+  settings: { loco: '765', consist: 'passenger', time: 'morning', weather: 'clear', fire: 'auto', units: 1, livery: 'ss', mix: false, finish: 'standard', custom: { body: 0x2c5f8a, roof: 0x24384a, accent: 0xf0f0ea, letter: 0xf0f0ea, rail: 0xf0f0ea }, number: 4401 },
   train: null, running: false, ready: false, stats: { runThrough: 0 },
   events: {}, stopped: 0, lastStation: null, filling: null,
 };
@@ -78,12 +78,12 @@ function resetState() {
     v: 0, vw: 0, slip: false, theta: 0, odo: 0, P: 238, Psc: 0, W: 0.62, fire: 0.55, coal: 19958, water: 83280, sand: 1800, MR: 140, ER: 90, pumping: false,
     safety: false, lowWater: false, priming: false, dead: false, derailed: false, paused: false });
   S.autoFire = GAME.settings.fire === 'auto';
-  Object.assign(S, { notch: 0, dyn: 0, dbLoad: 0, DBF: 0, rpm: 200, engineRun: true, crank: 0, load: 0, fuel: 18927, turbo: 0.15, ditch: true, ditchFlash: 0, slipCtl: false, amps: 0 });
+  Object.assign(S, { notch: 0, dyn: 0, dbLoad: 0, DBF: 0, rpm: 300, engineRun: true, crank: 0, load: 0, fuel: 18927, turbo: 0.15, ditch: true, ditchFlash: 0, slipCtl: false, amps: 0 });
   if (LOCO_SPEC[GAME.settings.loco].diesel) { S.cocks = false; S.light = SKY.night ? 2 : 2; }
 }
 function makeTrain() {
   if (GAME.train) GAME.train.dispose();
-  const t = new Train(scene, GAME.settings.loco, GAME.settings.consist);
+  const t = new Train(scene, GAME.settings.loco, GAME.settings.consist, dieselOpts());
   GAME.train = t;
   const sw = name => NET.switches.find(s => s.name === name);
   for (const s of NET.switches) { s.state = 0; s.anim = 0; }
@@ -94,7 +94,7 @@ function makeTrain() {
   const tp = new TrackPos(loc.edge, loc.s, 1);
   t.place(tp);
   for (const v of t.vehicles) linearizeObject(v.root);
-  if (t.diesel) t.loco.trucks.forEach(linearizeObject); else linearizeObject(t.loco.leadTruck);
+  if (t.diesel) t.units.forEach(m => m.trucks.forEach(linearizeObject)); else { linearizeObject(t.loco.leadTruck); applySteamFinish(GAME.settings.finish); }
   for (const im of [t.tSix, t.tFour, ...(t.ax6 || []), ...(t.ax4 || [])]) if (im) linearizeObject(im);
   for (const v of t.vehicles) v.brake = { AR: 90, BC: 0, BP: 90, emerg: false, released: true };
   resetState();
@@ -103,26 +103,59 @@ function makeTrain() {
   CAM.init = false;
   GAME.jointMem = new Map();
 }
-function buildWhistleIfReady() { if (!AU.on) return; const sp = LOCO_SPEC[GAME.settings.loco]; buildWhistle(sp.diesel ? sp.horn : sp.whistle, sp.diesel ? 'horn' : 'steam'); }
+function dieselOpts() {
+  const g = GAME.settings, custom = g.livery === 'custom';
+  return { units: +g.units || 1, livery: g.livery, mix: !!g.mix, custom: g.custom, number: custom ? (+g.number || 4401) : null };
+}
+function applyLiveriesLive() {
+  const t = GAME.train; if (!t || !t.diesel) return;
+  const o = dieselOpts();
+  t.units.forEach((m, u) => { const lv = dieselLiveryFor(o, u); applyLivery(m, lv, (o.number || lv.num) + u); });
+}
+const SAVE_KEYS = ['loco', 'consist', 'time', 'weather', 'fire', 'units', 'livery', 'mix', 'finish', 'custom', 'number'];
+function saveSettings() { try { const o = {}; for (const k of SAVE_KEYS) o[k] = GAME.settings[k]; localStorage.setItem('bd_settings', JSON.stringify(o)); } catch (e) {} }
+function loadSettings() { try { const o = JSON.parse(localStorage.getItem('bd_settings') || 'null'); if (o) for (const k of SAVE_KEYS) if (o[k] !== undefined) GAME.settings[k] = o[k]; } catch (e) {} if (!LOCO_SPEC[GAME.settings.loco]) GAME.settings.loco = '765'; if (!LIVERIES[GAME.settings.livery]) GAME.settings.livery = 'ss'; }
+GAME.needNewTrain = function () { const t = GAME.train, g = GAME.settings; return !t || t.locoKey !== g.loco || t.consistKey !== g.consist || (t.diesel && t.nUnits !== (+g.units || 1)); };
+function buildWhistleIfReady() { if (!AU.on) return; buildWhistle(WHISTLES[LOCO_SPEC[GAME.settings.loco].whistle]); }
 
 /* ---------------- menu ---------------- */
 function segButtons(id, opts, key, onPick) {
   const host = $(id); host.innerHTML = '';
   for (const k in opts) {
     const b = document.createElement('button'); b.type = 'button'; b.id = id + '_' + k;
-    b.innerHTML = `${opts[k].name}<small>${opts[k].sub}</small>`;
-    b.setAttribute('aria-pressed', String(GAME.settings[key] === k));
+    b.innerHTML = (opts[k].swatch ? `<span class="sw" style="background:${opts[k].swatch}"></span>` : '') + `${opts[k].name}<small>${opts[k].sub}</small>`;
+    b.setAttribute('aria-pressed', String(String(GAME.settings[key]) === k));
     b.addEventListener('click', () => { GAME.settings[key] = k; [...host.children].forEach(c => c.setAttribute('aria-pressed', String(c === b))); onPick && onPick(k); });
     host.appendChild(b);
   }
 }
 function buildMenu() {
-  const locoOpts = { '765': { name: 'NKP 765', sub: 'S-2 · Lima 1944' }, '1225': { name: 'PM 1225', sub: 'N-1 · Lima 1941' }, 'diesel': { name: 'S&S 4401', sub: 'AC diesel · 4,400 hp' } };
-  segButtons('optLoco', locoOpts, 'loco', () => { specGrid(); startLabel(); });
-  segButtons('optTrain', CONSISTS, 'consist', startLabel);
+  loadSettings();
+  const locoOpts = { '765': { name: 'NKP 765', sub: 'S-2 · Lima 1944' }, '1225': { name: 'PM 1225', sub: 'N-1 · Lima 1941' }, 'diesel': { name: 'Wide-cab diesel', sub: 'AC · 4,400 hp' } };
+  segButtons('optLoco', locoOpts, 'loco', () => { specGrid(); startLabel(); refreshMenuGroups(); saveSettings(); });
+  const livOpts = {}; for (const k in LIVERIES) { const L = LIVERIES[k]; livOpts[k] = { name: L.name, sub: L.sub, swatch: `linear-gradient(90deg, ${hexCss(k === 'custom' ? GAME.settings.custom.body : L.body)} 0 64%, ${hexCss(k === 'custom' ? GAME.settings.custom.accent : L.accent)} 64% 100%)` }; }
+  segButtons('optLivery', livOpts, 'livery', () => { applyLiveriesLive(); refreshMenuGroups(); specGrid(); saveSettings(); });
+  segButtons('optUnits', { 1: { name: '1 unit', sub: '4,400 hp' }, 2: { name: '2 units', sub: '8,800 hp' }, 3: { name: '3 units', sub: '13,200 hp' } }, 'units', k => { GAME.settings.units = +k; startLabel(); refreshMenuGroups(); saveSettings(); });
+  segButtons('optMix', { matched: { name: 'Matched', sub: 'All one scheme' }, mixed: { name: 'Mixed', sub: 'Run-through power' } }, 'mixKey', k => { GAME.settings.mix = k === 'mixed'; applyLiveriesLive(); saveSettings(); });
+  [...$('optMix').children].forEach(c => c.setAttribute('aria-pressed', String(c.id === 'optMix_' + (GAME.settings.mix ? 'mixed' : 'matched'))));
+  segButtons('optFinish', { standard: { name: 'As delivered', sub: 'Graphite smokebox' }, white: { name: 'White trim', sub: 'Excursion style' }, black: { name: 'All black', sub: 'Plain' } }, 'finish', k => { applySteamFinish(k); saveSettings(); });
+  const cc = GAME.settings.custom;
+  $('cBody').value = hexCss(cc.body); $('cAccent').value = hexCss(cc.accent); $('cLetter').value = hexCss(cc.letter); $('cNum').value = GAME.settings.number;
+  const onCustom = () => {
+    const c = GAME.settings.custom, v = id => parseInt($(id).value.slice(1), 16);
+    c.body = v('cBody'); c.accent = v('cAccent'); c.letter = v('cLetter'); c.rail = c.accent;
+    const shade = (h, k) => { const r = (h >> 16) & 255, g = (h >> 8) & 255, b = h & 255; return (Math.round(r * k) << 16) | (Math.round(g * k) << 8) | Math.round(b * k); };
+    c.roof = shade(c.body, 0.78);
+    const n = parseInt($('cNum').value, 10); if (n > 0 && n < 10000) GAME.settings.number = n;
+    const sw = $('optLivery_custom').querySelector('.sw'); if (sw) sw.style.background = `linear-gradient(90deg, ${hexCss(c.body)} 0 64%, ${hexCss(c.accent)} 64% 100%)`;
+    applyLiveriesLive(); saveSettings();
+  };
+  for (const id of ['cBody', 'cAccent', 'cLetter', 'cNum']) $(id).addEventListener('input', onCustom);
+  refreshMenuGroups();
+  segButtons('optTrain', CONSISTS, 'consist', () => { startLabel(); saveSettings(); });
   segButtons('optTime', PRESETS, 'time', k => { if (GAME.ready) applyLook(k, GAME.settings.weather, renderer, scene); });
   segButtons('optWeather', WEATHER, 'weather', k => { if (GAME.ready) { applyLook(GAME.settings.time, k, renderer, scene); FX.snow.visible = SKY.snow; } });
-  segButtons('optFire', { auto: { name: 'Fireman', sub: 'Stoker & water handled' }, hand: { name: 'Hand fired', sub: 'You run the boiler' } }, 'fire', k => { S.autoFire = k === 'auto'; GAME.refreshKeys(); });
+  segButtons('optFire', { auto: { name: 'Fireman', sub: 'Stoker & water handled' }, hand: { name: 'Hand fired', sub: 'You run the boiler' } }, 'fire', k => { S.autoFire = k === 'auto'; GAME.refreshKeys(); saveSettings(); });
   specGrid();
   $('btnStart').addEventListener('click', () => GAME.start());
   $('bigRetry').addEventListener('click', () => GAME.rerail());
@@ -131,23 +164,28 @@ function buildMenu() {
 function specGrid() {
   const s = LOCO_SPEC[GAME.settings.loco];
   const items = s.diesel
-    ? [['C-C', 'Wheel arrangement'], ['42 in', 'Wheels'], ['4,400 hp', 'Prime mover'], ['AC', 'Traction motors'], ['183k lbf', 'Starting effort'], ['5,000 gal', 'Fuel']]
+    ? [['C-C', 'Wheel arrangement'], ['42 in', 'Wheels'], ['4,400 hp', 'V12 four-stroke'], ['73 ft 2 in', 'Length'], ['183k lbf', 'Starting effort'], ['5,000 gal', 'Fuel']]
     : [['2-8-4', 'Wheel arrangement'], ['69 in', 'Drivers'], ['25×34 in', 'Cylinders'], ['245 psi', 'Boiler'], [(s.te / 1000).toFixed(1) + 'k lbf', 'Tractive effort'], [s.cls + ' · ' + s.short, 'Class']];
   $('specGrid').innerHTML = items.map(([b, l]) => `<div><b>${b}</b><span>${l}</span></div>`).join('');
-  const fg = $('optFire').parentElement; fg.hidden = !!s.diesel;
-  const ey = document.querySelector('.brandmark .eyebrow'); if (ey) ey.textContent = s.diesel ? 'Sandusky & Scioto · AC6 diesel' : 'Lima Super Power · 2-8-4';
+  const ht = $('helpText');
+  if (ht) { if (!ht.dataset.steam) ht.dataset.steam = ht.innerHTML; ht.innerHTML = s.diesel ? 'Set the <b>reverser</b> forward, release the <b>engine brake</b>, then notch out the <b>throttle</b>. Every unit in the lashup answers the lead cab. Hold speed down the grades with the <b>dynamic brake</b>, and check the switch card before every turnout: diverging routes are 30 mph.' : ht.dataset.steam; }
+  const ey = document.querySelector('.brandmark .eyebrow'); if (ey) ey.textContent = s.diesel ? (GAME.settings.livery === 'custom' ? 'Custom paint' : LIVERIES[GAME.settings.livery].name) + ' · C-C diesel' : 'Lima Super Power · 2-8-4';
 }
 function startLabel() {
   const b = $('btnStart');
   if (!GAME.running) { b.textContent = 'Highball'; return; }
-  const t = GAME.train;
-  b.textContent = (t.locoKey !== GAME.settings.loco || t.consistKey !== GAME.settings.consist) ? 'New train' : 'Resume';
+  b.textContent = GAME.needNewTrain() ? 'New train' : 'Resume';
+}
+function refreshMenuGroups() {
+  const d = !!LOCO_SPEC[GAME.settings.loco].diesel;
+  $('grpLivery').hidden = !d; $('grpUnits').hidden = !d; $('grpMix').hidden = !d || (+GAME.settings.units || 1) < 2;
+  $('customPaint').hidden = !d || GAME.settings.livery !== 'custom';
+  $('grpFinish').hidden = d; $('optFire').parentElement.hidden = d;
 }
 
 GAME.start = function () {
   audioInit(); buildWhistleIfReady();
-  const t = GAME.train;
-  if (!GAME.running || t.locoKey !== GAME.settings.loco || t.consistKey !== GAME.settings.consist) {
+  if (!GAME.running || GAME.needNewTrain()) {
     makeTrain(); GAME.train.consistKey = GAME.settings.consist;
     if (GAME.running) toast('New train made up on Yard 2.', 'good');
     GAME.intro();
@@ -162,7 +200,7 @@ GAME.start = function () {
 };
 GAME.intro = function () {
   setTimeout(() => toast('Yard 2, Bellevue. The ladder is lined out to the main.', '', 5000), 600);
-  if (GAME.train && GAME.train.diesel) setTimeout(() => toast('Reverser to forward, engine brake off, then notch out the throttle.', '', 6000), 5200);
+  if (GAME.train && GAME.train.diesel) setTimeout(() => toast((GAME.train.nUnits > 1 ? GAME.train.nUnits + ' units in multiple: they all answer the lead cab. ' : '') + 'Reverser to forward, engine brake off, then notch out the throttle.', '', 6500), 5200);
   else setTimeout(() => toast('Reverser forward, engine brake off, then ease the throttle open.', '', 6000), 5200);
 };
 GAME.pause = function (p) {
@@ -262,7 +300,7 @@ let hudT = 0, mapT = 0, gaugeT = 0;
 function updateHUD(dt) {
   hudT += dt; mapT += dt; gaugeT += dt;
   updateLevers();
-  if (gaugeT > 0.066) { gaugeT = 0; if ($('gaugeWrap').classList.contains('min')) { const m = $('gaugeMini'); const bp = Math.round(GAME.train.vehicles[0].brake.BP); const t = GAME.isDiesel() ? `<span><b>${S.notch ? 'N' + S.notch : 'IDLE'}</b></span><span>${S.DBF > 1000 ? 'DB' : 'TE'} <b>${Math.round((S.DBF > 1000 ? S.DBF : Math.abs(S.TE)) / LBF / 1000)}k</b></span><span>BP <b>${bp}</b></span>` : `<span><b>${Math.round(S.P)}</b> psi</span><span>glass <b>${Math.round(clamp((S.W + 0.1) / 1.2, 0, 1) * 100)}%</b></span><span>BP <b>${bp}</b></span>`; if (m.innerHTML !== t) m.innerHTML = t; } else drawGauges(); }
+  if (gaugeT > 0.066) { gaugeT = 0; if ($('gaugeWrap').classList.contains('min')) { const m = $('gaugeMini'); const bp = Math.round(GAME.train.vehicles[0].brake.BP); const t = GAME.isDiesel() ? `<span><b>${S.notch ? 'N' + S.notch : 'IDLE'}</b></span><span>${S.DBF > 1000 ? 'DB' : 'TE'} <b>${Math.round((S.DBF > 1000 ? S.DBF * (GAME.train.nUnits || 1) : Math.abs(S.TE)) / LBF / 1000)}k</b></span><span>BP <b>${bp}</b></span>` : `<span><b>${Math.round(S.P)}</b> psi</span><span>glass <b>${Math.round(clamp((S.W + 0.1) / 1.2, 0, 1) * 100)}%</b></span><span>BP <b>${bp}</b></span>`; if (m.innerHTML !== t) m.innerHTML = t; } else drawGauges(); }
   if (mapT > 0.18) { mapT = 0; drawMinimap(); if (MAP.visible) MAP.draw(); }
   if (hudT < 0.1) return; hudT = 0;
   const mph = Math.abs(S.v) / MPH;
@@ -356,7 +394,7 @@ function simStep(dt, T) {
     // station stop detection
     if (Math.abs(S.v) < 0.05) { stopT += dt; if (stopT > 1.2) stationStop(T); } else stopT = 0;
     // start-up slack
-    if (Math.abs(prevV) < 0.02 && Math.abs(S.v) >= 0.02 && AU.on) { const cp = camera.position; T.vehicles.forEach((v, i) => { if (i < 2) return; const dd = v.pos.distanceTo(cp); sndClunk(0.7 / (1 + (dd / 25) ** 1.3), (i - 2) * 0.07); }); }
+    if (Math.abs(prevV) < 0.02 && Math.abs(S.v) >= 0.02 && AU.on) { const cp = camera.position; let k = 0; T.vehicles.forEach(v => { if (v.kind === 'loco' || v.kind === 'loco2' || v.kind === 'tender') return; const dd = v.pos.distanceTo(cp); sndClunk(0.7 / (1 + (dd / 25) ** 1.3), (k++) * 0.07); }); }
     prevV = S.v;
     if (S.MR < 60 && S.brakeH < 0.18) toast('Main reservoir low: let the pump catch up.', 'warn', 3000, 'mr');
     if (S.lowWater) toast('Water low in the glass! Work the injector.', 'bad', 2500, 'lw');
@@ -461,21 +499,22 @@ function steamFX(dt, T, tv) {
 let dslPuff = 0, dslNotch = 0, crankT = 0;
 function dieselFX(dt, T, tv) {
   const L = T.loco;
-  const stack = T.worldOf(L.stackPos);
   if (S.notch > dslNotch && S.engineRun) dslPuff = Math.min(2.2, dslPuff + 0.9);
   dslNotch = S.notch;
   dslPuff = Math.max(0, dslPuff - dt);
   idleT += dt;
-  const rf = clamp((S.rpm - 200) / 704, 0, 1);
+  const rf = clamp((S.rpm - 300) / 750, 0, 1);
   if (idleT > 0.07 && S.rpm > 60) {
     idleT = 0;
     const dark = Math.min(1, dslPuff * 0.6 + (S.crank > 0 ? 0.8 : 0)), gv = lerp(0.62, 0.16, dark);
     const a = 0.12 + 0.25 * rf * S.load + 0.45 * dark;
-    emit(stack, new THREE.Vector3(tv.x + (Math.random() - 0.5) * 0.6, 4 + 9 * rf + 6 * dark, tv.z + (Math.random() - 0.5) * 0.6), 2.5 + Math.random() * 1.5 + dark * 2, 0.7, 3.5 + 3 * rf + 3 * dark, a, [gv, gv, gv * 1.02], 0.5, 1.1);
+    for (const m of T.units) { const stack = T.unitWorld(m, m.stackPos); emit(stack, new THREE.Vector3(tv.x + (Math.random() - 0.5) * 0.6, 4 + 9 * rf + 6 * dark, tv.z + (Math.random() - 0.5) * 0.6), 2.5 + Math.random() * 1.5 + dark * 2, 0.7, 3.5 + 3 * rf + 3 * dark, a, [gv, gv, gv * 1.02], 0.5, 1.1); }
   }
   if (S.crank > 0) { crankT += dt; if (crankT > 0.32) { crankT = 0; sndCrank(); } }
   if (S.pumping && S.engineRun) { pumpT += dt; if (pumpT > 0.4) { pumpT = 0; GAME.pumpPh = (GAME.pumpPh || 0) + 1; if (GAME.pumpPh % 2) sndPump(GAME.pumpPh); } }
-  return { src: T.worldOf(L.enginePos), working: S.load > 0.05 };
+  let src = null, best = 1e9;
+  for (const m of T.units) { const p = T.unitWorld(m, m.enginePos); const d = p.distanceTo(camera.position); if (d < best) { best = d; src = p; } }
+  return { src, working: S.load > 0.05 };
 }
 function effectsAndSound(dt, T) {
   const L = T.loco, DSL = T.diesel;
@@ -494,7 +533,7 @@ function effectsAndSound(dt, T) {
   setG(AU.drift.g, !DSL && !working && Math.abs(S.v) > 1 ? 0.08 * Math.min(1, Math.abs(S.v) / 12) : 0);
   setG(AU.wind.g, inCab ? 0.32 * Math.min(1, (Math.abs(S.v) / 30) ** 2) + 0.02 : 0.03);
   setG(AU.firedoor.g, !DSL && inCab ? 0.14 * S.fire : 0);
-  updateDieselAudio(DSL, inCab);
+  updateDieselAudio(DSL, inCab, T.nUnits || 1);
   const b0 = T.vehicles[0].brake;
   setG(AU.bpExhaust.g, b0.dBP < -0.3 ? Math.min(0.5, -b0.dBP * 0.06) : 0, 0.05);
   const lead = T.vehicles[0].leadPt.tp, kk = Math.abs(lead.e.curv(lead.s));
@@ -510,8 +549,8 @@ function effectsAndSound(dt, T) {
     const dop = 343 / (343 - clamp(vr, -60, 60));
     const pull = S.whistle;
     const gwh = (inCab ? 0.55 : 1 / (1 + Math.pow(dist / 90, 1.1))) * Math.pow(pull, DSL ? 0.5 : 0.8) * 0.95;
-    setG(AU.whistle.out, gwh, DSL ? 0.02 : 0.035);
-    const bend = DSL ? 1 : (0.94 + 0.06 * pull);
+    setG(AU.whistle.out, gwh, AU.whistle.attack);
+    const bend = 1 - AU.whistle.quill * (1 - pull);
     for (const v of AU.whistle.voices) { const f = v.f * bend * dop; v.o1.frequency.setTargetAtTime(f, AU.ctx.currentTime, 0.04); v.o2.frequency.setTargetAtTime(f * v.ratio2, AU.ctx.currentTime, 0.04); }
     AU.whistle.lp.frequency.setTargetAtTime(inCab ? 3200 : clamp(11000 / (1 + dist / 160), 1800, 7000), AU.ctx.currentTime, 0.1);
   }
@@ -521,7 +560,7 @@ function effectsAndSound(dt, T) {
     for (const v of T.vehicles) {
       const dv = v.pos.distanceTo(cp); if (dv > 110 && !(inCab && v.kind === 'loco')) continue;
       const g = Math.min(1, Math.abs(S.v) / 7) / (1 + Math.pow((inCab ? Math.max(4, dv) : dv) / 13, 1.4));
-      const pts = v.kind === 'loco' ? (DSL ? [[v.fp[0], 3, DG.axle], [v.fp[1], 3, DG.axle]] : [[v.leadPt, 1, 0], [v.fp[0], 4, 1.855]]) : v.tp.map((p, i) => [p, v.trucks[i].type === 'six' ? 3 : 2, v.trucks[i].type === 'six' ? 1.676 : 1.73]);
+      const pts = (v.kind === 'loco' || v.kind === 'loco2') ? (DSL ? [[v.fp[0], 3, DG.axle], [v.fp[1], 3, DG.axle]] : [[v.leadPt, 1, 0], [v.fp[0], 4, 1.855]]) : v.tp.map((p, i) => [p, v.trucks[i].type === 'six' ? 3 : 2, v.trucks[i].type === 'six' ? 1.676 : 1.73]);
       for (const [p, axles, sp] of pts) {
         const j = Math.floor(p.tp.s / 11.89), key = p, prev = mem.get(key);
         if (prev && prev.e === p.tp.e && prev.j !== j) { for (let a = 0; a < axles; a++) sndJoint(g * (a === 0 ? 1 : 0.8), a * sp / Math.abs(S.v)); }
@@ -548,7 +587,10 @@ GAME.restore = function (d) {
     applyLook(GAME.settings.time, GAME.settings.weather, renderer, scene);
     cycleCamera(d.cam);
     GAME.running = true; $('menu').hidden = true; $('hud').hidden = false;
-    for (const k of ['optLoco', 'optTrain', 'optTime', 'optWeather', 'optFire']) { const key = { optLoco: 'loco', optTrain: 'consist', optTime: 'time', optWeather: 'weather', optFire: 'fire' }[k]; [...$(k).children].forEach(c => c.setAttribute('aria-pressed', String(c.id === k + '_' + GAME.settings[key]))); }
+    const keyOf = { optLoco: 'loco', optTrain: 'consist', optTime: 'time', optWeather: 'weather', optFire: 'fire', optLivery: 'livery', optUnits: 'units', optFinish: 'finish' };
+    for (const k in keyOf) [...$(k).children].forEach(c => c.setAttribute('aria-pressed', String(c.id === k + '_' + GAME.settings[keyOf[k]])));
+    [...$('optMix').children].forEach(c => c.setAttribute('aria-pressed', String(c.id === 'optMix_' + (GAME.settings.mix ? 'mixed' : 'matched'))));
+    refreshMenuGroups(); specGrid();
     setTimeout(drawLeverTicks, 50);
   } catch (err) { console.warn('restore failed', err); }
 };

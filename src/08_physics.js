@@ -10,7 +10,7 @@ const S = {
   safety: false, lowWater: false, priming: false,
   TE: 0, use: 0, gen: 0, cut: 0, mu: 0.27, grade: 0, limit: 70,
   dead: false, derailed: false, paused: false, time: 0, warnTimer: 0,
-  notch: 0, dyn: 0, dbLoad: 0, DBF: 0, rpm: 200, engineRun: true, crank: 0, load: 0, fuel: 18927, turbo: 0.15, ditch: true, ditchFlash: 0, slipCtl: false, amps: 0,
+  notch: 0, dyn: 0, dbLoad: 0, DBF: 0, rpm: 300, engineRun: true, crank: 0, load: 0, fuel: 18927, turbo: 0.15, ditch: true, ditchFlash: 0, slipCtl: false, amps: 0,
 };
 const ENV = { mu: 0.27, wind: new THREE.Vector3(-1.2, 0, 0.6) };
 const DRIVER_C = Math.PI * 2 * LG.rD, VCYL = Math.PI / 4 * 0.635 * 0.635 * 0.864;
@@ -25,7 +25,8 @@ function physicsStep(dt, train) {
   const V = train.vehicles;
   const DSL = train.diesel;
   let TEcmd = 0;
-  if (DSL) TEcmd = dieselPower(dt);
+  const nU = DSL ? train.nUnits : 1;
+  if (DSL) TEcmd = dieselPower(dt) * nU;
   else {
   /* ----------------- boiler & front end ----------------- */
   const n = Math.abs(S.vw) / DRIVER_C;                 // driver revolutions per second
@@ -90,7 +91,7 @@ function physicsStep(dt, train) {
   // triple valves
   for (let i = 0; i < V.length; i++) {
     const v = V[i], b = v.brake;
-    const passenger = v.kind === 'coach' || v.kind === 'loco' || v.kind === 'tender';
+    const passenger = v.kind === 'coach' || v.kind === 'loco' || v.kind === 'loco2' || v.kind === 'tender';
     if (b.dBP < -14 || (b.BP < 12 && z === 'EMG')) b.emerg = true;
     if (b.emerg) { b.BC = Math.min(78, b.BC + 40 * dt); if (b.BP > 60 && z !== 'EMG') b.emerg = false; continue; }
     if (passenger) {
@@ -116,7 +117,7 @@ function physicsStep(dt, train) {
   S.BCloco = Math.max(ind, autoLoco);
 
   /* ----------------- adhesion & tractive effort ----------------- */
-  const Wd = spec.adhesive * 0.4536 * 9.81;
+  const Wd = spec.adhesive * 0.4536 * 9.81 * nU;
   let mu = ENV.mu + (S.sander && S.sand > 0 ? 0.075 : 0);
   if (S.sander) S.sand = Math.max(0, S.sand - 0.9 * dt);
   S.mu = mu;
@@ -162,12 +163,13 @@ function physicsStep(dt, train) {
     const tons = mass / STON;
     const k = Math.abs(v.fp[0].tp.e.curv(v.fp[0].tp.s));
     let R = 1.3 * tons + 29 * v.axles + (v.kind === 'coach' ? 0.03 : 0.045) * tons * vm + (i === 0 ? 0.0024 * 125 : 0.0005 * (v.area || 90)) * vm * vm;
-    if (v.kind === 'loco') R += 14 * tons;
+    if (v.kind === 'loco' || v.kind === 'loco2') R += 14 * tons;
     R += 0.8 * tons * 1746.4 * k;
-    R += (v.kind === 'coach' || v.kind === 'loco' || v.kind === 'tender' ? 7 : 14) * tons * (1 - smooth(0.15, 2.0, Math.abs(S.v)));
+    R += (v.kind === 'coach' || v.kind === 'loco' || v.kind === 'loco2' || v.kind === 'tender' ? 7 : 14) * tons * (1 - smooth(0.15, 2.0, Math.abs(S.v)));
     Fres += R * LBF;
-    const bc = i === 0 ? S.BCloco : v.brake.BC;
-    Fbrake += mass * v.brakeA * (bc / 64) * shoe + (i === 0 && DSL ? S.DBF : 0);
+    const isLoco = v.kind === 'loco' || v.kind === 'loco2';
+    const bc = isLoco ? S.BCloco : v.brake.BC;
+    Fbrake += mass * v.brakeA * (bc / 64) * shoe + (isLoco && DSL ? S.DBF : 0);
     for (const p of [v.fp[0], v.fp[1]]) limit = Math.min(limit, p.tp.e.limit);
   }
   S.limit = limit; S.grade = gradeLead;
@@ -210,20 +212,20 @@ function dieselPower(dt) {
   const v = Math.abs(S.v);
   if (S.crank > 0) {
     S.crank -= dt; S.rpm = Math.min(110, S.rpm + 45 * dt);
-    if (S.crank <= 0) { S.crank = 0; S.engineRun = true; S.rpm = 260; GAME.event('started'); }
+    if (S.crank <= 0) { S.crank = 0; S.engineRun = true; S.rpm = 330; GAME.event('started'); }
   }
   if (S.fuel <= 0 && S.engineRun) { S.engineRun = false; GAME.event('noFuel'); }
   const dynOn = S.dyn > 0.06;
   if (dynOn && notch > 0) GAME.event('dynInterlock');
   let rpmT = 0;
-  if (S.engineRun) rpmT = dynOn ? 200 + 330 * S.dyn : 200 + notch * 88;
+  if (S.engineRun) rpmT = dynOn ? 300 + 420 * S.dyn : 300 + notch * 93.75;
   else if (S.crank > 0) rpmT = 110;
   const rate = rpmT > S.rpm ? 52 : 75;
   S.rpm += clamp(rpmT - S.rpm, -rate * dt, rate * dt);
   // main alternator excitation ramps in over ~10 s and drops quickly
   const powerOK = S.engineRun && notch > 0 && dir !== 0 && !dynOn;
   S.load += clamp((powerOK ? 1 : 0) - S.load, -0.7 * dt, 0.1 * dt);
-  const rf = clamp((S.rpm - 200) / 704, 0, 1), nf = notch / 8;
+  const rf = clamp((S.rpm - 300) / 750, 0, 1), nf = notch / 8;
   const P = 3280e3 * Math.pow(nf, 1.2) * Math.min(1, rf / Math.max(0.06, nf)) * S.load;   // W at the rail
   const TEcap = 814e3 * Math.min(1, nf * 1.25) * S.load;                                 // 183,000 lbf starting
   let TE = powerOK || S.load > 0.01 ? Math.min(TEcap, P / Math.max(v, 0.35)) : 0;

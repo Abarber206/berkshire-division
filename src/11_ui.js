@@ -345,8 +345,9 @@ function toast(msg, kind = '', ms = 3600, key) {
 }
 
 function drawDieselGauges(g, dial, b, lastBP) {
-  const te = Math.abs(S.TE) / LBF / 1000, db = S.DBF / LBF / 1000;
-  dial(108, 112, 96, 200, 'TE · DB  klbf', [[te, '#151515'], [db, '#c0281e']], [170, 200], 50, 10);
+  const nU = (GAME.train && GAME.train.nUnits) || 1, mx = 200 * nU;
+  const te = Math.abs(S.TE) / LBF / 1000, db = S.DBF * nU / LBF / 1000;
+  dial(108, 112, 96, mx, nU > 1 ? `TE · DB  klbf ×${nU}` : 'TE · DB  klbf', [[te, '#151515'], [db, '#c0281e']], [170 * nU, mx], 50 * nU, 10 * nU);
   g.font = '600 18px "IBM Plex Mono", monospace'; g.textAlign = 'center';
   g.fillStyle = S.slipCtl ? '#ee4b3d' : '#cfa651'; g.fillText(S.slipCtl ? 'WHEEL SLIP' : (S.notch ? 'N' + S.notch : (S.dyn > 0.06 ? 'DYN BRAKE' : 'IDLE')) + ' · ' + Math.round(S.rpm) + ' rpm', 108, 224);
   dial(296, 86, 70, 160, 'MR · EQ', [[S.MR, '#c0281e'], [S.ER, '#151515']], null, 40, 10);
