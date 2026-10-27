@@ -4,7 +4,7 @@
 const CONSISTS = {
   passenger: { name: 'Passenger', sub: '8 heavyweights · 660 tons', build: () => { const a = []; for (let i = 0; i < 7; i++) a.push(['coach', 0]); a.push(['coach', 1]); return a; } },
   freight: { name: 'Manifest freight', sub: '36 cars · 2,700 tons', build: (r) => { const a = []; const t = ['box', 'box', 'hopper', 'hopper', 'tank', 'gon', 'box', 'hopper']; for (let i = 0; i < 35; i++) a.push([t[(r() * t.length) | 0], 0]); a.push(['caboose', 0]); return a; } },
-  light: { name: 'Light engine', sub: 'Engine & tender only', build: () => [] },
+  light: { name: 'Light engine', sub: 'Locomotive only', build: () => [] },
 };
 
 class Train {
@@ -15,16 +15,26 @@ class Train {
     this.dist = 0; this.driverDist = 0;
     const r = rng(1944);
     // locomotive
-    const L = buildBerkshire(locoKey);
-    scene.add(L.root); scene.add(L.leadTruck);
-    this.loco = L;
     const spec = LOCO_SPEC[locoKey];
-    const engMass = spec.weight * 0.4536 - 0; // engine only (lb → kg)
-    this.vehicles.push({ kind: 'loco', model: L, root: L.root, len: LG.len, frame: [LG.aD[0], LG.aD[3]], trucks: [], mass: engMass, axles: 10, area: 125, brakeA: 0.55 });
-    const T = buildTender(locoKey);
-    scene.add(T.root);
-    this.tender = T;
-    this.vehicles.push({ kind: 'tender', model: T, root: T.root, len: T.len, frame: T.frame, trucks: T.trucks, mass: 0, axles: 6, area: 0, brakeA: 0.6 });
+    ROAD_SHORT = spec.short;
+    this.diesel = !!spec.diesel;
+    const engMass = spec.weight * 0.4536; // engine only (lb → kg)
+    let L;
+    if (this.diesel) {
+      L = buildDiesel(locoKey);
+      scene.add(L.root); L.trucks.forEach(t => scene.add(t));
+      this.vehicles.push({ kind: 'loco', model: L, root: L.root, len: L.len, frame: L.frame, trucks: [], mass: engMass, axles: 6, area: 125, brakeA: 0.6 });
+      this.tender = null;
+    } else {
+      L = buildBerkshire(locoKey);
+      scene.add(L.root); scene.add(L.leadTruck);
+      this.vehicles.push({ kind: 'loco', model: L, root: L.root, len: LG.len, frame: [LG.aD[0], LG.aD[3]], trucks: [], mass: engMass, axles: 10, area: 125, brakeA: 0.55 });
+      const T = buildTender(locoKey);
+      scene.add(T.root);
+      this.tender = T;
+      this.vehicles.push({ kind: 'tender', model: T, root: T.root, len: T.len, frame: T.frame, trucks: T.trucks, mass: 0, axles: 6, area: 0, brakeA: 0.6 });
+    }
+    this.loco = L;
     // cars
     const list = CONSISTS[consistKey].build(r);
     let n = 0;
@@ -55,7 +65,7 @@ class Train {
     for (const v of this.vehicles) {
       v.fp = v.frame.map(f => addPt(v.a0 + f));
       v.tp = v.trucks.map(t => addPt(v.a0 + t.a));
-      if (v.kind === 'loco') { v.leadPt = addPt(v.a0 + LG.aL); }
+      if (v.kind === 'loco') { v.leadPt = this.diesel ? v.fp[0] : addPt(v.a0 + LG.aL); }
     }
     this.pts.sort((p, q) => p.a - q.a);
     this.frames = this.pts.map(() => newFrame());
@@ -65,7 +75,7 @@ class Train {
     scene.add(this.head); scene.add(this.head.target);
     this.fireLight = new THREE.PointLight(0xff7a2a, 0, 7, 2);
     L.body.add(this.fireLight); this.fireLight.position.set(ax(15.0), 2.55, 0.1);
-    this.cabLight = new THREE.PointLight(0xffd09a, 0, 5, 2); L.body.add(this.cabLight); this.cabLight.position.set(ax(15.8), 4.1, 0);
+    this.cabLight = new THREE.PointLight(0xffd09a, 0, 5, 2); L.body.add(this.cabLight); if (L.cabLightPos) this.cabLight.position.copy(L.cabLightPos); else this.cabLight.position.set(ax(15.8), 4.1, 0);
     this.markerMats = [];
     for (const v of this.vehicles) if (v.markers) for (const p of v.markers) { const m = new THREE.Mesh(new THREE.CircleGeometry(0.07, 12), new THREE.MeshBasicMaterial({ color: 0xff2a1e })); m.position.copy(p); m.rotation.y = -Math.PI / 2; v.root.add(m); this.markerMats.push(m); }
   }
@@ -118,7 +128,11 @@ class Train {
           for (const x of [-0.865, 0.865]) { _m4.copy(_tm).multiply(new THREE.Matrix4().makeTranslation(x, t.R, 0)).multiply(new THREE.Matrix4().makeRotationZ(wAng4)); this.ax4[0].setMatrixAt(a4, _m4); this.ax4[1].setMatrixAt(a4, _m4); a4++; }
         }
       }
-      if (v.kind === 'loco') {
+      if (v.kind === 'loco' && this.diesel) {
+        const L = this.loco;
+        L.trucks.forEach((tg, k) => { tg.matrixAutoUpdate = false; frameMatrix(v.fp[k].F, tg.matrix); tg.matrixWorldNeedsUpdate = true; });
+        const wa = -this.dist / DG.rW; for (const w of L.wheels) w.rotation.z = wa;
+      } else if (v.kind === 'loco') {
         const lf = v.leadPt.F;
         const lt = this.loco.leadTruck; lt.matrixAutoUpdate = false; frameMatrix(lf, lt.matrix); lt.matrixWorldNeedsUpdate = true;
         this.loco.parts.lead.rotation.z = -this.dist / LG.rL;
@@ -137,7 +151,7 @@ class Train {
   worldOf(local, out = new THREE.Vector3()) { return out.copy(local).applyMatrix4(this.loco.root.matrixWorld); }
   dispose() {
     for (const v of this.vehicles) { this.scene.remove(v.root); }
-    this.scene.remove(this.loco.leadTruck);
+    if (this.diesel) this.loco.trucks.forEach(t => this.scene.remove(t)); else this.scene.remove(this.loco.leadTruck);
     for (const im of [this.tSix, this.tFour, ...(this.ax6 || []), ...(this.ax4 || [])]) if (im) this.scene.remove(im);
     this.scene.remove(this.head); this.scene.remove(this.head.target);
   }

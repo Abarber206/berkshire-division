@@ -687,6 +687,7 @@ function buildTrees(scene) {
     const a = r() * TAU, d = 20 + r() * 30; const X = f.X + Math.cos(a) * d, N = f.N + Math.sin(a) * d;
     if (r() < 0.6) put(X, N, 'dec', (r() < 0.4 ? -1 : 1) * (1 + r() * 0.5), autumn(r));
   }
+  for (const t of SCN.extraTrees || []) put(t[0], t[1], 'dec', t[2], t[3] || autumn(r));
   let total = 0;
   WORLD.treeTiles = [];
   for (const [, t] of tiles) {

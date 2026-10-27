@@ -39,30 +39,93 @@ function audioInit() {
   AU.flange = sq(3900); AU.bsq = sq(2350);
   // whistle voices
   AU.whistle = null;
+  AU.dz = null;
+  buildDieselAudio();
   AU.lastJ = new Map();
   AU.on = true;
 }
-function buildWhistle(freqs) {
+/* Whistle (steam) or air horn (diesel). Built bright enough to carry on a phone speaker:
+   real chime whistles are rich in overtones, so each chime is a sawtooth plus an upper
+   partial, with a presence lift around 2 kHz. */
+function buildWhistle(freqs, kind = 'steam') {
   const ctx = AU.ctx;
-  if (AU.whistle) { AU.whistle.out.disconnect(); AU.whistle.voices.forEach(v => { v.o1.stop(); v.o2.stop(); v.n.stop(); }); }
+  if (AU.whistle) { try { AU.whistle.out.disconnect(); AU.whistle.stop(); } catch (e) {} }
+  const horn = kind === 'horn';
   const out = ctx.createGain(); out.gain.value = 0;
-  const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 3200; lp.Q.value = 0.4;
-  out.connect(lp); lp.connect(AU.master);
-  const send = ctx.createGain(); send.gain.value = 0.9; lp.connect(send); send.connect(AU.verbIn);
+  const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 150; hp.Q.value = 0.7;
+  const pres = ctx.createBiquadFilter(); pres.type = 'peaking'; pres.frequency.value = horn ? 1500 : 2000; pres.Q.value = 0.8; pres.gain.value = horn ? 6 : 8;
+  const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 6000; lp.Q.value = 0.5;
+  out.connect(hp); hp.connect(pres); pres.connect(lp); lp.connect(AU.master);
+  const send = ctx.createGain(); send.gain.value = 0.75; lp.connect(send); send.connect(AU.verbIn);
+  const nodes = [];
+  const vg = 0.75 / Math.sqrt(freqs.length);
   const voices = freqs.map((f, i) => {
-    const o1 = ctx.createOscillator(); o1.type = 'sawtooth'; o1.frequency.value = f; o1.detune.value = -4 + i;
-    const o2 = ctx.createOscillator(); o2.type = 'triangle'; o2.frequency.value = f * 2.002;
-    const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = f * 1.5; bp.Q.value = 1.2;
-    const g1 = ctx.createGain(); g1.gain.value = 0.22 / freqs.length * 3; const g2 = ctx.createGain(); g2.gain.value = 0.06;
-    const n = ctx.createBufferSource(); n.buffer = AU.white; n.loop = true; const nf = ctx.createBiquadFilter(); nf.type = 'bandpass'; nf.frequency.value = f; nf.Q.value = 18; const ng = ctx.createGain(); ng.gain.value = 0.9;
-    o1.connect(bp); bp.connect(g1); g1.connect(out); o2.connect(g2); g2.connect(out); n.connect(nf); nf.connect(ng); ng.connect(out);
-    o1.start(); o2.start(); n.start(0, Math.random());
-    return { o1, o2, n, nf, f };
+    const vmix = ctx.createGain(); vmix.gain.value = vg;
+    const tone = ctx.createBiquadFilter(); tone.type = 'lowpass'; tone.frequency.value = f * (horn ? 10 : 7); tone.Q.value = 0.6;
+    const o1 = ctx.createOscillator(); o1.type = 'sawtooth'; o1.frequency.value = f; o1.detune.value = i % 2 ? 4 : -4;
+    const o2 = ctx.createOscillator(); o2.type = horn ? 'square' : 'sine';
+    const ratio2 = horn ? 1.004 : 2; o2.frequency.value = f * ratio2;
+    const g1 = ctx.createGain(); g1.gain.value = 0.6; const g2 = ctx.createGain(); g2.gain.value = horn ? 0.32 : 0.35;
+    o1.connect(g1); g1.connect(tone); o2.connect(g2); g2.connect(tone); tone.connect(vmix); vmix.connect(out);
+    o1.start(); o2.start(); nodes.push(o1, o2);
+    return { o1, o2, f, ratio2 };
   });
-  // breath
-  const br = ctx.createBufferSource(); br.buffer = AU.white; br.loop = true; const bf = ctx.createBiquadFilter(); bf.type = 'bandpass'; bf.frequency.value = 2200; bf.Q.value = 0.6; const bg = ctx.createGain(); bg.gain.value = 0.05; br.connect(bf); bf.connect(bg); bg.connect(out); br.start();
-  AU.whistle = { out, voices, lp };
+  const br = ctx.createBufferSource(); br.buffer = AU.white; br.loop = true;
+  const bf = ctx.createBiquadFilter(); bf.type = 'bandpass'; bf.frequency.value = horn ? 1300 : 2500; bf.Q.value = 0.7;
+  const bg = ctx.createGain(); bg.gain.value = horn ? 0.04 : 0.09;
+  br.connect(bf); bf.connect(bg); bg.connect(out); br.start(0, Math.random()); nodes.push(br);
+  AU.whistle = { out, voices, lp, kind, stop: () => nodes.forEach(n => { try { n.stop(); } catch (e) {} }) };
 }
+/* Diesel prime mover (16-cylinder two-stroke), turbocharger, traction motors, dynamic brake blowers */
+function buildDieselAudio() {
+  const ctx = AU.ctx; if (AU.dz) return;
+  const Z = {};
+  Z.out = ctx.createGain(); Z.out.gain.value = 0; Z.out.connect(AU.loco);
+  // firing pulses
+  Z.lp = ctx.createBiquadFilter(); Z.lp.type = 'lowpass'; Z.lp.frequency.value = 400; Z.lp.Q.value = 1.1;
+  Z.am = ctx.createGain(); Z.am.gain.value = 0.7; Z.lp.connect(Z.am); Z.am.connect(Z.out);
+  Z.o1 = ctx.createOscillator(); Z.o1.type = 'sawtooth'; const g1 = ctx.createGain(); g1.gain.value = 0.55; Z.o1.connect(g1); g1.connect(Z.lp);
+  Z.o2 = ctx.createOscillator(); Z.o2.type = 'square'; const g2 = ctx.createGain(); g2.gain.value = 0.3; Z.o2.connect(g2); g2.connect(Z.lp);
+  // once-per-revolution lope
+  Z.lfo = ctx.createOscillator(); Z.lfo.type = 'sine'; Z.lfoG = ctx.createGain(); Z.lfoG.gain.value = 0.28; Z.lfo.connect(Z.lfoG); Z.lfoG.connect(Z.am.gain);
+  // exhaust roughness (carries on small speakers)
+  const n = ctx.createBufferSource(); n.buffer = AU.noise; n.loop = true;
+  Z.nf = ctx.createBiquadFilter(); Z.nf.type = 'bandpass'; Z.nf.Q.value = 1.4; Z.ng = ctx.createGain(); Z.ng.gain.value = 0.9;
+  n.connect(Z.nf); Z.nf.connect(Z.ng); Z.ng.connect(Z.am);
+  // turbo whine + air
+  Z.tb = ctx.createOscillator(); Z.tb.type = 'sine'; Z.tbG = ctx.createGain(); Z.tbG.gain.value = 0; Z.tb.connect(Z.tbG); Z.tbG.connect(AU.loco);
+  const tn = ctx.createBufferSource(); tn.buffer = AU.white; tn.loop = true; Z.tnF = ctx.createBiquadFilter(); Z.tnF.type = 'bandpass'; Z.tnF.Q.value = 0.8; Z.tnG = ctx.createGain(); Z.tnG.gain.value = 0;
+  tn.connect(Z.tnF); Z.tnF.connect(Z.tnG); Z.tnG.connect(AU.loco);
+  // AC traction inverter / motor whine
+  Z.tm1 = ctx.createOscillator(); Z.tm1.type = 'triangle'; Z.tm2 = ctx.createOscillator(); Z.tm2.type = 'sine';
+  Z.tmG = ctx.createGain(); Z.tmG.gain.value = 0; Z.tm1.connect(Z.tmG); Z.tm2.connect(Z.tmG); Z.tmG.connect(AU.loco);
+  // dynamic brake grid blowers
+  const db = ctx.createBufferSource(); db.buffer = AU.noise; db.loop = true; Z.dbF = ctx.createBiquadFilter(); Z.dbF.type = 'bandpass'; Z.dbF.Q.value = 0.6; Z.dbG = ctx.createGain(); Z.dbG.gain.value = 0;
+  db.connect(Z.dbF); Z.dbF.connect(Z.dbG); Z.dbG.connect(AU.loco);
+  for (const o of [Z.o1, Z.o2, Z.lfo, Z.tb, Z.tm1, Z.tm2]) o.start();
+  n.start(0, Math.random()); tn.start(0, Math.random()); db.start(0, Math.random());
+  AU.dz = Z;
+}
+function updateDieselAudio(on, inCab) {
+  const Z = AU.dz; if (!Z) return;
+  const t = AU.ctx.currentTime, tc = 0.08;
+  if (!on) { Z.out.gain.setTargetAtTime(0, t, 0.05); Z.tbG.gain.setTargetAtTime(0, t, 0.05); Z.tnG.gain.setTargetAtTime(0, t, 0.05); Z.tmG.gain.setTargetAtTime(0, t, 0.05); Z.dbG.gain.setTargetAtTime(0, t, 0.05); return; }
+  const rpm = Math.max(1, S.rpm), fire = rpm / 60 * 16, rf = clamp((rpm - 200) / 704, 0, 1);
+  Z.o1.frequency.setTargetAtTime(fire, t, tc); Z.o2.frequency.setTargetAtTime(fire / 2, t, tc);
+  Z.lfo.frequency.setTargetAtTime(rpm / 60, t, tc);
+  Z.lp.frequency.setTargetAtTime(260 + 900 * S.load * rf + 520 * rf, t, tc);
+  Z.nf.frequency.setTargetAtTime(fire * 3.2 + 300, t, tc);
+  const running = S.rpm > 20;
+  Z.out.gain.setTargetAtTime(running ? (0.3 + 0.35 * rf + 0.25 * S.load * rf) * (inCab ? 0.55 : 1) : 0, t, 0.12);
+  Z.tb.frequency.setTargetAtTime(1300 + 4200 * S.turbo, t, 0.3);
+  Z.tbG.gain.setTargetAtTime(0.012 + 0.07 * S.turbo * S.turbo, t, 0.3);
+  Z.tnF.frequency.setTargetAtTime(700 + 1900 * S.turbo, t, 0.3); Z.tnG.gain.setTargetAtTime(0.25 * S.turbo * S.turbo, t, 0.3);
+  const v = Math.abs(S.v), work = clamp((Math.abs(S.TE) + S.DBF) / 445e3, 0, 1.4);
+  Z.tm1.frequency.setTargetAtTime(30 + v * 33, t, 0.1); Z.tm2.frequency.setTargetAtTime(45 + v * 50, t, 0.1);
+  Z.tmG.gain.setTargetAtTime(0.06 * work * Math.min(1, v / 2) * (inCab ? 0.5 : 1), t, 0.15);
+  Z.dbF.frequency.setTargetAtTime(380 + 900 * S.dbLoad, t, 0.3); Z.dbG.gain.setTargetAtTime(0.45 * S.dbLoad, t, 0.4);
+}
+function sndCrank() { if (!AU.on) return; const t = AU.ctx.currentTime + 0.005; envNoise(t, 0.22, 140, 1.2, 0.5, AU.loco, 'lowpass', AU.noise, 0.02); envTone(t, 0.25, 70 + Math.random() * 10, 0.22, AU.loco, 'sawtooth', 55); }
 function envNoise(t, dur, f, q, gain, dest, type = 'bandpass', buf = AU.noise, att = 0.006) {
   const ctx = AU.ctx; const s = ctx.createBufferSource(); s.buffer = buf; const fl = ctx.createBiquadFilter(); fl.type = type; fl.frequency.value = f; fl.Q.value = q; const g = ctx.createGain();
   g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(Math.max(0.0002, gain), t + att); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
@@ -102,9 +165,9 @@ function sndPump(phase) {
   if (phase % 2) envNoise(t, 0.22, 800, 1.2, 0.22, AU.loco, 'bandpass', AU.noise, 0.02);
   else { envNoise(t, 0.16, 300, 1, 0.3, AU.loco, 'lowpass', AU.noise, 0.01); envTone(t, 0.1, 90, 0.12, AU.loco); }
 }
-function sndBell() {
+function sndBell(diesel) {
   if (!AU.on) return; const t = AU.ctx.currentTime + 0.005;
-  const f = 435;
+  const f = diesel ? 640 : 435;
   for (const [r, g, d] of [[1, 0.5, 2.6], [2.02, 0.28, 1.8], [2.74, 0.22, 1.3], [3.95, 0.14, 0.9], [5.41, 0.08, 0.6], [0.5, 0.18, 2.0]]) envTone(t, d, f * r, g * 0.55, AU.loco, 'sine');
   envNoise(t, 0.03, 4000, 2, 0.15, AU.loco, 'bandpass', AU.white, 0.001);
 }

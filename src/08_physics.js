@@ -10,6 +10,7 @@ const S = {
   safety: false, lowWater: false, priming: false,
   TE: 0, use: 0, gen: 0, cut: 0, mu: 0.27, grade: 0, limit: 70,
   dead: false, derailed: false, paused: false, time: 0, warnTimer: 0,
+  notch: 0, dyn: 0, dbLoad: 0, DBF: 0, rpm: 200, engineRun: true, crank: 0, load: 0, fuel: 18927, turbo: 0.15, ditch: true, ditchFlash: 0, slipCtl: false, amps: 0,
 };
 const ENV = { mu: 0.27, wind: new THREE.Vector3(-1.2, 0, 0.6) };
 const DRIVER_C = Math.PI * 2 * LG.rD, VCYL = Math.PI / 4 * 0.635 * 0.635 * 0.864;
@@ -22,6 +23,10 @@ function brakeLabel(h) { const z = brakeZone(h); if (z === 'SRV') return '−' +
 function physicsStep(dt, train) {
   const spec = LOCO_SPEC[train.locoKey];
   const V = train.vehicles;
+  const DSL = train.diesel;
+  let TEcmd = 0;
+  if (DSL) TEcmd = dieselPower(dt);
+  else {
   /* ----------------- boiler & front end ----------------- */
   const n = Math.abs(S.vw) / DRIVER_C;                 // driver revolutions per second
   const dir = Math.sign(S.reverser) * (Math.abs(S.reverser) > 0.03 ? 1 : 0);
@@ -35,7 +40,7 @@ function physicsStep(dt, train) {
   const back = 1.0 + 0.55 * n * n * cut;
   let mep = Math.max(0, S.Psc * ratio * wire - (S.Psc > 5 ? back : 0));
   if (S.priming) mep *= 0.55 + 0.25 * Math.sin(S.time * 9);
-  let TEcmd = dir * mep * 307.97 * LBF;               // 2 cyl: mep * d^2 * s / D
+  TEcmd = dir * mep * 307.97 * LBF;                   // 2 cyl: mep * d^2 * s / D
   // steam consumption
   const rho = (S.Psc + 14.7) * 0.02323;
   const useCyl = dir ? n * 4 * VCYL * (cut + 0.08) * rho : 0;
@@ -60,6 +65,7 @@ function physicsStep(dt, train) {
   S.lowWater = S.W < 0.04; S.priming = S.W > 1.0;
   if (S.W < -0.2 && !S.dead) { S.dead = true; S.fire = 0; GAME.fail('Fusible plug dropped', 'The water level fell below the crown sheet and the fusible plug melted, venting steam into the firebox. The fire is out. Keep the water glass above the bottom nut.'); }
   S.W = clamp(S.W, -0.3, 1.15);
+  }
 
   /* ----------------- air brakes ----------------- */
   const z = brakeZone(S.brakeH);
@@ -78,7 +84,7 @@ function physicsStep(dt, train) {
   if (z === 'EMG') for (const v of V) v.brake.BP = Math.max(0, v.brake.BP - 60 * dt);
   // compressor
   if (S.MR < 128) S.pumping = true; else if (S.MR > 140) S.pumping = false;
-  if (S.pumping && S.P > 50) S.MR += 1.05 * dt;
+  if (S.pumping && (DSL ? S.engineRun && S.rpm > 150 : S.P > 50)) S.MR += (DSL ? 1.3 + 2.4 * S.rpm / 904 : 1.05) * dt;
   S.MR -= chargeFlow * 0.05;
   S.MR = clamp(S.MR, 0, 142);
   // triple valves
@@ -116,6 +122,15 @@ function physicsStep(dt, train) {
   S.mu = mu;
   const Fadh = mu * Wd;
   let Frail;
+  if (DSL) {
+    // AC traction with creep control: wheel slip is caught and power trimmed instead of spinning
+    const muD = ENV.mu * 1.45 + (S.sander && S.sand > 0 ? 0.06 : 0);
+    const lim = muD * Wd * 0.97;
+    S.slipCtl = Math.abs(TEcmd) > lim;
+    Frail = clamp(TEcmd, -lim, lim);
+    if (S.slipCtl) { Frail *= 0.92 + 0.05 * Math.sin(S.time * 11); GAME.event('slipCtl'); }
+    S.slip = false; S.vw = S.v; S.mu = muD;
+  } else {
   if (!S.slip) {
     if (Math.abs(TEcmd) > Fadh) { S.slip = true; GAME.event('slip'); }
     Frail = TEcmd;
@@ -128,6 +143,7 @@ function physicsStep(dt, train) {
     Frail = fr;
     if (Math.abs(TEcmd) < Fadh * 0.85 && Math.abs(S.vw - S.v) < 0.35) S.slip = false;
     if (Math.abs(TEcmd) < Fadh * 0.85) S.vw += (S.v - S.vw) * Math.min(1, dt * 2.5);
+  }
   }
   S.TE = Frail;
 
@@ -151,7 +167,7 @@ function physicsStep(dt, train) {
     R += (v.kind === 'coach' || v.kind === 'loco' || v.kind === 'tender' ? 7 : 14) * tons * (1 - smooth(0.15, 2.0, Math.abs(S.v)));
     Fres += R * LBF;
     const bc = i === 0 ? S.BCloco : v.brake.BC;
-    Fbrake += mass * v.brakeA * (bc / 64) * shoe;
+    Fbrake += mass * v.brakeA * (bc / 64) * shoe + (i === 0 && DSL ? S.DBF : 0);
     for (const p of [v.fp[0], v.fp[1]]) limit = Math.min(limit, p.tp.e.limit);
   }
   S.limit = limit; S.grade = gradeLead;
@@ -185,4 +201,40 @@ function autoFireman(dt) {
   const working = Math.abs(S.reverser) > 0.05 && S.throttle > 0.05;
   const bt = working ? 0.05 : (S.P < 235 ? 0.55 : 0.2);
   S.blower += (bt - S.blower) * Math.min(1, dt * 0.7);
+}
+
+/* Six-axle AC diesel: prime mover, main alternator loading, traction, dynamic brake, fuel. */
+function dieselPower(dt) {
+  const notch = Math.round(S.throttle * 8); S.notch = notch;
+  const dir = S.reverser > 0.5 ? 1 : (S.reverser < -0.5 ? -1 : 0);
+  const v = Math.abs(S.v);
+  if (S.crank > 0) {
+    S.crank -= dt; S.rpm = Math.min(110, S.rpm + 45 * dt);
+    if (S.crank <= 0) { S.crank = 0; S.engineRun = true; S.rpm = 260; GAME.event('started'); }
+  }
+  if (S.fuel <= 0 && S.engineRun) { S.engineRun = false; GAME.event('noFuel'); }
+  const dynOn = S.dyn > 0.06;
+  if (dynOn && notch > 0) GAME.event('dynInterlock');
+  let rpmT = 0;
+  if (S.engineRun) rpmT = dynOn ? 200 + 330 * S.dyn : 200 + notch * 88;
+  else if (S.crank > 0) rpmT = 110;
+  const rate = rpmT > S.rpm ? 52 : 75;
+  S.rpm += clamp(rpmT - S.rpm, -rate * dt, rate * dt);
+  // main alternator excitation ramps in over ~10 s and drops quickly
+  const powerOK = S.engineRun && notch > 0 && dir !== 0 && !dynOn;
+  S.load += clamp((powerOK ? 1 : 0) - S.load, -0.7 * dt, 0.1 * dt);
+  const rf = clamp((S.rpm - 200) / 704, 0, 1), nf = notch / 8;
+  const P = 3280e3 * Math.pow(nf, 1.2) * Math.min(1, rf / Math.max(0.06, nf)) * S.load;   // W at the rail
+  const TEcap = 814e3 * Math.min(1, nf * 1.25) * S.load;                                 // 183,000 lbf starting
+  let TE = powerOK || S.load > 0.01 ? Math.min(TEcap, P / Math.max(v, 0.35)) : 0;
+  // extended-range dynamic brake: full force down to ~2 mph, power limited at speed
+  const dbMax = Math.min(445e3, 4500e3 / Math.max(v, 0.1)) * smooth(0.25, 1.4, v);
+  S.dbLoad += clamp((dynOn && S.engineRun ? (S.dyn - 0.06) / 0.94 : 0) - S.dbLoad, -0.8 * dt, 0.3 * dt);
+  S.DBF = dbMax * S.dbLoad;
+  const Peng = S.engineRun ? (TE * v) / 0.86 + 40e3 + rf * 140e3 : 0;
+  S.fuel = Math.max(0, S.fuel - Peng * 0.25 / 3.6e6 * dt);
+  S.amps = TE / 814e3 * 1350 - S.DBF / 445e3 * 760;
+  S.turbo += ((S.engineRun ? 0.12 + 0.88 * rf * (0.35 + 0.65 * S.load) : 0) - S.turbo) * Math.min(1, dt * 0.55);
+  S.Psc = 0; S.cut = 0; S.use = 0;
+  return dir * TE;
 }

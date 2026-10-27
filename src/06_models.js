@@ -124,6 +124,7 @@ function rodGeo(L, h0, h1, t, boss0, boss1) {
 /* =================== THE BERKSHIRE =================== */
 const LOCO_SPEC = {
   '765': { road: 'NICKEL PLATE ROAD', num: '765', short: 'NKP', cls: 'S-2', built: 'Lima, Sept 1944', weight: 440800, adhesive: 264300, te: 64135, fw: 'Worthington', whistle: [233, 277, 330, 370, 415, 466].map(f => f * 0.82), bellOnFront: false },
+  'diesel': { road: 'SANDUSKY & SCIOTO', num: '4401', short: 'S&S', cls: 'AC44', built: '2026', weight: 420000, adhesive: 420000, te: 183000, diesel: true, horn: [311.1, 370.0, 415.3, 493.9, 622.3] },
   '1225': { road: 'PERE MARQUETTE', num: '1225', short: 'PM', cls: 'N-1', built: 'Lima, Oct 1941', weight: 442500, adhesive: 264000, te: 69350, fw: 'Elesco', whistle: [196, 247, 294].map(f => f * 1.0), bellOnFront: true },
 };
 const LG = {
@@ -133,6 +134,7 @@ const LG = {
   yB: 3.05,
 };
 const ax = a => LG.ref - a;
+let ROAD_SHORT = 'NKP';
 
 function buildBerkshire(key) {
   const spec = LOCO_SPEC[key];
@@ -544,7 +546,7 @@ function coachModel(spec, num, observation) {
     for (const z of [-1.4, -0.7, 0, 0.7, 1.4]) gb.cyl('brass', 0.02, 0.02, 1.05, 6, -12.55, 1.7, z);
     gb.add('brass', new THREE.CylinderGeometry(0.03, 0.03, 2.9, 8).rotateX(Math.PI / 2).translate(-12.55, 2.2, 0));
     gb.cyl('roof', 0.12, 0.12, 0.3, 8, -12.3, 4.0, 0);
-    const dh = decalMat(256, 256, (g, w, h) => { g.fillStyle = '#e9dfc2'; g.beginPath(); g.arc(128, 128, 122, 0, TAU); g.fill(); g.strokeStyle = '#6b1f1a'; g.lineWidth = 10; g.stroke(); g.fillStyle = '#6b1f1a'; g.font = '600 30px "Times New Roman", serif'; g.textAlign = 'center'; const t = spec.short === 'NKP' ? ['THE', 'NICKEL PLATE', 'LIMITED'] : ['THE', 'PERE', 'MARQUETTE']; g.fillText(t[0], 128, 92); g.font = '700 34px "Times New Roman", serif'; g.fillText(t[1], 128, 134); g.font = '600 30px "Times New Roman", serif'; g.fillText(t[2], 128, 176); });
+    const dh = decalMat(256, 256, (g, w, h) => { g.fillStyle = '#e9dfc2'; g.beginPath(); g.arc(128, 128, 122, 0, TAU); g.fill(); g.strokeStyle = '#6b1f1a'; g.lineWidth = 10; g.stroke(); g.fillStyle = '#6b1f1a'; g.font = '600 30px "Times New Roman", serif'; g.textAlign = 'center'; const t = { NKP: ['THE', 'NICKEL PLATE', 'LIMITED'], PM: ['THE', 'PERE', 'MARQUETTE'], 'S&S': ['THE', 'SCIOTO', 'LIMITED'] }[spec.short] || ['THE', 'LAKE SHORE', 'LIMITED']; g.fillText(t[0], 128, 92); g.font = '700 34px "Times New Roman", serif'; g.fillText(t[1], 128, 134); g.font = '600 30px "Times New Roman", serif'; g.fillText(t[2], 128, 176); });
     RMAT.drumhead = dh; dh.emissive = new THREE.Color(0xffd9a0); dh.emissiveMap = dh.map; dh.emissiveIntensity = 0; SCN.winMats.push(dh);
     gb.add('drumhead', new THREE.CircleGeometry(0.42, 28), M(-12.58, 1.85, 0, 0, -Math.PI / 2, 0));
     gb.add('brass', new THREE.TorusGeometry(0.43, 0.025, 6, 28).rotateY(Math.PI / 2).translate(-12.56, 1.85, 0));
@@ -565,14 +567,14 @@ function freightModel(type, num, r) {
     gb.box('oxide2', 12.3, 0.1, 2 * hw + 0.08, 0, 3.97, 0);
     gb.box('wood', 12.2, 0.05, 0.52, 0, 4.06, 0);
     gb.add('dark', new THREE.TorusGeometry(0.22, 0.02, 4, 14).translate(-6.15, 3.6, 0));
-    marks('NKP ' + num, 'CAPY 100000  LD LMT 110700', 'oxide', 3.1);
+    marks(ROAD_SHORT + ' ' + num, 'CAPY 100000  LD LMT 110700', 'oxide', 3.1);
   } else if (type === 'hopper') {
     L = 11.2; weight = 92 * STON;
     gb.box('black', 10.4, 2.0, 2 * hw, 0, 2.6, 0);
     for (let x = -4.8; x <= 4.8; x += 1.2) for (const s of [-1, 1]) gb.box('black', 0.12, 2.05, 0.08, x, 2.6, s * (hw + 0.03));
     for (const x of [-2.6, 2.6]) gb.add('black', new THREE.ConeGeometry(1.1, 1.2, 4).rotateY(Math.PI / 4).rotateX(Math.PI).translate(x, 1.1, 0));
     const g = new THREE.PlaneGeometry(10.1, 2.8, 20, 6); g.rotateX(-Math.PI / 2); const p = g.attributes.position; for (let i = 0; i < p.count; i++) { const x = p.getX(i), z = p.getZ(i); p.setY(i, 3.5 + 0.35 * Math.max(0, (1 - (z / 1.4) ** 2)) * (0.7 + 0.3 * Math.cos(x * 1.2))); } g.computeVertexNormals(); gb.add('coal', g);
-    marks('NKP ' + num, 'CAPY 140000', 'black', 2.8);
+    marks(ROAD_SHORT + ' ' + num, 'CAPY 140000', 'black', 2.8);
   } else if (type === 'tank') {
     L = 12.4; weight = 70 * STON; hw = 1.45;
     gb.add('tank', new THREE.CylinderGeometry(1.4, 1.4, 11.4, 28).rotateZ(Math.PI / 2).translate(0, 2.65, 0));
@@ -587,7 +589,7 @@ function freightModel(type, num, r) {
     gb.box('oxide2', 13.8, 1.3, 2 * hw, 0, 1.95, 0);
     for (let x = -6.4; x <= 6.4; x += 0.9) for (const s of [-1, 1]) gb.box('oxide2', 0.1, 1.32, 0.08, x, 1.95, s * (hw + 0.03));
     const g = new THREE.PlaneGeometry(13.4, 2.8, 26, 6); g.rotateX(-Math.PI / 2); const p = g.attributes.position; const rr = rng(num); for (let i = 0; i < p.count; i++) { const z = p.getZ(i); p.setY(i, 2.45 + 0.35 * Math.max(0, 1 - (z / 1.4) ** 2) + (rr() - 0.5) * 0.12); } g.computeVertexNormals(); gb.add('stoneLoad', g);
-    marks('NKP ' + num, 'CAPY 140000', 'oxide2', 1.95);
+    marks(ROAD_SHORT + ' ' + num, 'CAPY 140000', 'oxide2', 1.95);
   } else if (type === 'caboose') {
     L = 11.0; weight = 22 * STON;
     gb.box('caboose', 8.4, 2.5, 2 * hw - 0.1, 0, 2.45, 0);
@@ -598,7 +600,7 @@ function freightModel(type, num, r) {
     gb.cyl('dark', 0.08, 0.1, 0.5, 8, 1.8, 4.0, 0.6);
     // marker lamps
     for (const z of [-1.2, 1.2]) { gb.box('dark', 0.2, 0.3, 0.2, 4.25, 3.25, z); }
-    marks('NKP ' + num, '', 'caboose', 2.0);
+    marks(ROAD_SHORT + ' ' + num, '', 'caboose', 2.0);
     root.userData.markers = [new THREE.Vector3(4.37, 3.25, -1.2), new THREE.Vector3(4.37, 3.25, 1.2)];
   }
   // underframe common

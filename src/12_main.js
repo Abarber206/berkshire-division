@@ -36,19 +36,23 @@ async function loadWorld() {
   buildRoute(); mapPrepare();
   prog(0.06, 'Grading the right of way…'); await frame();
   buildLattice();
+  detailTextures(); planTowns();
   const T = 1500; let k = 0; const tot = ((INNER.x1 - INNER.x0) / T) * ((INNER.n1 - INNER.n0) / T);
   for (let x = INNER.x0; x < INNER.x1; x += T) for (let n = INNER.n0; n < INNER.n1; n += T) {
     buildTerrainTile(x, n, T, INNER.step, scene); k++;
     if (k % 3 === 0) { prog(0.08 + 0.42 * k / tot, `Shaping farm country… ${k}/${tot}`); await frame(); }
   }
+  WORLD.hgrid.ready = true;
   buildFarTerrain(scene); buildWater(scene);
   prog(0.52, 'Laying 13.8 miles of jointed rail…'); await frame();
-  buildTrack(scene);
+  buildTrack(scene); buildTrackHash();
   prog(0.68, 'Raising depots, towers and the river bridge…'); await frame();
   buildStations(); buildBridge(scene); buildRoads(scene); buildSignals(scene); buildSigns();
   prog(0.78, 'Stringing the pole line…'); await frame();
-  buildFarms(); buildPoleLine(scene);
-  prog(0.84, 'Planting woodlots…'); await frame();
+  buildFarms(); buildTowns(scene); buildPoleLine(scene);
+  prog(0.82, 'Planting corn and fencing pastures…'); await frame();
+  buildCorn(scene); buildPastureLife(scene);
+  prog(0.86, 'Planting woodlots…'); await frame();
   buildTrees(scene); finalizeScenery(scene);
   prog(0.92, 'Lighting the fire…'); await frame();
   buildSky(scene, renderer); buildFX(scene);
@@ -74,6 +78,8 @@ function resetState() {
     v: 0, vw: 0, slip: false, theta: 0, odo: 0, P: 238, Psc: 0, W: 0.62, fire: 0.55, coal: 19958, water: 83280, sand: 1800, MR: 140, ER: 90, pumping: false,
     safety: false, lowWater: false, priming: false, dead: false, derailed: false, paused: false });
   S.autoFire = GAME.settings.fire === 'auto';
+  Object.assign(S, { notch: 0, dyn: 0, dbLoad: 0, DBF: 0, rpm: 200, engineRun: true, crank: 0, load: 0, fuel: 18927, turbo: 0.15, ditch: true, ditchFlash: 0, slipCtl: false, amps: 0 });
+  if (LOCO_SPEC[GAME.settings.loco].diesel) { S.cocks = false; S.light = SKY.night ? 2 : 2; }
 }
 function makeTrain() {
   if (GAME.train) GAME.train.dispose();
@@ -88,7 +94,7 @@ function makeTrain() {
   const tp = new TrackPos(loc.edge, loc.s, 1);
   t.place(tp);
   for (const v of t.vehicles) linearizeObject(v.root);
-  linearizeObject(t.loco.leadTruck);
+  if (t.diesel) t.loco.trucks.forEach(linearizeObject); else linearizeObject(t.loco.leadTruck);
   for (const im of [t.tSix, t.tFour, ...(t.ax6 || []), ...(t.ax4 || [])]) if (im) linearizeObject(im);
   for (const v of t.vehicles) v.brake = { AR: 90, BC: 0, BP: 90, emerg: false, released: true };
   resetState();
@@ -97,7 +103,7 @@ function makeTrain() {
   CAM.init = false;
   GAME.jointMem = new Map();
 }
-function buildWhistleIfReady() { if (AU.on) buildWhistle(LOCO_SPEC[GAME.settings.loco].whistle); }
+function buildWhistleIfReady() { if (!AU.on) return; const sp = LOCO_SPEC[GAME.settings.loco]; buildWhistle(sp.diesel ? sp.horn : sp.whistle, sp.diesel ? 'horn' : 'steam'); }
 
 /* ---------------- menu ---------------- */
 function segButtons(id, opts, key, onPick) {
@@ -111,7 +117,7 @@ function segButtons(id, opts, key, onPick) {
   }
 }
 function buildMenu() {
-  const locoOpts = { '765': { name: 'NKP 765', sub: 'S-2 · Lima 1944' }, '1225': { name: 'PM 1225', sub: 'N-1 · Lima 1941' } };
+  const locoOpts = { '765': { name: 'NKP 765', sub: 'S-2 · Lima 1944' }, '1225': { name: 'PM 1225', sub: 'N-1 · Lima 1941' }, 'diesel': { name: 'S&S 4401', sub: 'AC diesel · 4,400 hp' } };
   segButtons('optLoco', locoOpts, 'loco', () => { specGrid(); startLabel(); });
   segButtons('optTrain', CONSISTS, 'consist', startLabel);
   segButtons('optTime', PRESETS, 'time', k => { if (GAME.ready) applyLook(k, GAME.settings.weather, renderer, scene); });
@@ -124,8 +130,12 @@ function buildMenu() {
 }
 function specGrid() {
   const s = LOCO_SPEC[GAME.settings.loco];
-  const items = [['2-8-4', 'Wheel arrangement'], ['69 in', 'Drivers'], ['25×34 in', 'Cylinders'], ['245 psi', 'Boiler'], [(s.te / 1000).toFixed(1) + 'k lbf', 'Tractive effort'], [s.cls + ' · ' + s.short, 'Class']];
+  const items = s.diesel
+    ? [['C-C', 'Wheel arrangement'], ['42 in', 'Wheels'], ['4,400 hp', 'Prime mover'], ['AC', 'Traction motors'], ['183k lbf', 'Starting effort'], ['5,000 gal', 'Fuel']]
+    : [['2-8-4', 'Wheel arrangement'], ['69 in', 'Drivers'], ['25×34 in', 'Cylinders'], ['245 psi', 'Boiler'], [(s.te / 1000).toFixed(1) + 'k lbf', 'Tractive effort'], [s.cls + ' · ' + s.short, 'Class']];
   $('specGrid').innerHTML = items.map(([b, l]) => `<div><b>${b}</b><span>${l}</span></div>`).join('');
+  const fg = $('optFire').parentElement; fg.hidden = !!s.diesel;
+  const ey = document.querySelector('.brandmark .eyebrow'); if (ey) ey.textContent = s.diesel ? 'Sandusky & Scioto · AC6 diesel' : 'Lima Super Power · 2-8-4';
 }
 function startLabel() {
   const b = $('btnStart');
@@ -146,13 +156,14 @@ GAME.start = function () {
   $('menu').hidden = true; $('hud').hidden = false;
   FX.snow.visible = SKY.snow;
   if (SKY.snow) { const a = FX.snow.geometry.attributes.position.array; for (let i = 0; i < a.length; i += 3) { a[i] += camera.position.x; a[i + 1] += camera.position.y - 20; a[i + 2] += camera.position.z; } }
-  setTimeout(drawLeverTicks, 50);
   GAME.refreshKeys();
+  setTimeout(drawLeverTicks, 50);
   try { navigator.wakeLock && navigator.wakeLock.request('screen').catch(() => {}); } catch (e) {}
 };
 GAME.intro = function () {
   setTimeout(() => toast('Yard 2, Bellevue. The ladder is lined out to the main.', '', 5000), 600);
-  setTimeout(() => toast('Reverser forward, engine brake off, then ease the throttle open.', '', 6000), 5200);
+  if (GAME.train && GAME.train.diesel) setTimeout(() => toast('Reverser to forward, engine brake off, then notch out the throttle.', '', 6000), 5200);
+  else setTimeout(() => toast('Reverser forward, engine brake off, then ease the throttle open.', '', 6000), 5200);
 };
 GAME.pause = function (p) {
   S.paused = p;
@@ -173,16 +184,34 @@ GAME.rerail = function () {
   S.ER = 90;
   toast('Re-railed. Mind the speed boards.', 'good');
 };
-GAME.event = function (k) { if (k === 'slip') toast('Drivers slipping! Ease the throttle or use sand.', 'warn', 2600, 'slip'); };
+GAME.event = function (k) {
+  if (k === 'slip') toast('Drivers slipping! Ease the throttle or use sand.', 'warn', 2600, 'slip');
+  else if (k === 'slipCtl') toast('Wheel slip control is trimming power. Sand helps on a wet rail.', 'warn', 3000, 'slipCtl');
+  else if (k === 'started') { toast('Prime mover running.', 'good', 2200, 'start'); GAME.refreshKeys(); }
+  else if (k === 'noFuel') { toast('Out of fuel. The engine has shut down.', 'bad', 4000, 'fuel'); GAME.refreshKeys(); }
+  else if (k === 'dynInterlock') toast('Throttle must be in idle while the dynamic brake is set up.', 'warn', 2800, 'dyn');
+};
 GAME.controlTouched = function () { };
 GAME.manualFire = function (what) {
   if (S.autoFire) { S.autoFire = false; GAME.settings.fire = 'hand'; toast('You have the fire now: watch the pressure and the water glass.', 'warn', 4500); const b = $('optFire_hand'); if (b) b.click(); }
 };
+GAME.isDiesel = () => !!(GAME.train && GAME.train.diesel);
 GAME.refreshKeys = function () {
   const on = (id, v) => $(id).classList.toggle('on', !!v);
-  on('btnBell', S.bell); on('btnSand', S.sander); on('btnCocks', S.cocks); on('btnLight', S.light > 0); on('btnInj', S.injector); on('btnFire', S.stoker > 0.05); on('btnBlower', S.blower > 0.3);
+  const D = GAME.isDiesel();
+  on('btnBell', S.bell); on('btnSand', S.sander); on('btnLight', S.light > 0);
   $('btnLight').firstChild.textContent = ['Light off', 'Light dim', 'Light bright'][S.light];
-  $('btnFire').firstChild.textContent = 'Stoker ' + Math.round(S.stoker * 100);
+  $('btnWhistle').firstChild.textContent = D ? 'Horn' : 'Whistle';
+  if (D) {
+    on('btnCocks', S.ditch); $('btnCocks').firstChild.textContent = 'Ditch lights';
+    on('btnInj', S.engineRun || S.crank > 0); $('btnInj').firstChild.textContent = S.crank > 0 ? 'Starting' : (S.engineRun ? 'Engine run' : 'Engine off');
+  } else {
+    on('btnCocks', S.cocks); $('btnCocks').firstChild.textContent = 'Cyl cocks';
+    on('btnInj', S.injector); $('btnInj').firstChild.textContent = 'Inject';
+    on('btnFire', S.stoker > 0.05); on('btnBlower', S.blower > 0.3);
+    $('btnFire').firstChild.textContent = 'Stoker ' + Math.round(S.stoker * 100);
+  }
+  $('btnFire').hidden = D; $('btnBlower').hidden = D; $('lvDyn').hidden = !D;
 };
 GAME.occupied = function (sw) {
   for (const p of GAME.train.pts) {
@@ -233,7 +262,7 @@ let hudT = 0, mapT = 0, gaugeT = 0;
 function updateHUD(dt) {
   hudT += dt; mapT += dt; gaugeT += dt;
   updateLevers();
-  if (gaugeT > 0.066) { gaugeT = 0; if ($('gaugeWrap').classList.contains('min')) { const m = $('gaugeMini'); const t = `<span><b>${Math.round(S.P)}</b> psi</span><span>glass <b>${Math.round(clamp((S.W + 0.1) / 1.2, 0, 1) * 100)}%</b></span><span>BP <b>${Math.round(GAME.train.vehicles[0].brake.BP)}</b></span>`; if (m.innerHTML !== t) m.innerHTML = t; } else drawGauges(); }
+  if (gaugeT > 0.066) { gaugeT = 0; if ($('gaugeWrap').classList.contains('min')) { const m = $('gaugeMini'); const bp = Math.round(GAME.train.vehicles[0].brake.BP); const t = GAME.isDiesel() ? `<span><b>${S.notch ? 'N' + S.notch : 'IDLE'}</b></span><span>${S.DBF > 1000 ? 'DB' : 'TE'} <b>${Math.round((S.DBF > 1000 ? S.DBF : Math.abs(S.TE)) / LBF / 1000)}k</b></span><span>BP <b>${bp}</b></span>` : `<span><b>${Math.round(S.P)}</b> psi</span><span>glass <b>${Math.round(clamp((S.W + 0.1) / 1.2, 0, 1) * 100)}%</b></span><span>BP <b>${bp}</b></span>`; if (m.innerHTML !== t) m.innerHTML = t; } else drawGauges(); }
   if (mapT > 0.18) { mapT = 0; drawMinimap(); if (MAP.visible) MAP.draw(); }
   if (hudT < 0.1) return; hudT = 0;
   const mph = Math.abs(S.v) / MPH;
@@ -270,7 +299,7 @@ function updateHUD(dt) {
   const bs = $('btnService'); if (bs) bs.onclick = () => act.go();
 }
 function nearbyService() {
-  const T = GAME.train; if (!T || Math.abs(S.v) > 0.3) return null;
+  const T = GAME.train; if (!T || !T.tender || Math.abs(S.v) > 0.3) return null;
   const tm = T.tender.root.matrixWorld;
   const hatch = new THREE.Vector3(6.675 - 10.6, 4, 0).applyMatrix4(tm), bunker = new THREE.Vector3(6.675 - 3.6, 4, 0).applyMatrix4(tm);
   for (const w of ROUTE.water) { const d = Math.hypot(hatch.x - w.p.x, hatch.z - w.p.z) - (w.kind === 'tower' ? 0 : 0); if (d < 6.5) { if (GAME.filling === 'water') return { label: 'Taking water…', btn: 'Stop', go: () => { GAME.filling = null; } }; return { label: 'Water spout over the hatch', btn: 'Take water', go: () => { GAME.filling = 'water'; } }; } }
@@ -343,11 +372,21 @@ function renderStep(dt, T) {
   T.head.intensity = S.light === 0 ? 0 : (S.light === 1 ? (night ? 1.6 : 0.4) : (night ? 6 : 1.4));
   RMAT.lens.color.setScalar(S.light === 0 ? 0.25 : (S.light === 1 ? 0.75 : 1.0));
   const flick = 0.85 + 0.15 * Math.sin(S.time * 23) * Math.sin(S.time * 7.3);
-  T.fireLight.intensity = S.fire * (night ? 2.4 : 0.18) * flick * (CAM.mode === 'cab' ? 1 : 0.6);
+  if (T.diesel) {
+    T.fireLight.intensity = 0;
+    if (S.whistle > 0.05 || S.bell) S.ditchFlash = 15;
+    S.ditchFlash = Math.max(0, S.ditchFlash - dt);
+    const ph = Math.floor(S.time * 2.6) % 2, on = S.ditch && S.light > 0;
+    const lv = (k) => !on ? 0.12 : (S.ditchFlash > 0 ? (ph === k ? 1 : 0.15) : 0.85);
+    T.loco.ditch.forEach((d, k) => { const b = lv(k); d.lens.material.color.setScalar(0.25 + 0.75 * b); d.halo.material.opacity = b * (night ? 1 : 0.45); });
+  } else T.fireLight.intensity = S.fire * (night ? 2.4 : 0.18) * flick * (CAM.mode === 'cab' ? 1 : 0.6);
   T.loco.beam.material.opacity = S.light === 0 ? 0 : (night ? (S.light === 2 ? 0.075 : 0.035) : (SKY.weather !== 'clear' ? 0.02 : 0));
   T.loco.halo.material.opacity = S.light === 0 ? 0 : (night ? 1 : 0.35) * (S.light === 2 ? 1 : 0.6);
-  T.loco.fire.material.color.setRGB(1 * flick, 0.45 * S.fire * flick + 0.1, 0.1);
-  T.loco.ash.material.opacity = night ? 0.35 * S.fire * flick : 0;
+  if (!T.diesel) {
+    T.loco.fire.material.color.setRGB(1 * flick, 0.45 * S.fire * flick + 0.1, 0.1);
+    T.loco.ash.material.opacity = night ? 0.35 * S.fire * flick : 0;
+  }
+  const pb = $('btnWhistle').querySelector('.pull i'), pw = Math.round(S.whistle * 100) + '%'; if (pb.style.width !== pw) pb.style.width = pw;
   T.cabLight.intensity = night ? 0.6 : 0;
   // camera
   updateCamera(camera, T, dt);
@@ -362,7 +401,7 @@ function renderStep(dt, T) {
   SKY.moon.position.copy(SKY.sunDir).multiplyScalar(7000).add(camera.position);
   const lp = T.vehicles[0].pos;
   SKY.sun.target.position.copy(lp); SKY.sun.position.copy(lp).addScaledVector(SKY.sunDir, 300);
-  updateTrackLOD(camera);
+  updateTrackLOD(camera); updateDetailLOD(camera, scene, dt);
   // effects & sound
   effectsAndSound(dt, T);
   updateFX(dt, camera);
@@ -371,7 +410,7 @@ function renderStep(dt, T) {
 }
 
 function stationStop(T) {
-  const cab = T.worldOf(new THREE.Vector3(ax(15.5), 0, 0));
+  const cab = T.worldOf(new THREE.Vector3(T.loco.cabEye.x, 0, 0));
   for (const st of ROUTE.stations) {
     const d = cab.distanceTo(st.p); if (d > 120) continue;
     if (GAME.lastStation === st.name) return;
@@ -385,10 +424,10 @@ function stationStop(T) {
   GAME.lastStation = null;
 }
 
-function effectsAndSound(dt, T) {
+function steamFX(dt, T, tv) {
   const L = T.loco;
   const n = Math.abs(S.vw) / DRIVER_C;
-  const stack = T.worldOf(L.stackPos), tv = new THREE.Vector3().copy(T.vehicles[0].fwd).multiplyScalar(S.v);
+  const stack = T.worldOf(L.stackPos);
   const working = S.Psc > 6 && S.cut > 0 && S.throttle > 0.02;
   const intensity = clamp((S.Psc / 245) * (0.35 + S.cut * 1.25), 0, 1.3);
   // exhaust beats: four per driver revolution
@@ -417,18 +456,45 @@ function effectsAndSound(dt, T) {
   if (S.safety) for (let j = 0; j < 2; j++) emit(T.worldOf(L.safetyPos), new THREE.Vector3(tv.x + (Math.random() - 0.5), 16 + Math.random() * 6, tv.z), 2.2, 0.5, 5, 0.7, [0.97, 0.97, 0.99], 0.3, 1.4);
   if (S.whistle > 0.05 && Math.random() < 0.8) emit(T.worldOf(L.whistlePos), new THREE.Vector3(tv.x * 0.8, 6 + S.whistle * 6, tv.z * 0.8), 1.6, 0.35, 3.2, 0.55 * S.whistle, [0.97, 0.97, 0.99], 0.4, 1.4);
   if (S.pumping && S.P > 50) { pumpT += dt; if (pumpT > 0.52) { pumpT = 0; GAME.pumpPh = (GAME.pumpPh || 0) + 1; sndPump(GAME.pumpPh); if (GAME.pumpPh % 2) emit(T.worldOf(L.pumpPos), new THREE.Vector3(tv.x, 2.5, tv.z), 1.2, 0.3, 1.6, 0.35, [0.93, 0.93, 0.95], 0.6, 1.2); } }
-  if (S.bell) { bellT += dt; if (bellT > 0.86) { bellT = 0; sndBell(); } } else bellT = 0.8;
+  return { src: stack, working };
+}
+let dslPuff = 0, dslNotch = 0, crankT = 0;
+function dieselFX(dt, T, tv) {
+  const L = T.loco;
+  const stack = T.worldOf(L.stackPos);
+  if (S.notch > dslNotch && S.engineRun) dslPuff = Math.min(2.2, dslPuff + 0.9);
+  dslNotch = S.notch;
+  dslPuff = Math.max(0, dslPuff - dt);
+  idleT += dt;
+  const rf = clamp((S.rpm - 200) / 704, 0, 1);
+  if (idleT > 0.07 && S.rpm > 60) {
+    idleT = 0;
+    const dark = Math.min(1, dslPuff * 0.6 + (S.crank > 0 ? 0.8 : 0)), gv = lerp(0.62, 0.16, dark);
+    const a = 0.12 + 0.25 * rf * S.load + 0.45 * dark;
+    emit(stack, new THREE.Vector3(tv.x + (Math.random() - 0.5) * 0.6, 4 + 9 * rf + 6 * dark, tv.z + (Math.random() - 0.5) * 0.6), 2.5 + Math.random() * 1.5 + dark * 2, 0.7, 3.5 + 3 * rf + 3 * dark, a, [gv, gv, gv * 1.02], 0.5, 1.1);
+  }
+  if (S.crank > 0) { crankT += dt; if (crankT > 0.32) { crankT = 0; sndCrank(); } }
+  if (S.pumping && S.engineRun) { pumpT += dt; if (pumpT > 0.4) { pumpT = 0; GAME.pumpPh = (GAME.pumpPh || 0) + 1; if (GAME.pumpPh % 2) sndPump(GAME.pumpPh); } }
+  return { src: T.worldOf(L.enginePos), working: S.load > 0.05 };
+}
+function effectsAndSound(dt, T) {
+  const L = T.loco, DSL = T.diesel;
+  const tv = new THREE.Vector3().copy(T.vehicles[0].fwd).multiplyScalar(S.v);
+  const fx = DSL ? dieselFX(dt, T, tv) : steamFX(dt, T, tv);
+  const working = fx.working;
+  if (S.bell) { bellT += dt; if (bellT > (DSL ? 1.05 : 0.86)) { bellT = 0; sndBell(DSL); } } else bellT = 0.8;
   if (!AU.on) return;
   // mix
-  const cp = camera.position, dLoco = cp.distanceTo(stack), inCab = CAM.mode === 'cab';
+  const cp = camera.position, dLoco = cp.distanceTo(fx.src), inCab = CAM.mode === 'cab';
   const gL = inCab ? 0.85 : 1 / (1 + Math.pow(dLoco / 26, 1.25));
   setG(AU.loco, gL, 0.08); AU.locoLP.frequency.setTargetAtTime(inCab ? 7000 : clamp(16000 / (1 + dLoco / 80), 1200, 16000), AU.ctx.currentTime, 0.1);
-  setG(AU.blower.g, S.blower * 0.22); setG(AU.safety.g, S.safety ? 0.5 : 0, 0.15); setG(AU.injector.g, S.injector ? 0.1 : 0, 0.2);
-  setG(AU.cocks.g, S.cocks && Math.abs(S.v) < 0.5 && S.throttle > 0.02 ? 0.25 * S.throttle : 0);
+  setG(AU.blower.g, DSL ? 0 : S.blower * 0.22); setG(AU.safety.g, !DSL && S.safety ? 0.5 : 0, 0.15); setG(AU.injector.g, !DSL && S.injector ? 0.1 : 0, 0.2);
+  setG(AU.cocks.g, !DSL && S.cocks && Math.abs(S.v) < 0.5 && S.throttle > 0.02 ? 0.25 * S.throttle : 0);
   setG(AU.roar.g, 0.32 * Math.min(1, Math.abs(S.v) / 22));
-  setG(AU.drift.g, !working && Math.abs(S.v) > 1 ? 0.08 * Math.min(1, Math.abs(S.v) / 12) : 0);
+  setG(AU.drift.g, !DSL && !working && Math.abs(S.v) > 1 ? 0.08 * Math.min(1, Math.abs(S.v) / 12) : 0);
   setG(AU.wind.g, inCab ? 0.32 * Math.min(1, (Math.abs(S.v) / 30) ** 2) + 0.02 : 0.03);
-  setG(AU.firedoor.g, inCab ? 0.14 * S.fire : 0);
+  setG(AU.firedoor.g, !DSL && inCab ? 0.14 * S.fire : 0);
+  updateDieselAudio(DSL, inCab);
   const b0 = T.vehicles[0].brake;
   setG(AU.bpExhaust.g, b0.dBP < -0.3 ? Math.min(0.5, -b0.dBP * 0.06) : 0, 0.05);
   const lead = T.vehicles[0].leadPt.tp, kk = Math.abs(lead.e.curv(lead.s));
@@ -436,16 +502,18 @@ function effectsAndSound(dt, T) {
   setG(AU.flange.g, kk > 1 / 320 && Math.abs(S.v) > 1.5 ? 0.05 * Math.min(1, Math.abs(S.v) / 8) * gw : 0, 0.2);
   const bcAvg = T.vehicles.reduce((a, v) => a + v.brake.BC, 0) / T.vehicles.length;
   setG(AU.bsq.g, bcAvg > 15 && Math.abs(S.v) > 0.3 && Math.abs(S.v) < 9 ? 0.035 * gw : 0, 0.15);
-  // whistle with doppler
+  // whistle / horn with doppler
   if (AU.whistle) {
-    const toCam = new THREE.Vector3().subVectors(cp, stack); const dist = toCam.length(); toCam.normalize();
+    const src = T.worldOf(DSL ? L.hornPos : L.whistlePos);
+    const toCam = new THREE.Vector3().subVectors(cp, src); const dist = toCam.length(); toCam.normalize();
     const vr = inCab ? 0 : tv.dot(toCam);
     const dop = 343 / (343 - clamp(vr, -60, 60));
     const pull = S.whistle;
-    const gwh = (inCab ? 0.5 : 1 / (1 + Math.pow(dist / 70, 1.1))) * Math.pow(pull, 1.2) * 0.6;
-    setG(AU.whistle.out, gwh, 0.035);
-    for (const v of AU.whistle.voices) { const f = v.f * (0.95 + 0.05 * pull) * dop; v.o1.frequency.setTargetAtTime(f, AU.ctx.currentTime, 0.04); v.o2.frequency.setTargetAtTime(f * 2.002, AU.ctx.currentTime, 0.04); v.nf.frequency.setTargetAtTime(f, AU.ctx.currentTime, 0.04); }
-    AU.whistle.lp.frequency.setTargetAtTime(inCab ? 2500 : clamp(9000 / (1 + dist / 150), 1500, 6000), AU.ctx.currentTime, 0.1);
+    const gwh = (inCab ? 0.55 : 1 / (1 + Math.pow(dist / 90, 1.1))) * Math.pow(pull, DSL ? 0.5 : 0.8) * 0.95;
+    setG(AU.whistle.out, gwh, DSL ? 0.02 : 0.035);
+    const bend = DSL ? 1 : (0.94 + 0.06 * pull);
+    for (const v of AU.whistle.voices) { const f = v.f * bend * dop; v.o1.frequency.setTargetAtTime(f, AU.ctx.currentTime, 0.04); v.o2.frequency.setTargetAtTime(f * v.ratio2, AU.ctx.currentTime, 0.04); }
+    AU.whistle.lp.frequency.setTargetAtTime(inCab ? 3200 : clamp(11000 / (1 + dist / 160), 1800, 7000), AU.ctx.currentTime, 0.1);
   }
   // rail joints for nearby trucks
   if (Math.abs(S.v) > 0.6) {
@@ -453,7 +521,7 @@ function effectsAndSound(dt, T) {
     for (const v of T.vehicles) {
       const dv = v.pos.distanceTo(cp); if (dv > 110 && !(inCab && v.kind === 'loco')) continue;
       const g = Math.min(1, Math.abs(S.v) / 7) / (1 + Math.pow((inCab ? Math.max(4, dv) : dv) / 13, 1.4));
-      const pts = v.kind === 'loco' ? [[v.leadPt, 1, 0], [v.fp[0], 4, 1.855]] : v.tp.map((p, i) => [p, v.trucks[i].type === 'six' ? 3 : 2, v.trucks[i].type === 'six' ? 1.676 : 1.73]);
+      const pts = v.kind === 'loco' ? (DSL ? [[v.fp[0], 3, DG.axle], [v.fp[1], 3, DG.axle]] : [[v.leadPt, 1, 0], [v.fp[0], 4, 1.855]]) : v.tp.map((p, i) => [p, v.trucks[i].type === 'six' ? 3 : 2, v.trucks[i].type === 'six' ? 1.676 : 1.73]);
       for (const [p, axles, sp] of pts) {
         const j = Math.floor(p.tp.s / 11.89), key = p, prev = mem.get(key);
         if (prev && prev.e === p.tp.e && prev.j !== j) { for (let a = 0; a < axles; a++) sndJoint(g * (a === 0 ? 1 : 0.8), a * sp / Math.abs(S.v)); }

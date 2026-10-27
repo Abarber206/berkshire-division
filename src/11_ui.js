@@ -108,8 +108,13 @@ function handleTap(x, y, camera) {
 const LEVERS = {};
 function setupLevers() {
   const defs = {
-    lvThrottle: { get: () => S.throttle, set: v => { S.throttle = v; }, fromY: t => 1 - t, toY: v => 1 - v, label: v => Math.round(v * 100) + '%', ticks: [[0, ''], [0.25, ''], [0.5, ''], [0.75, ''], [1, '']] },
-    lvReverser: { get: () => S.reverser, set: v => { S.reverser = v; }, fromY: t => { let r = 1 - 2 * t; if (Math.abs(r) < 0.06) r = 0; return Math.round(r * 17) / 17; }, toY: v => (1 - v) / 2, label: v => v === 0 ? 'N' : (v > 0 ? 'F ' : 'R ') + Math.round(Math.abs(v) * 85) + '%', ticks: [[0, 'F'], [0.5, 'N'], [1, 'R']] },
+    lvThrottle: { get: () => S.throttle, set: v => { S.throttle = v; }, fromY: t => GAME.isDiesel() ? Math.round((1 - t) * 8) / 8 : 1 - t, toY: v => 1 - v,
+      label: v => GAME.isDiesel() ? (Math.round(v * 8) ? 'N' + Math.round(v * 8) : 'IDLE') : Math.round(v * 100) + '%',
+      ticks: () => GAME.isDiesel() ? [...Array(9)].map((_, i) => [i / 8, '']) : [[0, ''], [0.25, ''], [0.5, ''], [0.75, ''], [1, '']] },
+    lvReverser: { get: () => S.reverser, set: v => { S.reverser = v; },
+      fromY: t => { if (GAME.isDiesel()) return t < 0.34 ? 1 : (t > 0.66 ? -1 : 0); let r = 1 - 2 * t; if (Math.abs(r) < 0.06) r = 0; return Math.round(r * 17) / 17; }, toY: v => (1 - v) / 2,
+      label: v => GAME.isDiesel() ? (v > 0.5 ? 'FWD' : v < -0.5 ? 'REV' : 'N') : (v === 0 ? 'N' : (v > 0 ? 'F ' : 'R ') + Math.round(Math.abs(v) * 85) + '%'), ticks: [[0, 'F'], [0.5, 'N'], [1, 'R']] },
+    lvDyn: { get: () => S.dyn, set: v => { S.dyn = v; }, fromY: t => t < 0.04 ? 0 : t, toY: v => v, label: v => v < 0.03 ? 'OFF' : v < 0.06 ? 'SETUP' : 'DB ' + Math.round((v - 0.06) / 0.94 * 100) + '%', ticks: [[0, ''], [0.06, ''], [1, '']] },
     lvBrake: { get: () => S.brakeH, set: v => { S.brakeH = v; }, fromY: t => { if (Math.abs(t - 0.12) < 0.04) return 0.12; if (Math.abs(t - 0.23) < 0.035) return 0.23; return t; }, toY: v => v, label: v => brakeLabel(v), ticks: [[0.03, 'REL'], [0.12, 'RUN'], [0.23, 'LAP'], [0.3, 'SVC'], [0.95, 'EMG']] },
     lvInd: { get: () => S.indH, set: v => { S.indH = v; }, fromY: t => t < 0.08 ? 0 : t, toY: v => v, label: v => Math.round(clamp((v - 0.1) / 0.9, 0, 1) * 45) + ' psi', ticks: [[0, 'REL'], [1, 'FULL']] },
   };
@@ -131,7 +136,7 @@ function drawLeverTicks() {
     const dpr = Math.min(2, devicePixelRatio); c.width = (r.width + 28) * dpr; c.height = r.height * dpr; c.style.width = (r.width + 28) + 'px'; c.style.height = r.height + 'px';
     const g = c.getContext('2d'); g.scale(dpr, dpr); g.clearRect(0, 0, c.width, c.height);
     g.fillStyle = '#6f7d86'; g.font = '600 7px "IBM Plex Sans Condensed", sans-serif'; g.textBaseline = 'middle';
-    for (const [t, lab] of L.d.ticks) { const y = clamp(t * r.height, 3, r.height - 3); g.fillRect(0, y - 0.5, 5, 1); g.fillRect(r.width + 23, y - 0.5, 5, 1);  }
+    for (const [t, lab] of (typeof L.d.ticks === 'function' ? L.d.ticks() : L.d.ticks)) { const y = clamp(t * r.height, 3, r.height - 3); g.fillRect(0, y - 0.5, 5, 1); g.fillRect(r.width + 23, y - 0.5, 5, 1);  }
   }
 }
 function updateLevers() {
@@ -148,9 +153,9 @@ function setupButtons() {
   const tog = (id, fn) => $(id).addEventListener('click', () => { fn(); GAME.refreshKeys(); });
   tog('btnBell', () => { S.bell = !S.bell; });
   tog('btnSand', () => { S.sander = !S.sander; });
-  tog('btnCocks', () => { S.cocks = !S.cocks; });
+  tog('btnCocks', () => { if (GAME.isDiesel()) S.ditch = !S.ditch; else S.cocks = !S.cocks; });
   tog('btnLight', () => { S.light = (S.light + 1) % 3; });
-  tog('btnInj', () => { GAME.manualFire('injector'); S.injector = !S.injector; });
+  tog('btnInj', () => { if (GAME.isDiesel()) { if (S.engineRun) { S.engineRun = false; toast('Engine shut down.', 'warn', 2200, 'eng'); } else if (S.crank <= 0 && S.fuel > 0) { S.crank = 6.5; toast('Cranking the prime mover…', '', 2200, 'eng'); } } else { GAME.manualFire('injector'); S.injector = !S.injector; } });
   tog('btnFire', () => { GAME.manualFire('stoker'); const steps = [0, 0.25, 0.5, 0.75, 1]; let i = steps.findIndex(s => s > S.stoker + 0.05); S.stoker = i < 0 ? 0 : steps[i]; });
   tog('btnBlower', () => { GAME.manualFire('blower'); S.blower = S.blower > 0.3 ? 0 : 0.65; });
   $('gaugeWrap').addEventListener('click', () => { const g = $('gaugeWrap'); g.classList.toggle('min'); try { localStorage.setItem('bd_gmin', g.classList.contains('min') ? '1' : ''); } catch (e) {} });
@@ -165,14 +170,16 @@ function setupButtons() {
   $('btnThrowMini').addEventListener('click', () => GAME.throwAhead());
   const keys = {};
   addEventListener('keydown', e => {
-    if (e.repeat && !['KeyW', 'KeyS', 'KeyQ', 'KeyE', 'KeyZ', 'KeyC', 'ArrowUp', 'ArrowDown'].includes(e.code)) return;
+    if (e.repeat && !['KeyW', 'KeyS', 'KeyQ', 'KeyE', 'KeyZ', 'KeyC', 'KeyA', 'KeyD', 'ArrowUp', 'ArrowDown'].includes(e.code)) return;
     if ($('menu').hidden === false) return;
     keys[e.code] = true;
     switch (e.code) {
-      case 'KeyW': S.throttle = clamp(S.throttle + 0.04, 0, 1); break;
-      case 'KeyS': S.throttle = clamp(S.throttle - 0.06, 0, 1); break;
-      case 'ArrowUp': S.reverser = clamp(Math.round((S.reverser + 1 / 17) * 17) / 17, -1, 1); e.preventDefault(); break;
-      case 'ArrowDown': S.reverser = clamp(Math.round((S.reverser - 1 / 17) * 17) / 17, -1, 1); e.preventDefault(); break;
+      case 'KeyW': S.throttle = GAME.isDiesel() ? clamp(Math.round(S.throttle * 8 + 1) / 8, 0, 1) : clamp(S.throttle + 0.04, 0, 1); break;
+      case 'KeyS': S.throttle = GAME.isDiesel() ? clamp(Math.round(S.throttle * 8 - 1) / 8, 0, 1) : clamp(S.throttle - 0.06, 0, 1); break;
+      case 'KeyD': if (GAME.isDiesel()) S.dyn = clamp(S.dyn < 0.06 ? 0.06 : S.dyn + 0.1, 0, 1); break;
+      case 'KeyA': if (GAME.isDiesel()) S.dyn = S.dyn <= 0.07 ? 0 : clamp(S.dyn - 0.1, 0.06, 1); break;
+      case 'ArrowUp': S.reverser = GAME.isDiesel() ? clamp(Math.round(S.reverser) + 1, -1, 1) : clamp(Math.round((S.reverser + 1 / 17) * 17) / 17, -1, 1); e.preventDefault(); break;
+      case 'ArrowDown': S.reverser = GAME.isDiesel() ? clamp(Math.round(S.reverser) - 1, -1, 1) : clamp(Math.round((S.reverser - 1 / 17) * 17) / 17, -1, 1); e.preventDefault(); break;
       case 'KeyQ': S.brakeH = clamp(S.brakeH - 0.03, 0, 1); break;
       case 'KeyE': S.brakeH = clamp(S.brakeH + 0.03, 0, 1); break;
       case 'KeyZ': S.indH = clamp(S.indH - 0.05, 0, 1); break;
@@ -180,11 +187,11 @@ function setupButtons() {
       case 'Space': S.whistle = e.shiftKey ? 1 : 0.7; e.preventDefault(); break;
       case 'KeyB': S.bell = !S.bell; break;
       case 'KeyX': S.sander = !S.sander; break;
-      case 'KeyK': S.cocks = !S.cocks; break;
+      case 'KeyK': if (GAME.isDiesel()) S.ditch = !S.ditch; else S.cocks = !S.cocks; break;
       case 'KeyH': S.light = (S.light + 1) % 3; break;
-      case 'KeyI': GAME.manualFire('injector'); S.injector = !S.injector; break;
-      case 'KeyF': GAME.manualFire('stoker'); S.stoker = clamp(S.stoker + 0.25, 0, 1.0001) > 1 ? 0 : S.stoker + 0.25; break;
-      case 'KeyL': GAME.manualFire('blower'); S.blower = S.blower > 0.3 ? 0 : 0.65; break;
+      case 'KeyI': $('btnInj').click(); break;
+      case 'KeyF': if (GAME.isDiesel()) break; GAME.manualFire('stoker'); S.stoker = clamp(S.stoker + 0.25, 0, 1.0001) > 1 ? 0 : S.stoker + 0.25; break;
+      case 'KeyL': if (GAME.isDiesel()) break; GAME.manualFire('blower'); S.blower = S.blower > 0.3 ? 0 : 0.65; break;
       case 'KeyT': GAME.throwAhead(); break;
       case 'KeyM': MAP.visible ? MAP.close() : MAP.open(); break;
       case 'KeyP': GAME.pause(!S.paused); break;
@@ -215,6 +222,7 @@ function drawGauges() {
   };
   const b = GAME.train ? GAME.train.vehicles : null;
   const lastBP = b ? b[b.length - 1].brake.BP : 90;
+  if (GAME.isDiesel()) { drawDieselGauges(g, dial, b, lastBP); return; }
   dial(108, 112, 96, 300, 'BOILER PSI', [[S.P, '#151515']], [245, 300], 50, 10);
   g.font = '600 18px "IBM Plex Mono", monospace'; g.fillStyle = S.safety ? '#ee4b3d' : '#cfa651'; g.textAlign = 'center'; g.fillText(S.safety ? 'POPPING' : 'CHEST ' + Math.round(S.Psc), 108, 224);
   dial(296, 86, 70, 160, 'MR · EQ', [[S.MR, '#c0281e'], [S.ER, '#151515']], null, 40, 10);
@@ -334,4 +342,32 @@ function toast(msg, kind = '', ms = 3600, key) {
   const t = { el, t: now, key }; TOASTS.push(t);
   while (box.children.length > 3) box.removeChild(box.firstChild);
   setTimeout(() => { el.remove(); }, ms);
+}
+
+function drawDieselGauges(g, dial, b, lastBP) {
+  const te = Math.abs(S.TE) / LBF / 1000, db = S.DBF / LBF / 1000;
+  dial(108, 112, 96, 200, 'TE · DB  klbf', [[te, '#151515'], [db, '#c0281e']], [170, 200], 50, 10);
+  g.font = '600 18px "IBM Plex Mono", monospace'; g.textAlign = 'center';
+  g.fillStyle = S.slipCtl ? '#ee4b3d' : '#cfa651'; g.fillText(S.slipCtl ? 'WHEEL SLIP' : (S.notch ? 'N' + S.notch : (S.dyn > 0.06 ? 'DYN BRAKE' : 'IDLE')) + ' · ' + Math.round(S.rpm) + ' rpm', 108, 224);
+  dial(296, 86, 70, 160, 'MR · EQ', [[S.MR, '#c0281e'], [S.ER, '#151515']], null, 40, 10);
+  dial(458, 86, 70, 160, 'BP · BC', [[b ? b[0].brake.BP : 90, '#151515'], [S.BCloco || 0, '#c0281e']], null, 40, 10);
+  g.font = '600 17px "IBM Plex Mono", monospace'; g.fillStyle = '#8d9aa2';
+  g.fillText('LOAD ' + Math.round(S.amps) + ' A', 296, 186); g.fillText('REAR ' + Math.round(lastBP), 458, 186);
+  g.fillText('TURBO ' + Math.round(S.turbo * 100) + '%', 296, 212);
+  g.fillStyle = S.engineRun ? '#52d483' : (S.crank > 0 ? '#f2b33d' : '#ee4b3d'); g.fillText(S.engineRun ? 'ENGINE RUN' : (S.crank > 0 ? 'CRANKING' : 'ENGINE OFF'), 458, 212);
+  // fuel gauge (vertical bar like the steam water glass)
+  const gx = 560, gy0 = 26, gy1 = 200, gw = 26;
+  g.fillStyle = '#6d531f'; g.fillRect(gx - 6, gy0 - 14, gw + 12, 12); g.fillRect(gx - 6, gy1 + 2, gw + 12, 12);
+  g.fillStyle = '#0d1418'; g.fillRect(gx, gy0, gw, gy1 - gy0);
+  const lvl = clamp(S.fuel / 18927, 0, 1), fy = gy1 - lvl * (gy1 - gy0);
+  const fg = g.createLinearGradient(gx, 0, gx + gw, 0); fg.addColorStop(0, '#6b4e16'); fg.addColorStop(0.5, '#d8a646'); fg.addColorStop(1, '#6b4e16');
+  g.fillStyle = fg; g.fillRect(gx, fy, gw, gy1 - fy);
+  g.strokeStyle = lvl < 0.1 ? '#ee4b3d' : '#cfa651'; g.lineWidth = 2; g.strokeRect(gx, gy0, gw, gy1 - gy0);
+  g.font = '600 15px "IBM Plex Sans Condensed", sans-serif'; g.fillStyle = '#8d9aa2'; g.textAlign = 'center'; g.fillText('FUEL', gx + gw / 2, 226);
+  g.textAlign = 'left'; g.font = '600 16px "IBM Plex Mono", monospace';
+  g.fillStyle = '#8d9aa2'; g.fillText('FUEL', 604, 40);
+  g.fillStyle = '#dfe4e6'; g.fillText(Math.round(S.fuel / 3.785).toLocaleString(), 604, 66); g.fillStyle = '#8d9aa2'; g.fillText('gal', 604, 86);
+  g.fillStyle = '#dfe4e6'; g.fillText(S.notch ? 'N' + S.notch : 'IDLE', 604, 118); g.fillStyle = '#8d9aa2'; g.fillText('notch', 604, 138);
+  g.fillStyle = S.dyn > 0.06 ? '#f2b33d' : '#dfe4e6'; g.fillText(S.dyn > 0.06 ? Math.round(S.dbLoad * 100) + '%' : 'OFF', 604, 176); g.fillStyle = '#8d9aa2'; g.fillText('dyn brk', 604, 196);
+  g.fillStyle = S.sander ? '#cfa651' : '#8d9aa2'; g.fillText(S.sander ? 'SAND ON' : 'SAND', 604, 222);
 }

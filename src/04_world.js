@@ -23,8 +23,6 @@ function makeTextures() {
       id.data[i] = v; id.data[i + 1] = v; id.data[i + 2] = v * 0.97; id.data[i + 3] = 255;
     }
     g.putImageData(id, 0, 0);
-    g.globalAlpha = 0.13; g.strokeStyle = '#000';
-    for (let x = 0; x < w; x += 8) { g.beginPath(); g.moveTo(x + 0.5, 0); g.lineTo(x + 0.5, h); g.stroke(); }
   }, { repeat: true });
   TEX.wood = canvasTex(128, 32, (g, w, h) => {
     const r = rng(3); g.fillStyle = '#a49a8c'; g.fillRect(0, 0, w, h);
@@ -36,16 +34,29 @@ function makeTextures() {
 function makeMaterials() {
   makeTextures();
   MAT.ground = new THREE.MeshLambertMaterial({ vertexColors: true, map: TEX.ground });
+  MAT.ground.extensions = { derivatives: true };
   TEX.ground.repeat.set(1, 1);
+  WORLD.snowU = { value: 0 };
+  WORLD.fieldTex = makeFieldTexture();
   MAT.ground.onBeforeCompile = sh => {
+    sh.uniforms.uSnow = WORLD.snowU;
+    sh.uniforms.uField = { value: WORLD.fieldTex.tex };
+    sh.uniforms.uFieldXf = { value: new THREE.Vector4(WORLD.fieldTex.i0, WORLD.fieldTex.j0, WORLD.fieldTex.w, WORLD.fieldTex.h) };
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying float vUp; varying vec3 vWPos; attribute float aCrop; varying float vCropW;')
+      .replace('#include <beginnormal_vertex>', '#include <beginnormal_vertex>\nvUp = normal.y;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvWPos = (modelMatrix * vec4(transformed, 1.0)).xyz; vCropW = aCrop;');
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', '#include <common>\nuniform float uSnow; varying float vUp; varying vec3 vWPos; varying float vCropW; uniform sampler2D uField; uniform vec4 uFieldXf;')
+      .replace('#include <color_fragment>', '#include <color_fragment>\n' + CROP_GLSL + '\n diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.86,0.89,0.93), uSnow * smoothstep(0.55,0.85,vUp) * (0.85 + 0.15*diffuseColor.g));');
+  };
+  MAT.ballast = new THREE.MeshLambertMaterial({ vertexColors: true, map: TEX.ballast });
+  MAT.ballast.onBeforeCompile = sh => {
     sh.uniforms.uSnow = WORLD.snowU;
     sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying float vUp;').replace('#include <beginnormal_vertex>', '#include <beginnormal_vertex>\nvUp = normal.y;');
     sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform float uSnow; varying float vUp;')
       .replace('#include <color_fragment>', '#include <color_fragment>\n diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.86,0.89,0.93), uSnow * smoothstep(0.55,0.85,vUp) * (0.85 + 0.15*diffuseColor.g));');
   };
-  WORLD.snowU = { value: 0 };
-  MAT.ballast = new THREE.MeshLambertMaterial({ vertexColors: true, map: TEX.ballast });
-  MAT.ballast.onBeforeCompile = MAT.ground.onBeforeCompile;
   MAT.rail = new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0.85, roughness: 0.42 });
   MAT.tie = new THREE.MeshLambertMaterial({ vertexColors: true, map: TEX.wood });
   MAT.plate = new THREE.MeshLambertMaterial({ color: 0x4a3d33 });
@@ -117,6 +128,7 @@ function buildLattice() {
     }
   }
   WORLD.lattice = { nx, nn, d, y };
+  WORLD.hgrid = { nx, nn, h: new Float32Array(nx * nn), ready: false };
 }
 function latticeAt(X, N) {
   const L = INNER, W = WORLD.lattice;
@@ -133,9 +145,17 @@ function groundH(X, N, lat) {
   }
   return h;
 }
-function groundAt(X, N) { // continuous sampler (bilinear over lattice)
+function groundAt(X, N) { // continuous sampler; exact terrain triangles once the grid is filled
   const L = INNER;
   if (X < L.x0 || X > L.x1 || N < L.n0 || N > L.n1) return heightRaw(X, N);
+  const HG = WORLD.hgrid;
+  if (HG && HG.ready) {
+    const fx = (X - L.x0) / L.step, fn = (N - L.n0) / L.step;
+    let i = Math.floor(fx), j = Math.floor(fn); if (i >= HG.nx - 1) i = HG.nx - 2; if (j >= HG.nn - 1) j = HG.nn - 2;
+    const tx = fx - i, tn = fn - j, k = j * HG.nx + i, H = HG.h;
+    const a = H[k], b = H[k + 1], d = H[k + HG.nx], e = H[k + HG.nx + 1];
+    return tx + tn <= 1 ? a + (b - a) * tx + (d - a) * tn : e + (d - e) * (1 - tx) + (b - e) * (1 - tn);
+  }
   const fx = (X - L.x0) / L.step, fn = (N - L.n0) / L.step, i = Math.floor(fx), j = Math.floor(fn), tx = fx - i, tn = fn - j;
   const g = (ii, jj) => { const vx = L.x0 + ii * L.step, vn = L.n0 + jj * L.step; return groundH(vx, vn, latticeAt(vx, vn)); };
   return lerp(lerp(g(i, j), g(i + 1, j), tx), lerp(g(i, j + 1), g(i + 1, j + 1), tx), tn);
@@ -159,26 +179,72 @@ function fieldAt(X, N) {
   const ex = Math.min(fx - i, 1 - (fx - i)) * FIELD.w, en = Math.min(fn - j, 1 - (fn - j)) * FIELD.h;
   return { t, edge: Math.min(ex, en), i, j, u: fx - i, v: fn - j };
 }
+/* Vertex colour carries everything that is not crop (verges, ballast shoulders, banks, roads, hills).
+   out[3] is the crop weight; the ground shader paints the crop pattern itself, per pixel. */
 function groundColor(X, N, h, lat, out) {
-  const f = fieldAt(X, N);
-  let c = f.t.c;
-  let r = c[0], g = c[1], b = c[2];
-  if (f.t.n === 'woods' && !(f.u > 0.18 && f.u < 0.82 && f.v > 0.2 && f.v < 0.78)) { r = 0.40; g = 0.50; b = 0.24; }
-  if (f.edge < 7) { const w = 1 - f.edge / 7; r = lerp(r, 0.30, w * 0.7); g = lerp(g, 0.38, w * 0.7); b = lerp(b, 0.18, w * 0.7); }
-  // rows / streaks for crops
-  if (f.t.n === 'corn' || f.t.n === 'soy') { const row = 0.5 + 0.5 * Math.sin(X * 1.9); r *= 0.92 + 0.08 * row; g *= 0.92 + 0.08 * row; }
-  // right of way
-  if (lat && lat.d < 30) { const w = 1 - smooth(6, 30, lat.d); r = lerp(r, 0.34, w); g = lerp(g, 0.45, w); b = lerp(b, 0.21, w);
-    if (lat.d < 7) { const w2 = 1 - smooth(3, 7, lat.d); r = lerp(r, 0.34, w2); g = lerp(g, 0.33, w2); b = lerp(b, 0.30, w2); } }
+  let r = 0.37, g = 0.49, b = 0.22, w = 1;
+  if (lat && lat.d < 30) {
+    const k = 1 - smooth(6, 30, lat.d); r = lerp(r, 0.34, k); g = lerp(g, 0.45, k); b = lerp(b, 0.21, k); w *= 1 - k;
+    if (lat.d < 7) { const k2 = 1 - smooth(3, 7, lat.d); r = lerp(r, 0.34, k2); g = lerp(g, 0.33, k2); b = lerp(b, 0.30, k2); }
+  }
   const dr = riverDist(X, N);
-  if (dr < 60) { const w = 1 - smooth(18, 60, dr); r = lerp(r, 0.36, w); g = lerp(g, 0.35, w); b = lerp(b, 0.25, w); }
-  // roads (gravel shoulders)
-  for (const rx of WORLD.roadsX) { const dd = Math.abs(X - rx); if (dd < 9) { const w = 1 - smooth(4, 9, dd); r = lerp(r, 0.5, w); g = lerp(g, 0.47, w); b = lerp(b, 0.40, w); } }
-  if (Math.abs(N - WORLD.roadN) < 10) { const w = 1 - smooth(5, 10, Math.abs(N - WORLD.roadN)); r = lerp(r, 0.5, w); g = lerp(g, 0.47, w); b = lerp(b, 0.40, w); }
-  if (h > 30) { const w = smooth(30, 70, h); r = lerp(r, 0.30, w); g = lerp(g, 0.36, w); b = lerp(b, 0.22, w); }
-  const n = (0.82 + 0.3 * (Noise.n2(X / 37, N / 37) * 0.5 + 0.5)) * (0.9 + 0.2 * Noise.hash(f.i * 7 + 3, f.j * 5 + 1));
-  out[0] = r * n; out[1] = g * n; out[2] = b * n;
+  if (dr < 60) { const k = 1 - smooth(18, 60, dr); r = lerp(r, 0.36, k); g = lerp(g, 0.35, k); b = lerp(b, 0.25, k); w *= 1 - k; }
+  for (const rx of WORLD.roadsX) { const dd = Math.abs(X - rx); if (dd < 9) { const k = 1 - smooth(4, 9, dd); r = lerp(r, 0.5, k); g = lerp(g, 0.47, k); b = lerp(b, 0.40, k); w *= 1 - k; } }
+  if (Math.abs(N - WORLD.roadN) < 10) { const k = 1 - smooth(5, 10, Math.abs(N - WORLD.roadN)); r = lerp(r, 0.5, k); g = lerp(g, 0.47, k); b = lerp(b, 0.40, k); w *= 1 - k; }
+  if (h > 30) { const k = smooth(30, 70, h); r = lerp(r, 0.30, k); g = lerp(g, 0.36, k); b = lerp(b, 0.22, k); w *= 1 - k * 0.85; }
+  if (WORLD.townMask && inTown(X, N)) { r = 0.36; g = 0.47; b = 0.22; w = 0; }
+  const n = 0.84 + 0.3 * (Noise.n2(X / 37, N / 37) * 0.5 + 0.5);
+  out[0] = r * n; out[1] = g * n; out[2] = b * n; out[3] = w;
 }
+const CROP_IDS = { corn: 0, soy: 1, stubble: 2, plowed: 3, pasture: 4, wheat: 5, woods: 6 };
+function makeFieldTexture() {
+  const i0 = 40, j0 = 80, w = 128, h = 256;
+  const data = new Uint8Array(w * h * 4);
+  for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
+    const fi = i0 + i, fj = j0 + j;
+    let r = Noise.hash(fi, fj), acc = 0, t = CROPS[0];
+    for (const c of CROPS) { acc += c.p; if (r <= acc) { t = c; break; } }
+    const k = (j * w + i) * 4;
+    data[k] = CROP_IDS[t.n] * 36; data[k + 1] = Noise.hash(fi * 3 + 7, fj * 5 + 2) < 0.5 ? 0 : 255; data[k + 2] = (Noise.hash(fi * 7 + 3, fj * 5 + 1) * 255) | 0; data[k + 3] = 255;
+  }
+  const tex = new THREE.DataTexture(data, w, h, THREE.RGBAFormat);
+  tex.magFilter = THREE.NearestFilter; tex.minFilter = THREE.NearestFilter; tex.generateMipmaps = false; tex.needsUpdate = true;
+  return { tex, i0, j0, w, h };
+}
+const CROP_GLSL = `
+  {
+    vec2 fxy = vec2((vWPos.x + 40000.0) / 420.0, (-vWPos.z + 40000.0) / 260.0);
+    vec2 cell = floor(fxy);
+    vec4 fd = texture2D(uField, (cell - uFieldXf.xy + 0.5) / uFieldXf.zw);
+    float type = floor(fd.r * 255.0 / 36.0 + 0.5);
+    vec2 fl = fxy - cell;
+    float edgeM = min(min(fl.x, 1.0 - fl.x) * 420.0, min(fl.y, 1.0 - fl.y) * 260.0);
+    vec3 crop = vec3(0.37, 0.49, 0.22); float rowSp = 0.0; float rowAmp = 0.0;
+    if (type < 0.5)      { crop = vec3(0.60, 0.53, 0.31); rowSp = 0.76; rowAmp = 0.35; }
+    else if (type < 1.5) { crop = vec3(0.50, 0.36, 0.20); rowSp = 0.38; rowAmp = 0.32; }
+    else if (type < 2.5) { crop = vec3(0.74, 0.64, 0.40); rowSp = 0.19; rowAmp = 0.25; }
+    else if (type < 3.5) { crop = vec3(0.29, 0.21, 0.15); rowSp = 0.36; rowAmp = 0.5; }
+    else if (type < 4.5) { crop = vec3(0.36, 0.53, 0.23); }
+    else if (type < 5.5) { crop = vec3(0.27, 0.50, 0.17); rowSp = 0.19; rowAmp = 0.5; }
+    else { crop = (fl.x < 0.18 || fl.x > 0.82 || fl.y < 0.2 || fl.y > 0.78) ? vec3(0.40, 0.50, 0.24) : vec3(0.30, 0.27, 0.17); }
+    crop *= 0.88 + 0.24 * fd.b;
+    if (rowSp > 0.0) {
+      float across = fd.g > 0.5 ? vWPos.x : vWPos.z;
+      float ph = across / rowSp;
+      float fw = fwidth(ph);
+      float stripe = 0.5 + 0.5 * cos(ph * 6.2831853);
+      float aa = 1.0 - smoothstep(0.25, 0.8, fw);
+      if (type > 4.5 && type < 5.5) crop = mix(crop, vec3(0.33, 0.25, 0.17), (1.0 - stripe) * 0.6 * aa + 0.25 * (1.0 - aa));
+      else crop *= mix(1.0, 1.0 - rowAmp + rowAmp * 1.5 * stripe, aa);
+    }
+    float hedge = 1.0 - smoothstep(1.0, 4.5, edgeM);
+    crop = mix(crop, vec3(0.33, 0.42, 0.19), hedge * 0.85);
+    float speck = texture2D(map, vWPos.xz * 0.27).r;
+    float macro = texture2D(map, vWPos.xz * 0.0021 + 0.37).r;
+    crop *= (0.8 + 0.3 * speck) * (0.85 + 0.3 * macro);
+    vec4 mtx = mapTexelToLinear(texture2D(map, vUv));
+    diffuseColor.rgb = mix(diffuseColor.rgb, pow(crop, vec3(2.2)) * mtx.rgb, vCropW);
+  }`;
 
 /* ---------------- terrain tiles ---------------- */
 function buildTerrainTile(x0, n0, size, step, scene) {
@@ -191,8 +257,9 @@ function buildTerrainTile(x0, n0, size, step, scene) {
 function terrainGeo(x0, n0, size, step) {
   const n = Math.round(size / step) + 1;
   const verts = n * n, skirt = 4 * (n - 1) * 2;
-  const pos = new Float32Array((verts + skirt) * 3), col = new Float32Array((verts + skirt) * 3), uv = new Float32Array((verts + skirt) * 2);
-  const c = [0, 0, 0];
+  const pos = new Float32Array((verts + skirt) * 3), col = new Float32Array((verts + skirt) * 3), uv = new Float32Array((verts + skirt) * 2), crop = new Float32Array(verts + skirt);
+  const c = [0, 0, 0, 0];
+  const HG = WORLD.hgrid, fill = HG && step === INNER.step;
   for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
     const X = x0 + i * step, N = n0 + j * step;
     const lat = latticeAt(X, N);
@@ -200,8 +267,9 @@ function terrainGeo(x0, n0, size, step) {
     const k = j * n + i;
     pos[k * 3] = X; pos[k * 3 + 1] = h; pos[k * 3 + 2] = -N;
     groundColor(X, N, h, lat, c);
-    col[k * 3] = c[0]; col[k * 3 + 1] = c[1]; col[k * 3 + 2] = c[2];
+    col[k * 3] = c[0]; col[k * 3 + 1] = c[1]; col[k * 3 + 2] = c[2]; crop[k] = c[3];
     uv[k * 2] = X / 14; uv[k * 2 + 1] = N / 14;
+    if (fill) { const gi = Math.round((X - INNER.x0) / step), gj = Math.round((N - INNER.n0) / step); if (gi >= 0 && gj >= 0 && gi < HG.nx && gj < HG.nn) HG.h[gj * HG.nx + gi] = h; }
   }
   const idx = [];
   for (let j = 0; j < n - 1; j++) for (let i = 0; i < n - 1; i++) {
@@ -216,7 +284,7 @@ function terrainGeo(x0, n0, size, step) {
     for (let q = 0; q < L.length - 1; q++) {
       const a = L[q], b = L[q + 1];
       const sa = v++, sb = v++;
-      for (const [src, dst] of [[a, sa], [b, sb]]) { pos[dst * 3] = pos[src * 3]; pos[dst * 3 + 1] = pos[src * 3 + 1] - 9; pos[dst * 3 + 2] = pos[src * 3 + 2]; col.copyWithin(dst * 3, src * 3, src * 3 + 3); uv[dst * 2] = uv[src * 2]; uv[dst * 2 + 1] = uv[src * 2 + 1]; }
+      for (const [src, dst] of [[a, sa], [b, sb]]) { pos[dst * 3] = pos[src * 3]; pos[dst * 3 + 1] = pos[src * 3 + 1] - 9; pos[dst * 3 + 2] = pos[src * 3 + 2]; col.copyWithin(dst * 3, src * 3, src * 3 + 3); crop[dst] = crop[src]; uv[dst * 2] = uv[src * 2]; uv[dst * 2 + 1] = uv[src * 2 + 1]; }
       idx.push(a, sa, b, b, sa, sb, a, b, sa, b, sb, sa);
     }
   }
@@ -224,6 +292,7 @@ function terrainGeo(x0, n0, size, step) {
   geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
   geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
   geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  geo.setAttribute('aCrop', new THREE.BufferAttribute(crop, 1));
   geo.setIndex(idx);
   geo.computeVertexNormals();
   geo.computeBoundingSphere();
@@ -232,19 +301,19 @@ function terrainGeo(x0, n0, size, step) {
 function buildFarTerrain(scene) {
   const x0 = -22000, x1 = 22000, n0 = -18000, n1 = 24000, st = 250;
   const nx = Math.round((x1 - x0) / st) + 1, nn = Math.round((n1 - n0) / st) + 1;
-  const pos = new Float32Array(nx * nn * 3), col = new Float32Array(nx * nn * 3), uv = new Float32Array(nx * nn * 2), c = [0, 0, 0];
+  const pos = new Float32Array(nx * nn * 3), col = new Float32Array(nx * nn * 3), uv = new Float32Array(nx * nn * 2), crop = new Float32Array(nx * nn), c = [0, 0, 0, 0];
   for (let j = 0; j < nn; j++) for (let i = 0; i < nx; i++) {
     const X = x0 + i * st, N = n0 + j * st, k = j * nx + i;
     const inside = X > INNER.x0 + 1 && X < INNER.x1 - 1 && N > INNER.n0 + 1 && N < INNER.n1 - 1;
     const h = inside ? -60 : heightRaw(X, N);
     pos[k * 3] = X; pos[k * 3 + 1] = h; pos[k * 3 + 2] = -N;
-    groundColor(X, N, h, null, c); col.set(c, k * 3);
+    groundColor(X, N, h, null, c); col[k * 3] = c[0]; col[k * 3 + 1] = c[1]; col[k * 3 + 2] = c[2]; crop[k] = c[3];
     uv[k * 2] = X / 14; uv[k * 2 + 1] = N / 14;
   }
   const idx = [];
   for (let j = 0; j < nn - 1; j++) for (let i = 0; i < nx - 1; i++) { const a = j * nx + i, b = a + 1, d = a + nx, e = d + 1; idx.push(a, b, d, b, e, d); }
   const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3)); geo.setAttribute('color', new THREE.BufferAttribute(col, 3)); geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3)); geo.setAttribute('color', new THREE.BufferAttribute(col, 3)); geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2)); geo.setAttribute('aCrop', new THREE.BufferAttribute(crop, 1));
   geo.setIndex(idx); geo.computeVertexNormals(); geo.computeBoundingSphere();
   const m = new THREE.Mesh(geo, MAT.ground); m.receiveShadow = false; scene.add(m);
 }
@@ -453,7 +522,7 @@ function buildTrack(scene) {
       const jm = null;
       // bounding sphere for the piece
       const sph = rails.geometry.boundingSphere.clone(); sph.radius += 8;
-      grp.userData = { sphere: sph, ties: tieChunks, edge: e };
+      grp.userData = { sphere: sph, ties: tieChunks, edge: e, s0, s1 };
       scene.add(grp);
       WORLD.pieces.push(grp);
     }

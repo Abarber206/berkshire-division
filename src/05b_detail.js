@@ -1,0 +1,427 @@
+/* ============================================================================
+   Ground detail & country life: standing corn, roadside grass and wildflowers,
+   pasture fences, cattle, hay bales, and small towns around the depots.
+   ========================================================================== */
+const DET = { cornGroups: [], lifeGroups: [], grassMats: [], timeU: { value: 0 } };
+
+/* ---------- precise distance to any track (2 m samples hashed in 10 m cells) ---------- */
+function buildTrackHash() {
+  const H = new Map();
+  for (const e of NET.edges) for (let s = 0; s <= e.len; s += 2) {
+    const [X, N] = e.xz(s), k = Math.floor(X / 10) + ',' + Math.floor(N / 10);
+    let a = H.get(k); if (!a) H.set(k, a = []); a.push(X, N);
+  }
+  WORLD.trackHash = H;
+  // coarse samples for "how far is this field from the railroad"
+  const C = []; for (const e of NET.edges) for (let s = 0; s <= e.len; s += 60) C.push(e.xz(s));
+  WORLD.trackCoarse = C;
+}
+function distToTrack(X, N) {
+  const H = WORLD.trackHash, ix = Math.floor(X / 10), iy = Math.floor(N / 10); let d = 99;
+  for (let j = iy - 1; j <= iy + 1; j++) for (let i = ix - 1; i <= ix + 1; i++) {
+    const a = H.get(i + ',' + j); if (!a) continue;
+    for (let q = 0; q < a.length; q += 2) { const dd = Math.hypot(a[q] - X, a[q + 1] - N); if (dd < d) d = dd; }
+  }
+  return d;
+}
+function farFromTrack(X, N) { let d = 1e9; for (const p of WORLD.trackCoarse) { const dd = (p[0] - X) ** 2 + (p[1] - N) ** 2; if (dd < d) d = dd; } return Math.sqrt(d); }
+const onRoad = (X, N, pad) => { for (const rx of WORLD.roadsX) if (Math.abs(X - rx) < pad) return true; return Math.abs(N - WORLD.roadN) < pad; };
+
+/* ---------- textures ---------- */
+function detailTextures() {
+  const blades = (g, w, h, r, n, cols, hMin) => {
+    for (let i = 0; i < n; i++) {
+      const x0 = w * (0.1 + 0.8 * r()), lean = (r() - 0.5) * w * 0.45, top = h * (1 - (hMin + (1 - hMin) * r()));
+      g.strokeStyle = cols[(r() * cols.length) | 0]; g.lineWidth = 1.5 + r() * 2.5; g.lineCap = 'round';
+      g.beginPath(); g.moveTo(x0, h); g.quadraticCurveTo(x0 + lean * 0.2, (h + top) / 2, x0 + lean, top); g.stroke();
+    }
+  };
+  TEX.grass = canvasTex(128, 128, (g, w, h) => { const r = rng(21); blades(g, w, h, r, 70, ['#e9eedc', '#d3dcc0', '#f4f2e2', '#bfcaa6'], 0.35); });
+  TEX.goldenrod = canvasTex(128, 128, (g, w, h) => {
+    const r = rng(22); blades(g, w, h, r, 26, ['#6f8a45', '#5e7a3b'], 0.45);
+    for (let k = 0; k < 7; k++) { const cx = w * (0.15 + 0.7 * r()), cy = h * (0.08 + 0.3 * r()); for (let i = 0; i < 40; i++) { g.fillStyle = r() < 0.5 ? '#f0c63a' : '#d9a92a'; g.beginPath(); g.arc(cx + (r() - 0.5) * 22 + (i / 40) * 10, cy + (r() - 0.2) * 16 + i * 0.5, 1.6 + r() * 1.8, 0, TAU); g.fill(); } }
+  });
+  TEX.aster = canvasTex(128, 128, (g, w, h) => {
+    const r = rng(23); blades(g, w, h, r, 30, ['#6c8546', '#57703a'], 0.4);
+    for (let i = 0; i < 46; i++) { const x = w * (0.1 + 0.8 * r()), y = h * (0.1 + 0.45 * r()); g.fillStyle = r() < 0.7 ? '#a48ad8' : '#eeeaf6'; g.beginPath(); g.arc(x, y, 2.4 + r() * 1.6, 0, TAU); g.fill(); g.fillStyle = '#e8c33a'; g.beginPath(); g.arc(x, y, 0.9, 0, TAU); g.fill(); }
+  });
+  TEX.cornWall = canvasTex(256, 128, (g, w, h) => {
+    const r = rng(31);
+    const grd = g.createLinearGradient(0, h * 0.25, 0, h); grd.addColorStop(0, '#8a7445'); grd.addColorStop(0.6, '#5f4f2f'); grd.addColorStop(1, '#3d3220');
+    g.fillStyle = grd; g.fillRect(0, h * 0.3, w, h * 0.7);
+    for (let i = 0; i < 120; i++) { // stalks
+      const x = r() * w, top = h * (0.06 + 0.22 * r());
+      g.strokeStyle = r() < 0.5 ? '#b49a5e' : '#9c8550'; g.lineWidth = 1.5 + r() * 1.5;
+      g.beginPath(); g.moveTo(x, h); g.lineTo(x + (r() - 0.5) * 4, top); g.stroke();
+      for (let l = 0; l < 3; l++) { const ly = top + (h - top) * (0.15 + 0.5 * r()), dir = r() < 0.5 ? -1 : 1; g.strokeStyle = r() < 0.5 ? '#c8ad6c' : '#a48b52'; g.lineWidth = 2 + r() * 2; g.beginPath(); g.moveTo(x, ly); g.quadraticCurveTo(x + dir * 10, ly - 6, x + dir * (14 + r() * 10), ly + 10 + r() * 8); g.stroke(); }
+      if (r() < 0.7) { g.strokeStyle = '#d8bf7c'; g.lineWidth = 1; for (let t = 0; t < 4; t++) { g.beginPath(); g.moveTo(x, top); g.lineTo(x + (r() - 0.5) * 10, top - 4 - r() * 6); g.stroke(); } }
+    }
+  }, { repeat: true });
+  TEX.cornTop = canvasTex(128, 128, (g, w, h) => {
+    const r = rng(32); g.fillStyle = '#6d5b36'; g.fillRect(0, 0, w, h);
+    for (let i = 0; i < 520; i++) { const x = r() * w, y = r() * h, a = r() * TAU, L = 4 + r() * 12; g.strokeStyle = ['#b49a5e', '#c9b072', '#8f7a48', '#a99057'][(r() * 4) | 0]; g.lineWidth = 1.5 + r() * 2; g.beginPath(); g.moveTo(x, y); g.lineTo(x + Math.cos(a) * L, y + Math.sin(a) * L); g.stroke(); }
+    for (let i = 0; i < 60; i++) { g.fillStyle = 'rgba(30,24,12,0.5)'; g.beginPath(); g.arc(r() * w, r() * h, 2 + r() * 3, 0, TAU); g.fill(); }
+  }, { repeat: true });
+  TEX.hay = canvasTex(64, 64, (g, w, h) => { const r = rng(33); g.fillStyle = '#b89a55'; g.fillRect(0, 0, w, h); for (let i = 0; i < 220; i++) { g.strokeStyle = r() < 0.5 ? '#d6bd78' : '#8f7640'; g.lineWidth = 1; const y = r() * h; g.beginPath(); g.moveTo(0, y); g.lineTo(w, y + (r() - 0.5) * 6); g.stroke(); } }, { repeat: true });
+  const roofT = canvasTex(64, 64, (g, w, h) => { const r = rng(34); g.fillStyle = '#fff'; g.fillRect(0, 0, w, h); for (let y = 0; y < h; y += 8) for (let x = ((y / 8) % 2) * 6 - 6; x < w; x += 12) { const v = 170 + r() * 80 | 0; g.fillStyle = `rgb(${v},${v},${v})`; g.fillRect(x, y, 11, 7); } }, { repeat: true });
+  const sideT = canvasTex(64, 64, (g, w, h) => { g.fillStyle = '#fff'; g.fillRect(0, 0, w, h); for (let y = 0; y < h; y += 8) { g.fillStyle = 'rgba(0,0,0,0.16)'; g.fillRect(0, y + 6, w, 2); } }, { repeat: true });
+  const brickT = canvasTex(128, 128, (g, w, h) => { g.fillStyle = '#b8b0a8'; g.fillRect(0, 0, w, h); const r = rng(35); for (let y = 0; y < h; y += 8) for (let x = ((y / 8) % 2) * 8 - 8; x < w; x += 16) { const v = 0.82 + r() * 0.3; g.fillStyle = `rgb(${255 * v | 0},${255 * v | 0},${255 * v | 0})`; g.fillRect(x + 1, y + 1, 14, 6); } }, { repeat: true });
+  SMAT.sidingVC = new THREE.MeshLambertMaterial({ vertexColors: true, map: sideT });
+  SMAT.roofVC = new THREE.MeshLambertMaterial({ vertexColors: true, map: roofT });
+  SMAT.brickVC = new THREE.MeshLambertMaterial({ vertexColors: true, map: brickT });
+  SMAT.vc = new THREE.MeshLambertMaterial({ vertexColors: true });
+  SMAT.awning = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
+  SMAT.cornTop = new THREE.MeshLambertMaterial({ map: TEX.cornTop });
+  SMAT.cornWall = new THREE.MeshLambertMaterial({ map: TEX.cornWall, alphaTest: 0.5, side: THREE.DoubleSide });
+  SMAT.hay = new THREE.MeshLambertMaterial({ map: TEX.hay, vertexColors: true });
+  SMAT.post = new THREE.MeshLambertMaterial({ color: 0x6a5a48, map: TEX.wood });
+  const sway = sh => {
+    sh.uniforms.uTime = DET.timeU;
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nuniform float uTime;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\n#ifdef USE_INSTANCING\n float sw = sin(uTime * 1.8 + instanceMatrix[3].x * 0.37 + instanceMatrix[3].z * 0.23) * 0.08 * position.y;\n transformed.x += sw; transformed.z += sw * 0.6;\n#endif');
+  };
+  for (const k of ['grass', 'goldenrod', 'aster']) {
+    const m = new THREE.MeshLambertMaterial({ map: TEX[k], alphaTest: 0.5 });
+    m.onBeforeCompile = sway; m.customProgramCacheKey = () => 'sway';
+    SMAT['g_' + k] = m; DET.grassMats.push(m);
+  }
+}
+const colorize = (g, c) => { const a = new Float32Array(g.attributes.position.count * 3); for (let i = 0; i < a.length; i += 3) { a[i] = c[0]; a[i + 1] = c[1]; a[i + 2] = c[2]; } g.setAttribute('color', new THREE.BufferAttribute(a, 3)); return g; };
+const hex3 = h => [((h >> 16) & 255) / 255, ((h >> 8) & 255) / 255, (h & 255) / 255];
+
+/* ---------- towns around the depots ---------- */
+function planTowns() {
+  WORLD.towns = [];
+  for (const st of ROUTE.stations) {
+    if (st.kind !== 'depot' && st.kind !== 'small') continue;
+    const loc = st.line.locate(st.sLine); loc.edge.pose(loc.s, FR);
+    const h = Math.atan2(-FR.f.z, FR.f.x);
+    const T = { name: st.name, X: FR.p.x, N: -FR.p.z, h, side: st.side, big: st.kind === 'depot', lots: [], streets: [] };
+    T.at = (u, v) => [T.X + Math.cos(h) * u + Math.sin(h) * T.side * v, T.N + Math.sin(h) * u - Math.cos(h) * T.side * v];
+    WORLD.towns.push(T);
+    const U = T.big ? 300 : 180, V = T.big ? 215 : 150;
+    T.U = U; T.V = V;
+    // where the county road already runs alongside the depot, it serves as Main Street
+    const [, mn] = T.at(0, 44), countyMain = Math.abs(Math.sin(h)) < 0.1 && Math.abs(mn - WORLD.roadN) < 40;
+    const mainV = countyMain ? Math.abs(WORLD.roadN - T.N) : 44;
+    if (!countyMain) T.streets.push([[-U, 44], [U, 44], 9]);
+    for (const v of (T.big ? [112, 182] : [112])) T.streets.push([[-U + 20, v], [U - 20, v], 7]);
+    for (const u of (T.big ? [-200, -100, 0, 100, 200] : [-100, 0, 100])) T.streets.push([[u, mainV], [u, V], 7]);
+    const r = rng(st.name.length * 97 + 13);
+    const ok = (u, v, rad) => { const [X, N] = T.at(u, v); const lat = latticeAt(X, N); if (lat && lat.d < 26 + rad) return false; if (riverDist(X, N) < 55 + rad) return false; if (onRoad(X, N, 8 + rad)) return false; if (kept(X, N, rad)) return false; return X > INNER.x0 + 60 && X < INNER.x1 - 60 && N > INNER.n0 + 60 && N < INNER.n1 - 60; };
+    // commercial block facing the depot
+    const cross = T.streets.filter(s => s[0][0] === s[1][0]).map(s => s[0][0]);
+    const nearCross = (u, half) => cross.some(c => Math.abs(u - c) < half + 6);
+    for (let u = -130; u < 130;) {
+      const w = 10 + r() * 8;
+      if (!nearCross(u + w / 2, w / 2) && ok(u + w / 2, mainV + 17, 6)) T.lots.push({ kind: 'shop', u: u + w / 2, v: mainV + 17, w, d: 16, stories: r() < 0.55 ? 2 : 3, r: r() });
+      u += w + (r() < 0.2 ? 4 : 0.4);
+    }
+    // houses along the residential streets
+    for (const sv of T.streets.filter(s => s[0][1] === s[1][1] && s[0][1] > 100)) {
+      const v0 = sv[0][1];
+      for (const dv of [-15, 15]) for (let u = -U + 34; u < U - 34; u += 21 + r() * 4) {
+        if (nearCross(u, 6) || r() < 0.12) continue;
+        if (!ok(u, v0 + dv, 8)) continue;
+        T.lots.push({ kind: 'house', u, v: v0 + dv, face: dv < 0 ? 1 : -1, w: 8 + r() * 2.5, d: 7 + r() * 2, stories: r() < 0.6 ? 2 : 1, r: r() });
+      }
+    }
+    if (T.big) {
+      if (ok(-150, 150, 18)) T.lots.push({ kind: 'church', u: -150, v: 147, r: r() });
+      if (ok(150, V + 18, 10)) T.lots.push({ kind: 'tower', u: 150, v: V + 18, r: r() });
+    }
+    for (const L of T.lots) { const [X, N] = T.at(L.u, L.v); L.X = X; L.N = N; keep(X, N, L.kind === 'church' ? 18 : L.kind === 'tower' ? 10 : 9); }
+  }
+  WORLD.townMask = true;
+}
+function inTown(X, N) {
+  for (const T of WORLD.towns || []) {
+    const dx = X - T.X, dn = N - T.N; if (dx * dx + dn * dn > 360 * 360) continue;
+    const u = dx * Math.cos(T.h) + dn * Math.sin(T.h), v = (dx * Math.sin(T.h) - dn * Math.cos(T.h)) * T.side;
+    if (Math.abs(u) < T.U + 10 && v > 36 && v < T.V + 30) return true;
+  }
+  return false;
+}
+function buildTowns(scene) {
+  const SID = [0xf1eee4, 0xe9dfb8, 0xc9d3d6, 0xb7c4a6, 0xd8c3a0, 0xe8e4dc, 0xa9b9c9, 0xcfb79a];
+  const ROOF = [0x55585c, 0x4a3c33, 0x3b4a40, 0x5e4a3e, 0x6b6e70];
+  const BRICK = [0x9c4a35, 0x8a3f2e, 0xb0745a, 0xc9a77f, 0x7d3a2b];
+  const AWN = [0x2f5a3c, 0x8e2c24, 0x2c4a6e, 0xc9a24a];
+  for (const T of WORLD.towns) {
+    const yaw = T.side > 0 ? T.h + Math.PI : T.h; // local +z of a building faces the track
+    // streets
+    const pos = [], idx = [];
+    for (const [a, b, w] of T.streets) {
+      const len = Math.hypot(b[0] - a[0], b[1] - a[1]), n = Math.max(1, Math.ceil(len / 8));
+      const du = (b[0] - a[0]) / len, dv = (b[1] - a[1]) / len;
+      let run = 0;
+      for (let i = 0; i <= n; i++) {
+        const u = lerp(a[0], b[0], i / n), v = lerp(a[1], b[1], i / n);
+        const [X0, N0] = T.at(u - dv * w / 2, v + du * w / 2), [X1, N1] = T.at(u + dv * w / 2, v - du * w / 2);
+        const [Xc, Nc] = T.at(u, v); const lat = latticeAt(Xc, Nc);
+        if ((lat && lat.d < 12) || riverDist(Xc, Nc) < 40) { run = 0; continue; }
+        const y = Math.max(groundAt(X0, N0), groundAt(X1, N1), groundAt(Xc, Nc)) + 0.1;
+        const k = pos.length / 3; pos.push(X0, y, -N0, X1, y, -N1);
+        if (run > 0) idx.push(k - 2, k - 1, k, k - 1, k + 1, k);
+        run++;
+      }
+    }
+    const sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); sg.setIndex(idx); sg.computeVertexNormals();
+    for (let i = 0; i < sg.attributes.normal.count; i++) { if (sg.attributes.normal.getY(i) < 0) { const ix = sg.index.array; for (let q = 0; q < ix.length; q += 3) { const t = ix[q + 1]; ix[q + 1] = ix[q + 2]; ix[q + 2] = t; } sg.computeVertexNormals(); } break; }
+    const uvs = new Float32Array(pos.length / 3 * 2); for (let i = 0; i < pos.length / 3; i++) { uvs[i * 2] = pos[i * 3] / 6; uvs[i * 2 + 1] = pos[i * 3 + 2] / 6; } sg.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+    const sm = new THREE.Mesh(sg, SMAT.road); sm.receiveShadow = true; scene.add(sm);
+    for (const L of T.lots) {
+      const gb = binAt(L.X, L.N), y = groundAt(L.X, L.N) - 0.15;
+      const r = rng(Math.floor(L.r * 1e6));
+      if (L.kind === 'shop') {
+        const base = baseM(L.X, y, L.N, yaw);
+        const H = 0.6 + L.stories * 3.6, col = hex3(BRICK[(r() * BRICK.length) | 0]);
+        gb.add('brickVC', colorize(boxT(L.w, H, L.d, 3), col), P(base, 0, H / 2, 0));
+        gb.add('vc', colorize(new THREE.BoxGeometry(L.w + 0.3, 0.45, L.d + 0.3), [0.82, 0.78, 0.68]), P(base, 0, H + 0.1, 0)); // cornice
+        gb.add('vc', colorize(new THREE.BoxGeometry(L.w - 0.4, 0.7, 0.12), [0.12, 0.12, 0.12]), P(base, 0, 3.75, L.d / 2 + 0.06)); // sign band
+        gb.add('win', new THREE.BoxGeometry(L.w - 1.6, 2.2, 0.08), P(base, -0.4, 1.6, L.d / 2 + 0.02));
+        gb.add('trim', new THREE.BoxGeometry(1.0, 2.4, 0.1), P(base, L.w / 2 - 0.9, 1.25, L.d / 2 + 0.03));
+        const ac = hex3(AWN[(r() * AWN.length) | 0]);
+        gb.add('awning', colorize(new THREE.PlaneGeometry(L.w - 0.6, 1.6), ac), P(base, 0, 3.15, L.d / 2 + 0.65, -1.05, 0, 0));
+        for (let s = 2; s <= L.stories; s++) windowsRow(gb, base, -L.w / 2 + 1.6, L.w / 2 - 1.6, 1.0 + (s - 1) * 3.6 + 1.2, L.d / 2, 0.9, 1.6, Math.max(2, Math.round(L.w / 3)));
+      } else if (L.kind === 'house') {
+        const base = baseM(L.X, y, L.N, yaw + (L.face > 0 ? Math.PI : 0));
+        const H = L.stories === 2 ? 5.8 : 3.2, col = hex3(SID[(r() * SID.length) | 0]), rc = hex3(ROOF[(r() * ROOF.length) | 0]);
+        gb.add('sidingVC', colorize(boxT(L.w, H, L.d, 2.4), col), P(base, 0, H / 2 + 0.3, 0));
+        gb.add('roofVC', colorize(gableRoof(L.w, L.d, L.stories === 2 ? 2.6 : 2.2, 0.45), rc), P(base, 0, H + 0.3, 0));
+        gb.add('vc', colorize(new THREE.BoxGeometry(L.w + 0.1, 0.4, L.d + 0.1), [0.55, 0.53, 0.5]), P(base, 0, 0.2, 0)); // foundation
+        gb.add('vc', colorize(new THREE.BoxGeometry(L.w * 0.7, 0.12, 2.0), [0.92, 0.9, 0.85]), P(base, 0, 2.9, L.d / 2 + 1.0)); // porch roof
+        gb.add('vc', colorize(new THREE.BoxGeometry(L.w * 0.7, 0.25, 2.0), [0.6, 0.57, 0.52]), P(base, 0, 0.45, L.d / 2 + 1.0)); // porch deck
+        for (const px of [-L.w * 0.33, L.w * 0.33]) gb.add('vc', colorize(new THREE.BoxGeometry(0.14, 2.4, 0.14), [0.95, 0.94, 0.9]), P(base, px, 1.7, L.d / 2 + 1.9));
+        gb.add('trim', new THREE.BoxGeometry(0.95, 2.1, 0.08), P(base, 0, 1.45, L.d / 2 + 0.02));
+        windowsRow(gb, base, -L.w / 2 + 1.4, L.w / 2 - 1.4, 1.9, L.d / 2, 0.85, 1.3, 2);
+        if (L.stories === 2) windowsRow(gb, base, -L.w / 2 + 1.4, L.w / 2 - 1.4, 4.6, L.d / 2, 0.85, 1.2, 3);
+        windowsRow(gb, base, -L.w / 2 + 1.4, L.w / 2 - 1.4, 1.9, -L.d / 2, 0.85, 1.3, 2, -1);
+        gb.add('brick', boxT(0.6, 2.4, 0.6), P(base, L.w * 0.28, H + 1.6, -0.6));
+        if (r() < 0.35) { gb.add('sidingVC', colorize(boxT(3.6, 2.8, 6), col), P(base, L.w / 2 + 2.6, 1.4, -1.0)); gb.add('roofVC', colorize(gableRoof(3.6, 6, 1.0, 0.25), rc), P(base, L.w / 2 + 2.6, 2.8, -1.0)); }
+        for (let t = 0; t < 2; t++) if (r() < 0.75) { const [tx, tn] = T.at(L.u + (r() - 0.5) * 14, L.v + L.face * (-8 - r() * 4)); (SCN.extraTrees || (SCN.extraTrees = [])).push([tx, tn, 0.9 + r() * 0.6, null]); }
+      } else if (L.kind === 'church') {
+        const base = baseM(L.X, y, L.N, yaw);
+        gb.add('white', boxT(12, 8, 22, 2.4), P(base, 0, 4, 0));
+        gb.add('slate', gableRoof(22, 12, 6.0, 0.5).rotateY(Math.PI / 2), P(base, 0, 8, 0));
+        gb.add('white', boxT(4.6, 15, 4.6, 2.4), P(base, 0, 7.5, 12.8));
+        gb.add('slate', new THREE.ConeGeometry(3.3, 11, 4).rotateY(Math.PI / 4), P(base, 0, 20.5, 12.8));
+        gb.add('trim', new THREE.BoxGeometry(1.6, 3.0, 0.1), P(base, 0, 1.5, 15.12));
+        for (const z of [-7, -2, 3]) for (const s of [-1, 1]) gb.add('win', new THREE.BoxGeometry(0.08, 3.4, 1.1), P(base, s * 6.03, 4.4, z));
+        gb.add('win', new THREE.CylinderGeometry(0.8, 0.8, 0.08, 16).rotateX(Math.PI / 2), P(base, 0, 11.0, 15.12));
+        keep(L.X, L.N, 18);
+      } else if (L.kind === 'tower') {
+        const base = baseM(L.X, y, L.N, yaw);
+        for (let k = 0; k < 4; k++) { const a = k * Math.PI / 2 + Math.PI / 4; gb.add('silver', new THREE.CylinderGeometry(0.25, 0.32, 30, 8), P(base, Math.cos(a) * 4.2, 15, Math.sin(a) * 4.2)); }
+        gb.add('silver', new THREE.CylinderGeometry(0.6, 0.6, 30, 10), P(base, 0, 15, 0));
+        gb.add('silver', new THREE.SphereGeometry(7, 24, 14).scale(1, 0.72, 1), P(base, 0, 34, 0));
+        gb.add('silver', new THREE.ConeGeometry(2.2, 2.2, 16), P(base, 0, 39.8, 0));
+        const k = 'twr_' + T.name; SMAT[k] = new THREE.MeshLambertMaterial({ map: canvasTex(512, 128, (g, w, h) => { g.fillStyle = '#c8ccd0'; g.fillRect(0, 0, w, h); g.fillStyle = '#23405e'; g.font = 'bold 84px "Arial Narrow", Arial'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(T.name.toUpperCase(), w / 2, h / 2 + 4); }) });
+        gb.add(k, new THREE.CylinderGeometry(7.02, 7.02, 2.6, 32, 1, true, -0.7, 1.4), P(base, 0, 34, 0));
+      }
+    }
+    // street trees
+    for (const [a, b] of T.streets) { const len = Math.hypot(b[0] - a[0], b[1] - a[1]); for (let s = 10; s < len; s += 17) { const t = s / len, u = lerp(a[0], b[0], t), v = lerp(a[1], b[1], t), ndv = (b[0] - a[0]) / len, ndu = -(b[1] - a[1]) / len; for (const side of [-1, 1]) { if (Math.random() < 0.35) continue; const [X, N] = T.at(u + ndu * side * 7.5, v + ndv * side * 7.5); if (kept(X, N, 1) || onRoad(X, N, 6)) continue; const lat = latticeAt(X, N); if (lat && lat.d < 20) continue; (SCN.extraTrees || (SCN.extraTrees = [])).push([X, N, 1.0 + Math.random() * 0.5, null]); } } }
+  }
+}
+
+/* ---------- standing corn ---------- */
+function buildCorn(scene) {
+  const L = INNER, HG = WORLD.hgrid, nx = HG.nx, nn = HG.nn;
+  const corn = new Uint8Array(nx * nn);
+  for (let j = 0; j < nn - 1; j++) for (let i = 0; i < nx - 1; i++) {
+    const X = L.x0 + i * 20 + 10, N = L.n0 + j * 20 + 10;
+    if (fieldAt(X, N).t.n !== 'corn') continue;
+    let bad = false;
+    for (const [cx, cn] of [[X - 10, N - 10], [X + 10, N - 10], [X - 10, N + 10], [X + 10, N + 10]]) { const lat = latticeAt(cx, cn); if (lat && lat.d < 34) { bad = true; break; } }
+    if (bad || onRoad(X, N, 18) || riverDist(X, N) < 70 || kept(X, N, 14) || inTown(X, N)) continue;
+    if (groundAt(X, N) > 34) continue;
+    corn[j * nx + i] = 1;
+  }
+  const isC = (i, j) => i >= 0 && j >= 0 && i < nx - 1 && j < nn - 1 && corn[j * nx + i] === 1;
+  const hAt = (i, j) => HG.h[j * nx + i];
+  const jit = (i, j) => (Noise.hash(i * 7 + 1, j * 13 + 5) - 0.5) * 0.3;
+  const bins = new Map();
+  const bin = (X, N) => { const k = Math.floor((X + 20000) / 1500) + ',' + Math.floor((N + 20000) / 1500); let b = bins.get(k); if (!b) bins.set(k, b = { top: [], tuv: [], wall: [], wuv: [], pts: [] }); return b; };
+  for (let j = 0; j < nn - 1; j++) for (let i = 0; i < nx - 1; i++) {
+    if (!isC(i, j)) continue;
+    const X0 = L.x0 + i * 20, N0 = L.n0 + j * 20, b = bin(X0 + 10, N0 + 10);
+    const v = (ii, jj, up) => [L.x0 + ii * 20, hAt(ii, jj) + up + (up > 1 ? jit(ii, jj) : 0), -(L.n0 + jj * 20)];
+    const a = v(i, j, 2.3), c1 = v(i + 1, j, 2.3), d = v(i, j + 1, 2.3), e = v(i + 1, j + 1, 2.3);
+    for (const p of [a, c1, d, c1, e, d]) { b.top.push(...p); b.tuv.push(p[0] / 3.5, -p[2] / 3.5); }
+    b.pts.push(new THREE.Vector3(X0 + 10, a[1], -(N0 + 10)));
+    // walls on edges facing non-corn cells
+    const edges = [[i, j, i + 1, j, !isC(i, j - 1)], [i + 1, j, i + 1, j + 1, !isC(i + 1, j)], [i + 1, j + 1, i, j + 1, !isC(i, j + 1)], [i, j + 1, i, j, !isC(i - 1, j)]];
+    for (const [ia, ja, ib, jb, need] of edges) {
+      if (!need) continue;
+      const pa0 = v(ia, ja, -0.3), pa1 = v(ia, ja, 2.6), pb0 = v(ib, jb, -0.3), pb1 = v(ib, jb, 2.6);
+      const u0 = (ia * 20 + ja * 20) / 4.5, u1 = u0 + 20 / 4.5;
+      for (const [p, uu, vv] of [[pa0, u0, 0], [pb0, u1, 0], [pa1, u0, 1], [pb0, u1, 0], [pb1, u1, 1], [pa1, u0, 1]]) { b.wall.push(...p); b.wuv.push(uu, vv); }
+    }
+  }
+  for (const [, b] of bins) {
+    if (!b.top.length) continue;
+    const grp = new THREE.Group();
+    const tg = new THREE.BufferGeometry(); tg.setAttribute('position', new THREE.Float32BufferAttribute(b.top, 3)); tg.setAttribute('uv', new THREE.Float32BufferAttribute(b.tuv, 2)); tg.computeVertexNormals();
+    const tm = new THREE.Mesh(tg, SMAT.cornTop); tm.receiveShadow = true; grp.add(tm);
+    if (b.wall.length) { const wg = new THREE.BufferGeometry(); wg.setAttribute('position', new THREE.Float32BufferAttribute(b.wall, 3)); wg.setAttribute('uv', new THREE.Float32BufferAttribute(b.wuv, 2)); wg.computeVertexNormals(); const wm = new THREE.Mesh(wg, SMAT.cornWall); wm.receiveShadow = true; grp.add(wm); }
+    const sp = new THREE.Sphere().setFromPoints(b.pts); sp.radius += 15;
+    grp.userData = { c: sp.center, r: sp.radius };
+    scene.add(grp); DET.cornGroups.push(grp);
+  }
+  WORLD.cornCells = corn;
+}
+
+/* ---------- pastures: fences, cattle; hay bales on stubble ---------- */
+function cowGeos() {
+  const make = (bodyC, faceC, patch) => {
+    const parts = [];
+    const body = new THREE.SphereGeometry(1, 14, 10).scale(0.95, 0.46, 0.36).translate(0, 1.02, 0);
+    if (patch) { const p = body.attributes.position, c = new Float32Array(p.count * 3); for (let i = 0; i < p.count; i++) { const n = Noise.n2(p.getX(i) * 3.1 + 5, p.getZ(i) * 3.3 + p.getY(i) * 2.1); const col = n > 0.08 ? [0.08, 0.08, 0.08] : [0.93, 0.92, 0.88]; c.set(col, i * 3); } body.setAttribute('color', new THREE.BufferAttribute(c, 3)); }
+    else colorize(body, bodyC);
+    parts.push(body);
+    parts.push(colorize(new THREE.BoxGeometry(0.42, 0.34, 0.3).translate(0.98, 1.08, 0), bodyC));
+    parts.push(colorize(new THREE.BoxGeometry(0.34, 0.3, 0.24).rotateZ(-0.6).translate(1.22, 0.9, 0), faceC));
+    parts.push(colorize(new THREE.BoxGeometry(0.16, 0.14, 0.2).rotateZ(-0.6).translate(1.36, 0.72, 0), [0.35, 0.28, 0.26]));
+    for (const s of [-1, 1]) parts.push(colorize(new THREE.BoxGeometry(0.06, 0.1, 0.16).translate(1.12, 1.08, s * 0.2), bodyC));
+    for (const [x, z] of [[0.6, 0.18], [0.6, -0.18], [-0.62, 0.18], [-0.62, -0.18]]) parts.push(colorize(new THREE.CylinderGeometry(0.075, 0.06, 0.82, 6).translate(x, 0.41, z), patch ? [0.9, 0.89, 0.85] : bodyC));
+    parts.push(colorize(new THREE.CylinderGeometry(0.025, 0.02, 0.7, 4).rotateZ(0.25).translate(-0.98, 0.78, 0), bodyC));
+    return mergeGeos(parts);
+  };
+  return [make([0.07, 0.07, 0.07], [0.07, 0.07, 0.07], false), make([0.9, 0.9, 0.86], [0.92, 0.92, 0.9], true), make([0.38, 0.18, 0.11], [0.9, 0.88, 0.82], false)];
+}
+function buildPastureLife(scene) {
+  const cows = cowGeos();
+  const bale = (() => { const g = new THREE.CylinderGeometry(0.78, 0.78, 1.5, 16).rotateX(Math.PI / 2).translate(0, 0.74, 0); const c = new Float32Array(g.attributes.position.count * 3); for (let i = 0; i < g.attributes.position.count; i++) { const end = Math.abs(g.attributes.normal.getZ(i)) > 0.9; c.set(end ? [0.82, 0.74, 0.55] : [1, 1, 1], i * 3); } g.setAttribute('color', new THREE.BufferAttribute(c, 3)); return g; })();
+  const post = (() => { const g = dropFaces(new THREE.BoxGeometry(0.12, 1.4, 0.12), [0, 1, 2, 4, 5]); g.translate(0, 0.7, 0); return g; })();
+  const bins = new Map();
+  const bin = (X, N) => { const k = Math.floor((X + 20000) / 1500) + ',' + Math.floor((N + 20000) / 1500); let b = bins.get(k); if (!b) bins.set(k, b = { cows: [[], [], []], bales: [], posts: [], wires: [], pts: [] }); return b; };
+  const free = (X, N, pad) => { const lat = latticeAt(X, N); if (lat && lat.d < pad) return false; if (riverDist(X, N) < 40 || onRoad(X, N, 9) || kept(X, N, 3) || inTown(X, N)) return false; return X > INNER.x0 + 40 && X < INNER.x1 - 40 && N > INNER.n0 + 40 && N < INNER.n1 - 40; };
+  const r = rng(4242);
+  const i0 = Math.ceil((INNER.x0 + 40000) / FIELD.w), i1 = Math.floor((INNER.x1 + 40000) / FIELD.w) - 1;
+  const j0 = Math.ceil((INNER.n0 + 40000) / FIELD.h), j1 = Math.floor((INNER.n1 + 40000) / FIELD.h) - 1;
+  for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) {
+    const X0 = i * FIELD.w - 40000, N0 = j * FIELD.h - 40000, f = fieldAt(X0 + 5, N0 + 5);
+    if (f.t.n !== 'pasture' && f.t.n !== 'stubble') continue;
+    const cX = X0 + FIELD.w / 2, cN = N0 + FIELD.h / 2;
+    if (farFromTrack(cX, cN) > 1100) continue;
+    if (f.t.n === 'pasture') {
+      // fence along the field boundary
+      const corners = [[X0 + 1.5, N0 + 1.5], [X0 + FIELD.w - 1.5, N0 + 1.5], [X0 + FIELD.w - 1.5, N0 + FIELD.h - 1.5], [X0 + 1.5, N0 + FIELD.h - 1.5]];
+      for (let k = 0; k < 4; k++) {
+        const [ax0, an0] = corners[k], [bx0, bn0] = corners[(k + 1) % 4], len = Math.hypot(bx0 - ax0, bn0 - an0), n = Math.round(len / 4);
+        let prev = null;
+        for (let q = 0; q <= n; q++) {
+          const X = lerp(ax0, bx0, q / n), N = lerp(an0, bn0, q / n);
+          if (!free(X, N, 14)) { prev = null; continue; }
+          const y = groundAt(X, N) - 0.05, b = bin(X, N);
+          b.posts.push([X, y, N]);
+          if (prev) for (const hgt of [0.55, 0.9, 1.25]) b.wires.push(prev[0], prev[1] + hgt, -prev[2], X, y + hgt, -N);
+          prev = [X, y, N];
+        }
+      }
+      // a herd
+      const herd = 5 + ((r() * 10) | 0), hx = X0 + FIELD.w * (0.25 + 0.5 * r()), hn = N0 + FIELD.h * (0.25 + 0.5 * r());
+      for (let c = 0; c < herd; c++) {
+        const X = hx + (r() - 0.5) * 50, N = hn + (r() - 0.5) * 36;
+        if (X < X0 + 8 || X > X0 + FIELD.w - 8 || N < N0 + 8 || N > N0 + FIELD.h - 8 || !free(X, N, 40)) continue;
+        const b = bin(X, N), y = groundAt(X, N), kind = r() < 0.45 ? 0 : (r() < 0.5 ? 1 : 2);
+        b.cows[kind].push([X, y, N, r() * TAU, 0.95 + r() * 0.12, 0]);
+      }
+    } else if (r() < 0.6) {
+      // round bales in rows
+      const along = r() < 0.5, rows = 1 + ((r() * 2) | 0);
+      for (let rw = 0; rw < rows; rw++) {
+        const off = 0.3 + 0.4 * r(), n = 5 + ((r() * 8) | 0);
+        for (let q = 0; q < n; q++) {
+          const t = 0.15 + 0.7 * q / n, X = along ? X0 + FIELD.w * t : X0 + FIELD.w * off, N = along ? N0 + FIELD.h * off : N0 + FIELD.h * t;
+          if (!free(X, N, 36)) continue;
+          bin(X, N).bales.push([X + (r() - 0.5) * 3, groundAt(X, N) - 0.08, N + (r() - 0.5) * 3, (along ? 0 : Math.PI / 2) + (r() - 0.5) * 0.5]);
+        }
+      }
+    }
+  }
+  const wireMat = new THREE.LineBasicMaterial({ color: 0x3a3a38, transparent: true, opacity: 0.8 });
+  const cowMat = new THREE.MeshLambertMaterial({ vertexColors: true });
+  for (const [, b] of bins) {
+    const grp = new THREE.Group(), pts = [];
+    const inst = (geo, mat, list, fn) => { if (!list.length) return; const im = new THREE.InstancedMesh(geo.clone(), mat, list.length); list.forEach((q, i) => { fn(q, _m4); im.setMatrixAt(i, _m4); pts.push(new THREE.Vector3(q[0], q[1], -q[2])); }); im.castShadow = true; im.receiveShadow = true; grp.add(im); return im; };
+    b.cows.forEach((list, k) => inst(cows[k], cowMat, list, (q, m) => { m.compose(_v1.set(q[0], q[1], -q[2]), _q.setFromEuler(_e.set(0, q[3], q[5])), _v2.setScalar(q[4])); }));
+    inst(bale, SMAT.hay, b.bales, (q, m) => m.compose(_v1.set(q[0], q[1], -q[2]), _q.setFromEuler(_e.set(0, q[3], 0)), _v2.set(1, 1, 1)));
+    const pim = inst(post, SMAT.post, b.posts, (q, m) => m.compose(_v1.set(q[0], q[1], -q[2]), _q.set(0, 0, 0, 1), _v2.set(1, 1, 1)));
+    if (pim) pim.castShadow = false;
+    if (b.wires.length) { const lg = new THREE.BufferGeometry(); lg.setAttribute('position', new THREE.Float32BufferAttribute(b.wires, 3)); grp.add(new THREE.LineSegments(lg, wireMat)); }
+    if (!pts.length) continue;
+    const sp = new THREE.Sphere().setFromPoints(pts); sp.radius += 6;
+    grp.children.forEach(m => { if (m.geometry) m.geometry.boundingSphere = sp.clone(); });
+    grp.userData = { c: sp.center, r: sp.radius };
+    scene.add(grp); DET.lifeGroups.push(grp);
+  }
+}
+
+/* ---------- roadside grass, wildflowers and sumac, generated per track piece as the camera nears ---------- */
+function crossedQuads(w, h, n = 3) {
+  // each blade card is built twice, back to back, so both faces light like the ground (no flipped normals)
+  const parts = [];
+  for (let k = 0; k < n; k++) for (const flip of [0, Math.PI]) { const g = new THREE.PlaneGeometry(w, h); g.translate(0, h / 2, 0); g.rotateY(k * Math.PI / n + flip); parts.push(g); }
+  const g = mergeGeos(parts); const nrm = g.attributes.normal; for (let i = 0; i < nrm.count; i++) nrm.setXYZ(i, 0, 1, 0);
+  return g;
+}
+function grassGeos() {
+  if (DET.geos) return DET.geos;
+  const bush = mergeGeos([new THREE.IcosahedronGeometry(0.75, 0).translate(0, 0.65, 0), new THREE.IcosahedronGeometry(0.55, 0).translate(0.5, 0.5, 0.25), new THREE.IcosahedronGeometry(0.5, 0).translate(-0.45, 0.45, -0.2)].map(g => colorize(g, [1, 1, 1])));
+  return (DET.geos = { grass: crossedQuads(1.0, 0.75), goldenrod: crossedQuads(0.9, 1.2), aster: crossedQuads(0.8, 0.9), bush });
+}
+function genGrass(piece, scene) {
+  const U = piece.userData, e = U.edge, G = grassGeos();
+  const r = rng(e.id * 131 + Math.floor(U.s0 * 7));
+  const L = { grass: [], goldenrod: [], aster: [], bush: [] };
+  for (let s = U.s0; s < U.s1; s += 1.15) {
+    if (e.isBridge(s)) continue;
+    e.pose(s, FR);
+    for (const side of [-1, 1]) {
+      const n = 2 + (r() < 0.55 ? 1 : 0);
+      for (let q = 0; q < n; q++) {
+        const lat = q < 2 ? 3.35 + r() * r() * 7 : 8 + r() * 15;
+        const along = (r() - 0.5) * 1.15;
+        const x = FR.p.x + FR.r.x * lat * side + FR.f.x * along, z = FR.p.z + FR.r.z * lat * side + FR.f.z * along;
+        const X = x, N = -z;
+        if (distToTrack(X, N) < 3.3 || riverDist(X, N) < 30 || onRoad(X, N, 5.5) || kept(X, N, 0) || inTown(X, N)) continue;
+        const y = groundAt(X, N) - 0.04, pick = r();
+        let type = 'grass';
+        if (lat > 4.5 && pick < 0.07) type = 'goldenrod'; else if (lat > 4.5 && pick < 0.1) type = 'aster'; else if (lat > 7 && pick < 0.118) type = 'bush';
+        const dry = r();
+        let c;
+        if (type === 'grass') c = dry < 0.35 ? [0.70, 0.64, 0.42] : (dry < 0.75 ? [0.50, 0.58, 0.30] : [0.40, 0.52, 0.24]);
+        else if (type === 'bush') c = r() < 0.4 ? [0.52, 0.2, 0.12] : (r() < 0.5 ? [0.66, 0.44, 0.2] : [0.32, 0.42, 0.2]);
+        else c = [1, 1, 1];
+        const sc = type === 'grass' ? 0.7 + r() * 0.7 : type === 'bush' ? 0.55 + r() * 0.45 : 0.8 + r() * 0.45;
+        L[type].push([X, y, N, r() * TAU, sc, c]);
+      }
+    }
+  }
+  const grp = new THREE.Group();
+  for (const k in L) {
+    const list = L[k]; if (!list.length) continue;
+    const mat = k === 'bush' ? MAT.tree : SMAT['g_' + k];
+    const im = new THREE.InstancedMesh(G[k].clone(), mat, list.length);
+    list.forEach((q, i) => { _m4.compose(_v1.set(q[0], q[1], -q[2]), _q.setFromEuler(_e.set(0, q[3], 0)), _v2.set(q[4], q[4] * (k === 'grass' ? 0.8 + (i % 5) * 0.12 : 1), q[4])); im.setMatrixAt(i, _m4); _tc.setRGB(q[5][0], q[5][1], q[5][2]).convertSRGBToLinear(); im.setColorAt(i, _tc); });
+    im.geometry.boundingSphere = U.sphere.clone();
+    im.castShadow = false; im.receiveShadow = true; im.userData.kind = k;
+    grp.add(im);
+  }
+  scene.add(grp);
+  U.grass = grp;
+}
+function updateDetailLOD(cam, scene, dt) {
+  DET.timeU.value += dt;
+  const cp = cam.position;
+  let budget = 1;
+  for (const p of WORLD.pieces) {
+    const U = p.userData, d = U.sphere.center.distanceTo(cp) - U.sphere.radius;
+    if (!U.grass && d < 360 && budget > 0) { genGrass(p, scene); budget--; }
+    if (U.grass) { U.grass.visible = d < 420; for (const m of U.grass.children) m.visible = d < (m.userData.kind === 'grass' ? (SKY.snow ? -1 : 230) : m.userData.kind === 'bush' ? 420 : 300); }
+  }
+  for (const g of DET.cornGroups) g.visible = g.userData.c.distanceTo(cp) - g.userData.r < 3200;
+  for (const g of DET.lifeGroups) g.visible = g.userData.c.distanceTo(cp) - g.userData.r < 900;
+}

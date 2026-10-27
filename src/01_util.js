@@ -108,11 +108,12 @@ function fmtMi(m) { const mi = m / MILE; return mi < 0.1 ? Math.round(m / FT / 1
 /* Three r128 treats hex colours and vertex colours as linear. Everything here is
    authored in sRGB, so convert once after building. */
 function linearizeObject(root) {
+  const done = linearizeObject.done || (linearizeObject.done = new WeakSet());
   root.traverse(o => {
     const g = o.geometry;
-    if (g && g.attributes && g.attributes.color && !g.userData.lin) {
+    if (g && g.attributes && g.attributes.color && !done.has(g.attributes.color.array)) {
       const a = g.attributes.color.array; for (let i = 0; i < a.length; i++) a[i] = Math.pow(a[i], 2.2);
-      g.attributes.color.needsUpdate = true; g.userData.lin = true;
+      g.attributes.color.needsUpdate = true; done.add(a);
     }
     if (o.isInstancedMesh && o.instanceColor && !o.instanceColor.userData) {
       const a = o.instanceColor.array; for (let i = 0; i < a.length; i++) a[i] = Math.pow(a[i], 2.2);
