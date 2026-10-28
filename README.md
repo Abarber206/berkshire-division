@@ -65,3 +65,7 @@ On a phone, use the levers and buttons on screen. Tap a switch stand, the switch
 ## Building
 
 The game is one file, `index.html`. The source lives in `src/`; run `./build.sh` to rebuild `index.html` after editing it. Three.js r128 loads from cdnjs.
+
+## Tests
+
+`node --test tests/*.test.js` (Node 18 or newer, no install) loads the simulation source headless and checks the boiler (starting tractive effort, slipping and sand, steaming under load, low water and the fusible plug, safety valves), the air brake (charging, service and emergency propagation, release, stopping distances), grades, and coupling (speed thresholds, momentum, turned cuts, set-outs, kicks and tie-downs). GitHub Actions runs the tests and `./build.sh` on every push and pull request, and fails if the committed `index.html` doesn't match a fresh build.
