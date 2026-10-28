@@ -59,6 +59,12 @@ function makeMaterials() {
   };
   MAT.rail = new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0.85, roughness: 0.42 });
   MAT.tie = new THREE.MeshLambertMaterial({ vertexColors: true, map: TEX.wood });
+  MAT.tie.onBeforeCompile = sh => {   // snow settles on the tie tops too
+    sh.uniforms.uSnow = WORLD.snowU;
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying float vUp;').replace('#include <beginnormal_vertex>', '#include <beginnormal_vertex>\n#ifdef USE_INSTANCING\nvUp = (modelMatrix * instanceMatrix * vec4(objectNormal, 0.0)).y;\n#else\nvUp = (modelMatrix * vec4(objectNormal, 0.0)).y;\n#endif');
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform float uSnow; varying float vUp;')
+      .replace('#include <color_fragment>', '#include <color_fragment>\n diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.80,0.83,0.87), uSnow * 0.75 * smoothstep(0.6,0.9,vUp));');
+  };
   MAT.plate = new THREE.MeshLambertMaterial({ color: 0x4a3d33 });
   MAT.steelDark = new THREE.MeshStandardMaterial({ color: 0x2b2c2e, metalness: 0.6, roughness: 0.6 });
   MAT.bridge = new THREE.MeshStandardMaterial({ color: 0x2a2d31, metalness: 0.55, roughness: 0.62 });
@@ -481,6 +487,9 @@ function buildTrack(scene) {
       const PC = [[0.32, 0.34, 0.21], [0.42, 0.40, 0.36], [0.55, 0.53, 0.5], [0.5, 0.48, 0.45], [0.5, 0.48, 0.45], [0.55, 0.53, 0.5], [0.42, 0.40, 0.36], [0.32, 0.34, 0.21]];
       let rings = 0; let lastB = false;
       const bs = railSamples(e, s0, s1);
+      // ring exactly at each bridge limit, so the shoulders run right up to the abutment fill
+      for (const b of e.bridges) for (const sb of [b[0] - 0.001, b[1] + 0.001]) if (sb > s0 && sb < s1) bs.push(sb);
+      bs.sort((a, b) => a - b);
       for (const s of bs) {
         const br = e.isBridge(s);
         if (br) { lastB = true; continue; }
@@ -494,11 +503,13 @@ function buildTrack(scene) {
           bal.pos.push(FR.p.x + FR.r.x * u + (cant ? 0 : FR.u.x * v), FR.p.y + (cant ? v : FR.r.y * u + FR.u.y * v), FR.p.z + FR.r.z * u + (cant ? 0 : FR.u.z * v));
           bal.nor.push(0, 1, 0); bal.col.push(...PC[q]); bal.uv.push(u / 1.4, s / 1.4);
         }
-        if (rings > 0) { const k = vb - 8; for (let q = 0; q < 7; q++) bal.idx.push(k + q, k + q + 8, k + q + 1, k + q + 1, k + q + 8, k + q + 9); }
+        if (rings > 0) { const k = vb - 8; for (let q = 0; q < 7; q++) bal.idx.push(k + q, k + q + 1, k + q + 8, k + q + 1, k + q + 9, k + q + 8); }   // wound to face up
         rings++;
       }
       if (bal.idx.length) {
         const bg = accGeo(bal); bg.computeVertexNormals();
+        // loose stone scatters light: lean the shoulder normals toward the sky so the shaded side isn't a black band
+        { const n = bg.attributes.normal; for (let i = 0; i < n.count; i++) { _v1.set(n.getX(i), n.getY(i) + 0.8, n.getZ(i)).normalize(); n.setXYZ(i, _v1.x, _v1.y, _v1.z); } }
         const bm = new THREE.Mesh(bg, MAT.ballast); bm.receiveShadow = true; grp.add(bm);
       }
       // ---- ties, instanced in ~130 m chunks with a near (plated) and far (plain) version
@@ -547,13 +558,19 @@ function buildSwitches(scene) {
     const gb = new GeoBin();
     // switch ties along leg A
     const r = rng(sw.id * 31);
+    const standSide = -G.sgn;
     for (let u = -0.6; u <= G.uEnd + 0.3; u += 0.495) {
       const dd = u <= 0 ? 0 : G.d(u);
       G.away(A, Math.max(u, 0), FR);
       if (u < 0) FR.p.addScaledVector(FR.f, u);
-      const len = 2.59 + Math.abs(dd) + (u > G.uF - 2 ? 0.2 : 0);
+      let len = 2.59 + Math.abs(dd) + (u > G.uF - 2 ? 0.2 : 0), mid = dd / 2;
+      if (Math.abs(u - 0.6) < 0.3) {   // long head-block ties carry the switch stand
+        let z0 = mid - len / 2, z1 = mid + len / 2;
+        if (standSide > 0) z1 = Math.max(z1, 3.05); else z0 = Math.min(z0, -3.05);
+        len = z1 - z0; mid = (z0 + z1) / 2;
+      }
       const geo = new THREE.BoxGeometry(0.23, 0.178, len);
-      geo.translate(0, -0.275, dd / 2);
+      geo.translate(0, -0.275, mid);
       const v = 0.6 + r() * 0.4; const c = new Float32Array(geo.attributes.position.count * 3); for (let i = 0; i < c.length; i += 3) { c[i] = 0.42 * v; c[i + 1] = 0.36 * v; c[i + 2] = 0.29 * v; }
       geo.setAttribute('color', new THREE.BufferAttribute(c, 3));
       gb.add('tie', geo, frameMatrix(FR, new THREE.Matrix4()));
@@ -565,19 +582,33 @@ function buildSwitches(scene) {
       gr(A, -G.sgn, G.uF - 2.8, G.uF + 2.8);
       gr(B, G.sgn, G.uF - 2.8, G.uF + 2.8);
       G.away(A, G.uF, FR); FR.p.addScaledVector(FR.r, G.sgn * RAIL_OFF);
-      gb.add('steel', new THREE.BoxGeometry(2.2, 0.14, 0.32).translate(0.6, -0.1, 0), frameMatrix(FR, new THREE.Matrix4()));
+      gb.add('steel', new THREE.BoxGeometry(2.2, 0.18, 0.32).translate(0.6, -0.1, 0), frameMatrix(FR, new THREE.Matrix4()));
     }
     // switch stand on the side away from the diverging route
     G.away(A, 0.6, FR);
-    const standSide = -G.sgn;
+    // ballast widened under the head-block ties so the stand isn't perched on the shoulder slope
+    {
+      const pad = new THREE.BoxGeometry(1, 1, 1), pp = pad.attributes.position;
+      const c = new Float32Array(pp.count * 3);
+      for (let i = 0; i < pp.count; i++) {
+        const top = pp.getY(i) > 0, out = pp.getZ(i) * standSide > 0;
+        const lat = standSide * (out ? (top ? 3.4 : 4.5) : 1.9);
+        pp.setXYZ(i, pp.getX(i) * (top ? 2.4 : 4.4), top ? -0.205 : -1.1, lat);
+        const k = top ? [0.55, 0.53, 0.5] : [0.42, 0.4, 0.36]; c.set(k, i * 3);
+      }
+      const uv = pad.attributes.uv; for (let i = 0; i < pp.count; i++) uv.setXY(i, pp.getX(i) / 1.4 + pp.getY(i) / 1.4, pp.getZ(i) / 1.4);
+      pad.setAttribute('color', new THREE.BufferAttribute(c, 3)); pad.computeVertexNormals();
+      { const n = pad.attributes.normal; for (let i = 0; i < n.count; i++) { _v1.set(n.getX(i), n.getY(i) + 0.8, n.getZ(i)).normalize(); n.setXYZ(i, _v1.x, _v1.y, _v1.z); } }   // lit like the shoulders it joins
+      gb.add('ballast', pad, frameMatrix(FR, new THREE.Matrix4()));
+    }
     const sp = FR.p.clone().addScaledVector(FR.r, standSide * 2.55);
     const yaw = Math.atan2(-FR.f.z, FR.f.x);
     const sm = new THREE.Matrix4().makeRotationY(yaw).setPosition(sp);
     gb.add('steel', new THREE.BoxGeometry(0.9, 0.12, 0.5).translate(0, -0.15, 0), sm);
     gb.add('steel', new THREE.CylinderGeometry(0.05, 0.05, 1.5, 8).translate(0, 0.6, 0), sm);
-    gb.add('steel', new THREE.BoxGeometry(0.06, 0.06, 2.4).translate(0, -0.12, -standSide * 1.25), sm);
+    gb.add('steel', new THREE.BoxGeometry(0.06, 0.06, 3.3).translate(0, -0.2, -standSide * 1.675), sm);
     gb.add('steel', new THREE.BoxGeometry(0.5, 0.05, 0.06).translate(0.25, 0.25, 0).applyMatrix4(new THREE.Matrix4().makeRotationZ(0.5)), sm);
-    const vis = gb.build({ tie: MAT.tie, steel: MAT.steelDark, rail: MAT.rail });
+    const vis = gb.build({ tie: MAT.tie, steel: MAT.steelDark, rail: MAT.rail, ballast: MAT.ballast });
     if (acc.idx.length) { const m = new THREE.Mesh(accGeo(acc), MAT.rail); m.receiveShadow = true; vis.add(m); }
     scene.add(vis);
     // rotating target with lamp
