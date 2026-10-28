@@ -65,7 +65,7 @@ const stationNamed = n => ROUTE.stations.find(s => s.name === n);
 JOB.load = function () { try { JOB.best = JSON.parse(localStorage.getItem('bd_jobs') || '{}') || {}; } catch (e) { JOB.best = {}; } };
 JOB.save = function () { try { localStorage.setItem('bd_jobs', JSON.stringify(JOB.best)); } catch (e) {} };
 /* jobs are written for the built-in railroad, single player */
-JOB.available = () => !MP.on && !PLAY_LAYOUT;
+JOB.available = () => !MP.on && !PLAY_LAYOUT && !LOCO_SPEC[GAME.settings.loco].set;
 JOB.def = id => JOBS.find(j => j.id === id) || null;
 JOB.wanted = () => JOB.available() ? JOB.def(GAME.settings.job) : null;
 JOB.activeId = () => JOB.run && !JOB.run.over ? JOB.run.def.id : '';
@@ -446,7 +446,7 @@ function jobMenu() {
   const ok = JOB.available();
   $('grpJob').hidden = false;
   host.innerHTML = '';
-  if (!ok) { $('jobBrief').innerHTML = `<p class="help">${MP.on ? 'Jobs are single player for now. Leave the room to take one.' : 'Jobs are written for the Berkshire Division. Pick it under Railroad to take one.'}</p>`; refreshJobGroups(); return; }
+  if (!ok) { $('jobBrief').innerHTML = `<p class="help">${MP.on ? 'Jobs are single player for now. Leave the room to take one.' : LOCO_SPEC[GAME.settings.loco].set ? 'Jobs are written for engines that pick up and set out cars. Pick a steam or diesel engine to take one.' : 'Jobs are written for the Berkshire Division. Pick it under Railroad to take one.'}</p>`; refreshJobGroups(); return; }
   const opts = [['', 'Free run', 'No clock, no score', null]];
   for (const j of JOBS) { const b = JOB.best[j.id]; opts.push([j.id, j.name, `${{ switch: 'Switching', passenger: 'Passenger', freight: 'Freight' }[j.kind]} · ${j.level}`, b]); }
   const cur = JOB.def(GAME.settings.job) ? GAME.settings.job : '';

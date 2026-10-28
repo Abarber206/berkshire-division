@@ -213,7 +213,8 @@ function soundMix(dt, T, fx, tv) {
   setG(AU.drift.g, !DSL && !working && v > 1 && !Vv.roll.ok ? 0.08 * Math.min(1, v / 12) : 0);
   // rolling: the recorded take is sped up with the train
   duo(Vv.roll, AU.roar, 0.32 * Math.min(1, v / 22), Math.min(1, v / 18) ** 1.2 * (inCab ? 0.7 : 1), clamp(0.55 + v / 30, 0.6, 1.6), 0.2);
-  updateDieselAudio(DSL, inCab, T.nUnits || 1);
+  updateDieselAudio(DSL && !T.elec, inCab, T.nUnits || 1);
+  updateElectricAudio(T, inCab);
   // brake pipe venting at the brake valve, heard in and around the cab
   const b0 = T.lead.brake, vent = b0.dBP < -0.3 ? Math.min(1, -b0.dBP * 0.12) : 0;
   duo(Vv.bpx, AU.bpExhaust, Math.min(0.5, vent * 0.5), vent * (inCab ? 0.9 : 0.5), 1, 0.05);
@@ -233,7 +234,7 @@ function soundMix(dt, T, fx, tv) {
     for (const x of T.vehicles) {
       const dv = x.pos.distanceTo(cp); if (dv > 110 && !(inCab && x.kind === 'loco')) continue;
       const g = Math.min(1, v / 7) / (1 + Math.pow((inCab ? Math.max(4, dv) : dv) / 13, 1.4)) * (inCab ? 0.7 : 1);
-      const pts = (x.kind === 'loco' || x.kind === 'loco2') ? (DSL ? [[x.fp[0], 3, DG.axle], [x.fp[1], 3, DG.axle]] : [[x.leadPt, 1, 0], [x.fp[0], 4, 1.855]]) : x.tp.map((p, i) => [p, x.trucks[i].type === 'four' ? 2 : 3, x.trucks[i].sp || (x.trucks[i].type === 'four' ? 1.73 : 1.676)]);
+      const pts = (x.kind === 'loco' || x.kind === 'loco2') ? (DSL ? [[x.fp[0], x.emu ? 2 : 3, x.emu ? x.model.wb : DG.axle], [x.fp[1], x.emu ? 2 : 3, x.emu ? x.model.wb : DG.axle]] : [[x.leadPt, 1, 0], [x.fp[0], 4, 1.855]]) : x.tp.map((p, i) => [p, x.trucks[i].type === 'four' ? 2 : 3, x.trucks[i].sp || (x.trucks[i].type === 'four' ? 1.73 : 1.676)]);
       for (const [p, axles, sp] of pts) {
         const j = Math.floor(p.tp.s / 11.89), prev = mem.get(p);
         if (prev && prev.e === p.tp.e && prev.j !== j) for (let a = 0; a < axles; a++) sndJoint(g * (a === 0 ? 1 : 0.8), a * sp / v, inCab ? null : x.pos, v);
