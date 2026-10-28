@@ -350,7 +350,7 @@ function buildE5Car(def, idx) {
     halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: haloTex(), color: 0xffffff, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0 }));
     halo.position.set(x(0.2), 0.95, 0); halo.scale.set(2.2, 1.4, 1); body.add(halo);
     // obstacle deflector (snow plough) under the tip
-    gb.add('hsUnder', new THREE.CylinderGeometry(0.02, 1.25, 0.9, 3, 1, false, -Math.PI / 6).scale(1.15, 1, 1).rotateZ(Math.PI / 2).rotateX(Math.PI).translate(x(1.25), 0.3, 0));
+    gb.add('hsUnder', plowGeo(x(0.5), x(2.4), 1.15, 0.16, 0.8));
   }
   /* ---- roof: pantograph on cars 3 and 7, roof fairing at the gangways ---- */
   const pans = [];
@@ -367,6 +367,14 @@ function buildE5Car(def, idx) {
     headlightPos: new THREE.Vector3(x(0.6), 1.25, 0), cabEye: new THREE.Vector3(x(10.6), 3.05, 0.42), hornPos: new THREE.Vector3(x(2.0), 1.0, 0), cabLightPos: new THREE.Vector3(x(11.0), 2.9, 0),
     enginePos: new THREE.Vector3(x(L / 2), 0.8, 0), skin: {},
   };
+}
+
+/* obstacle deflector under a nose: a blunt V in plan from xTip back to xBack (half width hw at the back),
+   standing from y0 above the rail up to y1 inside the body */
+function plowGeo(xTip, xBack, hw, y0, y1) {
+  const sh = new THREE.Shape();
+  sh.moveTo(xTip, -0.18); sh.lineTo(xTip, 0.18); sh.lineTo(xBack, hw); sh.lineTo(xBack, -hw); sh.closePath();
+  return new THREE.ExtrudeGeometry(sh, { depth: y1 - y0, bevelEnabled: false }).rotateX(Math.PI / 2).translate(0, y1, 0);
 }
 
 /* ---------------- bogies ----------------
@@ -401,10 +409,10 @@ function hsBogie(o) {
   for (const x of [-0.42, 0.42]) tg.box('hsBogie', 0.24, 0.26, 2 * W - 0.1, x, yF + 0.0, 0);   // transoms
   if (o.motor) {
     // traction motors hung from the transoms, driving the axles through gearboxes
+    const mx = 0.76;                          // the motor nests against the transom's outer face
     for (const x of [-1, 1]) {
-      tg.add('hsBogie', new THREE.CylinderGeometry(0.27, 0.27, 0.62, 16).rotateX(Math.PI / 2), M(x * (h - 0.62), R + 0.02, -0.18));
-      tg.box('hsBogie', 0.5, 0.42, 0.26, x * (h - 0.25), R, 0.42);                    // gearbox on the axle
-      tg.box('hsBogie', 0.22, 0.12, 0.1, x * (h - 0.62), yF - 0.1, -0.18);            // its hanger to the transom
+      tg.add('hsBogie', new THREE.CylinderGeometry(0.27, 0.27, 0.62, 16).rotateX(Math.PI / 2), M(x * mx, R + 0.02, -0.1));
+      tg.box('hsBogie', h - mx, 0.42, 0.26, x * (h + mx) / 2, R, 0.33);              // gearbox from the motor's shaft end out to the axle
     }
   } else for (const s of [-1, 1]) {
     // brake units hung off the transom, reaching out toward each axle
@@ -448,6 +456,7 @@ function hsPantograph(gb, body, o) {
     for (const z of [-0.32, 0.32]) g.add('hsPan', barGeo(0.035, [0, 0, z], [o.L1, 0, z * 0.25], 8));
     g.add('hsPan', barGeo(0.03, [0.15, 0, -0.32], [0.15, 0, 0.32], 6));
     g.add('hsPan', barGeo(0.045, [0, 0, -0.38], [0, 0, 0.38], 10));
+    g.add('hsPan', barGeo(0.04, [o.L1, 0, -0.12], [o.L1, 0, 0.12], 10));   // knee pin the upper arm hangs on
     lower.add(g.build(RMAT));
   }
   {
@@ -488,7 +497,7 @@ function hsPantograph(gb, body, o) {
 }
 
 /* ---------------- Acela Express ---------------- */
-const AC = { PW: 1.59, CW: 1.58, PROOF: 4.22, CROOF: 4.23, LN: 4.8, PCUT: 1.32, CCUT: 1.2, PBOG: 10.74, CBOG: 18.14, PWB: 3.0, CWB: 2.6, PR: 0.508, CR: 0.457, GW: 0.32 };
+const AC = { PW: 1.59, CW: 1.58, PROOF: 4.32, CROOF: 4.23, LN: 4.8, PCUT: 1.32, CCUT: 1.2, PBOG: 10.74, CBOG: 18.14, PWB: 3.0, CWB: 2.6, PR: 0.508, CR: 0.457, GW: 0.32 };
 const ACC = { silver: '#c4c8cc', band: '#2c3238', skirt: '#3d4247', blue: '#2f6aa3', logo: '#2a5d8f' };
 /* power car section at a from the nose (cab end) */
 function acPowerSect(a) {
@@ -583,16 +592,26 @@ function buildAcelaCar(def, idx) {
     const idw = []; for (let j = 0; j <= 10; j++) idw.push(j);
     loftInto(acc, st, idw, ref, 1, 1, 0.006); gb.add('hsGlass', meshGeo(acc));
     for (const s of [-1, 1]) {
-      const a = 0.42, p = sect(a), R = hsRing(p, cut), y = 1.12, z = s * 0.62;
-      // lamp housings let into the nose: find the surface ahead of the lamp and set the lens on it
-      let aa = a; for (let k = 0; k < 20; k++) { const zr = ringZ(hsRing(sect(aa), cut), y); if (zr > Math.abs(z) + 0.15) break; aa += 0.05; }
-      const ln = new THREE.Mesh(new THREE.CircleGeometry(0.12, 20), RMAT.lens); ln.position.set(x(aa) + 0.0, y, z); ln.rotation.y = Math.PI / 2; body.add(ln); lenses.push(ln);
-      gb.add('hsLamp', new THREE.CylinderGeometry(0.15, 0.15, 0.3, 20).rotateZ(Math.PI / 2), M(x(aa) - 0.14, y, z));
-      const zd = s * 1.05, yd = 0.78; let ad = 0.2; for (let k = 0; k < 40; k++) { const zr = ringZ(hsRing(sect(ad), cut), yd); if (zr > Math.abs(zd) + 0.12) break; ad += 0.05; }
-      const dl = new THREE.Mesh(new THREE.CircleGeometry(0.075, 16), new THREE.MeshBasicMaterial({ color: 0xfff3d6 })); dl.position.set(x(ad), yd, zd); dl.rotation.y = Math.PI / 2; body.add(dl);
-      gb.add('hsLamp', new THREE.CylinderGeometry(0.1, 0.1, 0.24, 16).rotateZ(Math.PI / 2), M(x(ad) - 0.11, yd, zd));
+      // lamps let into the nose: find where the lamp's axis meets the skin, face the lens along the skin's normal there
+      // and run the housing back through the skin into the body
+      const seat = (y, z, r) => {
+        const zr = a => ringZ(hsRing(sect(a), cut), y);
+        let lo = 0.05, hi = 6; for (let k = 0; k < 40; k++) { const mid = (lo + hi) / 2; if (zr(mid) < Math.abs(z)) lo = mid; else hi = mid; }
+        const aS = (lo + hi) / 2, tx = x(aS + 0.05) - x(aS - 0.05), tz = Math.sign(z) * (zr(aS + 0.05) - zr(aS - 0.05));
+        const n = new THREE.Vector3(-tz, 0, tx).normalize(); if (n.x * Math.sign(x(0) - x(1)) < 0) n.negate();
+        const P = new THREE.Vector3(x(aS), y, z);
+        const hg = new THREE.CylinderGeometry(r, r, 0.3, 20).translate(0, -0.144, 0);
+        hg.applyMatrix4(new THREE.Matrix4().makeRotationFromQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), n))); hg.translate(P.x, P.y, P.z);
+        gb.add('hsLamp', hg);
+        const lp = P.clone().addScaledVector(n, 0.01), rot = Math.atan2(n.x, n.z);
+        return { lp, rot, n };
+      };
+      const L1 = seat(1.12, s * 0.62, 0.15);
+      const ln = new THREE.Mesh(new THREE.CircleGeometry(0.12, 20), RMAT.lens); ln.position.copy(L1.lp); ln.rotation.y = L1.rot; body.add(ln); lenses.push(ln);
+      const L2 = seat(0.78, s * 1.05, 0.1);
+      const dl = new THREE.Mesh(new THREE.CircleGeometry(0.075, 16), new THREE.MeshBasicMaterial({ color: 0xfff3d6 })); dl.position.copy(L2.lp); dl.rotation.y = L2.rot; body.add(dl);
       const dh = new THREE.Sprite(new THREE.SpriteMaterial({ map: haloTex(), color: 0xffffff, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0 }));
-      dh.position.set(x(ad) + 0.04, yd, zd); dh.scale.set(1.2, 1.2, 1); body.add(dh);
+      dh.position.copy(L2.lp).addScaledVector(L2.n, 0.03); dh.scale.set(1.2, 1.2, 1); body.add(dh);
       ditch.push({ lens: dl, halo: dh });
     }
     lens = lenses[0];
@@ -602,7 +621,7 @@ function buildAcelaCar(def, idx) {
     halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: haloTex(), color: 0xffffff, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0 }));
     halo.position.set(x(0.2), 1.12, 0); halo.scale.set(2.2, 1.6, 1); body.add(halo);
     // pilot and snow plow below the nose
-    gb.add('hsUnder', new THREE.CylinderGeometry(0.02, 1.3, 0.75, 3, 1, false, -Math.PI / 6).scale(1.05, 1, 1).rotateZ(Math.PI / 2).rotateX(Math.PI).translate(x(1.35), 0.27, 0));
+    gb.add('hsUnder', plowGeo(x(0.7), x(2.6), 1.2, 0.16, 0.75));
   }
   const pans = [];
   if (power) {
