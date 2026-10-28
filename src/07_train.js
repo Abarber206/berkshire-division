@@ -14,6 +14,49 @@ const CONSISTS = {
    track, so a train there just has to have its coupler clear of the points to let the switch be thrown. */
 const FOUL_LEN = 38, POINTS_CLEAR = 3;
 
+/* The world-space offset that throws wrecked car v from where the track holds it (its root matrix) to
+   where it lies: rolled over its low-side sill, slewed across the track, eased in over a second, and
+   let down until it rests on the ground. Trucks get the same offset so the car stays in one piece. */
+const _wkM = new THREE.Matrix4(), _wkI = new THREE.Matrix4(), _wkA = new THREE.Matrix4(), _wkP = new THREE.Vector3();
+function wreckPose(T, v, dt) {
+  const w = v.wk, M = v.root.matrix;
+  if (!w.box) {
+    // the body's own box in car coordinates, leaving out lamp beams and glows
+    v.root.updateMatrixWorld(true);
+    _wkI.copy(M).invert();
+    const box = new THREE.Box3(), b = new THREE.Box3();
+    v.root.traverse(o => {
+      if (!o.geometry || o.isInstancedMesh || !o.visible || (o.material && o.material.transparent)) return;
+      if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
+      box.union(b.copy(o.geometry.boundingBox).applyMatrix4(_wkA.multiplyMatrices(_wkI, o.matrixWorld)));
+    });
+    if (box.isEmpty()) box.set(new THREE.Vector3(-v.len / 2, 0.8, -1.55), new THREE.Vector3(v.len / 2, 4.3, 1.55));
+    w.box = box;
+  }
+  w.t += dt;
+  const x = Math.min(1, w.t / 0.9), e = x * x * (3 - 2 * x), B = w.box;
+  // roll about the bottom of the side it falls toward, then slew and shove it sideways
+  const pz = w.side > 0 ? B.max.z : B.min.z, py = w.over ? B.min.y : 0;
+  _wkM.makeTranslation(0, 0, w.shift * e)
+    .multiply(_wkA.makeRotationY(w.yaw * e))
+    .multiply(_m4.makeTranslation(0, py, pz))
+    .multiply(_wkA.makeRotationX(w.side * w.roll * e))
+    .multiply(_m4.makeTranslation(0, -py, -pz));
+  _wkA.multiplyMatrices(M, _wkM);
+  // a car on its side lies on the ground; one still on its wheels settles into the ballast
+  let low = Infinity;
+  const pts = w.over ? 3 : 2;
+  for (let i = 0; i < pts; i++) for (let j = 0; j < (w.over ? 3 : 1); j++) for (let k = 0; k < (w.over ? 3 : 2); k++) {
+    if (w.over) _wkP.set(B.min.x + (B.max.x - B.min.x) * i / 2, B.min.y + (B.max.y - B.min.y) * j / 2, B.min.z + (B.max.z - B.min.z) * k / 2);
+    else _wkP.set((i ? 1 : -1) * Math.max(0, v.len / 2 - 2.6), 0, k ? 0.72 : -0.72);
+    _wkP.applyMatrix4(_wkA);
+    low = Math.min(low, _wkP.y - groundAt(_wkP.x, -_wkP.z));
+  }
+  const dy = w.over ? low : Math.max(w.drop, low - 0.6);
+  const D = new THREE.Matrix4().makeTranslation(0, -dy * e, 0).multiply(_wkA).multiply(_wkI.copy(M).invert());
+  return D;
+}
+
 /* A string of coupled vehicles following the track: the player's train, or a cut of cars standing in
    a yard. Vehicles can move between consists when they are coupled or cut off, so everything that
    depends on the order (offsets, tracked points, instanced trucks) is rebuilt by layout(). */
@@ -112,6 +155,8 @@ class Consist {
       const u = new THREE.Vector3().crossVectors(r, _v2).normalize();
       v.root.matrixAutoUpdate = false;
       v.root.matrix.makeBasis(_v2, u, r).setPosition(_v1);
+      const D = v.wk ? wreckPose(this, v, dt) : null;   // a wrecked car is thrown clear of where the rails would hold it
+      if (D) v.root.matrix.premultiply(D);
       v.root.matrixWorldNeedsUpdate = true;
       v.pos = v.pos || new THREE.Vector3(); v.pos.copy(_v1);
       v.fwd = v.fwd || new THREE.Vector3(); v.fwd.copy(_v2);
@@ -121,6 +166,7 @@ class Consist {
         const t = v.trucks[k], Fp = v.tp[k].F;
         frameMatrix(Fp, _tm);
         if (v.flip) _tm.multiply(_m4.makeRotationY(Math.PI));
+        if (D) _tm.premultiply(D);
         if (t.type === 'six' || t.type === 'buck') {
           if (t.type === 'six') this.tSix.setMatrixAt(i6++, _tm); else this.tBuck.setMatrixAt(iB++, _tm);
           const sp = t.sp || 1.676;
@@ -132,12 +178,12 @@ class Consist {
       }
       if ((v.kind === 'loco' || v.kind === 'loco2') && this.diesel) {
         const U = v.model;
-        U.trucks.forEach((tg, k) => { tg.matrixAutoUpdate = false; frameMatrix(v.fp[k].F, tg.matrix); if (v.reversed) tg.matrix.multiply(_m4.makeRotationY(Math.PI)); tg.matrixWorldNeedsUpdate = true; });
+        U.trucks.forEach((tg, k) => { tg.matrixAutoUpdate = false; frameMatrix(v.fp[k].F, tg.matrix); if (v.reversed) tg.matrix.multiply(_m4.makeRotationY(Math.PI)); if (D) tg.matrix.premultiply(D); tg.matrixWorldNeedsUpdate = true; });
         const wa = (v.reversed ? 1 : -1) * this.dist / (U.rW || DG.rW); for (const w of U.wheels) w.rotation.z = wa;
         v.root.updateMatrixWorld(true);
       } else if (v.kind === 'loco') {
         const lf = v.leadPt.F;
-        const lt = this.loco.leadTruck; lt.matrixAutoUpdate = false; frameMatrix(lf, lt.matrix); lt.matrixWorldNeedsUpdate = true;
+        const lt = this.loco.leadTruck; lt.matrixAutoUpdate = false; frameMatrix(lf, lt.matrix); if (D) lt.matrix.premultiply(D); lt.matrixWorldNeedsUpdate = true;
         this.loco.parts.lead.rotation.z = -this.dist / (this.loco.rL || LG.rL);
         this.loco.parts.trail[0].rotation.z = -this.dist / LG.rT1;
         this.loco.parts.trail[1].rotation.z = -this.dist / LG.rT2;
@@ -145,6 +191,28 @@ class Consist {
       }
     }
     for (const im of this.inst) im.instanceMatrix.needsUpdate = true;
+  }
+  /* Throw the train off the rails around a point of impact: spec = { a: metres back from the front coupler,
+     side: +1 or -1, seed, k: 0..1 how hard }. null puts every car back on the rails. */
+  wreck(spec) {
+    for (const v of this.vehicles) v.wk = null;
+    this.wk = spec || null;
+    if (!spec) return;
+    const r = rng(spec.seed || 1), reach = 18 + 70 * spec.k;
+    this.vehicles.forEach((v, i) => {
+      const mid = v.a0 + v.len / 2, gap = Math.max(0, Math.abs(mid - spec.a) - v.len / 2), f = 1 - gap / reach;
+      if (f <= 0) return;
+      // the cars nearest the hit go over on their side; further back they jackknife and lean in the ballast
+      const over = f > 0.5 && r() < 0.35 + 0.6 * spec.k;
+      const side = (i % 2 && r() < 0.5 ? -1 : 1) * spec.side;
+      v.wk = {
+        t: 0, side, over,
+        roll: over ? (1.25 + 0.3 * r()) : f * (0.12 + 0.3 * r()),
+        yaw: (i % 2 ? -1 : 1) * side * f * (0.1 + 0.35 * r() * spec.k),
+        shift: side * f * (0.9 + 2.6 * spec.k * r()),
+        drop: 0.25 + 0.2 * r(),
+      };
+    });
   }
   /* hand vehicles over to another consist without a jump in their wheel rotation */
   release(v) { v.roll = this.dist * (v.flip ? -1 : 1) + (v.roll || 0); }
