@@ -78,7 +78,7 @@ button:focus-visible,.lever:focus-visible{outline:2px solid var(--brass);outline
   display:flex;flex-direction:column;gap:6px;align-items:center;pointer-events:none;width:min(92vw,460px)}
 .toast{background:rgba(14,19,23,.9);border:1px solid var(--rule);border-left:3px solid var(--brass);padding:7px 12px;border-radius:4px;
   font-size:13px;animation:tin .25s ease-out;max-width:100%}
-#cplTip{position:absolute;z-index:9;pointer-events:none;background:rgba(14,19,23,.92);border:1px solid var(--rule);border-left:3px solid var(--brass);
+#cplTip,#placeTip{position:absolute;z-index:9;pointer-events:none;background:rgba(14,19,23,.92);border:1px solid var(--rule);border-left:3px solid var(--brass);
   padding:4px 8px;border-radius:4px;font-size:12px;color:var(--ink);white-space:nowrap}
 .toast.warn{border-left-color:var(--approach)}.toast.bad{border-left-color:var(--stop)}.toast.good{border-left-color:var(--clear)}
 @keyframes tin{from{opacity:0;transform:translateY(-6px)}}
@@ -323,6 +323,37 @@ details.keys kbd{color:var(--brass)}
   .cv{height:38px;min-width:34px}.cj{height:32px;width:28px}
   #carHint{font-size:10.5px}
 }
+/* ---------- placing engines and cars ---------- */
+#hud.placing>:not(#toast):not(#placeBar):not(#placeTip){display:none!important}
+#placeTip{left:0;top:0;z-index:9}
+#placeTip b{font-weight:600}
+#btnPlace.on{border-color:var(--brass)}
+#placeBar{position:absolute;z-index:7;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom,0px) + 10px);
+  width:min(600px,calc(100vw - 20px));padding:10px;display:flex;flex-direction:column;gap:8px;box-sizing:border-box}
+.pbRow{display:flex;gap:8px;align-items:center;min-width:0}
+.pbRow>.lbl{flex:none;width:44px}
+.pbChips{display:flex;gap:5px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;min-width:0;padding:1px}
+.pbChips::-webkit-scrollbar{display:none}
+.pchip{flex:none;display:flex;gap:6px;align-items:center;height:34px;padding:0 11px;border-radius:17px;border:1px solid var(--rule);background:var(--steel-2);
+  font-size:12.5px;font-weight:600;white-space:nowrap;touch-action:manipulation}
+.pchip i{width:16px;height:10px;border-radius:2px;border:1px solid rgba(255,255,255,.18)}
+.pchip small{font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--brass);font-weight:700}
+.pchip[aria-pressed="true"]{border-color:var(--brass);background:rgba(207,166,81,.18);color:var(--ink)}
+.pchip:hover{border-color:#4a5b66}
+#placeHint{min-height:2.7em}
+.pbAct{display:flex;gap:6px;align-items:center}
+.pbAct .btn{padding:8px 11px;font-size:11px;white-space:nowrap}
+@media (max-width:420px){ .pbAct{gap:4px} .pbAct .btn{padding:8px 8px} }
+.pbAct .btn:disabled{opacity:.38}
+.pbSp{flex:1}
+.pbRot{font-size:15px!important;padding:5px 10px!important;letter-spacing:0}
+@media (pointer:fine){ #placeGo{display:none} }
+@media (max-height:500px) and (orientation:landscape){
+  #placeBar{left:auto;right:calc(env(safe-area-inset-right,0px) + 8px);transform:none;bottom:calc(env(safe-area-inset-bottom,0px) + 6px);width:min(430px,58vw);gap:5px;padding:7px}
+  .pchip{height:30px;padding:0 9px;font-size:12px}
+  #placeHint{font-size:10.5px;min-height:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .pbAct .btn{padding:6px 9px}
+}
 /* ---------- jobs ---------- */
 #jobBox{box-sizing:border-box;display:flex;flex-direction:column;gap:2px;padding:6px 10px;min-width:180px;max-width:250px;text-align:left;font:inherit;color:var(--ink)}
 .jbTop{display:flex;gap:8px;align-items:baseline;font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:var(--ink-dim)}
@@ -502,6 +533,7 @@ details.keys kbd{color:var(--brass)}
     <div class="btns">
       <button class="icon-btn" id="btnPlayers" hidden aria-label="Players in the room"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"/><path d="M3 19c0-3.3 2.7-6 6-6s6 2.7 6 6"/><circle cx="17" cy="9" r="2.5"/><path d="M15.6 13.3c2.9.3 5.4 2.6 5.4 5.7"/></svg><span id="mpCount">1</span></button>
       <button class="icon-btn" id="btnCars" aria-label="Couplers: cut cars off the train"><svg viewBox="0 0 24 24"><rect x="2" y="7" width="7" height="8" rx="1"/><rect x="15" y="7" width="7" height="8" rx="1"/><path d="M9 11h2.2M12.8 11H15"/><circle cx="6" cy="17.5" r="1.3"/><circle cx="18" cy="17.5" r="1.3"/></svg></button>
+      <button class="icon-btn" id="btnPlace" aria-label="Place engines and cars on the track"><svg viewBox="0 0 24 24"><path d="M12 2.5v9M8.5 8l3.5 3.5L15.5 8"/><path d="M2.5 16.5h19M2.5 20h19"/><path d="M6 16.5V20M10 16.5V20M14 16.5V20M18 16.5V20"/></svg></button>
       <button class="icon-btn" id="btnCam" aria-label="Change camera"><svg viewBox="0 0 24 24"><path d="M3 8h4l2-3h6l2 3h4v11H3z"/><circle cx="12" cy="13" r="3.5"/></svg></button>
       <button class="icon-btn" id="btnMap" aria-label="Open track map"><svg viewBox="0 0 24 24"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/></svg></button>
       <button class="icon-btn" id="btnCine" aria-label="Hide controls"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 15h18"/></svg></button>
@@ -512,6 +544,19 @@ details.keys kbd{color:var(--brass)}
   </div>
   <div id="toast"></div>
   <div id="cplTip" hidden></div>
+  <div id="placeTip" hidden></div>
+  <div id="placeBar" class="hud-box" hidden>
+    <div class="mpHead"><span>Place on the track</span><button class="btn" id="placeHome" type="button">My train</button><button class="btn prim" id="placeDone" type="button">Done</button></div>
+    <div class="pbRow"><span class="lbl">Engine</span><div class="pbChips" id="placeEngines"></div></div>
+    <div class="pbRow"><span class="lbl">Cars</span><div class="pbChips" id="placeCars"></div></div>
+    <div id="placeHint" class="mpStatus" aria-live="polite"></div>
+    <div class="pbAct">
+      <button class="btn" id="placeFlip" type="button">Turn</button><button class="btn" id="placeRemove" type="button">Remove</button><button class="btn" id="placeBack" type="button">Put back</button>
+      <span class="pbSp"></span>
+      <button class="btn pbRot" id="placeRotL" type="button" aria-label="Turn the view left">⟲</button><button class="btn pbRot" id="placeRotR" type="button" aria-label="Turn the view right">⟳</button>
+      <button class="btn prim" id="placeGo" type="button">Place</button>
+    </div>
+  </div>
   <div id="mpWatch" class="hud-box" hidden><span>Watching <b id="mpWatchName"></b></span><button class="btn" id="mpWatchBack">My train</button></div>
   <div id="mpPanel" class="hud-box" hidden>
     <div class="mpHead"><span>Room <b id="mpPanelCode"></b></span><button class="btn" id="mpShare2">Invite</button><button class="btn" id="mpPanelClose" aria-label="Close">Close</button></div>
@@ -674,6 +719,7 @@ details.keys kbd{color:var(--brass)}
         <kbd>Space</kbd><span>Whistle (hold)</span>
         <kbd>T</kbd><span>Throw next switch ahead</span>
         <kbd>U</kbd><span>Couplers: cut cars off</span>
+        <kbd>G</kbd><span>Place engines and cars on the track</span>
         <kbd>B X K H</kbd><span>Bell · Sand · Cocks · Headlight</span>
         <kbd>I F L</kbd><span>Injector · Stoker · Blower</span>
         <kbd>1–5</kbd><span>Cameras · <kbd>M</kbd> map · <kbd>P</kbd> pause</span>

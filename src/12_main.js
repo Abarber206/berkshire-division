@@ -63,7 +63,7 @@ async function loadWorld() {
   for (const st of ROUTE.stations) { st.edge.pose(st.s, FR); st.p = FR.p.clone(); }
   for (const w of ROUTE.water) { w.edge.pose(w.s, FR); w.p = FR.p.clone(); }
   if (ROUTE.coal) { const c = ROUTE.coal; c.edge.pose(c.s, FR); c.p = FR.p.clone(); }
-  setupViewInput($('gl'), camera); setupLevers(); setupButtons(); setupMap();
+  setupViewInput($('gl'), camera); PLACE.setup($('gl')); setupLevers(); setupButtons(); setupMap();
   linearizeObject(scene);
   makeTrain();
   applyLook(GAME.settings.time, GAME.settings.weather, renderer, scene);
@@ -504,7 +504,7 @@ function loop() {
   requestAnimationFrame(loop);
   let dt = Math.min(clock.getDelta(), 0.05);
   const T = GAME.train; if (!T) return;
-  const active = GAME.running && !S.paused && !S.derailed;
+  const active = GAME.running && !S.paused && !S.derailed && !PLACE.on;
   if (active) simStep(dt, T); else stepSwitches(dt);
   renderStep(dt, T);
 }
@@ -591,7 +591,7 @@ function renderStep(dt, T) {
   const pb = $('btnWhistle').querySelector('.pull i'), pw = Math.round(S.whistle * 100) + '%'; if (pb.style.width !== pw) pb.style.width = pw;
   T.cabLight.intensity = night ? 0.6 : 0;
   // camera
-  updateCamera(camera, MP.view() || T, dt);
+  if (PLACE.on) PLACE.camera(camera, dt); else updateCamera(camera, MP.view() || T, dt);
   if (CAM.shakeHit) { camera.position.x += (Math.random() - 0.5) * CAM.shakeHit; camera.position.y += (Math.random() - 0.5) * CAM.shakeHit; CAM.shakeHit = Math.max(0, CAM.shakeHit - dt * 1.5); }
   if (!GAME.running) { // attract mode orbit while the menu is up
     CAM.yaw = -0.95 + Math.sin(S.time * 0.05 + performance.now() * 0.00005) * 0.55; CAM.mode = 'chase'; CAM.dist = 21; CAM.pitch = 0.09;
@@ -601,7 +601,7 @@ function renderStep(dt, T) {
   SKY.clouds.position.set(camera.position.x, camera.position.y + 1600, camera.position.z);
   SKY.clouds.material.map.offset.x += dt * 0.0006; SKY.clouds.material.map.offset.y += dt * 0.0003;
   SKY.moon.position.copy(SKY.sunDir).multiplyScalar(7000).add(camera.position);
-  const lp = (MP.view() || T).lead.pos;
+  const lp = PLACE.on ? PLACE.focus() : (MP.view() || T).lead.pos;
   SKY.sun.target.position.copy(lp); SKY.sun.position.copy(lp).addScaledVector(SKY.sunDir, 300);
   updateTrackLOD(camera); updateDetailLOD(camera, scene, dt);
   // effects & sound
