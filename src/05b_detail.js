@@ -83,6 +83,7 @@ function detailTextures() {
   for (const k of ['grass', 'goldenrod', 'aster']) {
     const m = new THREE.MeshLambertMaterial({ map: TEX[k], alphaTest: 0.5 });
     m.onBeforeCompile = sway; m.customProgramCacheKey = () => 'sway';
+    fadeByDistance(m, k === 'grass' ? LOD.grass : LOD.flowers, true);
     SMAT['g_' + k] = m; DET.grassMats.push(m);
   }
 }
@@ -412,7 +413,7 @@ function genGrass(piece, scene) {
   const grp = new THREE.Group();
   for (const k in L) {
     const list = L[k]; if (!list.length) continue;
-    const mat = k === 'bush' ? MAT.tree : SMAT['g_' + k];
+    const mat = k === 'bush' ? MAT.bush : SMAT['g_' + k];
     const im = new THREE.InstancedMesh(G[k].clone(), mat, list.length);
     list.forEach((q, i) => { _m4.compose(_v1.set(q[0], q[1], -q[2]), _q.setFromEuler(_e.set(0, q[3], 0)), _v2.set(q[4], q[4] * (k === 'grass' ? 0.8 + (i % 5) * 0.12 : 1), q[4])); im.setMatrixAt(i, _m4); _tc.setRGB(q[5][0], q[5][1], q[5][2]).convertSRGBToLinear(); im.setColorAt(i, _tc); });
     im.geometry.boundingSphere = U.sphere.clone();

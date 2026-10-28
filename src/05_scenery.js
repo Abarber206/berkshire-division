@@ -760,19 +760,25 @@ function buildTrees(scene) {
     return true;
   };
   const autumn = (r) => { const x = r(); if (x < 0.55) return [0.28 + r() * 0.1, 0.42 + r() * 0.12, 0.17 + r() * 0.06]; if (x < 0.8) return [0.72 + r() * 0.15, 0.55 + r() * 0.15, 0.16]; if (x < 0.93) return [0.7 + r() * 0.1, 0.27 + r() * 0.1, 0.12]; return [0.55, 0.4, 0.2]; };
-  const r = rng(2024);
+  const r = rng(2024), rw = rng(4202);
   // woodlots
   for (let i = Math.floor((INNER.x0 + 40000) / FIELD.w); i <= Math.floor((INNER.x1 + 40000) / FIELD.w); i++)
     for (let j = Math.floor((INNER.n0 + 40000) / FIELD.h); j <= Math.floor((INNER.n1 + 40000) / FIELD.h); j++) {
       const X0 = i * FIELD.w - 40000, N0 = j * FIELD.h - 40000;
       const f = fieldAt(X0 + 1, N0 + 1);
       if (f.t.n === 'woods') {
-        for (let x = 0.18; x < 0.82; x += 19 / FIELD.w) for (let y = 0.2; y < 0.78; y += 19 / FIELD.h) {
-          const X = X0 + (x + (r() - 0.5) * 0.03) * FIELD.w, N = N0 + (y + (r() - 0.5) * 0.05) * FIELD.h;
+        let spots = 0, planted = 0;
+        const r = rw;   // own stream, so woodlot changes don't reshuffle the fence rows and windbreaks
+        for (let x = 0.18; x < 0.82; x += 14 / FIELD.w) for (let y = 0.2; y < 0.78; y += 14 / FIELD.h) {
+          const X = X0 + (x + (r() - 0.5) * 0.025) * FIELD.w, N = N0 + (y + (r() - 0.5) * 0.04) * FIELD.h;
+          spots++;
           if (!ok(X, N, 0)) continue;
+          planted++;
           if (r() < 0.22) put(X, N, 'dec', -(0.9 + r() * 0.5), [0.16 + r() * 0.05, 0.27 + r() * 0.06, 0.15]);
           else put(X, N, 'dec', 0.85 + r() * 0.6, autumn(r));
         }
+        // the ground shader lays leaf litter only under woodlots that really stand; a cleared one stays meadow
+        if (planted > spots * 0.4) WORLD.fieldTex.plant(i, j);
       }
       // fence-row trees along some field edges
       if (Noise.hash(i * 3 + 1, j * 7 + 2) < 0.22) {
@@ -799,7 +805,7 @@ function buildTrees(scene) {
     const tt = { hi: [], lo: [], c: null, r: 0 }; const allPts = [];
     for (const type of ['dec', 'decLo']) {
       const list = t[type.replace('Lo', '')]; if (!list.length) continue;
-      const im = new THREE.InstancedMesh(G[type].clone(), MAT.tree, list.length);
+      const im = new THREE.InstancedMesh(G[type].clone(), type.endsWith('Lo') ? MAT.treeFar : MAT.treeNear, list.length);
       const pts = [];
       list.forEach((q, i) => {
         const [X, N, s0, c] = q; const y = groundAt(X, N) - 0.3; const s = Math.abs(s0), col = s0 < 0;
