@@ -34,7 +34,7 @@ function wreckPose(T, v, dt) {
     w.box = box;
   }
   w.t += dt;
-  const x = Math.min(1, w.t / 0.9), e = x * x * (3 - 2 * x), B = w.box;
+  const x = clamp(w.t / 0.9, 0, 1), e = x * x * (3 - 2 * x), B = w.box;
   // roll about the bottom of the side it falls toward, then slew and shove it sideways
   const pz = w.side > 0 ? B.max.z : B.min.z, py = w.over ? B.min.y : 0;
   _wkM.makeTranslation(0, 0, w.shift * e)
@@ -195,12 +195,14 @@ class Consist {
     for (const im of this.inst) im.instanceMatrix.needsUpdate = true;
   }
   /* Throw the train off the rails around a point of impact: spec = { a: metres back from the front coupler,
-     side: +1 or -1, seed, k: 0..1 how hard }. null puts every car back on the rails. */
+     side: +1 or -1, seed, k: 0..1 how hard, v0: speed when it happened, m/s }. The cars nearest the hit go
+   first and the ones behind pile in after them, sooner and further back the faster it was going.
+     null puts every car back on the rails. */
   wreck(spec) {
     for (const v of this.vehicles) v.wk = null;
     this.wk = spec || null;
     if (!spec) return;
-    const r = rng(spec.seed || 1), reach = 18 + 70 * spec.k;
+    const v0 = spec.v0 || 0, r = rng(spec.seed || 1), reach = 18 + 70 * spec.k + 2.2 * v0, wave = Math.max(6, v0);
     this.vehicles.forEach((v, i) => {
       const mid = v.a0 + v.len / 2, gap = Math.max(0, Math.abs(mid - spec.a) - v.len / 2), f = 1 - gap / reach;
       if (f <= 0) return;
@@ -208,9 +210,9 @@ class Consist {
       const over = f > 0.5 && r() < 0.35 + 0.6 * spec.k;
       const side = (i % 2 && r() < 0.5 ? -1 : 1) * spec.side;
       v.wk = {
-        t: 0, side, over,
+        t: -gap / wave - 0.15 * r(), side, over,
         roll: over ? (1.25 + 0.3 * r()) : f * (0.12 + 0.3 * r()),
-        yaw: (i % 2 ? -1 : 1) * side * f * (0.1 + 0.35 * r() * spec.k),
+        yaw: (i % 2 ? -1 : 1) * side * f * (0.1 + 0.35 * r() * spec.k + Math.min(0.5, v0 / 60)),
         shift: side * f * (0.9 + 2.6 * spec.k * r()),
         drop: 0.25 + 0.2 * r(),
       };

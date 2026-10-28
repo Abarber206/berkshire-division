@@ -364,21 +364,54 @@ GAME.pause = function (p) {
   S.paused = p;
   if (p) { $('menu').hidden = false; startLabel(); }
 };
-GAME.fail = function (title, body) { S.throttle = 0; if (JOB.fail(title, body)) return; $('bigTitle').textContent = title; $('bigBody').textContent = body; $('bigMsg').hidden = false; };
-/* wk says where and how hard the train came off: { a: metres back from the front coupler, side, k: 0..1 };
-   left out, the leading end goes, as hard as the speed it was doing */
-GAME.derail = function (why, title = 'Derailed', wk) {
+GAME.fail = function (title, body) { S.throttle = 0; if (JOB.fail(title, body)) return; $('bigMsg').classList.remove('wreck'); $('bigTitle').textContent = title; $('bigBody').textContent = body; $('bigMsg').hidden = false; };
+/* A derailment plays out: the train keeps its way on, ploughing along with the cars nearest the point
+   of impact going over and the ones behind piling in, and only once it has all come to rest does the
+   game say what happened. wk says where and how hard: { a: metres back from the front coupler, side,
+   k: 0..1 }; left out, the leading end goes, as hard as the speed it was doing. A collision (hit) has
+   met something solid, so most of its speed goes into the wreck rather than the slide. */
+const WRECK_DECEL = 3.2;
+GAME.derail = function (why, title = 'Derailed', wk, hit) {
   if (S.derailed) return;
-  const T = GAME.train, mph = Math.abs(S.v) / MPH;
-  if (T) T.wreck(Object.assign({ a: S.v < 0 ? T.length : 0, side: Math.random() < 0.5 ? -1 : 1, k: clamp((mph - 4) / 40, 0.15, 1) }, wk, { seed: 1 + ((Math.random() * 1e9) | 0) }));
-  S.derailed = true; S.v = 0; S.vw = 0; S.throttle = 0; MP.dirty = true;
+  const T = GAME.train, v0 = Math.abs(S.v), mph = v0 / MPH;
+  if (hit === undefined) hit = title === 'Collision';
+  if (T) T.wreck(Object.assign({ a: S.v < 0 ? T.length : 0, side: Math.random() < 0.5 ? -1 : 1, k: clamp((mph - 4) / 40, 0.15, 1), v0 }, wk, { seed: 1 + ((Math.random() * 1e9) | 0) }));
+  S.derailed = true; S.throttle = 0; MP.dirty = true;
+  if (hit) S.v *= 0.15;
+  S.vw = S.v;
+  GAME.wrecking = { title, why, still: 0, clunkT: 0, done: false };
   if (AU.on) for (let i = 0; i < 8; i++) sndClunk(1, i * 0.07);
   CAM.shakeHit = 1;
-  GAME.fail(title, why);
+  toast(`${title}! ${why}`, 'bad', 4500, 'derail');
+};
+/* the wrecked train sliding to rest: no power, no brakes that matter, just the cars digging in */
+GAME.wreckStep = function (dt, T) {
+  const W = GAME.wrecking; if (!W) return;
+  if (S.v !== 0) {
+    const nv = Math.sign(S.v) * Math.max(0, Math.abs(S.v) - WRECK_DECEL * dt), d = (S.v + nv) / 2 * dt;
+    S.v = S.vw = nv;
+    const lim = CARS.limit(T, d);
+    const moved = T.move(lim.d, { onBlocked: () => { S.v = S.vw = 0; } });
+    S.odo += Math.abs(moved);
+    if (lim.hit) { S.v = S.vw = 0; sndClunk(1.2, 0); }   // ploughed into standing cars
+    CAM.shakeHit = Math.max(CAM.shakeHit, clamp(Math.abs(S.v) / 20, 0, 0.5));
+    W.clunkT -= dt;
+    if (W.clunkT <= 0 && AU.on) { W.clunkT = 0.1 + Math.random() * 0.25; sndClunk(clamp(Math.abs(S.v) / 6, 0.3, 1.5), 0); }
+    W.still = 0;
+  } else if (!W.done && (W.still += dt) > 1.5) {
+    // the dust has settled: a job is over; otherwise offer to put it back on the rails
+    W.done = true;
+    if (!JOB.fail(W.title, W.why)) GAME.wreckBar();
+  }
+};
+GAME.wreckBar = function () {
+  const W = GAME.wrecking; if (!W || !W.done || PLACE.on) return;
+  $('bigTitle').textContent = W.title; $('bigBody').textContent = W.why;
+  $('bigMsg').classList.add('wreck'); $('bigMsg').hidden = false;
 };
 GAME.rerail = function () {
-  $('bigMsg').hidden = true; S.derailed = false; S.v = 0; S.vw = 0; S.brakeH = 0.12; MP.dirty = true;
-  GAME.train.wreck(null);
+  $('bigMsg').hidden = true; $('bigMsg').classList.remove('wreck'); S.derailed = false; S.v = 0; S.vw = 0; S.brakeH = 0.12; MP.dirty = true;
+  GAME.train.wreck(null); GAME.wrecking = null;
   if (S.dead) { S.dead = false; S.W = 0.6; S.fire = 0.4; S.P = 180; }
   for (const v of GAME.train.vehicles) { v.brake.BP = 90; v.brake.AR = 90; v.brake.BC = 0; v.brake.emerg = false; }
   S.ER = 90;
@@ -535,7 +568,7 @@ function loop() {
   let dt = Math.min(clock.getDelta(), 0.05);
   const T = GAME.train; if (!T) return;
   const active = GAME.running && !S.paused && !S.derailed && !PLACE.on;
-  if (active) simStep(dt, T); else stepSwitches(dt);
+  if (active) simStep(dt, T); else { stepSwitches(dt); if (S.derailed && GAME.running && !S.paused && !PLACE.on) GAME.wreckStep(dt, T); }
   renderStep(dt, T);
 }
 function simStep(dt, T) {
