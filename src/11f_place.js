@@ -31,7 +31,7 @@ PLACE.exit = function () {
   PLACE.on = false; PLACE.pick = null;
   PLACE.ribbonAt(null); $('placeTip').hidden = true; $('gl').style.cursor = '';
   $('hud').classList.remove('placing'); $('placeBar').hidden = true;
-  if (S.derailed) $('bigMsg').hidden = false;
+  if (S.derailed) GAME.wreckBar();
   CAM.init = false; GAME.refreshKeys(); setTimeout(drawLeverTicks, 30);
 };
 
