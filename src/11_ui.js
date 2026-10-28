@@ -71,38 +71,46 @@ function cycleCamera(to) {
   const i = CAM.modes.indexOf(CAM.mode);
   CAM.mode = to || CAM.modes[(i + 1) % CAM.modes.length];
   CAM.side = null; CAM.init = false;
+  if (CAM.mode === 'cab') CAB.enter();
   $('camName').textContent = CAM.names[CAM.mode];
 }
 
 /* ---------------- pointer input on the 3D view ---------------- */
 function setupViewInput(canvas, camera) {
   const ptrs = new Map(); let pinch0 = 0, dist0 = 0, tapStart = null;
-  canvas.addEventListener('pointerdown', e => { if (PLACE.on) return; canvas.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY }); if (ptrs.size === 1) tapStart = { x: e.clientX, y: e.clientY, t: performance.now() }; if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinch0 = Math.hypot(a.x - b.x, a.y - b.y); dist0 = CAM.dist; tapStart = null; } });
+  canvas.addEventListener('pointerdown', e => {
+    if (PLACE.on) return;
+    // in the cab, a control under the pointer takes the drag instead of the view
+    if (!ptrs.size && !CAB.grab && CAB.down(e.clientX, e.clientY, e.pointerId)) { canvas.setPointerCapture(e.pointerId); e.preventDefault(); return; }
+    canvas.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY }); if (ptrs.size === 1) tapStart = { x: e.clientX, y: e.clientY, t: performance.now() }; if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinch0 = Math.hypot(a.x - b.x, a.y - b.y); dist0 = CAM.dist; tapStart = null; } });
   canvas.addEventListener('pointermove', e => {
     if (PLACE.on) return;
-    if (!ptrs.size && e.pointerType === 'mouse') { CPL.point(e.clientX, e.clientY); return; }
+    if (CAB.grab) { if (e.pointerId === CAB.grab.pid) CAB.move(e.clientX, e.clientY); return; }
+    if (!ptrs.size && e.pointerType === 'mouse') { if (CAB.point(e.clientX, e.clientY)) CPL.point(null); else CPL.point(e.clientX, e.clientY); return; }
     if (!ptrs.has(e.pointerId)) return;
     const p = ptrs.get(e.pointerId), dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
     if (tapStart && Math.hypot(e.clientX - tapStart.x, e.clientY - tapStart.y) > 8) tapStart = null;
     if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; const d = Math.hypot(a.x - b.x, a.y - b.y); if (pinch0 > 0) CAM.dist = clamp(dist0 * pinch0 / d, 7, 140); return; }
     const k = 0.006;
     if (CAM.mode === 'chase') { CAM.yaw -= dx * k; CAM.pitch = clamp(CAM.pitch + dy * k * 0.8, -0.05, 1.35); }
-    else if (CAM.mode === 'cab') { CAM.cabYaw = clamp(CAM.cabYaw - dx * k * 0.7, -2.2, 2.2); CAM.cabPitch = clamp(CAM.cabPitch - dy * k * 0.7, -0.8, 0.6); }
+    else if (CAM.mode === 'cab') { CAB.lookTo = null; CAM.cabYaw = clamp(CAM.cabYaw - dx * k * 0.7, -2.2, 2.2); CAM.cabPitch = clamp(CAM.cabPitch - dy * k * 0.7, -0.8, 0.6); }
     else if (CAM.mode === 'drone') CAM.droneYaw -= dx * k;
   });
   const up = e => {
     if (PLACE.on) { ptrs.delete(e.pointerId); tapStart = null; return; }
+    if (CAB.grab && e.pointerId === CAB.grab.pid) { CAB.up(); return; }
     if (tapStart && ptrs.size === 1 && performance.now() - tapStart.t < 400) handleTap(e.clientX, e.clientY, camera);
     ptrs.delete(e.pointerId); if (ptrs.size < 2) pinch0 = 0; tapStart = null;
   };
-  canvas.addEventListener('pointerup', up); canvas.addEventListener('pointerleave', () => { if (!PLACE.on) CPL.point(null); }); canvas.addEventListener('pointercancel', e => { ptrs.delete(e.pointerId); tapStart = null; });
+  canvas.addEventListener('pointerup', up); canvas.addEventListener('pointerleave', () => { if (PLACE.on) return; CPL.point(null); if (!CAB.grab) CAB.point(null); }); canvas.addEventListener('pointercancel', e => { if (CAB.grab && e.pointerId === CAB.grab.pid) CAB.up(); ptrs.delete(e.pointerId); tapStart = null; });
   canvas.addEventListener('wheel', e => { if (PLACE.on) return; e.preventDefault(); CAM.dist = clamp(CAM.dist * (1 + e.deltaY * 0.0012), 7, 140); }, { passive: false });
   document.addEventListener('gesturestart', e => e.preventDefault());
 }
 const _ray = new THREE.Raycaster();
 function handleTap(x, y, camera) {
   const v = new THREE.Vector2(x / innerWidth * 2 - 1, -(y / innerHeight) * 2 + 1);
-  if (CPL.tap(x, y)) return;
+  if (CAB.tapInfo(x, y)) return;
+  if (CAM.mode !== 'cab' && CPL.tap(x, y)) return;
   _ray.setFromCamera(v, camera);
   const hits = _ray.intersectObjects(NET.switches.map(s => s.vis.hit), false);
   if (hits.length) { GAME.throwSwitch(hits[0].object.userData.sw); return; }
@@ -111,21 +119,13 @@ function handleTap(x, y, camera) {
 /* ---------------- levers ---------------- */
 const LEVERS = {};
 function setupLevers() {
-  const defs = {
-    lvThrottle: { get: () => S.throttle, set: v => { S.throttle = v; }, fromY: t => GAME.isDiesel() ? Math.round((1 - t) * 8) / 8 : 1 - t, toY: v => 1 - v,
-      label: v => GAME.isDiesel() ? (Math.round(v * 8) ? 'N' + Math.round(v * 8) : 'IDLE') : Math.round(v * 100) + '%',
-      ticks: () => GAME.isDiesel() ? [...Array(9)].map((_, i) => [i / 8, '']) : [[0, ''], [0.25, ''], [0.5, ''], [0.75, ''], [1, '']] },
-    lvReverser: { get: () => S.reverser, set: v => { S.reverser = v; },
-      fromY: t => { if (GAME.isDiesel()) return t < 0.34 ? 1 : (t > 0.66 ? -1 : 0); let r = 1 - 2 * t; if (Math.abs(r) < 0.06) r = 0; return Math.round(r * 17) / 17; }, toY: v => (1 - v) / 2,
-      label: v => GAME.isDiesel() ? (v > 0.5 ? 'FWD' : v < -0.5 ? 'REV' : 'N') : (v === 0 ? 'N' : (v > 0 ? 'F ' : 'R ') + Math.round(Math.abs(v) * 85) + '%'), ticks: [[0, 'F'], [0.5, 'N'], [1, 'R']] },
-    lvDyn: { get: () => S.dyn, set: v => { S.dyn = v; }, fromY: t => t < 0.04 ? 0 : t, toY: v => v, label: v => v < 0.03 ? 'OFF' : v < 0.06 ? 'SETUP' : 'DB ' + Math.round((v - 0.06) / 0.94 * 100) + '%', ticks: [[0, ''], [0.06, ''], [1, '']] },
-    lvBrake: { get: () => S.brakeH, set: v => { S.brakeH = v; }, fromY: t => { if (Math.abs(t - 0.12) < 0.04) return 0.12; if (Math.abs(t - 0.23) < 0.035) return 0.23; return t; }, toY: v => v, label: v => brakeLabel(v), ticks: [[0.03, 'REL'], [0.12, 'RUN'], [0.23, 'LAP'], [0.3, 'SVC'], [0.95, 'EMG']] },
-    lvInd: { get: () => S.indH, set: v => { S.indH = v; }, fromY: t => t < 0.08 ? 0 : t, toY: v => v, label: v => Math.round(clamp((v - 0.1) / 0.9, 0, 1) * 45) + ' psi', ticks: [[0, 'REL'], [1, 'FULL']] },
-  };
+  // the same definitions drive the levers in the cab (CTL, src/06d_cab.js)
+  const defs = { lvThrottle: CTL.throttle, lvReverser: CTL.reverser, lvDyn: CTL.dyn, lvBrake: CTL.brake, lvInd: CTL.ind };
+
   for (const id in defs) {
     const el = $(id), d = defs[id], track = el.querySelector('.track'), knob = el.querySelector('.knob'), lv = el.querySelector('.lv'), tc = el.querySelector('.ticks');
     const L = { el, d, track, knob, lv, tc }; LEVERS[id] = L;
-    const setFromEvent = e => { const r = track.getBoundingClientRect(); const t = clamp((e.clientY - r.top) / r.height, 0, 1); d.set(d.fromY(t)); GAME.controlTouched(id); };
+    const setFromEvent = e => { const r = track.getBoundingClientRect(); const t = clamp((e.clientY - r.top) / r.height, 0, 1); d.set(d.fromT(t)); GAME.controlTouched(id); };
     el.addEventListener('pointerdown', e => { el.setPointerCapture(e.pointerId); L.drag = true; setFromEvent(e); e.preventDefault(); });
     el.addEventListener('pointermove', e => { if (L.drag) setFromEvent(e); });
     el.addEventListener('pointerup', () => { L.drag = false; }); el.addEventListener('pointercancel', () => { L.drag = false; });
@@ -133,7 +133,7 @@ function setupLevers() {
   }
   drawLeverTicks();
 }
-function nudgeLever(id, dt) { const L = LEVERS[id]; const y = L.d.toY(L.d.get()); L.d.set(L.d.fromY(clamp(y + dt, 0, 1))); GAME.controlTouched(id); }
+function nudgeLever(id, dt) { const L = LEVERS[id]; const y = L.d.toT(L.d.get()); L.d.set(L.d.fromT(clamp(y + dt, 0, 1))); GAME.controlTouched(id); }
 function drawLeverTicks() {
   for (const id in LEVERS) {
     const L = LEVERS[id], c = L.tc, r = L.track.getBoundingClientRect(); if (!r.height) continue;
@@ -144,7 +144,7 @@ function drawLeverTicks() {
   }
 }
 function updateLevers() {
-  for (const id in LEVERS) { const L = LEVERS[id], v = L.d.get(); L.knob.style.top = (L.d.toY(v) * 100) + '%'; const t = L.d.label(v); if (L.lv.textContent !== t) L.lv.textContent = t; }
+  for (const id in LEVERS) { const L = LEVERS[id], v = L.d.get(); L.knob.style.top = (L.d.toT(v) * 100) + '%'; const t = L.d.label(v); if (L.lv.textContent !== t) L.lv.textContent = t; }
 }
 
 /* ---------------- keys / buttons ---------------- */
@@ -202,6 +202,7 @@ function setupButtons() {
       case 'KeyF': if (GAME.isDiesel()) break; GAME.manualFire('stoker'); S.stoker = clamp(S.stoker + 0.25, 0, 1.0001) > 1 ? 0 : S.stoker + 0.25; break;
       case 'KeyL': if (GAME.isDiesel()) break; GAME.manualFire('blower'); S.blower = S.blower > 0.3 ? 0 : 0.65; break;
       case 'KeyT': GAME.throwAhead(); break;
+      case 'KeyV': CAB.nextLook(); break;
       case 'KeyU': carPanelToggle(); break;
       case 'KeyG': PLACE.enter(); break;
       case 'KeyM': MAP.visible ? MAP.close() : MAP.open(); break;
@@ -247,7 +248,7 @@ function drawGauges() {
   const gx = 560, gy0 = 26, gy1 = 200, gw = 26;
   g.fillStyle = '#6d531f'; g.fillRect(gx - 6, gy0 - 14, gw + 12, 12); g.fillRect(gx - 6, gy1 + 2, gw + 12, 12);
   g.fillStyle = '#0d1418'; g.fillRect(gx, gy0, gw, gy1 - gy0);
-  const lvl = clamp((S.W + 0.1) / 1.2, 0, 1), wy = gy1 - lvl * (gy1 - gy0);
+  const lvl = glassLevel(S.W), wy = gy1 - lvl * (gy1 - gy0);
   const wg = g.createLinearGradient(gx, 0, gx + gw, 0); wg.addColorStop(0, '#2e5c74'); wg.addColorStop(0.5, '#7fb6cf'); wg.addColorStop(1, '#2e5c74');
   g.fillStyle = wg; g.fillRect(gx, wy, gw, gy1 - wy);
   g.strokeStyle = 'rgba(255,255,255,0.25)'; g.lineWidth = 1; for (let i = 0; i < 8; i++) { g.beginPath(); g.moveTo(gx, wy + i * 4); g.lineTo(gx + gw, wy + i * 4 + 3); g.stroke(); }

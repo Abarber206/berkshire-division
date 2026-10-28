@@ -464,6 +464,7 @@ function buildBerkshire(key) {
   gb.box('dark', 0.14, RB.hi - RB.t - 2.74, 0.14, ax(7.4), (RB.hi - RB.t + 2.74) / 2, -1.32);
 
   /* ---- cab ---- */
+  let cab;
   {
     const x0 = C.x0, x1 = C.x1, fl = C.fl, hw = C.hw, L = x0 - x1, aRoof1 = 17.85;
     // side sheets: from the cab bottom to the eaves, the top running back over the deck in a curve; two window openings
@@ -478,7 +479,7 @@ function buildBerkshire(key) {
       // sashes: 2 x 2 panes each, the frame proud of the sheet
       for (const [a0, a1] of [[w.a0, mid - 0.04], [mid + 0.04, w.a1]]) {
         const am = (a0 + a1) / 2, wa = a1 - a0, hy = w.y1 - w.y0, ym = (w.y0 + w.y1) / 2;
-        gb.box('glass', wa, hy, 0.012, ax(am), ym, s * (hw - 0.03));
+        gb.box('winGlass', wa, hy, 0.012, ax(am), ym, s * (hw - 0.03));
         gb.box('black', 0.04, hy, 0.03, ax(am), ym, s * (hw - 0.012)); gb.box('black', wa, 0.04, 0.03, ax(am), ym, s * (hw - 0.012));
       }
       gb.box('black', w.a1 - w.a0 + 0.14, 0.04, 0.06, ax((w.a0 + w.a1) / 2), w.y1 + 0.05, s * (hw + 0.03));   // drip strip over the windows
@@ -496,10 +497,11 @@ function buildBerkshire(key) {
       hole.moveTo(-C.fbHalf(yb) - pad, yb); hole.lineTo(C.fbHalf(yb) + pad, yb); hole.lineTo(FB.r + pad, FB.cy); hole.absarc(0, FB.cy, FB.r + pad, 0, Math.PI, false); hole.lineTo(-C.fbHalf(yb) - pad, yb);
       sh.holes.push(hole);
       const fw = C.front;
-      for (const s of [-1, 1]) { const h = new THREE.Path(); h.moveTo(s * fw.zi, fw.y0); h.lineTo(s * fw.zo, fw.y0); h.lineTo(s * fw.zo, fw.y1); h.lineTo(s * fw.zi, fw.y1); h.closePath(); if (s < 0) h.setFromPoints(h.getPoints().reverse()); sh.holes.push(h); }
+      // both window holes wound the same way round (clockwise), or the triangulator fills one of them in
+      for (const s of [-1, 1]) { const h = new THREE.Path(), lo = Math.min(s * fw.zi, s * fw.zo), hi = Math.max(s * fw.zi, s * fw.zo); h.moveTo(lo, fw.y0); h.lineTo(lo, fw.y1); h.lineTo(hi, fw.y1); h.lineTo(hi, fw.y0); h.lineTo(lo, fw.y0); sh.holes.push(h); }
       const g = new THREE.ExtrudeGeometry(sh, { depth: 0.05, bevelEnabled: false, curveSegments: 24 });
       g.rotateY(Math.PI / 2); g.translate(x0 - 0.025, 0, 0); gb.add('black', g);
-      for (const s of [-1, 1]) gb.box('glass', 0.012, fw.y1 - fw.y0, fw.zo - fw.zi, x0 - 0.01, (fw.y0 + fw.y1) / 2, s * (fw.zi + fw.zo) / 2);
+      for (const s of [-1, 1]) gb.box('winGlass', 0.012, fw.y1 - fw.y0, fw.zo - fw.zi, x0 - 0.01, (fw.y0 + fw.y1) / 2, s * (fw.zi + fw.zo) / 2);
       gb.box('black', 0.08, 0.05, 2 * hw, x0 + 0.03, fl + 0.02, 0);
     }
     // roof: an arched sheet from ahead of the front wall back over the deck, eave strips and a ventilator
@@ -525,22 +527,7 @@ function buildBerkshire(key) {
     RMAT['cab' + key] = cabNum;
     for (const s of [-1, 1]) gb.add('cab' + key, new THREE.PlaneGeometry(1.0, 0.5), M(ax(15.95), 2.5, s * (hw + 0.026), 0, s > 0 ? 0 : Math.PI, 0));
     // interior: backhead, gauges, firedoor, seats, levers
-    const bh = C.bh;   // the firebox's back sheet
-    gb.box('backhead', 0.06, 1.7, 2.3, bh - 0.03, fl + 1.0, 0);
-    gb.box('dark', 0.38, 0.4, 0.4, bh - 0.21, fl + 0.75, 0);   // firedoor
-    for (const [z, y, r] of [[-0.45, 3.9, 0.13], [0.15, 3.95, 0.16], [0.55, 3.85, 0.12], [-0.1, 3.6, 0.1], [0.9, 3.55, 0.1]]) { gb.add('brass', new THREE.CylinderGeometry(r, r, 0.05, 18).rotateZ(Math.PI / 2).translate(bh - 0.05, y, z)); gb.add('white', new THREE.CircleGeometry(r * 0.85, 18).rotateY(-Math.PI / 2).translate(bh - 0.08, y, z)); }
-    gb.box('glass', 0.05, 0.5, 0.06, bh - 0.06, 3.3, -0.85); gb.box('brass', 0.06, 0.08, 0.1, bh - 0.06, 3.58, -0.85); gb.box('brass', 0.06, 0.08, 0.1, bh - 0.06, 3.02, -0.85);
-    for (const s of [-1, 1]) {   // seat boxes: cushion and back on a pedestal from the deck
-      gb.box('cabInt', 0.6, 0.12, 0.5, x1 + 0.8, 3.0, s * 1.15); gb.box('cabInt', 0.1, 0.6, 0.5, x1 + 0.55, 3.35, s * 1.15);
-      gb.box('dark', 0.4, 3.0 - 0.06 - fl, 0.36, x1 + 0.8, (3.0 - 0.06 + fl) / 2, s * 1.15);
-    }
-    gb.box('dark', 0.36, 0.1, 0.1, bh - 0.24, 3.45, 0.75); // throttle lever, out from the backhead
-    gb.box('dark', 0.3, 0.25, 0.25, x1 + 1.5, fl + 1.05, 1.3); // brake stand
-    gb.box('dark', 0.12, 0.92, 0.12, x1 + 1.5, fl + 0.46, 1.3);  // its pedestal
-    {   // whistle cord, from the valve on the backhead up to the cab roof
-      const a = [bh - 0.06, 3.85, 0.6], b = [x1 + 0.6, C.ceil(0.6) + 0.01, 0.6];
-      bar('dark', 0.012, a, b, 6);
-    }
+    cab = steamCab(gb, body, { x0: C.x0, x1: C.x1, fl: C.fl, floor: C.fl, hw: C.hw, bh: C.bh, FB: C.FB, ceil: C.ceil, fwin: C.front, side: C.side, eyeY: 3.6 });
   }
   /* ---- trailing truck: Delta cast frame outside the wheels, pivoted ahead of the firebox ---- */
   for (const s of [-1, 1]) {
@@ -562,7 +549,7 @@ function buildBerkshire(key) {
 
   /* ---- glows & lights ---- */
   const lens = new THREE.Mesh(new THREE.CircleGeometry(hlR, 28), RMAT.lens); lens.position.set(ax(lensA) + 0.004, hlPos[1], 0); lens.rotation.y = Math.PI / 2; body.add(lens);
-  const fire = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 0.22), RMAT.glow.clone()); fire.position.set(C.bh - 0.403, C.fl + 0.75, 0); fire.rotation.y = -Math.PI / 2; body.add(fire);
+  const fire = new THREE.Mesh(new THREE.PlaneGeometry(...cab.fireSize), RMAT.glow.clone()); fire.position.copy(cab.firePos); fire.rotation.y = -Math.PI / 2; body.add(fire);
   const beamG = new THREE.ConeGeometry(7, 70, 24, 1, true); beamG.translate(0, -35, 0); beamG.rotateZ(Math.PI / 2);
   const beam = new THREE.Mesh(beamG, new THREE.MeshBasicMaterial({ color: 0xfff2c8, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: true }));
   beam.position.set(ax(lensA), hlPos[1], 0); beam.rotation.z = -0.045; beam.castShadow = false; body.add(beam);
@@ -627,7 +614,7 @@ function buildBerkshire(key) {
     stackPos: new THREE.Vector3(ax(stackA), 4.8, 0), cockPos: [new THREE.Vector3(ax(cylA), 0.4, 1.2), new THREE.Vector3(ax(cylA), 0.4, -1.2)],
     safetyPos: new THREE.Vector3(ax(12.15), fbTop + 0.35, 0), whistlePos: new THREE.Vector3(ax(wh[0]), wh[1] + 0.6, wh[2]),
     pumpPos: new THREE.Vector3(ax(pumpPos[0]), nkp ? RB.lo + 1.2 : pil.deckY + 1.25, nkp ? -1.42 : -0.88), injPos: new THREE.Vector3(ax(C.a0 - 0.5), 1.5, 1.45),
-    cabEye: new THREE.Vector3(ax(15.55), 3.45, 1.22), headlightPos: new THREE.Vector3(ax(lensA), hlPos[1], 0) };
+    cabEye: cab.eye, cab, headlightPos: new THREE.Vector3(ax(lensA), hlPos[1], 0) };
 }
 
 /* Paint finish for the steam engines: as delivered (graphite smokebox and firebox),

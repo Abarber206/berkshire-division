@@ -9,7 +9,7 @@
    All paint is original: fictional railroads, plus custom colours.
    Local frame: +X forward, origin midway between truck centres at rail top.
    ========================================================================== */
-const DG = { len: 22.30, ref: 11.15, trucks: [4.05, 18.25], axle: 2.0, rW: 0.533, deck: 1.72 };
+const DG = { len: 22.30, ref: 11.15, trucks: [4.05, 18.25], axle: 2.0, rW: 0.533, deck: 1.72, uid: 0 };
 const dx = a => DG.ref - a;
 
 /* ---------------- liveries (all invented) ---------------- */
@@ -199,6 +199,7 @@ function buildDiesel(opts) {
 
   /* ---- cab: raked windshield with chamfered corners, and a brow above it carrying the number boards ---- */
   const yW0 = yT2, yW1 = 4.33, tL = 0.2, aTop = CAB0 + (yW1 - yW0) * tL, Wc = W - CHc, aB = aTop - 0.12;
+  let cab;
   {
     const rr = (p, x0, y0, x1, y1, r) => { p.moveTo(x0 + r, y0); p.lineTo(x1 - r, y0); p.quadraticCurveTo(x1, y0, x1, y0 + r); p.lineTo(x1, y1 - r); p.quadraticCurveTo(x1, y1, x1 - r, y1); p.lineTo(x0 + r, y1); p.quadraticCurveTo(x0, y1, x0, y1 - r); p.lineTo(x0, y0 + r); p.quadraticCurveTo(x0, y0, x0 + r, y0); };
     // the windshield plane leans back: x' = x - (y - yW0) * tL
@@ -243,17 +244,10 @@ function buildDiesel(opts) {
     box('dUnder', 3.4, 4.3, ROOF + 0.07, ROOF + 0.2, -0.62, 0.62);
     box('grille', 3.45, 4.25, ROOF + 0.2, ROOF + 0.206, -0.55, 0.55);
     for (const z of [-0.95, 0.9]) gb.add('dUnder', new THREE.CylinderGeometry(0.015, 0.03, 0.45, 6), M(dx(4.8), ROOF + 0.3, z));
-    // interior
+    // interior: floor, console, control stand, seats
     const FL = 2.7;                                            // the cab floor sits well above the deck
     box('dInt', CAB0 + 0.3, CAB1 - 0.05, FL - 0.03, FL, -W + 0.02, W - 0.02);
-    box('dDesk', CAB0 + 0.3, CAB0 + 0.9, FL, FL + 0.75, 0.15, 1.42);
-    box('dDesk', CAB0 + 0.3, CAB0 + 0.8, FL, FL + 0.75, -1.42, -0.25);
-    gb.add('screen', new THREE.PlaneGeometry(0.34, 0.2), M(dx(CAB0 + 0.6), FL + 0.87, 1.05, 0, -Math.PI / 2, 0).multiply(M(0, 0, 0, -0.75, 0, 0)));
-    gb.add('screen', new THREE.PlaneGeometry(0.34, 0.2), M(dx(CAB0 + 0.6), FL + 0.87, 0.6, 0, -Math.PI / 2, 0).multiply(M(0, 0, 0, -0.75, 0, 0)));
-    box('dDesk', CAB0 + 0.5, CAB0 + 0.7, FL + 0.75, FL + 0.79, 0.4, 1.25);
-    for (const s of [-1, 1]) { box('dDesk', 3.95, 4.5, FL, FL + 0.55, s * 0.55, s * 1.15); box('dDesk', 4.4, 4.55, FL + 0.55, FL + 1.3, s * 0.55, s * 1.15); }
-    box('dSafety', CAB0 + 0.8, CAB0 + 0.92, FL + 0.75, FL + 0.89, 1.2, 1.28);
-    box('dUnder', CAB0 + 0.8, CAB0 + 0.9, FL + 0.75, FL + 0.87, 0.3, 0.36);
+    cab = dieselCab(gb, body, { dx, CAB0, CAB1, FL, W, sill: yW0, ceil: yW1, lead, uid: ++DG.uid });
     // air conditioner under the cab, conductor's side
     box('grille', CAB0 + 0.3, CAB0 + 1.5, 1.2, 1.62, -W - 0.006, -W - 0.002);
   }
@@ -387,7 +381,7 @@ function buildDiesel(opts) {
   return {
     root, body, trucks, wheels, couplers, lens: lenses[0], lenses, beam, halo, ditch, spec, skin, livery: L, number: num, diesel: true, lead, len: DG.len, frame: DG.trucks.slice(),
     stackPos: new THREE.Vector3(dx(11.5), HOOD + 0.3, 0), hornPos: new THREE.Vector3(dx(6.0), DBH + 0.35, 0), enginePos: new THREE.Vector3(dx(12.5), 2.9, 0),
-    cabEye: new THREE.Vector3(dx(3.8), 4.0, 0.8), headlightPos: new THREE.Vector3(dx(N0 - 0.05), hlY, 0), cabLightPos: new THREE.Vector3(dx(4.1), 4.25, 0),
+    cabEye: cab.eye, cab, headlightPos: new THREE.Vector3(dx(N0 - 0.05), hlY, 0), cabLightPos: new THREE.Vector3(dx(4.1), 4.25, 0),
   };
 }
 let _louverTex = null;
