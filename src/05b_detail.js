@@ -171,53 +171,62 @@ function buildTowns(scene) {
     const uvs = new Float32Array(pos.length / 3 * 2); for (let i = 0; i < pos.length / 3; i++) { uvs[i * 2] = pos[i * 3] / 6; uvs[i * 2 + 1] = pos[i * 3 + 2] / 6; } sg.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
     const sm = new THREE.Mesh(sg, SMAT.road); sm.receiveShadow = true; scene.add(sm);
     for (const L of T.lots) {
-      const gb = binAt(L.X, L.N), y = groundAt(L.X, L.N) - 0.15;
+      const gb = binAt(L.X, L.N), y = groundAt(L.X, L.N);
       const r = rng(Math.floor(L.r * 1e6));
+      // set each building level just under the high side of its footprint; footings run down past the low side
+      const sited = (yw, x, z, w, d) => baseM(L.X, y + groundUnder(baseM(L.X, y, L.N, yw), x, z, w, d)[1] - 0.12, L.N, yw);
+      const fnd = (base, x, z, w, d, top, c = [0.55, 0.53, 0.5]) => { const h = top - groundUnder(base, x, z, w, d)[0] + 0.3; gb.add('vc', colorize(new THREE.BoxGeometry(w, h, d), c), P(base, x, top - h / 2, z)); };
       if (L.kind === 'shop') {
-        const base = baseM(L.X, y, L.N, yaw);
+        const base = sited(yaw, 0, 0, L.w, L.d); foot(base, 0, 0, L.w + 0.6, L.d + 2.6);
         const H = 0.6 + L.stories * 3.6, col = hex3(BRICK[(r() * BRICK.length) | 0]);
         gb.add('brickVC', colorize(boxT(L.w, H, L.d, 3), col), P(base, 0, H / 2, 0));
+        fnd(base, 0, 0, L.w + 0.1, L.d + 0.1, 0.06);
         gb.add('vc', colorize(new THREE.BoxGeometry(L.w + 0.3, 0.45, L.d + 0.3), [0.82, 0.78, 0.68]), P(base, 0, H + 0.1, 0)); // cornice
         gb.add('vc', colorize(new THREE.BoxGeometry(L.w - 0.4, 0.7, 0.12), [0.12, 0.12, 0.12]), P(base, 0, 3.75, L.d / 2 + 0.06)); // sign band
-        gb.add('win', new THREE.BoxGeometry(L.w - 1.6, 2.2, 0.08), P(base, -0.4, 1.6, L.d / 2 + 0.02));
+        gb.add('win', new THREE.BoxGeometry(L.w - 2.0, 2.2, 0.08), P(base, -0.6, 1.6, L.d / 2 + 0.02));
         gb.add('trim', new THREE.BoxGeometry(1.0, 2.4, 0.1), P(base, L.w / 2 - 0.9, 1.25, L.d / 2 + 0.03));
         const ac = hex3(AWN[(r() * AWN.length) | 0]);
         gb.add('awning', colorize(new THREE.PlaneGeometry(L.w - 0.6, 1.6), ac), P(base, 0, 3.15, L.d / 2 + 0.65, -1.05, 0, 0));
         for (let s = 2; s <= L.stories; s++) windowsRow(gb, base, -L.w / 2 + 1.6, L.w / 2 - 1.6, 1.0 + (s - 1) * 3.6 + 1.2, L.d / 2, 0.9, 1.6, Math.max(2, Math.round(L.w / 3)));
       } else if (L.kind === 'house') {
-        const base = baseM(L.X, y, L.N, yaw + (L.face > 0 ? Math.PI : 0));
+        const base = sited(yaw + (L.face > 0 ? Math.PI : 0), 0, 1.0, L.w, L.d + 2.0); foot(base, 0, 1.0, L.w + 0.9, L.d + 2.9);
         const H = L.stories === 2 ? 5.8 : 3.2, col = hex3(SID[(r() * SID.length) | 0]), rc = hex3(ROOF[(r() * ROOF.length) | 0]);
         gb.add('sidingVC', colorize(boxT(L.w, H, L.d, 2.4), col), P(base, 0, H / 2 + 0.3, 0));
         gb.add('roofVC', colorize(gableRoof(L.w, L.d, L.stories === 2 ? 2.6 : 2.2, 0.45), rc), P(base, 0, H + 0.3, 0));
-        gb.add('vc', colorize(new THREE.BoxGeometry(L.w + 0.1, 0.4, L.d + 0.1), [0.55, 0.53, 0.5]), P(base, 0, 0.2, 0)); // foundation
+        fnd(base, 0, 0, L.w + 0.1, L.d + 0.1, 0.4); // foundation
         gb.add('vc', colorize(new THREE.BoxGeometry(L.w * 0.7, 0.12, 2.0), [0.92, 0.9, 0.85]), P(base, 0, 2.9, L.d / 2 + 1.0)); // porch roof
         gb.add('vc', colorize(new THREE.BoxGeometry(L.w * 0.7, 0.25, 2.0), [0.6, 0.57, 0.52]), P(base, 0, 0.45, L.d / 2 + 1.0)); // porch deck
+        fnd(base, 0, L.d / 2 + 1.0, L.w * 0.7 - 0.2, 1.8, 0.34);
         for (const px of [-L.w * 0.33, L.w * 0.33]) gb.add('vc', colorize(new THREE.BoxGeometry(0.14, 2.4, 0.14), [0.95, 0.94, 0.9]), P(base, px, 1.7, L.d / 2 + 1.9));
         gb.add('trim', new THREE.BoxGeometry(0.95, 2.1, 0.08), P(base, 0, 1.45, L.d / 2 + 0.02));
         windowsRow(gb, base, -L.w / 2 + 1.4, L.w / 2 - 1.4, 1.9, L.d / 2, 0.85, 1.3, 2);
         if (L.stories === 2) windowsRow(gb, base, -L.w / 2 + 1.4, L.w / 2 - 1.4, 4.6, L.d / 2, 0.85, 1.2, 3);
         windowsRow(gb, base, -L.w / 2 + 1.4, L.w / 2 - 1.4, 1.9, -L.d / 2, 0.85, 1.3, 2, -1);
-        gb.add('brick', boxT(0.6, 2.4, 0.6), P(base, L.w * 0.28, H + 1.6, -0.6));
-        if (r() < 0.35) { gb.add('sidingVC', colorize(boxT(3.6, 2.8, 6), col), P(base, L.w / 2 + 2.6, 1.4, -1.0)); gb.add('roofVC', colorize(gableRoof(3.6, 6, 1.0, 0.25), rc), P(base, L.w / 2 + 2.6, 2.8, -1.0)); }
+        gb.add('brick', boxT(0.6, 3.0, 0.6), P(base, L.w * 0.28, H + 1.9, -0.6));
+        if (r() < 0.35) { gb.add('sidingVC', colorize(boxT(3.6, 2.8, 6), col), P(base, L.w / 2 + 2.6, 1.4, -1.0)); gb.add('roofVC', colorize(gableRoof(3.6, 6, 1.0, 0.25), rc), P(base, L.w / 2 + 2.6, 2.8, -1.0)); fnd(base, L.w / 2 + 2.6, -1.0, 3.7, 6.1, 0.06); foot(base, L.w / 2 + 2.6, -1.0, 3.7, 6.1); }
         for (let t = 0; t < 2; t++) if (r() < 0.75) { const [tx, tn] = T.at(L.u + (r() - 0.5) * 14, L.v + L.face * (-8 - r() * 4)); (SCN.extraTrees || (SCN.extraTrees = [])).push([tx, tn, 0.9 + r() * 0.6, null]); }
       } else if (L.kind === 'church') {
-        const base = baseM(L.X, y, L.N, yaw);
+        const base = sited(yaw, 0, 2.05, 12, 26.1); foot(base, 0, 2.05, 13, 27);
         gb.add('white', boxT(12, 8, 22, 2.4), P(base, 0, 4, 0));
+        fnd(base, 0, 0, 12.2, 22.2, 0.06); fnd(base, 0, 12.8, 4.8, 4.8, 0.06);
         gb.add('slate', gableRoof(22, 12, 6.0, 0.5).rotateY(Math.PI / 2), P(base, 0, 8, 0));
         gb.add('white', boxT(4.6, 15, 4.6, 2.4), P(base, 0, 7.5, 12.8));
         gb.add('slate', new THREE.ConeGeometry(3.3, 11, 4).rotateY(Math.PI / 4), P(base, 0, 20.5, 12.8));
-        gb.add('trim', new THREE.BoxGeometry(1.6, 3.0, 0.1), P(base, 0, 1.5, 15.12));
+        gb.add('trim', new THREE.BoxGeometry(1.6, 3.0, 0.1), P(base, 0, 1.55, 15.12));
         for (const z of [-7, -2, 3]) for (const s of [-1, 1]) gb.add('win', new THREE.BoxGeometry(0.08, 3.4, 1.1), P(base, s * 6.03, 4.4, z));
         gb.add('win', new THREE.CylinderGeometry(0.8, 0.8, 0.08, 16).rotateX(Math.PI / 2), P(base, 0, 11.0, 15.12));
         keep(L.X, L.N, 18);
       } else if (L.kind === 'tower') {
-        const base = baseM(L.X, y, L.N, yaw);
-        for (let k = 0; k < 4; k++) { const a = k * Math.PI / 2 + Math.PI / 4; gb.add('silver', new THREE.CylinderGeometry(0.25, 0.32, 30, 8), P(base, Math.cos(a) * 4.2, 15, Math.sin(a) * 4.2)); }
-        gb.add('silver', new THREE.CylinderGeometry(0.6, 0.6, 30, 10), P(base, 0, 15, 0));
-        gb.add('silver', new THREE.SphereGeometry(7, 24, 14).scale(1, 0.72, 1), P(base, 0, 34, 0));
+        const base = baseM(L.X, y - 0.15, L.N, yaw); foot(base, 0, 0, 14, 14);
+        for (let k = 0; k < 4; k++) { const a = k * Math.PI / 2 + Math.PI / 4, x = Math.cos(a) * 4.2, z = Math.sin(a) * 4.2; gb.add('silver', new THREE.CylinderGeometry(0.25, 0.32, 30.4, 8), P(base, x, 15.2, z)); fnd(base, x, z, 1.0, 1.0, 0.25, [0.62, 0.6, 0.56]); }
+        gb.add('silver', new THREE.CylinderGeometry(0.6, 0.6, 30, 10), P(base, 0, 15, 0)); fnd(base, 0, 0, 1.6, 1.6, 0.25, [0.62, 0.6, 0.56]);
+        // tank in four pieces on one 24 x 14 facet grid; the lettered band is one of them, so it lies flush
+        const tank = (k, ...a) => gb.add(k, new THREE.SphereGeometry(7, ...a).scale(1, 0.72, 1), P(base, 0, 34, 0));
+        const RW = Math.PI / 14;
+        tank('silver', 24, 6, 0, TAU, 0, 6 * RW); tank('silver', 24, 6, 0, TAU, 8 * RW, 6 * RW); tank('silver', 18, 2, 3 * Math.PI / 4, 3 * Math.PI / 2, 6 * RW, 2 * RW);
         gb.add('silver', new THREE.ConeGeometry(2.2, 2.2, 16), P(base, 0, 39.8, 0));
         const k = 'twr_' + T.name; SMAT[k] = new THREE.MeshLambertMaterial({ map: canvasTex(512, 128, (g, w, h) => { g.fillStyle = '#c8ccd0'; g.fillRect(0, 0, w, h); g.fillStyle = '#23405e'; g.font = 'bold 84px "Arial Narrow", Arial'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(T.name.toUpperCase(), w / 2, h / 2 + 4); }) });
-        gb.add(k, new THREE.CylinderGeometry(7.02, 7.02, 2.6, 32, 1, true, -0.7, 1.4), P(base, 0, 34, 0));
+        tank(k, 6, 2, Math.PI / 4, Math.PI / 2, 6 * RW, 2 * RW);
       }
     }
     // street trees

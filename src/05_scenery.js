@@ -2,7 +2,7 @@
    Scenery: buildings, bridge, roads & crossings, pole line, signals, trees
    ========================================================================== */
 const SMAT = {};
-const SCN = { bins: new Map(), keepout: [], signals: [], winMats: [], lamps: [], crossings: [] };
+const SCN = { bins: new Map(), keepout: [], foot: [], signals: [], winMats: [], lamps: [], crossings: [] };
 function sceneryMaterials() {
   const brick = canvasTex(256, 256, (g, w, h) => {
     g.fillStyle = '#6d5b52'; g.fillRect(0, 0, w, h); const r = rng(5);
@@ -66,16 +66,17 @@ function boxT(w, h, d, sc = 2.5) {
   for (let f = 0; f < 6; f++) for (let v = 0; v < 4; v++) { const i = f * 4 + v; uv.setXY(i, uv.getX(i) * dims[f][0] / sc, uv.getY(i) * dims[f][1] / sc); }
   return g;
 }
+/* roofs are closed solids: the soffit (underside) sits flat on the wall tops */
 function hipRoof(L, W, H, over = 0.6) {
   const l = L / 2 + over, w = W / 2 + over, r = Math.max(0, l - w);
   const v = [[-l, 0, -w], [l, 0, -w], [l, 0, w], [-l, 0, w], [-r, H, 0], [r, H, 0]];
-  const f = [[0, 4, 5], [0, 5, 1], [1, 5, 2], [2, 5, 4], [2, 4, 3], [3, 4, 0]];
+  const f = [[0, 4, 5], [0, 5, 1], [1, 5, 2], [2, 5, 4], [2, 4, 3], [3, 4, 0], [0, 1, 2], [0, 2, 3]];
   return polyGeo(v, f, 3);
 }
 function gableRoof(L, W, H, over = 0.5) {
   const l = L / 2 + over, w = W / 2 + over;
   const v = [[-l, 0, -w], [l, 0, -w], [l, 0, w], [-l, 0, w], [-l, H, 0], [l, H, 0]];
-  const f = [[0, 4, 5], [0, 5, 1], [2, 5, 4], [2, 4, 3], [3, 4, 0], [1, 5, 2]];
+  const f = [[0, 4, 5], [0, 5, 1], [2, 5, 4], [2, 4, 3], [3, 4, 0], [1, 5, 2], [0, 1, 2], [0, 2, 3]];
   return polyGeo(v, f, 3);
 }
 function polyGeo(v, f, sc) {
@@ -90,6 +91,26 @@ function gambrel(L, W, H) {
   const g = new THREE.ExtrudeGeometry(s, { depth: L + 0.8, bevelEnabled: false }); g.translate(0, 0, -(L + 0.8) / 2); g.rotateY(Math.PI / 2);
   const uv = g.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) / 2.5, uv.getY(i) / 2.5);
   return g;
+}
+/* ground under a base-local footprint, as [lowest, highest] in base-local y */
+function groundUnder(base, x, z, w, d) {
+  const v = new THREE.Vector3(), by = base.elements[13]; let lo = Infinity, hi = -Infinity;
+  for (let i = 0; i <= 4; i++) for (let j = 0; j <= 4; j++) {
+    v.set(x + (i / 4 - 0.5) * w, 0, z + (j / 4 - 0.5) * d).applyMatrix4(base);
+    const g = groundAt(v.x, -v.z) - by; if (g < lo) lo = g; if (g > hi) hi = g;
+  }
+  return [lo, hi];
+}
+/* foundation under a footprint: from `top` down past the lowest ground beneath it */
+function footing(gb, key, base, x, z, w, d, top = 0) {
+  const lo = groundUnder(base, x, z, w, d)[0], h = top - lo + 0.3;
+  if (h > 0.02) gb.add(key, boxT(w, h, d, 2), P(base, x, top - h / 2, z));
+}
+/* building footprints, so trees planted round buildings can keep their canopies clear of the walls */
+function foot(base, x, z, w, d) { const e = base.elements, c = new THREE.Vector3(x, 0, z).applyMatrix4(base); SCN.foot.push([c.x, c.z, e[0], e[2], e[8], e[10], w / 2, d / 2]); }
+function inFoot(X, N, pad) {
+  for (const f of SCN.foot) { const dx = X - f[0], dz = -N - f[1]; if (Math.abs(dx * f[2] + dz * f[3]) < f[6] + pad && Math.abs(dx * f[4] + dz * f[5]) < f[7] + pad) return true; }
+  return false;
 }
 function keep(X, N, r) { SCN.keepout.push([X, N, r]); }
 const kept = (X, N, pad = 0) => { for (const k of SCN.keepout) if ((X - k[0]) ** 2 + (N - k[1]) ** 2 < (k[2] + pad) ** 2) return true; return false; };
@@ -111,35 +132,45 @@ function depot(pl, name, big) {
   const base = baseM(pl.X, pl.y - 0.15, pl.N, pl.yaw + (off < 0 ? 0 : Math.PI));
   const gb = binAt(pl.X, pl.N);
   gb.add('brick', boxT(L, 0.9, W, 2), P(base, 0, 0.45, 0));
+  footing(gb, 'brick', base, 0, 0, L, W);
   gb.add('cream', boxT(L - 0.1, H - 0.9, W - 0.1, 2), P(base, 0, 0.9 + (H - 0.9) / 2, 0));
   gb.add('trim', new THREE.BoxGeometry(L + 0.1, 0.18, W + 0.1), P(base, 0, 0.95, 0));
   gb.add('trim', new THREE.BoxGeometry(L + 0.1, 0.25, W + 0.1), P(base, 0, H - 0.1, 0));
   // operator's bay facing track (+z side of base faces the track)
-  gb.add('cream', boxT(3.2, H - 0.9, 1.4, 2), P(base, 0, 0.9 + (H - 0.9) / 2, W / 2 + 0.6));
-  windowsRow(gb, base, -1.0, 1.0, 2.4, W / 2 + 1.3, 0.8, 1.5, 2);
-  windowsRow(gb, base, -L / 2 + 2, -2.6, 2.4, W / 2, 0.9, 1.6, big ? 4 : 2);
-  windowsRow(gb, base, 2.6, L / 2 - 2, 2.4, W / 2, 0.9, 1.6, big ? 3 : 2);
-  windowsRow(gb, base, -L / 2 + 2, L / 2 - 2, 2.4, -W / 2, 0.9, 1.6, big ? 6 : 4, -1);
+  gb.add('brick', boxT(3.2, 0.9, 1.4, 2), P(base, 0, 0.45, W / 2 + 0.6));
+  gb.add('cream', boxT(3.1, H - 0.9, 1.35, 2), P(base, 0, 0.9 + (H - 0.9) / 2, W / 2 + 0.6));
+  gb.add('trim', new THREE.BoxGeometry(3.3, 0.18, 1.5), P(base, 0, 0.95, W / 2 + 0.6));
+  windowsRow(gb, base, -1.0, 1.0, 2.4, W / 2 + 1.275, 0.8, 1.5, 2);
+  windowsRow(gb, base, -L / 2 + 2, -2.6, 2.4, W / 2 - 0.05, 0.9, 1.6, big ? 4 : 2);
+  windowsRow(gb, base, 2.6, L / 2 - 2, 2.4, W / 2 - 0.05, 0.9, 1.6, big ? 3 : 2);
+  windowsRow(gb, base, -L / 2 + 2, L / 2 - 2, 2.4, -W / 2 + 0.05, 0.9, 1.6, big ? 6 : 4, -1);
   // freight doors
-  gb.add('trim', new THREE.BoxGeometry(2.4, 2.6, 0.08), P(base, L / 2 - 2.5, 1.3, W / 2 + 0.02));
+  gb.add('trim', new THREE.BoxGeometry(2.4, 2.6, 0.14), P(base, L / 2 - 2.5, 1.36, W / 2));
   gb.add('slate', hipRoof(L, W, 2.6, 1.6), P(base, 0, H, 0));
   // roof brackets
   for (let x = -L / 2 + 1; x <= L / 2 - 1; x += 3) for (const z of [-1, 1]) gb.add('trim', new THREE.BoxGeometry(0.14, 0.7, 1.4), P(base, x, H - 0.45, z * (W / 2 + 0.6), z * 0.6, 0, 0));
   gb.add('brick', boxT(0.7, 2.2, 0.7, 2), P(base, L / 4, H + 2.0, -0.6));
   // platform along the track
   gb.add('platform', boxT(L + 50, 0.32, 5.2, 3), P(base, 0, 0.0, W / 2 + 2.7));
+  footing(gb, 'concrete', base, 0, W / 2 + 2.7, L + 50, 5.2, -0.16);
   // name boards on both ends + track side
   const nb = nameBoard(name);
   const mat = 'nb_' + name;
   SMAT[mat] = nb;
-  gb.add(mat, new THREE.PlaneGeometry(4.2, 0.8), P(base, 0, H + 0.2, W / 2 + 1.45));
-  for (const s of [-1, 1]) gb.add(mat, new THREE.PlaneGeometry(3.4, 0.65), P(base, s * (L / 2 + 0.02), H - 0.8, 0, 0, s * Math.PI / 2, 0));
-  // baggage carts & benches
-  for (let i = 0; i < 3; i++) gb.add('trim', new THREE.BoxGeometry(1.8, 0.12, 0.5), P(base, -L / 2 + 3 + i * 4, 0.6, W / 2 + 0.7));
-  gb.add('wood', boxT(2.8, 0.7, 1.2), P(base, L / 2 + 6, 0.55, W / 2 + 2.6));
+  gb.add(mat, new THREE.PlaneGeometry(2.9, 0.5), P(base, 0, 3.55, W / 2 + 1.285));
+  for (const s of [-1, 1]) gb.add(mat, new THREE.PlaneGeometry(3.4, 0.65), P(base, s * (L / 2 - 0.045), H - 0.8, 0, 0, s * Math.PI / 2, 0));
+  // benches on the platform (top at 0.16)
+  for (const bx of [-L / 2 + 2.2, -L / 2 + 5, 3.2]) {
+    const bz = W / 2 + 0.7;
+    gb.add('trim', new THREE.BoxGeometry(1.8, 0.06, 0.45), P(base, bx, 0.6, bz));
+    gb.add('trim', new THREE.BoxGeometry(1.8, 0.4, 0.05), P(base, bx, 0.83, bz - 0.2));
+    for (const lx of [-0.75, 0.75]) gb.add('trim', new THREE.BoxGeometry(0.06, 0.42, 0.42), P(base, bx + lx, 0.36, bz));
+  }
+  gb.add('wood', boxT(2.8, 0.7, 1.2), P(base, L / 2 + 6, 0.51, W / 2 + 2.6));
   // train order signal mast at the bay
-  gb.add('steel', new THREE.CylinderGeometry(0.08, 0.1, 7, 8), P(base, 0, 3.5 + 0.3, W / 2 + 2.4));
-  for (const s of [-1, 1]) gb.add('redPaint', new THREE.BoxGeometry(1.4, 0.3, 0.05), P(base, s * 0.8, 6.3, W / 2 + 2.4, 0, 0, s * 0.7));
+  gb.add('steel', new THREE.CylinderGeometry(0.08, 0.1, 7, 8), P(base, 0, 3.5 + 0.16, W / 2 + 2.4));
+  gb.add('steel', new THREE.CylinderGeometry(0.16, 0.18, 0.12, 10), P(base, 0, 0.22, W / 2 + 2.4));
+  for (const s of [-1, 1]) gb.add('redPaint', new THREE.BoxGeometry(1.4, 0.3, 0.05), P(base, s * (0.04 + 0.7 * Math.cos(0.7)), 6.3 + 0.7 * Math.sin(0.7), W / 2 + 2.4, 0, 0, s * 0.7));
   keep(pl.X, pl.N, L / 2 + 8);
   SCN.lamps.push(new THREE.Vector3().setFromMatrixPosition(P(base, 0, 3.4, W / 2 + 1.7)));
 }
@@ -147,32 +178,40 @@ function waterColumn(pl) {
   const base = baseM(pl.X, pl.y - 0.2, pl.N, pl.yaw + (pl.lat < 0 ? 0 : Math.PI));
   const gb = binAt(pl.X, pl.N);
   gb.add('steel', new THREE.CylinderGeometry(0.35, 0.45, 0.6, 12), P(base, 0, 0.3, 0));
+  footing(gb, 'concrete', base, 0, 0, 1.2, 1.2, 0.02);
   gb.add('steel', new THREE.CylinderGeometry(0.2, 0.2, 4.4, 12), P(base, 0, 2.6, 0));
   gb.add('steel', new THREE.CylinderGeometry(0.17, 0.17, 3.0, 10), P(base, 1.4, 4.7, 0.25, 0, 0, Math.PI / 2));
   gb.add('steel', new THREE.CylinderGeometry(0.16, 0.2, 1.1, 10), P(base, 2.85, 4.25, 0.25));
-  gb.add('steel', new THREE.BoxGeometry(0.4, 0.4, 0.5), P(base, 0, 4.6, -0.6));
+  gb.add('steel', new THREE.BoxGeometry(0.4, 0.4, 0.5), P(base, 0, 4.6, -0.4));
   gb.add('steel', new THREE.TorusGeometry(0.28, 0.03, 6, 16), P(base, 0.3, 1.4, 0, 0, Math.PI / 2, 0));
+  gb.add('steel', new THREE.CylinderGeometry(0.035, 0.035, 0.16, 6), P(base, 0.24, 1.4, 0, 0, 0, Math.PI / 2));
+  for (const a of [0, Math.PI / 2]) gb.add('steel', new THREE.BoxGeometry(0.03, 0.56, 0.03), P(base, 0.3, 1.4, 0, a, 0, 0));
   keep(pl.X, pl.N, 6);
 }
 function waterTower(pl) {
   const base = baseM(pl.X, pl.y - 0.3, pl.N, pl.yaw + Math.PI);
   const gb = binAt(pl.X, pl.N);
   const H = 9;
-  for (const [x, z] of [[-2.6, -2.6], [2.6, -2.6], [2.6, 2.6], [-2.6, 2.6]]) gb.add('steel', new THREE.CylinderGeometry(0.16, 0.22, H, 8), P(base, x * 0.92, H / 2, z * 0.92 + 1.6, z * 0.03, 0, -x * 0.03));
+  for (const [x, z] of [[-2.6, -2.6], [2.6, -2.6], [2.6, 2.6], [-2.6, 2.6]]) {
+    // legs splay outward toward the foot; each stands on a concrete pier
+    gb.add('steel', new THREE.CylinderGeometry(0.16, 0.22, H, 8), P(base, x * 0.92, H / 2, z * 0.92 + 1.6, -z * 0.03, 0, x * 0.03));
+    const sp = Math.sin(2.6 * 0.03) * H / 2 / 2.6;
+    footing(gb, 'concrete', base, x * (0.92 + sp), z * (0.92 + sp) + 1.6, 0.9, 0.9, 0.25);
+  }
   for (const y of [3, 6]) { gb.add('steel', new THREE.BoxGeometry(5.0, 0.12, 0.12), P(base, 0, y, -2.4 + 1.6)); gb.add('steel', new THREE.BoxGeometry(5.0, 0.12, 0.12), P(base, 0, y, 2.4 + 1.6)); gb.add('steel', new THREE.BoxGeometry(0.12, 0.12, 5), P(base, -2.4, y, 1.6)); gb.add('steel', new THREE.BoxGeometry(0.12, 0.12, 5), P(base, 2.4, y, 1.6)); }
   gb.add('steel', new THREE.BoxGeometry(6.4, 0.3, 6.4), P(base, 0, H, 1.6));
   gb.add('tank', new THREE.CylinderGeometry(3.6, 3.7, 5.2, 28), P(base, 0, H + 2.7, 1.6));
-  for (let y = 0.4; y < 5.2; y += 0.7) gb.add('steel', new THREE.TorusGeometry(3.72, 0.04, 4, 32), P(base, 0, H + 0.2 + y, 1.6, Math.PI / 2, 0, 0));
+  for (let y = 0.4; y < 5.2; y += 0.7) gb.add('steel', new THREE.TorusGeometry(3.7 - 0.1 * (y + 0.06) / 5.2 + 0.02, 0.04, 4, 32), P(base, 0, H + 0.2 + y, 1.6, Math.PI / 2, 0, 0));
   gb.add('slate', new THREE.ConeGeometry(4.1, 2.2, 28), P(base, 0, H + 6.4, 1.6));
   gb.add('steel', new THREE.CylinderGeometry(0.24, 0.24, 3.6, 10), P(base, 0, H + 0.4, 6.2, Math.PI / 2 + 0.45, 0, 0));
-  gb.add('steel', new THREE.CylinderGeometry(0.03, 0.03, 4.5, 6), P(base, 0, H - 1.2, 7.5, 0.25, 0, 0));
+  gb.add('steel', new THREE.CylinderGeometry(0.03, 0.03, 3.4, 6), P(base, 0, H - 0.4 - 1.65, 7.7));
   keep(pl.X, pl.N, 8);
 }
 function coalingTower(pl) {
   const base = baseM(pl.X, pl.y - 0.25, pl.N, pl.yaw);
   const gb = binAt(pl.X, pl.N);
   // straddles the track: legs at z = ±3.2
-  for (const z of [-3.4, 3.4]) for (const x of [-4.5, 4.5]) gb.add('concrete', boxT(1.1, 7.5, 1.1), P(base, x, 3.75, z));
+  for (const z of [-3.4, 3.4]) for (const x of [-4.5, 4.5]) { gb.add('concrete', boxT(1.1, 7.5, 1.1), P(base, x, 3.75, z)); footing(gb, 'concrete', base, x, z, 1.5, 1.5, 0.1); }
   gb.add('concrete', boxT(11, 15, 9, 3), P(base, 0, 7.5 + 7.5, 0));
   gb.add('concrete', boxT(11.4, 0.5, 9.4), P(base, 0, 7.5, 0));
   gb.add('tin', boxT(6, 4, 5, 2), P(base, 0, 24.5, 0));
@@ -181,18 +220,25 @@ function coalingTower(pl) {
   windowsRow(gb, base, -3.5, 3.5, 18, 4.5, 0.8, 1.2, 3);
   // conveyor/hoist house at side
   gb.add('tin', boxT(4, 3, 4), P(base, 0, 1.5, -8));
-  gb.add('steel', new THREE.BoxGeometry(1.4, 1.4, 9), P(base, 0, 10, -6.4, -1.0, 0, 0));
+  footing(gb, 'concrete', base, 0, -8, 4.2, 4.2, 0.05);
+  gb.add('tin', gableRoof(4, 4, 0.9, 0.2), P(base, 0, 3, -8));
+  // inclined conveyor from the hoist house roof into the bin
+  gb.add('steel', new THREE.BoxGeometry(1.4, 1.4, 10.6), P(base, 0, 7.75, -5.95, -Math.atan2(9.7, 4.1), 0, 0));
   keep(pl.X, pl.N, 9);
 }
 function sandHouse(pl) {
   const base = baseM(pl.X, pl.y - 0.2, pl.N, pl.yaw);
   const gb = binAt(pl.X, pl.N);
   gb.add('brick', boxT(8, 4, 5, 2), P(base, 0, 2, 8));
+  footing(gb, 'concrete', base, 0, 8, 8.2, 5.2, 0.05);
   gb.add('slate', gableRoof(8, 5, 1.4), P(base, 0, 4, 8));
-  for (const x of [-0.8, 0.8]) for (const z of [4.8, 6.4]) gb.add('steel', new THREE.CylinderGeometry(0.08, 0.08, 6, 6), P(base, x, 3, z));
-  gb.add('steel', new THREE.CylinderGeometry(1.0, 1.0, 3.5, 14), P(base, 0, 7.8, 5.6));
-  gb.add('steel', new THREE.ConeGeometry(1.0, 1.2, 14), P(base, 0, 5.4, 5.6, Math.PI, 0, 0));
-  gb.add('steel', new THREE.CylinderGeometry(0.08, 0.08, 4.0, 6), P(base, 0, 6.0, 3.4, -0.9, 0, 0));
+  // dry-sand bin on four legs between the house and the track, spout raised clear of engines
+  for (const x of [-0.68, 0.68]) for (const z of [2.72, 4.08]) gb.add('steel', new THREE.CylinderGeometry(0.08, 0.08, 6.4, 6), P(base, x, 3.2, z));
+  footing(gb, 'concrete', base, 0, 3.4, 2.0, 2.0, 0.05);
+  gb.add('steel', new THREE.CylinderGeometry(1.0, 1.0, 3.5, 14), P(base, 0, 7.8, 3.4));
+  gb.add('steel', new THREE.ConeGeometry(1.0, 1.2, 14), P(base, 0, 5.45, 3.4, Math.PI, 0, 0));
+  gb.add('steel', new THREE.CylinderGeometry(0.08, 0.08, 2.4, 6), P(base, 0, 6.5, 2.15, -0.695, 0, 0));
+  gb.add('steel', new THREE.BoxGeometry(0.12, 0.12, 4.6), P(base, 0, 5.2, 5.5, 0.35, 0, 0));
 }
 function engineHouse(pl) {
   const base = baseM(pl.X, pl.y - 0.25, pl.N, pl.yaw);
@@ -203,12 +249,14 @@ function engineHouse(pl) {
   gb.add('brick', boxT(0.8, H, W, 2.4), P(base, L / 2, H / 2, 0));
   for (const z of [-1, 1]) gb.add('brick', boxT(0.8, H, 3.1, 2.4), P(base, -L / 2, H / 2, z * 3.45));
   gb.add('brick', boxT(0.8, H - 6.0, 3.8, 2.4), P(base, -L / 2, 6.0 + (H - 6.0) / 2, 0));
-  gb.add('trim', new THREE.BoxGeometry(0.2, 6.0, 1.9), P(base, -L / 2 - 1.0, 3.0, -2.6, 0, -0.9, 0));
-  gb.add('trim', new THREE.BoxGeometry(0.2, 6.0, 1.9), P(base, -L / 2 - 1.0, 3.0, 2.6, 0, 0.9, 0));
-  gb.add('tin', boxT(L + 1.0, 0.35, W + 1.0), P(base, 0, H + 0.15, 0));
+  gb.add('trim', new THREE.BoxGeometry(0.2, 6.0, 1.9), P(base, -L / 2 - 1.0, 3.03, -2.6, 0, -0.9, 0));
+  gb.add('trim', new THREE.BoxGeometry(0.2, 6.0, 1.9), P(base, -L / 2 - 1.0, 3.03, 2.6, 0, 0.9, 0));
+  footing(gb, 'concrete', base, 0, 0, L + 0.8, W + 0.8);
+  for (const z of [-1, 1]) footing(gb, 'concrete', base, -L / 2 - 1.3, z * 2.9, 2.0, 2.0);
+  gb.add('tin', boxT(L + 0.9, 0.3, W + 0.9), P(base, 0, H + 0.15, 0));
   gb.add('slate', gableRoof(L, W, 2.2, 0.5), P(base, 0, H + 0.3, 0));
-  windowsRow(gb, base, -L / 2 + 4, L / 2 - 4, 5.2, W / 2 + 0.42, 1.5, 3.0, 8);
-  windowsRow(gb, base, -L / 2 + 4, L / 2 - 4, 5.2, -W / 2 - 0.42, 1.5, 3.0, 8, -1);
+  windowsRow(gb, base, -L / 2 + 4, L / 2 - 4, 5.2, W / 2 + 0.4, 1.5, 3.0, 8);
+  windowsRow(gb, base, -L / 2 + 4, L / 2 - 4, 5.2, -W / 2 - 0.4, 1.5, 3.0, 8, -1);
   for (const x of [-14, 0, 14]) gb.add('black', new THREE.CylinderGeometry(0.55, 0.85, 3.0, 10), P(base, x, H + 3.0, 0));
   gb.add('concrete', boxT(L, 0.12, W - 1), P(base, 0, 0.0, 0));
   keep(pl.X, pl.N, L / 2 + 6);
@@ -217,6 +265,7 @@ function yardOffice(pl) {
   const base = baseM(pl.X, pl.y - 0.2, pl.N, pl.yaw);
   const gb = binAt(pl.X, pl.N);
   gb.add('cream', boxT(8, 3.4, 5, 2), P(base, 0, 1.7, 0));
+  footing(gb, 'concrete', base, 0, 0, 8.2, 5.2, 0.05);
   gb.add('slate', gableRoof(8, 5, 1.8, 0.6), P(base, 0, 3.4, 0));
   windowsRow(gb, base, -2.5, 2.5, 2, 2.5, 0.9, 1.3, 3);
   windowsRow(gb, base, -2.5, 2.5, 2, -2.5, 0.9, 1.3, 3, -1);
@@ -232,52 +281,69 @@ function grainElevator(pl) {
   gb.add('tin', boxT(9.4, 5, 10.4, 2), P(base, 21, 48.5, 6.8));
   gb.add('slate', gableRoof(9.4, 10.4, 1.6, 0.2), P(base, 21, 51, 6.8));
   windowsRow(gb, base, 18, 24, 40, 1.8, 0.8, 1.2, 3, -1);
-  gb.add('tin', boxT(16, 6, 9, 2), P(base, 33, 3, 5));
+  gb.add('tin', boxT(16, 6, 9, 2), P(base, 33, 3.02, 5));
+  footing(gb, 'concrete', base, 1.6, 6.8, 34.6, 14, 0.05);
+  footing(gb, 'concrete', base, 21, 6.8, 9.4, 10.4, 0.05);
+  footing(gb, 'concrete', base, 33, 5, 16.2, 9.2, 0.05);
   gb.add('slate', gableRoof(16, 9, 1.8), P(base, 33, 6, 5));
-  gb.add('steel', new THREE.BoxGeometry(1.2, 1.2, 14), P(base, 21, 30, -5.5, 0.8, 0, 0));
-  gb.add('steel', new THREE.CylinderGeometry(0.3, 0.3, 16, 8), P(base, 14, 20, -6.0, -0.75, 0, 0));
+  // loading spouts hang from the headhouse and the end bin out over the track
+  gb.add('steel', new THREE.BoxGeometry(1.2, 1.2, 14), P(base, 21, 30.98, -2.58, -0.8, 0, 0));
+  gb.add('steel', new THREE.CylinderGeometry(0.3, 0.3, 16, 8), P(base, 14, 20, -5.5, Math.PI / 2 - 0.75, 0, 0));
   keep(pl.X, pl.N, 34);
   const nb = nameBoard('FOSTORIA GRAIN CO.'); SMAT.nbGrain = nb;
-  gb.add('nbGrain', new THREE.PlaneGeometry(16, 2.8), P(base, 0, 26, -0.1, 0, Math.PI, 0));
+  gb.add('nbGrain', new THREE.PlaneGeometry(8.4, 1.47), P(base, 21, 43.6, 1.79, 0, Math.PI, 0));
 }
 function interlockingTower(pl, label) {
   const base = baseM(pl.X, pl.y - 0.2, pl.N, pl.yaw + (pl.lat < 0 ? 0 : Math.PI));
   const gb = binAt(pl.X, pl.N);
   gb.add('brick', boxT(5, 3.2, 4.5, 2), P(base, 0, 1.6, 0));
+  footing(gb, 'concrete', base, 0, 0, 5.2, 4.7, 0.05);
   gb.add('cream', boxT(5.2, 3.0, 4.7, 2), P(base, 0, 4.7, 0));
-  windowsRow(gb, base, -1.8, 1.8, 4.9, 2.36, 1.0, 1.8, 3);
-  windowsRow(gb, base, -1.8, 1.8, 4.9, -2.36, 1.0, 1.8, 3, -1);
+  windowsRow(gb, base, -1.8, 1.8, 4.9, 2.35, 1.0, 1.8, 3);
+  windowsRow(gb, base, -1.8, 1.8, 4.9, -2.35, 1.0, 1.8, 3, -1);
   gb.add('slate', hipRoof(5.2, 4.7, 1.8, 0.7), P(base, 0, 6.2, 0));
-  gb.add('wood', boxT(0.9, 0.1, 3.2), P(base, 3.0, 2.9, 0, 0, 0, 0.6));
+  gb.add('wood', boxT(0.9, 0.1, 3.2), P(base, 2.85, 2.9, 0, 0, 0, 0.6));
   const nb = nameBoard(label); SMAT['nb_' + label] = nb;
-  gb.add('nb_' + label, new THREE.PlaneGeometry(2.4, 0.5), P(base, 0, 3.45, 2.38));
+  gb.add('nb_' + label, new THREE.PlaneGeometry(2.4, 0.5), P(base, 0, 3.6, 2.356));
   keep(pl.X, pl.N, 7);
 }
 function farmstead(X, N, yaw, r) {
   const y = groundAt(X, N);
-  const base = baseM(X, y - 0.2, N, yaw);
+  const base = baseM(X, y, N, yaw);
   const gb = binAt(X, N);
-  // house
-  gb.add('white', boxT(9, 6.2, 7), P(base, 0, 3.1, 0));
-  gb.add('slate', gableRoof(9, 7, 3.0, 0.45), P(base, 0, 6.2, 0));
-  gb.add('white', boxT(6, 3, 4), P(base, -6.5, 1.5, 1.5));
-  gb.add('slate', gableRoof(6, 4, 1.4, 0.3), P(base, -6.5, 3, 1.5));
-  windowsRow(gb, base, -3, 3, 1.8, 3.5, 0.9, 1.4, 3); windowsRow(gb, base, -3, 3, 4.6, 3.5, 0.9, 1.3, 3);
-  windowsRow(gb, base, -3, 3, 1.8, -3.5, 0.9, 1.4, 3, -1); windowsRow(gb, base, -3, 3, 4.6, -3.5, 0.9, 1.3, 3, -1);
-  gb.add('trim', new THREE.BoxGeometry(9.2, 0.12, 2.4), P(base, 0, 2.9, 4.6));
-  gb.add('brick', boxT(0.8, 2.6, 0.8), P(base, 2.5, 7.6, 0));
+  // each structure sits level at its own spot: floor just below the high side, stone footing down to the low side
+  const site = (x, z, w, d) => groundUnder(base, x, z, w, d)[1] - 0.1;
+  const fnd = (x, z, w, d, y0) => footing(gb, 'stone', base, x, z, w + 0.2, d + 0.2, y0 + 0.08);
+  // house with kitchen wing and front porch
+  const h0 = site(-2.25, 1.15, 14.5, 9.3); foot(base, -2.25, 1.15, 14.5, 9.3);
+  gb.add('white', boxT(9, 6.2, 7), P(base, 0, h0 + 3.1, 0)); fnd(0, 0, 9, 7, h0);
+  gb.add('slate', gableRoof(9, 7, 3.0, 0.45), P(base, 0, h0 + 6.2, 0));
+  gb.add('white', boxT(6, 3, 4), P(base, -6.5, h0 + 1.5, 1.5)); fnd(-6.5, 1.5, 6, 4, h0);
+  gb.add('slate', gableRoof(6, 4, 1.4, 0.3), P(base, -6.5, h0 + 3, 1.5));
+  windowsRow(gb, base, -3, 3, h0 + 1.8, 3.5, 0.9, 1.4, 3); windowsRow(gb, base, -3, 3, h0 + 4.6, 3.5, 0.9, 1.3, 3);
+  windowsRow(gb, base, -3, 3, h0 + 1.8, -3.5, 0.9, 1.4, 3, -1); windowsRow(gb, base, -3, 3, h0 + 4.6, -3.5, 0.9, 1.3, 3, -1);
+  gb.add('trim', new THREE.BoxGeometry(9.2, 0.12, 2.4), P(base, 0, h0 + 2.9, 4.6));
+  gb.add('wood', boxT(9.0, 0.3, 2.3), P(base, 0, h0 + 0.15, 4.65)); fnd(0, 4.65, 9.0, 2.3, h0 - 0.05);
+  for (const px of [-4.4, -1.5, 1.5, 4.4]) gb.add('white', boxT(0.14, 2.56, 0.14), P(base, px, h0 + 1.58, 5.65));
+  gb.add('brick', boxT(0.8, 3.5, 0.8), P(base, 2.5, h0 + 8.05, 0));
   // barn
   const bx = 30 + r() * 15, bz = -14 - r() * 12;
-  const bL = 22 + r() * 8, bW = 13;
-  gb.add('barn', boxT(bL, 5.5, bW, 2.4), P(base, bx, 2.75, bz));
-  gb.add(r() < 0.5 ? 'slate' : 'rust', gambrel(bL, bW, 6.2), P(base, bx, 5.5, bz));
-  gb.add('white', new THREE.BoxGeometry(4, 4, 0.1), P(base, bx - bL / 2 - 0.05, 2.2, bz, 0, Math.PI / 2, 0));
+  const bL = 22 + r() * 8, bW = 13, b0 = site(bx, bz, bL, bW); foot(base, bx, bz, bL + 0.8, bW + 0.8);
+  gb.add('barn', boxT(bL, 5.5, bW, 2.4), P(base, bx, b0 + 2.75, bz)); fnd(bx, bz, bL, bW, b0);
+  gb.add(r() < 0.5 ? 'slate' : 'rust', gambrel(bL, bW, 6.2), P(base, bx, b0 + 5.5, bz));
+  gb.add('white', new THREE.BoxGeometry(4, 4, 0.1), P(base, bx - bL / 2 - 0.04, b0 + 2.2, bz, 0, Math.PI / 2, 0));
   // silos
   const ns = 1 + (r() * 2 | 0);
-  for (let i = 0; i < ns; i++) { const sx = bx + bL / 2 + 3.5 + i * 6.5; const tall = 13 + r() * 6; gb.add(r() < 0.5 ? 'concrete' : 'silver', new THREE.CylinderGeometry(2.6, 2.6, tall, 18), P(base, sx, tall / 2, bz - 2)); gb.add('tin', new THREE.SphereGeometry(2.65, 16, 8, 0, TAU, 0, Math.PI / 2), P(base, sx, tall, bz - 2)); }
+  for (let i = 0; i < ns; i++) {
+    const sx = bx + bL / 2 + 3.5 + i * 6.5, tall = 13 + r() * 6, s0 = site(sx, bz - 2, 5.2, 5.2);
+    gb.add(r() < 0.5 ? 'concrete' : 'silver', new THREE.CylinderGeometry(2.6, 2.6, tall, 18), P(base, sx, s0 + tall / 2, bz - 2));
+    gb.add('tin', new THREE.SphereGeometry(2.65, 16, 8, 0, TAU, 0, Math.PI / 2), P(base, sx, s0 + tall, bz - 2));
+    fnd(sx, bz - 2, 5.4, 5.4, s0); foot(base, sx, bz - 2, 5.4, 5.4);
+  }
   // corn crib / shed
-  gb.add('wood', boxT(10, 3.4, 4), P(base, 8, 1.7, -30));
-  gb.add('tin', gableRoof(10, 4, 1.2, 0.3), P(base, 8, 3.4, -30));
+  const c0 = site(8, -30, 10, 4); foot(base, 8, -30, 10.6, 4.6);
+  gb.add('wood', boxT(10, 3.4, 4), P(base, 8, c0 + 1.7, -30)); fnd(8, -30, 10, 4, c0);
+  gb.add('tin', gableRoof(10, 4, 1.2, 0.3), P(base, 8, c0 + 3.4, -30));
   keep(X, N, 55);
   return { X, N, yaw };
 }
@@ -314,13 +380,15 @@ function buildBridge(scene) {
       gb.add('steel', new THREE.BoxGeometry(L, 0.14, 0.14), P(base, (xa + xb) / 2, H + 0.2, 0, 0, a, 0));
       gb.add('steel', new THREE.BoxGeometry(L, 0.14, 0.14), P(base, (xa + xb) / 2, H + 0.2, 0, 0, -a, 0));
       gb.add('steel', new THREE.BoxGeometry(0.25, 0.5, 2 * W), P(base, xa, H, 0));
-      gb.add('steel', new THREE.BoxGeometry(0.2, 0.2, 2 * W - 1.2), P(base, xa, H - 1.6, 0));
+      gb.add('steel', new THREE.BoxGeometry(0.2, 0.2, 2 * W - 0.3), P(base, xa, H - 1.6, 0));
     }
     for (const s of [-1, 1]) {
-      const px = sOff + s * (span / 2 - pw * 0.55);
-      gb.add('steel', new THREE.BoxGeometry(0.3, 1.4, 2 * W), P(base, px, H - 1.1, 0, 0, 0, -s * 0.12));
+      // portal strut spans between the inclined end posts, in their plane; name board on its outer face
+      const lean = Math.atan2(pw, H + 0.75), px = sOff + s * (span / 2 - pw / 2 - (H / 2 - 0.9) * pw / (H + 0.75));
+      const pm = P(base, px, H - 1.1, 0, 0, 0, s * lean);
+      gb.add('steel', new THREE.BoxGeometry(0.3, 1.4, 2 * W), pm);
       const nm = nameBoard('NICKEL PLATE · SANDUSKY RIVER'); SMAT.nbBridge = nm;
-      gb.add('nbBridge', new THREE.PlaneGeometry(4.8, 0.62), P(base, px - s * 0.2, H - 1.1, 0, 0, s * Math.PI / 2 + Math.PI / 2, 0));
+      gb.add('nbBridge', new THREE.PlaneGeometry(4.8, 0.62), pm.clone().multiply(M(s * 0.157, 0, 0, 0, s * Math.PI / 2, 0)));
     }
   }
   // piers & abutments
@@ -329,23 +397,41 @@ function buildBridge(scene) {
     const g = groundAt(c.X + Math.cos(c.yaw) * x, c.N + Math.sin(c.yaw) * x);
     const h = top - (Math.min(g, -5.6) - 1);
     gb.add('concrete', boxT(x === 0 ? 3.2 : 5, h, 8.4, 2), P(base, x, top - h / 2, 0));
-    if (x !== 0) gb.add('concrete', boxT(1.2, 1.4, 10, 2), P(base, x + Math.sign(x) * 2.2, top + 0.4, 0));
+    if (x !== 0) {
+      // abutment backwall, then the ballasted approach fill out to the end of the bridge limits (±72),
+      // with the same section as the track ballast carried down its own slope to the ground
+      const sx = Math.sign(x), xa = x + sx * 0.6, xb = x + sx * 8.0;   // bridge limits are at ±72
+      footing(gb, 'concrete', base, x + sx * 0.6, 0, 0.8, 8.4, -0.43);
+      const yB = groundUnder(base, (xa + xb) / 2, 0, 8, 14)[0] - 0.3, wB = 1.9 + (-0.205 - yB) * 1.68;
+      const prof = [[-wB, yB, 0.42], [-1.9, -0.205, 0.55], [1.9, -0.205, 0.55], [wB, yB, 0.42]];
+      const pos = [], col = [], uv = [];
+      const quad = (A, B, C, D) => { for (const v of [A, B, C, A, C, D]) { pos.push(v[0], v[1], v[2]); col.push(v[3], v[3] * 0.96, v[3] * 0.88); uv.push((v[0] + v[2]) / 1.4, v[1] / 1.4); } };
+      const at = (xx, q) => [xx, prof[q][1], prof[q][0], prof[q][2]];
+      for (let q = 0; q < 3; q++) sx > 0 ? quad(at(xa, q), at(xa, q + 1), at(xb, q + 1), at(xb, q)) : quad(at(xa, q), at(xb, q), at(xb, q + 1), at(xa, q + 1));
+      { const A = at(xa, 0), B = at(xa, 1), C = at(xa, 2), D = at(xa, 3); sx > 0 ? (quad(A, D, C, B)) : quad(A, B, C, D); }   // face toward the bridge
+      const fg = new THREE.BufferGeometry(); fg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); fg.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); fg.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+      fg.computeVertexNormals();
+      { const n = fg.attributes.normal; if (n.getY(3) < 0) throw new Error('approach fill wound inward'); for (let i = 0; i < n.count; i++) { _v1.set(n.getX(i), n.getY(i) + 0.8, n.getZ(i)).normalize(); n.setXYZ(i, _v1.x, _v1.y, _v1.z); } }
+      gb.add('ballast', fg, base.clone());
+    }
+    // bearing shoes carry the bottom chords on the pier caps
+    for (const bx of x === 0 ? [-0.6, 0.6] : [-Math.sign(x) * 0.6]) for (const z of [-W, W]) gb.add('steel', new THREE.BoxGeometry(0.9, 0.14, 0.7), P(base, x + bx, top + 0.06, z));
   }
   // open deck ties and guard timbers on the bridge
   const r = rng(44);
-  for (let x = -span - 4; x <= span + 4; x += 0.42) {
-    const geo = new THREE.BoxGeometry(0.24, 0.24, 3.1); geo.translate(x, -0.3, 0);
+  for (let x = -span - 7.8, i = 0; x <= span + 7.8; x += 0.42, i++) {
+    const geo = new THREE.BoxGeometry(0.24, 0.24, i % 4 ? 3.1 : 5.1); geo.translate(x, -0.3, 0);   // every fourth tie runs out under the walkways
     const v = 0.7 + r() * 0.3, col = new Float32Array(geo.attributes.position.count * 3);
     for (let i = 0; i < col.length; i += 3) { col[i] = 0.42 * v; col[i + 1] = 0.36 * v; col[i + 2] = 0.29 * v; }
     geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
     gb.add('tie', geo, base.clone());
   }
-  for (const z of [-1.45, 1.45]) gb.add('wood', boxT(2 * span + 8, 0.2, 0.2), P(base, 0, -0.1, z));
+  for (const z of [-1.42, 1.42]) gb.add('wood', boxT(2 * span + 2, 0.2, 0.2), P(base, 0, -0.1, z));
   // walkway & railing
   for (const z of [-2.2, 2.2]) {
-    gb.add('wood', boxT(2 * span, 0.06, 0.7), P(base, 0, -0.2, z));
+    gb.add('wood', boxT(2 * span, 0.06, 0.66), P(base, 0, -0.2, z));
   }
-  const vis = gb.build({ steel: MAT.bridge, concrete: SMAT.concrete, tie: MAT.tie, wood: SMAT.wood, nbBridge: SMAT.nbBridge });
+  const vis = gb.build({ steel: MAT.bridge, concrete: SMAT.concrete, tie: MAT.tie, wood: SMAT.wood, nbBridge: SMAT.nbBridge, ballast: MAT.ballast });
   scene.add(vis);
   keep(c.X, c.N, 80);
 }
@@ -381,13 +467,13 @@ function buildRoads(scene) {
       if (X < INNER.x0 + 30 || X > INNER.x1 - 30 || N < INNER.n0 + 30 || N > INNER.n1 - 30) { n = 0; continue; }
       if (riverDist(X, N) < 40) { n = 0; continue; }
       let y = Math.max(groundAt(X, N), groundAt(X + 3, N + 3), groundAt(X - 3, N - 3)) + 0.14;
-      for (const c of r.cross) { const dd = Math.abs(t - c.along); if (dd < 30) y = Math.max(y, c.y + 0.005 - 0.04 * Math.max(0, dd - 3)); }
+      for (const c of r.cross) { const dd = Math.abs(t - c.along); if (dd < 30) y = Math.max(y, c.y - 0.025 - 0.04 * Math.max(0, dd - 3)); }
       if (r.dir === 'E') y += 0.03;
       const hw = r.w / 2;
       const px = r.dir === 'N' ? [X - hw, X + hw] : [X, X], pn = r.dir === 'N' ? [N, N] : [N - hw, N + hw];
       for (let q = 0; q < 2; q++) { pos.push(px[q], y, -pn[q]); nor.push(0, 1, 0); uv.push(q * r.w / 5, t / 5); }
       // skirts
-      for (let q = 0; q < 2; q++) { pos.push(px[q] + (r.dir === 'N' ? (q ? 1.5 : -1.5) : 0), y - 1.4, -(pn[q] + (r.dir === 'E' ? (q ? 1.5 : -1.5) : 0))); nor.push(0, 1, 0); uv.push(q * r.w / 5, t / 5); }
+      for (let q = 0; q < 2; q++) { pos.push(px[q] + (r.dir === 'N' ? (q ? 3.5 : -3.5) : 0), y - 1.4, -(pn[q] + (r.dir === 'E' ? (q ? 3.5 : -3.5) : 0))); nor.push(0, 1, 0); uv.push((q ? r.w + 3.8 : -3.8) / 5, t / 5); }
       const k = pos.length / 3 - 4;
       if (n > 0) { const p = k - 4; idx.push(p, p + 1, k, p + 1, k + 1, k); idx.push(p + 2, p, k + 2, p, k, k + 2, p + 1, p + 3, k + 1, p + 3, k + 3, k + 1); }
       n++;
@@ -423,7 +509,7 @@ function buildRoads(scene) {
         const X = c.X + dx + lx, N = c.N + dn + ln, y = groundAt(X, N);
         const face = r.dir === 'N' ? (side > 0 ? Math.PI / 2 : -Math.PI / 2) : (side > 0 ? 0 : Math.PI);
         const cb = baseM(X, y, N, face);
-        gb.add('white', boxT(0.14, 3.9, 0.14), P(cb, 0, 1.95, 0));
+        gb.add('white', boxT(0.14, 4.2, 0.14), P(cb, 0, 1.8, 0));
         gb.add('xb1', new THREE.BoxGeometry(0.03, 0.32, 2.4), P(cb, 0.08, 3.35, 0, 0.785, 0, 0));
         gb.add('xb2', new THREE.BoxGeometry(0.03, 0.32, 2.4), P(cb, 0.1, 3.35, 0, -0.785, 0, 0));
       }
@@ -436,7 +522,7 @@ function buildRoads(scene) {
         const X = FR2.p.x + Math.sin(yaw) * lat, N = -(FR2.p.z + Math.cos(yaw) * lat), y = groundAt(X, N);
         const wb = baseM(X, y, N, yaw + (dir > 0 ? 0 : Math.PI));
         const g2 = binAt(X, N);
-        g2.add('white', boxT(0.12, 2.2, 0.12), P(wb, 0, 1.1, 0));
+        g2.add('white', boxT(0.12, 2.5, 0.12), P(wb, 0, 0.95, 0));
         g2.add('wpost', new THREE.BoxGeometry(0.04, 0.75, 0.5), P(wb, -0.08, 2.2, 0, 0, 0, 0));
       }
     }
@@ -446,8 +532,9 @@ function buildRoads(scene) {
       const gb = binAt(c.X, c.N);
       const halfW = r.w / 2 / Math.max(0.3, Math.abs(r.dir === 'N' ? FR.f.x : FR.f.z)) + 0.8;
       for (const z of [[-0.66, 0.66], [-1.5, -0.84], [0.84, 1.5]]) {
-        const m = frameMatrix(FR, new THREE.Matrix4()).multiply(M(0, -0.07, (z[0] + z[1]) / 2));
-        gb.add('wood', boxT(halfW * 2, 0.14, z[1] - z[0]), m);
+        // planks bear on the tie tops (-0.186) and finish just under the railhead
+        const m = frameMatrix(FR, new THREE.Matrix4()).multiply(M(0, -0.1, (z[0] + z[1]) / 2));
+        gb.add('wood', boxT(halfW * 2, 0.18, z[1] - z[0]), m);
       }
     }
   }
@@ -520,10 +607,15 @@ function buildSignals(scene) {
     const yaw = pl.yaw + (sg.dir > 0 ? Math.PI : 0); // heads face oncoming train
     const base = baseM(pl.X, y, pl.N, yaw);
     const gb = binAt(pl.X, pl.N);
-    gb.add('concrete', boxT(0.9, 0.5, 0.9), P(base, 0, 0.1, 0));
+    footing(gb, 'concrete', base, 0, 0, 0.9, 0.9, 0.35);
     gb.add('steel', new THREE.CylinderGeometry(0.09, 0.11, 7.2, 8), P(base, 0, 3.8, 0));
     gb.add('steel', new THREE.BoxGeometry(0.05, 0.05, 0.6), P(base, 0.0, 5.0, -0.3));
-    for (let r = 0; r < 6; r++) gb.add('steel', new THREE.BoxGeometry(0.03, 0.03, 0.5), P(base, -0.18, 0.6 + r * 0.9, 0));
+    // ladder up the back of the mast: stiles on standoffs, rungs between
+    for (const z of [-0.22, 0.22]) {
+      gb.add('steel', new THREE.BoxGeometry(0.04, 5.3, 0.04), P(base, -0.24, 3.0, z));
+      for (const y of [0.9, 3.0, 5.1]) gb.add('steel', new THREE.BoxGeometry(0.28, 0.04, 0.03), P(base, -0.165, y, z / 2, 0, z > 0 ? 0.97 : -0.97, 0));
+    }
+    for (let r = 0; r < 6; r++) gb.add('steel', new THREE.BoxGeometry(0.03, 0.03, 0.48), P(base, -0.24, 0.8 + r * 0.9, 0));
     const heads = [];
     for (const hy of [6.4, 4.4]) {
       gb.add('signBack', new THREE.CylinderGeometry(0.42, 0.42, 0.08, 20), P(base, 0.14, hy, 0, 0, 0, Math.PI / 2));
@@ -551,7 +643,7 @@ function buildSigns() {
     const base = baseM(pl.X, y, pl.N, pl.yaw + Math.PI / 2);
     const gb = binAt(pl.X, pl.N);
     const k = 'mp' + mp.num; SMAT[k] = numberPlate(mp.num);
-    gb.add('white', boxT(0.22, 1.6, 0.22), P(base, 0, 0.8, 0));
+    gb.add('white', boxT(0.22, 1.9, 0.22), P(base, 0, 0.65, 0));
     gb.add(k, new THREE.BoxGeometry(0.24, 0.75, 0.24), P(base, 0, 1.1, 0));
   }
   // yard limit boards
@@ -560,7 +652,7 @@ function buildSigns() {
     const y = groundAt(pl.X, pl.N);
     const base = baseM(pl.X, y, pl.N, pl.yaw + (d > 0 ? Math.PI : 0));
     const gb = binAt(pl.X, pl.N);
-    gb.add('white', boxT(0.12, 2.4, 0.12), P(base, 0, 1.2, 0));
+    gb.add('white', boxT(0.12, 2.7, 0.12), P(base, 0, 1.05, 0));
     gb.add('yardLimit', new THREE.BoxGeometry(0.04, 0.8, 1.3), P(base, 0.08, 2.4, 0));
   }
 }
@@ -598,12 +690,15 @@ function quarry() {
   const base = baseM(end.X, end.y - 0.3, end.N, end.yaw);
   const gb = binAt(end.X, end.N);
   // loading tipple over the branch end
-  for (const x of [-6, 6]) for (const z of [-3.6, 3.6]) gb.add('steel', new THREE.BoxGeometry(0.45, 11, 0.45), P(base, x, 5.5, z));
+  for (const x of [-6, 6]) for (const z of [-3.6, 3.6]) { gb.add('steel', new THREE.BoxGeometry(0.45, 11, 0.45), P(base, x, 5.5, z)); footing(gb, 'concrete', base, x, z, 0.9, 0.9, 0.2); }
   gb.add('rust', boxT(14, 6, 8.4, 2), P(base, 0, 14, 0));
+  gb.add('tin', gableRoof(14, 8.4, 1.2, 0.3), P(base, 0, 17, 0));
   gb.add('steel', new THREE.BoxGeometry(10, 2.4, 6), P(base, 0, 10, 0));
   for (const x of [-3, 0, 3]) gb.add('steel', new THREE.CylinderGeometry(0.4, 0.9, 2, 8), P(base, x, 7.8, 0));
-  gb.add('steel', new THREE.BoxGeometry(2, 1.6, 46), P(base, 0, 9, -26, 0.32, 0, 0));
+  // belt conveyor climbs from the crusher house to the top of the loading bin
+  gb.add('steel', new THREE.BoxGeometry(2, 1.6, 46), P(base, 0, 13.75, -23.5, -Math.atan2(7.5, 43), 0, 0));
   gb.add('rust', boxT(16, 18, 14, 3), P(base, 0, 9, -52));
+  footing(gb, 'concrete', base, 0, -52, 16.2, 14.2, 0.05);
   gb.add('tin', gableRoof(16, 14, 3), P(base, 0, 18, -52));
   windowsRow(gb, base, -5, 5, 12, -45, 1, 1.4, 4);
   // stone piles
@@ -611,13 +706,22 @@ function quarry() {
   for (let i = 0; i < 6; i++) {
     const h = 6 + r() * 8; const x = -40 + r() * 80, z = -70 - r() * 60;
     const X = end.X + Math.cos(end.yaw) * x + Math.sin(end.yaw) * z, N = end.N + Math.sin(end.yaw) * x - Math.cos(end.yaw) * z;
-    const y = groundAt(X, N);
-    binAt(X, N).add('stone', new THREE.ConeGeometry(h * 1.7, h, 18), baseM(X, y + h / 2 - 0.5, N, 0));
+    let y = groundAt(X, N);   // bed the pile below the lowest ground round its foot
+    for (let a = 0; a < 12; a++) y = Math.min(y, groundAt(X + Math.cos(a * TAU / 12) * h * 1.7, N + Math.sin(a * TAU / 12) * h * 1.7));
+    binAt(X, N).add('stone', new THREE.ConeGeometry(h * 1.7, h, 18), baseM(X, y + h / 2 - 0.3, N, 0));
   }
-  // quarry pit rim (stepped benches)
-  for (let k = 0; k < 3; k++) {
-    const X = end.X + 160, N = end.N + 60;
-    gb.add('stone', new THREE.CylinderGeometry(120 - k * 30, 126 - k * 30, 1.5, 32, 1, true), baseM(X, groundAt(X, N) - k * 5, N, 0));
+  // spoil bank round the quarry, following the ground
+  {
+    const X0 = end.X + 160, N0 = end.N + 60, R = 120, n = 96, prof = [[-7, -0.4], [-2.5, 2.2], [2.5, 2.2], [7, -0.4]];
+    const pos = [], uv = [], idx = [];
+    for (let i = 0; i <= n; i++) {
+      const a = i / n * TAU, ca = Math.cos(a), sa = Math.sin(a);
+      for (const [dr, dy] of prof) { const X = X0 + ca * (R + dr), N = N0 + sa * (R + dr); pos.push(X, groundAt(X, N) + dy, -N); uv.push(i * 1.5, dr / 3); }
+      if (i) for (let q = 0; q < 3; q++) { const k = i * 4 + q, p = k - 4; idx.push(p, k, p + 1, p + 1, k, k + 1); }
+    }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setIndex(idx); g.computeVertexNormals();
+    if (g.attributes.normal.getY(1) < 0) { for (let i = 0; i < idx.length; i += 3) { const t = idx[i + 1]; idx[i + 1] = idx[i + 2]; idx[i + 2] = t; } g.setIndex(idx); g.computeVertexNormals(); }
+    gb.add('stone', g, new THREE.Matrix4());
   }
   keep(end.X, end.N, 70);
 }
@@ -685,9 +789,9 @@ function buildTrees(scene) {
   // windbreaks at farmsteads
   for (const f of SCN.farms) for (let i = 0; i < 14; i++) {
     const a = r() * TAU, d = 20 + r() * 30; const X = f.X + Math.cos(a) * d, N = f.N + Math.sin(a) * d;
-    if (r() < 0.6) put(X, N, 'dec', (r() < 0.4 ? -1 : 1) * (1 + r() * 0.5), autumn(r));
+    if (r() < 0.6) { const sc = (r() < 0.4 ? -1 : 1) * (1 + r() * 0.5), col = autumn(r); if (!inFoot(X, N, 3.6 * Math.abs(sc))) put(X, N, 'dec', sc, col); }
   }
-  for (const t of SCN.extraTrees || []) put(t[0], t[1], 'dec', t[2], t[3] || autumn(r));
+  for (const t of SCN.extraTrees || []) { const col = t[3] || autumn(r); if (!inFoot(t[0], t[1], 3.6 * Math.abs(t[2]))) put(t[0], t[1], 'dec', t[2], col); }
   let total = 0;
   WORLD.treeTiles = [];
   for (const [, t] of tiles) {

@@ -128,7 +128,7 @@ function buildDiesel(opts) {
   box('lBody', 1.26, DG.len - 1.26, 1.16, 1.70, -W, W);
   box('lAccent', 1.25, DG.len - 1.25, 1.40, 1.53, -W - 0.008, W + 0.008);
   box('dDeck', 0.42, DG.len - 0.42, 1.70, D + 0.02, -W - 0.02, W + 0.02);
-  for (let a = 1.5, k = 0; a < 20.6; a += 0.9, k++) for (const s of [-1, 1]) box(k % 2 ? 'red' : 'white', a, a + 0.42, 1.24, 1.33, s * (W + 0.006), s * (W + 0.012));
+  for (let a = 1.5, k = 0; a < 20.6; a += 0.9, k++) for (const s of [-1, 1]) box(k % 2 ? 'red' : 'white', a, a + 0.42, 1.24, 1.33, s * (W - 0.002), s * (W + 0.008));
   for (const a of [3.0, 19.3]) for (const s of [-1, 1]) box('dUnder', a, a + 0.45, 1.05, 1.18, s * 1.2, s * 1.48); // jacking pads
 
   /* ---- ends: pilot, plow, coupler, open step wells at the corners, yellow handrails ---- */
@@ -140,13 +140,13 @@ function buildDiesel(opts) {
     box('dUnder', at(0.30), at(0.48), 0.8, 0.92, -0.12, 0.12);
     box('dUnder', at(0.0), at(0.45), 0.77, 0.98, -0.13, 0.13); box('dUnder', at(0.0), at(0.12), 0.7, 1.05, -0.2, 0.2);
     box('dUnder', at(0.36), at(0.48), 1.58, 1.72, -PW - 0.03, PW + 0.03);   // anticlimber
-    for (const z of [-0.95, -0.62, 0.62, 0.95]) gb.add('dUnder', new THREE.CylinderGeometry(0.035, 0.035, 0.5, 6), M(dx(at(0.36)), 0.98, z, 0.3 * sg, 0, 0));
+    for (const z of [-0.95, -0.62, 0.62, 0.95]) gb.add('dUnder', new THREE.CylinderGeometry(0.035, 0.035, 0.5, 6), M(dx(at(0.4)), 0.98, z, 0.3 * sg, 0, 0));
     for (const z of [-0.74, 0.74]) box('dUnder', at(0.36), at(0.44), 1.02, 1.26, z - 0.11, z + 0.11); // MU receptacles
     gb.tube('dSafety', [[dx(at(0.44)), 1.72, -0.42], [dx(at(0.4)), 1.86, -0.36], [dx(at(0.4)), 1.86, 0.36], [dx(at(0.44)), 1.72, 0.42]], 0.018, 12, 6);
     for (const s of [-1, 1]) {
-      box('dUnder', at(0.44), at(1.26), 0.30, 1.70, s * (PW - 0.03), s * PW);        // inner wall of the step well
+      box('dUnder', at(0.44), at(1.25), 0.30, 1.69, s * (PW - 0.03), s * (PW + 0.006));   // inner wall of the step well
       box('dUnder', at(1.22), at(1.26), 0.30, 1.70, s * PW, s * 1.52);               // back of the well
-      for (const y of [0.42, 0.84, 1.26]) { box('dUnder', at(0.48), at(1.22), y, y + 0.05, s * PW, s * 1.48); box('dSafety', at(0.48), at(1.22), y + 0.045, y + 0.06, s * 1.43, s * 1.49); }
+      for (const y of [0.42, 0.84, 1.26]) { box('dUnder', at(0.48), at(1.22), y, y + 0.05, s * PW, s * 1.48); box('dSafety', at(0.49), at(1.21), y + 0.045, y + 0.06, s * 1.43, s * 1.49); }
       // a hoop over the open side of the well, and a front rail arching in toward the nose
       gb.tube('dSafety', [[dx(at(0.5)), 0.44, s * 1.52], [dx(at(0.5)), 2.42, s * 1.52], [dx(at(0.6)), 2.76, s * 1.52], [dx(at(1.06)), 2.78, s * 1.52], [dx(at(1.17)), 2.45, s * 1.52], [dx(at(1.17)), 1.74, s * 1.52]], 0.022, 30, 6);
       gb.tube('dSafety', [[dx(at(0.5)), 2.5, s * 1.52], [dx(at(0.5)), 2.74, s * 1.32], [dx(at(0.53)), 2.62, s * 1.08], [dx(at(0.56)), 1.74, s * 1.0]], 0.02, 18, 6);
@@ -209,7 +209,7 @@ function buildDiesel(opts) {
     const g = new THREE.ExtrudeGeometry(f, { depth: 0.06, bevelEnabled: false, curveSegments: 5 }); g.rotateY(Math.PI / 2); g.translate(-0.06, 0, 0); g.applyMatrix4(shear); gb.add('lBody', g);
     for (const s of [-1, 1]) {
       gb.add('glassT', new THREE.PlaneGeometry(wz1 - wz0 + 0.02, wy1 - wy0 + 0.02).rotateY(Math.PI / 2).translate(-0.03, (wy0 + wy1) / 2, s * (wz0 + wz1) / 2).applyMatrix4(shear));
-      gb.add('dUnder', new THREE.BoxGeometry(0.015, 0.012, 0.8).translate(0.008, wy0 + 0.04, s * (wz0 + wz1) / 2).applyMatrix4(shear));   // parked wiper
+      gb.add('dUnder', new THREE.BoxGeometry(0.015, 0.012, 0.8).translate(0.006, wy0 - 0.002, s * (wz0 + wz1) / 2).applyMatrix4(shear));   // parked wiper
       // chamfered corner panel between the windshield and the cab side
       facet('lBody', [P(CAB0, s * Wc, yW0), P(aTop, s * Wc, yW1), P(aTop + CHc, s * W, yW1), P(CAB0 + CHc, s * W, yW0)]);
     }
@@ -233,10 +233,11 @@ function buildDiesel(opts) {
       gb.add('glassT', new THREE.PlaneGeometry(1.82, 0.76), M(dx(4.15), 3.87, s * (W + 0.005)));
       box('dUnder', 4.13, 4.18, 3.5, 4.24, s * (W - 0.02), s * (W + 0.03));       // sash
       box('lBody', 3.2, 5.1, 4.27, 4.31, s * W, s * (W + 0.07));                  // rain visor
-      gb.add('lNum', new THREE.PlaneGeometry(1.1, 0.54), M(dx(4.15), 3.08, s * (W + 0.04), 0, s > 0 ? 0 : Math.PI, 0));
-      gb.add('lRail', new THREE.CylinderGeometry(0.02, 0.02, 1.2, 6), M(dx(5.08), 2.6, s * (W + 0.06)));
+      gb.add('lNum', new THREE.PlaneGeometry(1.1, 0.54), M(dx(4.15), 3.08, s * (W + 0.035), 0, s > 0 ? 0 : Math.PI, 0));
+      gb.add('lRail', new THREE.CylinderGeometry(0.02, 0.02, 1.2, 6), M(dx(5.08), 2.6, s * (W + 0.065)));
+      for (const y of [2.1, 3.1]) box('lRail', 5.06, 5.1, y - 0.02, y + 0.02, s * (W + 0.02), s * (W + 0.07));   // its standoffs
     }
-    for (const [a0, a1] of [[3.2, 3.95], [4.1, 4.85]]) box('lLouver', a0, a1, 1.86, 2.5, W - 0.002, W + 0.006);   // louvres under the engineer's window
+    for (const [a0, a1] of [[3.2, 3.95], [4.1, 4.85]]) box('lLouver', a0, a1, 1.86, 2.5, W + 0.028, W + 0.036);   // louvres under the engineer's window
     box('lBody', CAB1 - 0.06, CAB1, D, ROOF, -W, W);
     // roof: air conditioner, antennas
     box('dUnder', 3.4, 4.3, ROOF + 0.07, ROOF + 0.2, -0.62, 0.62);
@@ -244,7 +245,7 @@ function buildDiesel(opts) {
     for (const z of [-0.95, 0.9]) gb.add('dUnder', new THREE.CylinderGeometry(0.015, 0.03, 0.45, 6), M(dx(4.8), ROOF + 0.3, z));
     // interior
     const FL = 2.7;                                            // the cab floor sits well above the deck
-    box('dInt', CAB0 + 0.3, CAB1 - 0.08, FL - 0.03, FL, -W + 0.05, W - 0.05);
+    box('dInt', CAB0 + 0.3, CAB1 - 0.05, FL - 0.03, FL, -W + 0.02, W - 0.02);
     box('dDesk', CAB0 + 0.3, CAB0 + 0.9, FL, FL + 0.75, 0.15, 1.42);
     box('dDesk', CAB0 + 0.3, CAB0 + 0.8, FL, FL + 0.75, -1.42, -0.25);
     gb.add('screen', new THREE.PlaneGeometry(0.34, 0.2), M(dx(CAB0 + 0.6), FL + 0.87, 1.05, 0, -Math.PI / 2, 0).multiply(M(0, 0, 0, -0.75, 0, 0)));
@@ -269,6 +270,7 @@ function buildDiesel(opts) {
   // dynamic brake hump right behind the cab
   box('grille', 6.4, 10.5, DBH + 0.03, DBH + 0.036, -0.9, 0.9);          // dynamic brake grid hatch
   box('dUnder', 5.92, 6.08, DBH + 0.03, DBH + 0.26, -0.05, 0.05);
+  box('dUnder', 5.95, 6.05, DBH + 0.25, DBH + 0.37, -0.2, 0.2);   // horn manifold
   for (const [Lh, r, s, z] of [[0.55, 0.075, 1, -0.16], [0.42, 0.065, 1, 0], [0.34, 0.055, 1, 0.16], [0.48, 0.07, -1, -0.08], [0.38, 0.06, -1, 0.08]]) {
     const g3 = new THREE.CylinderGeometry(r, 0.03, Lh, 12, 1, true).rotateZ(s * -Math.PI / 2); g3.translate(dx(6.0) + s * Lh / 2, DBH + 0.31, z); gb.add('dUnder', g3);
   }
@@ -276,14 +278,14 @@ function buildDiesel(opts) {
   // engine room doors, latches, intake
   for (const s of [-1, 1]) {
     for (let a = 7.25; a < 15.3; a += 0.94) { box('dUnder', a, a + 0.025, 1.85, 3.92, s * (HZ - 0.002), s * (HZ + 0.007)); box('dSteel', a + 0.38, a + 0.52, 2.9, 2.95, s * HZ, s * (HZ + 0.025)); }
-    box('lLouver', 13.25, 14.1, 3.7, 4.36, s * HZ, s * (HZ + 0.006));
+    box('lLouver', 13.25, 14.1, 3.7, 4.36, s * HZ, s * (HZ + 0.01));
     gb.add('lRoad', new THREE.PlaneGeometry(6.2, 0.78), M(dx(12.2), 3.0, s * (HZ + 0.012), 0, s > 0 ? 0 : Math.PI, 0));
     gb.add('lHerald', new THREE.PlaneGeometry(0.95, 0.95), M(dx(7.95), 3.05, s * (HZ + 0.012), 0, s > 0 ? 0 : Math.PI, 0));
   }
   // exhaust silencer and stack, sand fill
-  box('dUnder', 10.9, 12.05, HOOD, HOOD + 0.2, -0.46, 0.46);
+  box('dUnder', 10.92, 12.05, HOOD + 0.02, HOOD + 0.2, -0.46, 0.46);
   box('dUnder', 11.3, 11.7, HOOD + 0.2, HOOD + 0.26, -0.3, 0.3);
-  gb.add('dSteel', new THREE.CylinderGeometry(0.12, 0.12, 0.08, 12), M(dx(9.4), HOOD + 0.05, 0.75));
+  gb.add('dSteel', new THREE.CylinderGeometry(0.12, 0.12, 0.08, 12), M(dx(9.4), DBH + 0.06, 0.75));
   /* ---- radiator section with flared wings ---- */
   box('lBody', RAD0, RAD1, D, RADH, -HZ, HZ);
   {
@@ -299,7 +301,7 @@ function buildDiesel(opts) {
     const g = new THREE.ExtrudeGeometry(wp, { depth: WING - HZ, bevelEnabled: false });
     g.translate(0, 0, s > 0 ? HZ : -WING); gb.add('lBody', g);
     gb.add('lRail', new THREE.CylinderGeometry(0.055, 0.055, RAD1 - RAD0 - 0.3, 10).rotateZ(Math.PI / 2), M(dx((RAD0 + RAD1) / 2 + 0.12), RADH - 0.02, s * (WING - 0.03)));   // bulge on the wing's top edge
-    box('lAccent', RAD0 + 0.75, RAD1, 3.3, 3.34, s * HZ, s * WING);
+    box('lAccent', RAD0 + 0.75, RAD1, 3.3, 3.34, s * (HZ - 0.01), s * (WING + 0.006));
     // intake grilles under the wing, set at two angles: a steep lower panel and a shallow upper one
     quad('grille', RAD0 + 0.95, RAD1 - 0.15, [2.3, s * HZ], [2.92, s * (HZ + 0.07)]);
     quad('grille', RAD0 + 0.95, RAD1 - 0.15, [2.92, s * (HZ + 0.07)], [3.31, s * (WING - 0.02)]);
@@ -326,8 +328,9 @@ function buildDiesel(opts) {
     t.moveTo(-w, y1); t.lineTo(-w, y0 + r); t.quadraticCurveTo(-w, y0, -w + r, y0); t.lineTo(w - r, y0); t.quadraticCurveTo(w, y0, w, y0 + r); t.lineTo(w, y1); t.closePath();
     const g = new THREE.ExtrudeGeometry(t, { depth: 8.8, bevelEnabled: false, curveSegments: 6 }); g.rotateY(Math.PI / 2); g.translate(dx(15.55), 0, 0);
     gb.add('dUnder', g);
-    for (const s of [-1, 1]) { gb.add('dSteel', new THREE.CylinderGeometry(0.09, 0.09, 0.06, 12).rotateX(Math.PI / 2), M(dx(9.2), 0.98, s * 1.4)); box('white', 12.6, 12.85, 0.72, 0.98, s * 1.39, s * 1.395); box('dSteel', 10.4, 10.55, 0.6, 1.1, s * 1.39, s * 1.41); }
+    for (const s of [-1, 1]) { gb.add('dSteel', new THREE.CylinderGeometry(0.09, 0.09, 0.06, 12).rotateX(Math.PI / 2), M(dx(9.2), 0.98, s * 1.4)); box('white', 12.6, 12.85, 0.72, 0.98, s * 1.378, s * 1.386); box('dSteel', 10.4, 10.55, 0.6, 1.1, s * 1.375, s * 1.4); }
   }
+  for (const a of DG.trucks) box('dUnder', a - 0.45, a + 0.45, 1.08, 1.18, -1.0, 1.0);   // body bolsters on the trucks
   const statics = gb.build({ ...RMAT, ...skin });
   body.add(statics);
   // headlight beam & halo
@@ -352,14 +355,21 @@ function buildDiesel(opts) {
       for (const x of [-DG.axle, 0, DG.axle]) {
         tg.add('dSteel', new THREE.CylinderGeometry(0.15, 0.15, 0.08, 14).rotateX(Math.PI / 2), M(x, DG.rW, s * 1.17));   // journal end caps
         for (const dz of [-1, 1]) tg.add('dSteel', new THREE.CylinderGeometry(0.075, 0.075, 0.22, 10), M(x + 0.2 * dz, 0.87, s * 1.2));  // coil springs
-        tg.box('dSafety', 0.04, 0.04, 0.2, x, 0.99, s * 1.06);
+        tg.box('dSafety', 0.04, 0.04, 0.24, x, 0.99, s * 1.06);
       }
       tg.add('dUnder', new THREE.CylinderGeometry(0.11, 0.11, 0.34, 10).rotateZ(Math.PI / 2), M(-1.0, 0.88, s * 1.2));
       tg.add('dUnder', new THREE.CylinderGeometry(0.11, 0.11, 0.34, 10).rotateZ(Math.PI / 2), M(1.0, 0.88, s * 1.2));
       tg.add('dSteel', new THREE.CylinderGeometry(0.045, 0.045, 0.6, 8), M(0.35, 0.72, s * 1.22, 0, 0, 0.7));   // shock absorber
       tg.box('dUnder', 0.46, 0.4, 0.3, s * 2.66, 0.9, s * 1.0);   // sand boxes
     }
-    for (const x of [-DG.axle, 0, DG.axle]) tg.add('dUnder', new THREE.CylinderGeometry(0.36, 0.36, 0.96, 14).rotateX(Math.PI / 2), M(x + (x > 0 ? -0.62 : 0.62) * (x === 0 ? -1 : 1), 0.52, 0));
+    // traction motors hung on their axles, noses carried on the transoms
+    for (const x of [-DG.axle, 0, DG.axle]) {
+      const d = x > 0 ? -1 : 1, cx = x + d * 0.42 * (x === 0 ? -1 : 1);
+      tg.add('dUnder', new THREE.CylinderGeometry(0.36, 0.36, 0.96, 14).rotateX(Math.PI / 2), M(cx, 0.52, 0));
+      const tx = x === 0 ? -1.0 : x > 0 ? 1.0 : -1.0, nx = cx + Math.sign(tx - cx) * 0.3;
+      tg.box('dUnder', Math.abs(tx - nx) + 0.1, 0.16, 0.3, (tx + nx) / 2, 0.78, 0);
+    }
+    for (const x of [-1.0, 1.0]) tg.box('dUnder', 0.25, 0.16, 2.1, x, 0.88, 0);   // transoms between the sideframes
     tg.box('dUnder', 0.8, 0.22, 2.1, 0, 1.0, 0);
     grp.add(tg.build(RMAT));
     for (const x of [-DG.axle, 0, DG.axle]) {

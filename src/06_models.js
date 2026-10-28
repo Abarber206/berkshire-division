@@ -28,6 +28,7 @@ function rollingMaterials() {
   RMAT.green = S(0x2a3a2a, 0.3, 0.5);
   RMAT.roof = S(0x1d1e1f, 0.2, 0.8);
   RMAT.coachWin = new THREE.MeshStandardMaterial({ color: 0x1a2024, metalness: 0.3, roughness: 0.15, emissive: 0xffc77a, emissiveIntensity: 0 });
+  RMAT.win = RMAT.coachWin;   // car windows (lit at night)
   RMAT.oxide = S(0x6b2b1e, 0.15, 0.78);
   RMAT.oxide2 = S(0x5a3326, 0.15, 0.8);
   RMAT.caboose = S(0x8e2c1f, 0.15, 0.62);
@@ -166,6 +167,7 @@ function buildBerkshire(key) {
   const body = new THREE.Group(); root.add(body);
   const gb = new GeoBin();
   const yB = LG.yB;
+  const FB = { cy: yB + 0.13, r: 1.16, base: 1.72, wb: 1.35 };   // firebox wrapper profile (round top over flat sides)
   /* ---- frame & running gear supports ---- */
   for (const z of [-0.56, 0.56]) gb.box('dark', 12.4, 0.5, 0.14, ax(8.0), 1.18, z);
   gb.box('dark', 1.4, 0.55, 1.2, ax(1.4), 1.15, 0);
@@ -184,7 +186,8 @@ function buildBerkshire(key) {
   gb.box('dark', 0.55, 0.22, 0.26, ax(0.22), 0.875, 0); gb.box('dark', 0.16, 0.34, 0.36, ax(0.02), 0.875, 0);
   gb.add('dark', new THREE.CylinderGeometry(0.03, 0.03, 0.6, 6), M(ax(0.32), 0.62, 0.42, 0.5, 0, 0.3));
   gb.add('dark', new THREE.CylinderGeometry(0.03, 0.03, 0.6, 6), M(ax(0.32), 0.62, -0.42, -0.5, 0, 0.3));
-  gb.add('rod', new THREE.CylinderGeometry(0.015, 0.015, 1.6, 6), M(ax(0.48), 1.5, 0, Math.PI / 2, 0, 0));
+  gb.add('rod', new THREE.CylinderGeometry(0.015, 0.015, 1.6, 6), M(ax(0.48) + 0.035, 1.4, 0, Math.PI / 2, 0, 0));
+  for (const z of [-0.55, 0.55]) gb.box('dark', 0.06, 0.04, 0.04, ax(0.48) + 0.03, 1.4, z);
   /* ---- cylinders & saddle ---- */
   for (const s of [-1, 1]) {
     const z = s * LG.zC;
@@ -193,6 +196,7 @@ function buildBerkshire(key) {
     gb.cylX('black', 0.31, 0.31, 1.45, 18, ax(3.72), LG.yV, s * 1.12);
     gb.cylX('graphite', 0.33, 0.33, 0.06, 18, ax(3.0), LG.yV, s * 1.12); gb.cylX('graphite', 0.33, 0.33, 0.06, 18, ax(4.44), LG.yV, s * 1.12);
     gb.box('black', 1.2, 0.5, 0.5, ax(3.72), 1.32, s * 1.08);
+    gb.box('black', 1.24, 0.3, 0.42, ax(3.74), 1.39, s * 1.2);   // web between cylinder and steam chest
     // crosshead guides (two bars) and guide yoke
     for (const dy of [-0.2, 0.2]) gb.box('rod', 2.0, 0.06, 0.14, ax(5.4), LG.yC + dy, z);
     gb.box('black', 0.14, 1.05, 0.36, ax(6.45), 1.45, s * 1.02);
@@ -205,7 +209,7 @@ function buildBerkshire(key) {
     }
     gb.box('black', 1.12, 0.66, 0.04, ax(7.06), 1.72, s * 1.13);
     gb.box('black', 1.12, 0.06, 0.36, ax(7.06), 2.08, s * 1.29);
-    gb.cylZ('dark', 0.07, 0.36, 14, BK.Pb[0], BK.Pb[1], s * 1.29);
+    gb.cylZ('dark', 0.07, 0.34, 14, BK.Pb[0], BK.Pb[1], s * 1.30);
     for (const zz of [1.15, 1.43]) gb.cylZ('dark', 0.08, 0.06, 14, BK.Rmid[0], BK.Rmid[1], s * zz);
     // drain cocks
     for (const a of [3.2, 4.3]) gb.add('dark', new THREE.CylinderGeometry(0.025, 0.025, 0.35, 6), M(ax(a), LG.yC - 0.55, z));
@@ -216,21 +220,29 @@ function buildBerkshire(key) {
   gb.cylZ('dark', 0.05, 2.74, 10, ax(7.5), 1.98, 0);   // reverse shaft between the two gear frames
   /* ---- boiler ---- */
   const lathe = (pts, a0) => { const g = new THREE.LatheGeometry(pts.map(p => new THREE.Vector2(p[1], p[0])), 40); g.rotateZ(-Math.PI / 2); g.translate(ax(a0), yB, 0); return g; };
-  gb.add('graphite', new THREE.CylinderGeometry(1.04, 1.04, 2.95, 40, 1, true).rotateZ(Math.PI / 2).translate(ax(3.02), yB, 0));
+  gb.add('graphite', new THREE.CylinderGeometry(1.04, 1.04, 2.95, 40).rotateZ(Math.PI / 2).translate(ax(3.02), yB, 0));
   // smokebox front with dished door
   gb.add('graphite', new THREE.CylinderGeometry(1.06, 1.06, 0.1, 40).rotateZ(Math.PI / 2).translate(ax(1.55), yB, 0));
   gb.add('graphite', lathe([[0, 0.82], [0.06, 0.82], [0.14, 0.6], [0.17, 0.0]], 1.5));
-  for (const dy of [0.35, -0.35]) gb.box('dark', 0.04, 0.06, 0.62, ax(1.4), yB + dy, -0.42);           // hinge straps
+  for (const dy of [0.35, -0.35]) gb.box('dark', 0.04, 0.06, 0.36, ax(1.4), yB + dy, -0.53);           // hinge straps
   for (let i = 0; i < 18; i++) { const t = (i + 0.5) / 18 * TAU; gb.add('dark', new THREE.BoxGeometry(0.06, 0.13, 0.07), M(ax(1.475), yB + 0.9 * Math.cos(t), 0.9 * Math.sin(t), t, 0, 0)); }   // door dogs
-  // boiler courses: front ring, conical course, rear courses
+  // boiler courses: front ring, conical course, rear courses. The conical course grows from the front
+  // ring's 1.0 m radius to the rear courses' 1.13 m with its bottom line kept level, so the seams meet exactly.
+  const bR = a => a < 7.4 ? 1.0 : a < 9.0 ? lerp(1.0, 1.13, (a - 7.4) / 1.6) : 1.13;   // course radius at a
+  const bY = a => yB + bR(a) - 1.0;                                                     // course centre height at a
   gb.add('black', new THREE.CylinderGeometry(1.0, 1.0, 2.9, 40, 1, true).rotateZ(Math.PI / 2).translate(ax(5.95), yB, 0));
-  gb.add('black', new THREE.CylinderGeometry(1.0, 1.13, 1.6, 40, 1, true).rotateZ(Math.PI / 2).translate(ax(8.2), yB + 0.06, 0));
+  {
+    const g = new THREE.CylinderGeometry(1.0, 1.13, 1.6, 40, 1, true).rotateZ(-Math.PI / 2);   // radius 1.0 at +x (front)
+    const p = g.attributes.position;
+    for (let i = 0; i < p.count; i++) p.setY(i, p.getY(i) + 0.13 * (0.8 - p.getX(i)) / 1.6);   // lift the centre with the radius
+    g.computeVertexNormals(); g.translate(ax(8.2), yB, 0); gb.add('black', g);
+  }
   gb.add('black', new THREE.CylinderGeometry(1.13, 1.13, 3.0, 40, 1, true).rotateZ(Math.PI / 2).translate(ax(10.5), yB + 0.13, 0));
-  for (const a of [4.6, 6.0, 7.4, 8.9, 10.0, 11.0, 11.95]) { const r = a < 7.4 ? 1.012 : (a < 9 ? lerp(1.0, 1.13, (a - 7.4) / 1.6) + 0.012 : 1.142); gb.add('dark', new THREE.CylinderGeometry(r, r, 0.07, 40, 1, true).rotateZ(Math.PI / 2).translate(ax(a), yB + (a < 7.4 ? 0 : a < 9 ? 0.06 : 0.13), 0)); }
+  for (const a of [4.6, 6.0, 7.4, 8.9, 10.0, 11.0]) { const r = bR(a) + 0.012; gb.add('dark', new THREE.CylinderGeometry(r, r, 0.07, 40).rotateZ(Math.PI / 2).translate(ax(a), bY(a), 0)); }
   // firebox: round top over flat sides, wider at the base
   {
-    const s = new THREE.Shape(); const top = yB + 0.13, rr = 1.22, base = 1.72, wb = 1.35;
-    s.moveTo(-wb, base); s.lineTo(-rr, top - 0.25); s.absarc(0, top - 0.25, rr, Math.PI, 0, true); s.lineTo(wb, base); s.lineTo(-wb, base);
+    const s = new THREE.Shape(); const cy = FB.cy, rr = FB.r, base = FB.base, wb = FB.wb;
+    s.moveTo(-wb, base); s.lineTo(-rr, cy); s.absarc(0, cy, rr, Math.PI, 0, true); s.lineTo(wb, base); s.lineTo(-wb, base);
     const g = new THREE.ExtrudeGeometry(s, { depth: 3.05, bevelEnabled: false, curveSegments: 24 });
     g.rotateY(Math.PI / 2); g.translate(ax(14.9), 0, 0);
     gb.add('graphite', g);
@@ -264,11 +276,13 @@ function buildBerkshire(key) {
   gb.cylX('black', 0.18, 0.18, 0.62, 16, ax(3.9), yB + 1.08, -0.42); gb.cyl('dark', 0.05, 0.05, 0.3, 8, ax(3.7), yB + 1.3, -0.42);
   // bell up on top of the smokebox front, hung in a yoke on a bracket, in front of the feedwater heater
   {
-    const by = yB + 0.86, bx = ax(1.3);
+    const by = yB + 0.86, bx = ax(1.22);   // rim clears the smokebox front plate
     gb.add('brass', new THREE.LatheGeometry([[0, 0.27], [0.09, 0.27], [0.16, 0.24], [0.21, 0.13], [0.25, 0.0]].map(p => new THREE.Vector2(p[0], p[1])), 24).translate(bx, by, 0));
     for (const z of [-0.3, 0.3]) gb.box('black', 0.06, 0.38, 0.05, bx, by + 0.2, z);
+    gb.cylZ('dark', 0.025, 0.62, 8, bx, by + 0.22, 0);                     // trunnion pin through the bell's crown
     gb.box('black', 0.08, 0.06, 0.66, bx, by + 0.4, 0);
-    gb.box('black', 0.34, 0.08, 0.1, ax(1.47), by + 0.4, 0);
+    gb.box('black', 0.44, 0.08, 0.1, ax(1.4), by + 0.4, 0);                // bracket back over the smokebox
+    gb.box('black', 0.08, 0.32, 0.12, ax(1.62), by + 0.27, 0);             // pedestal on the smokebox top
   }
   // headlight in the middle of the smokebox door: the NKP's square lamp with number boards either side,
   // the PM's round lamp with a brass rim and a white number plate beside it
@@ -276,7 +290,7 @@ function buildBerkshire(key) {
   if (!spec.bellOnFront) {
     gb.box('black', 0.55, 0.62, 0.62, ax(1.25), hlY, 0);
     gb.add('black', new THREE.CylinderGeometry(0.29, 0.29, 0.12, 24).rotateZ(Math.PI / 2).translate(ax(0.98), hlY, 0));
-    gb.box('black', 0.32, 0.06, 0.66, ax(0.95), hlY + 0.36, 0);
+    gb.box('black', 0.32, 0.06, 0.66, ax(0.95), hlY + 0.335, 0);
   } else {
     gb.add('black', new THREE.CylinderGeometry(0.31, 0.33, 0.5, 28).rotateZ(Math.PI / 2).translate(ax(1.17), hlY, 0));
     gb.add('brass', new THREE.TorusGeometry(0.29, 0.035, 8, 28).rotateY(Math.PI / 2).translate(ax(0.92), hlY, 0));
@@ -295,20 +309,24 @@ function buildBerkshire(key) {
     gb.add('digits' + key, new THREE.PlaneGeometry(0.66, 0.25), M(ax(1.345), yB - 0.38, 0.06, 0, Math.PI / 2, 0));
   }
   // classification lamps
-  for (const z of [-0.85, 0.85]) { gb.box('black', 0.22, 0.26, 0.2, ax(1.62), yB + 0.75, z); gb.add('lensOff', new THREE.CircleGeometry(0.06, 10), M(ax(1.5), yB + 0.75, z, 0, Math.PI / 2, 0)); }
+  for (const z of [-0.85, 0.85]) { gb.box('black', 0.22, 0.26, 0.2, ax(1.62), yB + 0.75, z); gb.add('lensOff', new THREE.CircleGeometry(0.06, 10), M(ax(1.51) + 0.003, yB + 0.75, z, 0, Math.PI / 2, 0)); }
   // outside steam pipes (smokebox to valve chests)
-  for (const s of [-1, 1]) gb.tube('black', [[ax(3.3), yB - 0.2, s * 0.95], [ax(3.4), yB - 0.7, s * 1.12], [ax(3.6), 2.25, s * 1.17], [ax(3.72), 1.98, s * 1.13]], 0.16, 20, 12);
+  for (const s of [-1, 1]) gb.tube('black', [[ax(3.25), yB - 0.05, s * 0.88], [ax(3.3), yB - 0.3, s * 0.99], [ax(3.42), yB - 0.62, s * 1.07], [ax(3.58), 2.3, s * 1.12], [ax(3.72), 1.96, s * 1.13]], 0.16, 24, 12);
   /* ---- running boards, walkways, steps ---- */
   for (const s of [-1, 1]) {
     gb.box('black', 12.6, 0.05, 0.58, ax(7.95), 2.12, s * 1.34);
-    gb.box('rbEdge', 12.6, 0.16, 0.04, ax(7.95), 2.05, s * 1.62);
+    gb.box('rbEdge', 12.62, 0.16, 0.04, ax(7.95), 2.05, s * 1.62);
     for (let a = 2.0; a < 14; a += 1.6) gb.box('dark', 0.06, 0.4, 0.06, ax(a), 1.9, s * 1.2);
-    // front steps from pilot to running board
-    for (const y of [0.55, 1.0, 1.5]) gb.box('dark', 0.36, 0.04, 0.32, ax(1.05), y, s * 1.42);
-    gb.box('dark', 0.05, 1.7, 0.05, ax(0.88), 1.2, s * 1.58); gb.box('dark', 0.05, 1.7, 0.05, ax(1.22), 1.2, s * 1.58);
+    // front steps, hung from the front end of the running board
+    for (const y of [0.55, 1.0, 1.5]) gb.box('dark', 0.36, 0.04, 0.32, ax(1.505), y, s * 1.42);
+    for (const a of [1.33, 1.68]) gb.box('dark', 0.05, 1.62, 0.05, ax(a), 1.31, s * 1.555);
+    gb.box('dark', 0.4, 0.05, 0.05, ax(1.505), 2.1, s * 1.555);
     // handrail along boiler
     gb.add('rod', new THREE.CylinderGeometry(0.018, 0.018, 12.0, 6).rotateZ(Math.PI / 2).translate(ax(7.6), yB + 0.6, s * 1.13));
-    for (let a = 2.2; a < 13.5; a += 1.5) gb.add('rod', new THREE.CylinderGeometry(0.014, 0.014, 0.14, 5).rotateX(Math.PI / 2).translate(ax(a), yB + 0.6, s * 1.06));
+    for (let a = 2.2; a < 13.5; a += 1.5) {   // stanchions reach in to the boiler (or smokebox, or firebox) surface
+      const r = a < 4.5 ? 1.04 : a < 11.85 ? bR(a) : FB.r, cy = a < 4.5 ? yB : a < 11.85 ? bY(a) : FB.cy, zs = Math.sqrt(r * r - (yB + 0.6 - cy) ** 2) - 0.02, Ls = 1.13 - zs;
+      gb.add('rod', new THREE.CylinderGeometry(0.014, 0.014, Ls, 5).rotateX(Math.PI / 2).translate(ax(a), yB + 0.6, s * (zs + Ls / 2)));
+    }
     // air reservoirs under running boards
     gb.cylX('black', 0.27, 0.27, 3.4, 18, ax(10.6), 1.82, s * 1.3);
     for (const a of [9.0, 12.2]) gb.cylX('dark', 0.28, 0.28, 0.06, 18, ax(a), 1.82, s * 1.3);
@@ -323,7 +341,7 @@ function buildBerkshire(key) {
     for (let i = 0; i < 4; i++) { const xd = ax(LG.aD[i]); for (let k = 0; k < 5; k++) gb.box('dark', 0.9 - k * 0.12, 0.035, 0.14, xd, 1.38 + k * 0.035, s * 0.6); gb.box('dark', 0.3, 0.34, 0.3, xd, 1.0, s * 0.56); }
     // cab steps
     for (const y of [0.85, 1.35, 1.8]) gb.box('dark', 0.5, 0.04, 0.3, ax(14.55), y, s * 1.44);
-    gb.box('dark', 0.05, 1.5, 0.05, ax(14.3), 1.45, s * 1.58); gb.box('dark', 0.05, 1.5, 0.05, ax(14.8), 1.45, s * 1.58);
+    gb.box('dark', 0.05, 1.38, 0.05, ax(14.3), 1.39, s * 1.53); gb.box('dark', 0.05, 1.38, 0.05, ax(14.8), 1.39, s * 1.53);
   }
   // air compressors (left side, on smokebox), lubricators (right running board), power reverse
   for (const a of [3.25, 3.95]) { gb.cyl('black', 0.2, 0.2, 0.75, 16, ax(a), 2.75, -1.33); gb.cyl('black', 0.24, 0.24, 0.55, 16, ax(a), 2.2 + 0.05, -1.33); gb.cyl('graphite', 0.22, 0.22, 0.06, 16, ax(a), 3.12, -1.33); }
@@ -359,7 +377,8 @@ function buildBerkshire(key) {
     // cab front with boiler opening and front windows
     {
       const sh = new THREE.Shape(); sh.moveTo(-hw, fl); sh.lineTo(hw, fl); sh.lineTo(hw, roofY); sh.lineTo(-hw, roofY); sh.lineTo(-hw, fl);
-      const hole = new THREE.Path(); hole.moveTo(-1.37, fl + 0.03); hole.lineTo(1.37, fl + 0.03); hole.lineTo(1.24, yB - 0.12); hole.absarc(0, yB - 0.12, 1.24, 0, Math.PI, false); hole.lineTo(-1.37, fl + 0.03);
+      const hz = z => FB.r + (FB.wb - FB.r) * (FB.cy - z) / (FB.cy - FB.base);   // firebox half width at height z
+      const hole = new THREE.Path(); hole.moveTo(-hz(fl + 0.03) - 0.015, fl + 0.03); hole.lineTo(hz(fl + 0.03) + 0.015, fl + 0.03); hole.lineTo(FB.r + 0.015, FB.cy); hole.absarc(0, FB.cy, FB.r + 0.015, 0, Math.PI, false); hole.lineTo(-hz(fl + 0.03) - 0.015, fl + 0.03);
       const wl = new THREE.Path(); wl.moveTo(-1.5, 3.3); wl.lineTo(-1.5, 4.25); wl.lineTo(-1.12, 4.25); wl.lineTo(-1.12, 3.78); wl.lineTo(-1.5, 3.3);
       const wr = new THREE.Path(); wr.moveTo(1.5, 3.3); wr.lineTo(1.12, 3.78); wr.lineTo(1.12, 4.25); wr.lineTo(1.5, 4.25); wr.lineTo(1.5, 3.3);
       sh.holes.push(wl, wr);
@@ -371,37 +390,45 @@ function buildBerkshire(key) {
     const roofShape = new THREE.Shape(); roofShape.moveTo(-hw - 0.08, 0); roofShape.quadraticCurveTo(0, 0.42, hw + 0.08, 0); roofShape.lineTo(hw + 0.08, 0.05); roofShape.quadraticCurveTo(0, 0.47, -hw - 0.08, 0.05);
     const rg = new THREE.ExtrudeGeometry(roofShape, { depth: L + 0.55, bevelEnabled: false, curveSegments: 16 }); rg.rotateY(Math.PI / 2); rg.translate(x1 - 0.45, roofY - 0.02, 0);
     gb.add('black', rg);
-    gb.box('black', 0.9, 0.18, 0.8, x1 + L / 2, roofY + 0.4, 0);
+    gb.box('black', 0.9, 0.26, 0.8, x1 + L / 2, roofY + 0.3, 0);   // ventilator, seated in the roof's curve
     // floor, deck, apron to tender
-    gb.box('dark', L + 0.4, 0.08, 2 * hw, x1 + L / 2 - 0.15, fl, 0);
+    gb.box('dark', L + 0.37, 0.08, 2 * hw - 0.01, x1 + (L - 0.33) / 2, fl, 0);   // ends inside the cab front wall
     gb.box('dark', 0.8, 0.05, 1.9, x1 - 0.35, fl + 0.02, 0);
     // cab number
     const cabNum = decalMat(256, 128, (g, w, h) => romanText(g, spec.num, w / 2, h / 2 + 4, 104, '#ebe8dd', 0.02));
     RMAT['cab' + key] = cabNum;
     for (const s of [-1, 1]) gb.add('cab' + key, new THREE.PlaneGeometry(1.0, 0.5), M(x1 + L / 2 - 0.25, fl + 0.65, s * (hw + 0.03), 0, s > 0 ? 0 : Math.PI, 0));
     // interior: backhead, gauges, firedoor, seats, levers
-    const bh = ax(14.92);
+    const bh = ax(14.9);   // the firebox's back sheet
     gb.box('backhead', 0.06, 1.7, 2.3, bh - 0.03, fl + 1.0, 0);
-    gb.box('dark', 0.4, 0.4, 0.4, bh - 0.2, fl + 0.75, 0);
+    gb.box('dark', 0.38, 0.4, 0.4, bh - 0.21, fl + 0.75, 0);   // firedoor
     for (const [z, y, r] of [[-0.45, 3.9, 0.13], [0.15, 3.95, 0.16], [0.55, 3.85, 0.12], [-0.1, 3.6, 0.1], [0.9, 3.55, 0.1]]) { gb.add('brass', new THREE.CylinderGeometry(r, r, 0.05, 18).rotateZ(Math.PI / 2).translate(bh - 0.05, y, z)); gb.add('white', new THREE.CircleGeometry(r * 0.85, 18).rotateY(-Math.PI / 2).translate(bh - 0.08, y, z)); }
     gb.box('glass', 0.05, 0.5, 0.06, bh - 0.06, 3.3, -0.85); gb.box('brass', 0.06, 0.08, 0.1, bh - 0.06, 3.58, -0.85); gb.box('brass', 0.06, 0.08, 0.1, bh - 0.06, 3.02, -0.85);
-    for (const s of [-1, 1]) { gb.box('cabInt', 0.6, 0.55, 0.5, x1 + 0.8, fl + 0.85, s * 1.15); gb.box('cabInt', 0.1, 0.6, 0.5, x1 + 0.55, fl + 1.35, s * 1.15); }
-    gb.box('dark', 0.1, 0.1, 0.7, bh - 0.35, 3.45, 0.75); // throttle quadrant
+    for (const s of [-1, 1]) {   // seat boxes: cushion and back on a pedestal from the deck
+      gb.box('cabInt', 0.6, 0.12, 0.5, x1 + 0.8, 3.0, s * 1.15); gb.box('cabInt', 0.1, 0.6, 0.5, x1 + 0.55, 3.35, s * 1.15);
+      gb.box('dark', 0.4, 0.9, 0.36, x1 + 0.8, 2.5, s * 1.15);
+    }
+    gb.box('dark', 0.36, 0.1, 0.1, bh - 0.24, 3.45, 0.75); // throttle lever, out from the backhead
     gb.box('dark', 0.3, 0.25, 0.25, x1 + 1.6, fl + 1.05, 1.35); // brake stand
-    gb.add('dark', new THREE.CylinderGeometry(0.02, 0.02, 1.5, 6).rotateZ(Math.PI / 2).translate(x1 + 1.2, 3.75, 0.6)); // whistle cord
+    gb.box('dark', 0.12, 0.9, 0.12, x1 + 1.6, 2.5, 1.35);       // its pedestal
+    {   // whistle cord, from the valve on the backhead up to the cab roof
+      const a = new THREE.Vector3(bh - 0.06, 3.85, 0.6), b = new THREE.Vector3(x1 + 0.6, 4.72, 0.6), g = new THREE.CylinderGeometry(0.012, 0.012, a.distanceTo(b), 6);
+      g.applyMatrix4(new THREE.Matrix4().makeRotationFromQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize()))); g.translate((a.x + b.x) / 2, (a.y + b.y) / 2, 0.6); gb.add('dark', g);
+    }
   }
   /* ---- trailing truck frame ---- */
   for (const s of [-1, 1]) { gb.box('dark', 3.4, 0.4, 0.18, ax(15.0), 0.78, s * 1.0); gb.box('dark', 0.3, 0.7, 0.25, ax(14.17), 0.75, s * 0.98); gb.box('dark', 0.3, 0.7, 0.25, ax(15.8), 0.8, s * 0.98); }
   gb.box('dark', 1.6, 0.25, 2.2, ax(13.3), 0.95, 0);
-  // rear drawbar & deck
+  // rear frame extension carrying the drawbar, and the posts under the cab deck
   gb.box('dark', 0.5, 0.3, 1.2, ax(17.15), 1.0, 0);
+  for (const s of [-1, 1]) { gb.box('dark', 3.2, 0.35, 0.14, ax(15.6), 1.225, s * 0.56); gb.box('dark', 0.15, 0.7, 0.14, ax(16.95), 1.7, s * 0.56); }
 
   const statics = gb.build({ ...RMAT, black: RMAT.black });
   body.add(statics);
 
   /* ---- glows & lights ---- */
   const lens = new THREE.Mesh(new THREE.CircleGeometry(0.25, 28), RMAT.lens); lens.position.set(ax(0.91), hlY, 0); lens.rotation.y = Math.PI / 2; body.add(lens);
-  const fire = new THREE.Mesh(new THREE.PlaneGeometry(0.45, 0.32), RMAT.glow.clone()); fire.position.set(ax(14.92) - 0.07, 2.75, 0); fire.rotation.y = -Math.PI / 2; body.add(fire);
+  const fire = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 0.22), RMAT.glow.clone()); fire.position.set(ax(14.9) - 0.403, 2.81, 0); fire.rotation.y = -Math.PI / 2; body.add(fire);
   // headlight beam (visible at night) and lens halo
   const beamG = new THREE.ConeGeometry(7, 70, 24, 1, true); beamG.translate(0, -35, 0); beamG.rotateZ(Math.PI / 2);
   const beam = new THREE.Mesh(beamG, new THREE.MeshBasicMaterial({ color: 0xfff2c8, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: true }));
@@ -528,18 +555,16 @@ function buildTender(key) {
   gb.box('dark', 12.6, 0.45, 2.9, tx(6.75), 1.25, 0);   // underframe / sill
   gb.box('black', 12.45, 2.5, 2 * hw, tx(6.85), 2.72, 0); // water tank
   gb.box('black', 12.55, 0.08, 2 * hw + 0.06, tx(6.85), 3.98, 0);
-  // coal bunker: raised flared coal boards forward half
-  for (const s of [-1, 1]) {
-    gb.box('black', 6.4, 0.62, 0.06, tx(3.6), 4.3, s * (hw + 0.08));
-    gb.box('black', 0.06, 0.62, 2 * hw + 0.2, tx(6.8), 4.3, 0);
-  }
-  gb.box('black', 0.06, 1.3, 2 * hw, tx(0.42), 3.3, 0); // front coal gate wall
-  gb.box('dark', 0.9, 0.06, 2.2, tx(0.15), 2.07, 0);    // deck
+  // coal bunker: coal boards standing on the tank top's edges, closed front and back
+  for (const s of [-1, 1]) gb.box('black', 6.2, 0.64, 0.06, tx(3.7), 4.3, s * (hw - 0.0));
+  gb.box('black', 0.06, 0.64, 2 * hw + 0.06, tx(6.8), 4.3, 0);
+  gb.box('black', 0.06, 0.64, 2 * hw + 0.06, tx(0.63), 4.3, 0); // front coal gate
+  gb.box('dark', 0.95, 0.06, 2.2, tx(0.175), 2.07, 0);    // deck, up to the tank front
   // heaped coal
   {
     const g = new THREE.PlaneGeometry(6.0, 3.0, 24, 12); g.rotateX(-Math.PI / 2);
     const p = g.attributes.position; const r = rng(55);
-    for (let i = 0; i < p.count; i++) { const x = p.getX(i), z = p.getZ(i); const u = 1 - (x / 3) ** 2, v = 1 - (z / 1.5) ** 2; p.setY(i, 4.05 + Math.max(0, u * v) * 0.75 + (r() - 0.5) * 0.06); }
+    for (let i = 0; i < p.count; i++) { const x = p.getX(i), z = p.getZ(i); const u = 1 - (x / 3) ** 2, v = 1 - (z / 1.5) ** 2; p.setY(i, 4.06 + Math.max(0, u * v) * 0.75 + Math.max(0, u * v) * (r() - 0.5) * 0.08); }
     g.computeVertexNormals(); g.translate(tx(3.65), 0, 0); gb.add('coal', g);
   }
   // water hatch, rear deck, back-up light, ladders, grab irons
@@ -550,17 +575,22 @@ function buildTender(key) {
   for (const s of [-1, 1]) {
     for (let y = 1.5; y < 4.0; y += 0.35) gb.box('rod', 0.04, 0.04, 0.42, tx(13.12), y, s * 1.3);
     gb.box('dark', 0.05, 2.6, 0.05, tx(13.12), 2.7, s * 1.08); gb.box('dark', 0.05, 2.6, 0.05, tx(13.12), 2.7, s * 1.52);
-    gb.box('dark', 0.05, 2.2, 0.05, tx(0.5), 2.6, s * (hw + 0.04));
-    for (const y of [0.85, 1.3]) gb.box('dark', 0.45, 0.04, 0.3, tx(0.55), y, s * 1.45);
-    gb.box('dark', 0.45, 0.04, 0.3, tx(12.7), 0.85, s * 1.45);
+    // front grab irons on standoffs at the tank corners
+    gb.box('dark', 0.05, 2.2, 0.05, tx(0.7), 2.6, s * (hw + 0.07));
+    for (const y of [1.6, 3.6]) gb.box('dark', 0.05, 0.05, 0.1, tx(0.7), y, s * (hw + 0.03));
+    // steps, each hung on two stringers from the underframe
+    const steps = (a, ys) => { for (const y of ys) gb.box('dark', 0.45, 0.04, 0.3, tx(a), y, s * 1.45); for (const d of [-0.2, 0.2]) gb.box('dark', 0.04, 1.08 - ys[0] + 0.05, 0.3, tx(a) + d, (ys[0] - 0.03 + 1.1) / 2, s * 1.45); };
+    steps(0.55, [0.85, 1.3]); steps(12.7, [0.85]);
     // tank rivet seam
-    for (const a of [4.0, 8.0]) gb.box('blackMatte', 0.03, 2.45, 0.01, tx(a), 2.72, s * (hw + 0.005));
+    for (const a of [4.0, 8.0]) gb.box('blackMatte', 0.03, 2.45, 0.008, tx(a), 2.72, s * (hw + 0.002));
   }
-  gb.box('dark', 0.35, 0.3, 2.9, tx(13.05), 1.15, 0); gb.box('dark', 0.55, 0.22, 0.26, tx(13.25), 0.875, 0);
+  gb.box('dark', 0.35, 0.36, 2.9, tx(13.05), 1.12, 0); gb.box('dark', 0.55, 0.22, 0.26, tx(13.25), 0.875, 0);
+  gb.box('dark', 0.44, 0.3, 1.2, tx(0.28), 1.05, 0);   // front drawbar pocket, meeting the engine's drawbar
+  for (const a of [3.25, 10.1]) gb.box('dark', 0.6, 0.06, 2.0, tx(a), 1.0, 0);   // body bolsters on the trucks
   // lettering
   const road = decalMat(1024, 128, (g, w, h) => romanText(g, spec.road, w / 2, h / 2 + 6, spec.road.length > 15 ? 84 : 92, '#ecE9de', 0.1));
   RMAT['road' + key] = road;
-  for (const s of [-1, 1]) gb.add('road' + key, new THREE.PlaneGeometry(10.4, 1.3), M(tx(6.9), 2.95, s * (hw + 0.012), 0, s > 0 ? 0 : Math.PI, 0));
+  for (const s of [-1, 1]) gb.add('road' + key, new THREE.PlaneGeometry(10.4, 1.3), M(tx(6.9), 2.95, s * (hw + 0.009), 0, s > 0 ? 0 : Math.PI, 0));
   const statics = gb.build(RMAT);
   root.add(statics); root.add(bl);
   root.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
@@ -582,7 +612,11 @@ function coachModel(spec, num, observation) {
   gb.box('dark', 23.6, 0.25, 2 * hw - 0.1, 0, 1.08, 0);
   // underbody gear: battery boxes, AC generator, truss
   gb.box('dark', 2.0, 0.6, 1.2, 3.5, 0.75, 0); gb.box('dark', 1.6, 0.5, 1.0, -3, 0.75, 0.3); gb.box('dark', 2.6, 0.45, 0.5, 0, 0.75, -0.6);
-  for (const s of [-1, 1]) gb.add('dark', new THREE.CylinderGeometry(0.03, 0.03, 9, 6).rotateZ(Math.PI / 2).translate(0, 0.62, s * 1.1));
+  for (const s of [-1, 1]) {   // truss rods: up to the underframe at each end, down over two queen posts
+    gb.tube('dark', [[-6.6, 0.98, s * 1.1], [-3.0, 0.62, s * 1.1], [3.0, 0.62, s * 1.1], [6.6, 0.98, s * 1.1]], 0.03, 40, 6);
+    for (const x of [-3.0, 3.0]) gb.box('dark', 0.08, 0.38, 0.08, x, 0.79, s * 1.1);
+  }
+  for (const x of [-8.85, 8.85]) gb.box('dark', 0.6, 0.1, 2.0, x, 0.98, 0);   // body bolsters on the trucks
   // windows (paired) and window posts
   const wy = 2.62;
   for (let i = 0; i < 13; i++) {
@@ -591,20 +625,24 @@ function coachModel(spec, num, observation) {
   }
   // letterboard
   const lb = textDecal(spec.road, 1024, 128, '#d9c27a', 'serif', 72); RMAT['lb' + spec.short] = lb;
-  for (const s of [-1, 1]) gb.add('lb' + spec.short, new THREE.PlaneGeometry(11, 0.42), M(0, 3.38, s * (hw + 0.012), 0, s > 0 ? 0 : Math.PI, 0));
+  for (const s of [-1, 1]) gb.add('lb' + spec.short, new THREE.PlaneGeometry(11, 0.42), M(0, 3.38, s * (hw + 0.005), 0, s > 0 ? 0 : Math.PI, 0));
   const nmat = textDecal(String(num), 256, 96, '#d9c27a', 'serif', 64); const nk = 'cn' + num; RMAT[nk] = nmat;
-  for (const s of [-1, 1]) gb.add(nk, new THREE.PlaneGeometry(1.0, 0.36), M(-7.5, 1.65, s * (hw + 0.012), 0, s > 0 ? 0 : Math.PI, 0));
+  for (const s of [-1, 1]) gb.add(nk, new THREE.PlaneGeometry(1.0, 0.36), M(-7.5, 1.65, s * (hw + 0.005), 0, s > 0 ? 0 : Math.PI, 0));
   // clerestory roof
   const rs = new THREE.Shape(); rs.moveTo(-hw - 0.06, 0); rs.quadraticCurveTo(-hw * 0.9, 0.42, -0.82, 0.5); rs.lineTo(-0.82, 0.88); rs.quadraticCurveTo(0, 1.02, 0.82, 0.88); rs.lineTo(0.82, 0.5); rs.quadraticCurveTo(hw * 0.9, 0.42, hw + 0.06, 0); rs.lineTo(-hw - 0.06, 0);
-  const rg = new THREE.ExtrudeGeometry(rs, { depth: 23.8, bevelEnabled: false, curveSegments: 10 }); rg.rotateY(Math.PI / 2); rg.translate(-11.9, 3.72, 0); gb.add('roof', rg);
+  const rL = observation ? 24.5 : 23.8, rg = new THREE.ExtrudeGeometry(rs, { depth: rL, bevelEnabled: false, curveSegments: 10 }); rg.rotateY(Math.PI / 2); rg.translate(11.9 - rL, 3.72, 0); gb.add('roof', rg);   // the observation roof overhangs the platform
   for (let i = 0; i < 12; i++) for (const s of [-1, 1]) gb.box('win', 0.5, 0.2, 0.02, -9.5 + i * 1.7, 4.42, s * 0.825);
   for (let i = 0; i < 5; i++) gb.cyl('roof', 0.12, 0.14, 0.22, 10, -8 + i * 4, 4.72, 0);
   // vestibules: doors, steps, diaphragms
   for (const e of [-1, 1]) {
     const xe = e * (L / 2 - 0.62);
     gb.box('green', 0.08, 2.5, 2 * hw, e * 11.72, 2.45, 0);
-    for (const s of [-1, 1]) { gb.box('green', 0.85, 0.3, 0.05, e * 11.3, 1.2, s * (hw)); gb.box('dark', 0.5, 0.05, 0.35, e * 11.25, 0.75, s * (hw - 0.05)); gb.box('dark', 0.5, 0.05, 0.35, e * 11.25, 0.45, s * (hw - 0.05)); gb.box('win', 0.4, 0.7, 0.04, e * 11.2, 2.7, s * (hw + 0.005)); }
-    if (!(observation && e < 0)) { gb.box('diaphragm', 0.42, 2.55, 1.52, e * (L / 2 - 0.22), 2.45, 0); gb.box('dark', 0.06, 2.6, 1.6, e * (L / 2 - 0.02), 2.45, 0); }
+    for (const s of [-1, 1]) {
+      gb.box('green', 0.85, 0.3, 0.05, e * 11.3, 1.2, s * (hw)); gb.box('win', 0.4, 0.7, 0.04, e * 11.2, 2.7, s * (hw + 0.005));
+      gb.box('dark', 0.5, 0.05, 0.35, e * 11.25, 0.75, s * (hw - 0.05)); gb.box('dark', 0.5, 0.05, 0.35, e * 11.25, 0.45, s * (hw - 0.05));
+      for (const d of [-0.27, 0.27]) gb.box('dark', 0.04, 0.82, 0.35, e * 11.25 + d, 0.82, s * (hw - 0.05));   // step stringers up to the sill
+    }
+    if (!(observation && e < 0)) { gb.box('diaphragm', 0.58, 2.55, 1.52, e * 12.03, 2.45, 0); gb.box('dark', 0.06, 2.6, 1.6, e * (L / 2 - 0.02), 2.45, 0); }
     gb.box('dark', 0.6, 0.22, 0.26, e * (L / 2 - 0.3), 0.875, 0);
   }
   if (observation) {
@@ -612,10 +650,10 @@ function coachModel(spec, num, observation) {
     gb.box('dark', 1.6, 0.08, 2.9, -11.8, 1.15, 0);
     for (const z of [-1.4, -0.7, 0, 0.7, 1.4]) gb.cyl('brass', 0.02, 0.02, 1.05, 6, -12.55, 1.7, z);
     gb.add('brass', new THREE.CylinderGeometry(0.03, 0.03, 2.9, 8).rotateX(Math.PI / 2).translate(-12.55, 2.2, 0));
-    gb.cyl('roof', 0.12, 0.12, 0.3, 8, -12.3, 4.0, 0);
+    gb.cyl('roof', 0.12, 0.12, 0.3, 8, -12.3, 3.62, 0);
     const dh = decalMat(256, 256, (g, w, h) => { g.fillStyle = '#e9dfc2'; g.beginPath(); g.arc(128, 128, 122, 0, TAU); g.fill(); g.strokeStyle = '#6b1f1a'; g.lineWidth = 10; g.stroke(); g.fillStyle = '#6b1f1a'; g.font = '600 30px "Times New Roman", serif'; g.textAlign = 'center'; const t = { NKP: ['THE', 'NICKEL PLATE', 'LIMITED'], PM: ['THE', 'PERE', 'MARQUETTE'], 'S&S': ['THE', 'SCIOTO', 'LIMITED'] }[spec.short] || ['THE', 'LAKE SHORE', 'LIMITED']; g.fillText(t[0], 128, 92); g.font = '700 34px "Times New Roman", serif'; g.fillText(t[1], 128, 134); g.font = '600 30px "Times New Roman", serif'; g.fillText(t[2], 128, 176); });
     RMAT.drumhead = dh; dh.emissive = new THREE.Color(0xffd9a0); dh.emissiveMap = dh.map; dh.emissiveIntensity = 0; SCN.winMats.push(dh);
-    gb.add('drumhead', new THREE.CircleGeometry(0.42, 28), M(-12.58, 1.85, 0, 0, -Math.PI / 2, 0));
+    gb.add('drumhead', new THREE.CircleGeometry(0.42, 28), M(-12.575, 1.85, 0, 0, -Math.PI / 2, 0));
     gb.add('brass', new THREE.TorusGeometry(0.43, 0.025, 6, 28).rotateY(Math.PI / 2).translate(-12.56, 1.85, 0));
   }
   root.add(gb.build(RMAT));
@@ -625,38 +663,51 @@ function coachModel(spec, num, observation) {
 function freightModel(type, num, r) {
   const root = new THREE.Group(); const gb = new GeoBin();
   let L, hw = 1.5, weight, trucks;
-  const marks = (txt, sub, mat, y, color) => { const k = 'fm_' + type + '_' + num; RMAT[k] = decalMat(512, 128, (g, w, h) => { g.fillStyle = color || '#ece9df'; g.font = 'bold 48px "Arial Narrow", Arial'; g.textAlign = 'left'; g.textBaseline = 'middle'; g.fillText(txt, 12, 42); g.font = '28px "Arial Narrow", Arial'; g.fillText(sub, 12, 96); }); for (const s of [-1, 1]) gb.add(k, new THREE.PlaneGeometry(2.6, 0.65), M(s > 0 ? -L / 2 + 2.2 : L / 2 - 2.2, y, s * (hw + 0.012), 0, s > 0 ? 0 : Math.PI, 0)); };
+  // reporting marks, a little proud of the side at face distance zf; on a tank they wrap around the barrel (radius tr, centre ty)
+  const marks = (txt, sub, mat, y, color, zf = hw + 0.005, tr = 0, ty = 0, w = 2.6, mx = L / 2 - 2.2) => {
+    const k = 'fm_' + type + '_' + num; RMAT[k] = decalMat(512, 128, (g, w, h) => { g.fillStyle = color || '#ece9df'; g.font = 'bold 48px "Arial Narrow", Arial'; g.textAlign = 'left'; g.textBaseline = 'middle'; g.fillText(txt, 12, 42); g.font = '28px "Arial Narrow", Arial'; g.fillText(sub, 12, 96); });
+    for (const s of [-1, 1]) {
+      const g = new THREE.PlaneGeometry(w, w / 4, 1, tr ? 8 : 1);
+      if (tr) { const p = g.attributes.position, r = tr + 0.008, a0 = Math.asin((y - ty) / r); for (let i = 0; i < p.count; i++) { const a = a0 + p.getY(i) / r; p.setY(i, ty + r * Math.sin(a) - y); p.setZ(i, r * Math.cos(a)); } g.computeVertexNormals(); g.translate(0, 0, -zf); }
+      gb.add(k, g, M(s > 0 ? -mx : mx, y, s * zf, 0, s > 0 ? 0 : Math.PI, 0));
+    }
+  };
+  // end ladder: two stiles on standoffs and rungs, up the car end at half length he, to height top
+  const ladder = (he, top, bot = 1.3) => { for (const e of [-1, 1]) { const x = e * (he + 0.07); for (const z of [0.95, 1.4]) { gb.box('dark', 0.03, top - bot, 0.04, x, (top + bot) / 2, z); for (const y of [bot + 0.15, top - 0.15]) gb.box('dark', 0.09, 0.04, 0.04, e * (he + 0.035), y, z); } for (let y = bot + 0.2; y < top - 0.1; y += 0.42) gb.box('dark', 0.03, 0.03, 0.45, x, y, 1.175); } };
   if (type === 'box') {
     L = 13.0; weight = (r() < 0.6 ? 62 : 25) * STON;
     gb.box('oxide', 12.2, 2.75, 2 * hw, 0, 2.55, 0);
-    for (let x = -5.6; x <= 5.6; x += 0.8) for (const s of [-1, 1]) gb.box('oxide2', 0.06, 2.75, 0.03, x, 2.55, s * (hw + 0.015));
+    for (let x = -5.6; x <= 5.6; x += 0.8) for (const s of [-1, 1]) gb.box('oxide2', 0.06, 2.75, 0.016, x, 2.55, s * (hw + 0.008));
     for (const s of [-1, 1]) { gb.box('oxide2', 1.8, 2.5, 0.06, 0.4, 2.45, s * (hw + 0.04)); gb.box('dark', 2.2, 0.08, 0.08, 0.4, 3.75, s * (hw + 0.06)); }
     gb.box('oxide2', 12.3, 0.1, 2 * hw + 0.08, 0, 3.97, 0);
-    gb.box('wood', 12.2, 0.05, 0.52, 0, 4.06, 0);
+    gb.box('wood', 12.2, 0.05, 0.52, 0, 4.044, 0);   // running board on the roof
+    ladder(6.1, 3.92);
     gb.add('dark', new THREE.TorusGeometry(0.22, 0.02, 4, 14).translate(-6.15, 3.6, 0));
-    marks(ROAD_SHORT + ' ' + num, 'CAPY 100000  LD LMT 110700', 'oxide', 3.1);
+    marks(ROAD_SHORT + ' ' + num, 'CAPY 100000  LD LMT 110700', 'oxide', 3.1, null, hw + 0.019);   // painted across the posts
   } else if (type === 'hopper') {
     L = 11.2; weight = 92 * STON;
-    gb.box('black', 10.4, 2.0, 2 * hw, 0, 2.6, 0);
-    for (let x = -4.8; x <= 4.8; x += 1.2) for (const s of [-1, 1]) gb.box('black', 0.12, 2.05, 0.08, x, 2.6, s * (hw + 0.03));
-    for (const x of [-2.6, 2.6]) gb.add('black', new THREE.ConeGeometry(1.1, 1.2, 4).rotateY(Math.PI / 4).rotateX(Math.PI).translate(x, 1.1, 0));
+    gb.box('black', 10.4, 2.3, 2 * hw, 0, 2.45, 0);   // sides come down to the side sill
+    for (let x = -4.8; x <= 4.8; x += 1.2) for (const s of [-1, 1]) gb.box('black', 0.12, 2.35, 0.08, x, 2.45, s * (hw + 0.03));
+    for (const x of [-1.25, 1.25]) gb.add('black', new THREE.ConeGeometry(1.27, 1.1, 4).rotateY(Math.PI / 4).rotateX(Math.PI).translate(x, 1.1, 0));   // bays, clear of the wheels
+    ladder(5.2, 3.6);
     const g = new THREE.PlaneGeometry(10.1, 2.8, 20, 6); g.rotateX(-Math.PI / 2); const p = g.attributes.position; for (let i = 0; i < p.count; i++) { const x = p.getX(i), z = p.getZ(i); p.setY(i, 3.5 + 0.35 * Math.max(0, (1 - (z / 1.4) ** 2)) * (0.7 + 0.3 * Math.cos(x * 1.2))); } g.computeVertexNormals(); gb.add('coal', g);
-    marks(ROAD_SHORT + ' ' + num, 'CAPY 140000', 'black', 2.8);
+    marks(ROAD_SHORT + ' ' + num, 'CAPY 140000', 'black', 2.9, null, hw + 0.005, 0, 0, 1.0, 3.0);   // in the panel between two stakes
   } else if (type === 'tank') {
     L = 12.4; weight = 70 * STON; hw = 1.45;
     gb.add('tank', new THREE.CylinderGeometry(1.4, 1.4, 11.4, 28).rotateZ(Math.PI / 2).translate(0, 2.65, 0));
     for (const s of [-1, 1]) gb.add('tank', new THREE.SphereGeometry(1.4, 20, 10, 0, TAU, 0, Math.PI / 2).scale(1, 0.25, 1).rotateZ(-s * Math.PI / 2).translate(s * 5.7, 2.65, 0));
     gb.cyl('tank', 0.65, 0.65, 0.6, 18, 0, 4.2, 0); gb.cyl('tank', 0.7, 0.7, 0.08, 18, 0, 4.52, 0);
-    gb.box('dark', 11, 0.2, 2.4, 0, 1.3, 0);
-    for (const s of [-1, 1]) gb.box('wood', 11, 0.05, 0.4, 0, 1.45, s * 1.45);
+    gb.box('dark', 11, 0.2, 2.9, 0, 1.3, 0);
+    for (const s of [-1, 1]) gb.box('wood', 11, 0.05, 0.4, 0, 1.424, s * 1.45);   // running boards on the platform
     for (const x of [-4, 0, 4]) gb.add('dark', new THREE.TorusGeometry(1.42, 0.03, 4, 28).rotateY(Math.PI / 2).translate(x, 2.65, 0));
-    marks('UTLX ' + num, 'NON-ACCIDENT  CAPY 10000 GAL', 'tank', 2.1);
+    marks('UTLX ' + num, 'NON-ACCIDENT  CAPY 10000 GAL', 'tank', 2.15, null, 1.4, 1.4, 2.65);
   } else if (type === 'gon') {
     L = 14.6; weight = 88 * STON;
     gb.box('oxide2', 13.8, 1.3, 2 * hw, 0, 1.95, 0);
     for (let x = -6.4; x <= 6.4; x += 0.9) for (const s of [-1, 1]) gb.box('oxide2', 0.1, 1.32, 0.08, x, 1.95, s * (hw + 0.03));
     const g = new THREE.PlaneGeometry(13.4, 2.8, 26, 6); g.rotateX(-Math.PI / 2); const p = g.attributes.position; const rr = rng(num); for (let i = 0; i < p.count; i++) { const z = p.getZ(i); p.setY(i, 2.45 + 0.35 * Math.max(0, 1 - (z / 1.4) ** 2) + (rr() - 0.5) * 0.12); } g.computeVertexNormals(); gb.add('stoneLoad', g);
     marks(ROAD_SHORT + ' ' + num, 'CAPY 140000', 'oxide2', 1.95);
+    ladder(6.9, 2.6);
   } else if (type === 'caboose') {
     L = 11.0; weight = 22 * STON;
     gb.box('caboose', 8.4, 2.5, 2 * hw - 0.1, 0, 2.45, 0);
@@ -666,17 +717,17 @@ function freightModel(type, num, r) {
     for (const e of [-1, 1]) { gb.box('dark', 1.2, 0.08, 2.8, e * 4.9, 1.25, 0); for (const z of [-1.3, 1.3]) gb.cyl('dark', 0.02, 0.02, 1.0, 6, e * 5.45, 1.75, z); gb.box('dark', 0.04, 0.04, 2.6, e * 5.45, 2.25, 0); gb.box('win', 0.04, 0.9, 0.55, e * 4.21, 2.6, 0); }
     gb.cyl('dark', 0.08, 0.1, 0.5, 8, 1.8, 4.0, 0.6);
     // marker lamps
-    for (const z of [-1.2, 1.2]) { gb.box('dark', 0.2, 0.3, 0.2, 4.25, 3.25, z); }
-    marks(ROAD_SHORT + ' ' + num, '', 'caboose', 2.0);
-    root.userData.markers = [new THREE.Vector3(4.37, 3.25, -1.2), new THREE.Vector3(4.37, 3.25, 1.2)];
+    for (const z of [-1.2, 1.2]) { gb.box('dark', 0.2, 0.3, 0.2, -4.25, 3.25, z); }   // marker lamps on the rear end
+    marks(ROAD_SHORT + ' ' + num, '', 'caboose', 2.0, null, hw - 0.045);
+    root.userData.markers = [new THREE.Vector3(-4.353, 3.25, -1.2), new THREE.Vector3(-4.353, 3.25, 1.2)];
   }
   // underframe common
   gb.box('dark', L - 1.4, 0.35, 2.6, 0, 1.15, 0);
-  for (const e of [-1, 1]) { gb.box('dark', 0.6, 0.22, 0.26, e * (L / 2 - 0.3), 0.875, 0); gb.box('dark', 0.3, 0.4, 2.9, e * (L / 2 - 0.65), 1.15, 0); if (type !== 'caboose' && type !== 'tank') { for (let y = 1.4; y < 3.6; y += 0.42) gb.box('dark', 0.03, 0.03, 0.45, e * (L / 2 - 0.62), y, 1.2); } }
+  const ta = type === 'caboose' ? 2.4 : 1.95;
+  for (const e of [-1, 1]) { gb.box('dark', 0.6, 0.22, 0.26, e * (L / 2 - 0.3), 0.875, 0); gb.box('dark', 0.3, 0.4, 2.9, e * (L / 2 - 0.66), 1.15, 0); gb.box('dark', 0.5, 0.2, 2.4, e * (L / 2 - ta), 0.9, 0); }
   gb.add('dark', new THREE.CylinderGeometry(0.17, 0.17, 0.5, 10).rotateZ(Math.PI / 2).translate(1.6, 0.9, 0.5));
   root.add(gb.build(RMAT));
   root.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
-  const ta = type === 'caboose' ? 2.4 : 1.95;
   trucks = [{ a: ta, type: 'four', R: 0.419 }, { a: L - ta, type: 'four', R: 0.419 }];
   return { root, len: L, trucks, frame: [ta, L - ta], weight, kind: type, axles: 4, area: 105 };
 }
