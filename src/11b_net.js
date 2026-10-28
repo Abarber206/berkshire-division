@@ -550,6 +550,20 @@ MP.occupant = function (sw) {
   return null;
 };
 
+/* true when len metres of track behind front are clear of every other player's train */
+MP.clearOf = function (front, len) {
+  if (!MP.on) return true;
+  const rts = [...MP.peers.values()].map(p => p.rt).filter(rt => rt && rt.placed && rt.polyN);
+  if (!rts.length) return true;
+  const tp = front.clone(), F = newFrame();
+  for (let d = 0; d <= len; d += 2) {
+    if (d) tp.advance(-2, null);
+    tp.pose(F);
+    for (const rt of rts) for (let i = 0; i < rt.polyN - 1; i++) if (mpSegDist(F.p, rt.poly[i], rt.poly[i + 1]) < 1.6) return false;
+  }
+  return true;
+};
+
 /* ---------------- spawning ---------------- */
 MP.spawnSlot = function (T) {
   // make sure every train we have heard about is placed before looking for room

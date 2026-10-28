@@ -87,13 +87,14 @@ function carIndex() {
   return idx;
 }
 /* nearest other consist beyond c's front (dir +1) or rear (dir -1) coupler, within range metres */
-function carAhead(c, dir, range, idx) {
-  const t = c.endTP(dir > 0 ? 'front' : 'rear');
+function carAhead(c, dir, range, idx) { return carFrom(c.endTP(dir > 0 ? 'front' : 'rear'), dir, range, idx, c); }
+/* nearest consist other than skip from track position t, looking along dir */
+function carFrom(t, dir, range, idx, skip) {
   let e = t.e, s = t.s, o = t.o * dir, acc = 0, best = null;
   for (let g = 0; g < 40 && !best; g++) {
     const items = idx.get(e);
     if (items) for (const it of items) {
-      if (it.c === c) continue;
+      if (it.c === skip) continue;
       const ds = (it.s - s) * o;
       if (ds < -0.03) continue;
       const d = acc + Math.max(0, ds);
@@ -118,6 +119,12 @@ CARS.limit = function (c, d) {
   const hit = carAhead(c, Math.sign(d), Math.abs(d) + 0.05, idx);
   if (!hit || hit.d >= Math.abs(d)) return { d, hit: null };
   return { d: Math.sign(d) * hit.d, hit };
+};
+/* open track from tp along dir before the nearest cut of cars (skip: the consist standing at tp) */
+CARS.clearance = function (tp, dir, range, skip) {
+  if (!CARS.cuts.length) return Infinity;
+  const hit = carFrom(tp, dir, range, carIndex(), skip);
+  return hit ? hit.d : Infinity;
 };
 /* for the HUD: the cut ahead of the train in the direction of travel */
 CARS.ahead = function (T, dir, range) {
@@ -220,6 +227,25 @@ CARS.uncouple = function (j) {
   if (kick) toast(`Pin pulled: ${what} rolling free at ${Math.round(Math.abs(S.v) / MPH)} mph. Brake to let them run.`, 'warn', 4200, 'kick');
   else toast(`Cut off ${what}. Their air is dumped and the brakeman ties them down.`, 'good', 4000, 'setout');
   if (CARS.onChange) CARS.onChange();
+};
+
+/* ---------------- changing the engine or the train from the menu ---------------- */
+/* V is the train front to back. power replaces its engine (and tender or trailing units); cars, when
+   given, replace the cars it was made up with. Cars picked up in the yard stay coupled where they are.
+   The joint that stays put is the coupler between the engine and its train (its front coupler when the
+   cars are all ahead of it): offset a0 from the front of the old train and a1 from the front of the new. */
+CARS.swapPlan = function (V, power, cars) {
+  const p0 = V.findIndex(isPower), p1 = V.length - 1 - [...V].reverse().findIndex(isPower);
+  const front = V.slice(0, p0), rear = V.slice(p1 + 1);
+  const keepFront = cars ? front.filter(v => v.yard) : front;
+  const keepRear = cars ? [...cars, ...rear.filter(v => v.yard)] : rear;
+  const vehicles = [...keepFront, ...power, ...keepRear], len = a => a.reduce((s, v) => s + v.len, 0);
+  const atFront = !rear.length && front.length;
+  return {
+    vehicles, dropped: V.filter(v => !vehicles.includes(v)), length: len(vehicles),
+    a0: atFront ? len(front) : len(V.slice(0, p1 + 1)),
+    a1: atFront ? len(keepFront) : len(keepFront) + len(power),
+  };
 };
 
 /* ---------------- cars rolling on their own ---------------- */

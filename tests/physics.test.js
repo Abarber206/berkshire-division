@@ -238,3 +238,41 @@ test('pulling the pin on the move kicks the cut free, and it rolls to a stop and
   assert.ok(c.vehicles.every(v => v.hb), 'and get its handbrakes tied down');
   between(dist, 20, 2000, 'distance the kicked cut rolled (m)');
 });
+
+/* ------------------------------------------------------------ changing the engine or train from the menu */
+const veh = (kind, len, yard) => Object.assign(h.vehicle(kind, h.FREIGHT_CAR, 4, { len }), yard ? { yard: true } : {});
+const lens = V => V.reduce((s, v) => s + v.len, 0);
+
+test('a new engine takes the old one\'s place and every car stays coupled behind it', () => {
+  const sim = h.load();
+  const old = [veh('loco', 30), veh('tender', 20), veh('box', 15), veh('box', 15), veh('hopper', 11, true)];
+  const power = [veh('loco', 22), veh('loco2', 22)];
+  const p = sim.CARS.swapPlan(old, power, null);
+  assert.deepEqual([...p.vehicles], [...power, ...old.slice(2)]);
+  assert.deepEqual([...p.dropped], old.slice(0, 2));
+  assert.equal(p.a0, 50, 'the joint behind the tender stays put');
+  assert.equal(p.a1, 44, 'and becomes the joint behind the second unit');
+  assert.equal(p.length, 44 + 41);
+});
+
+test('a new train replaces the cars it came with but keeps the cars picked up in the yard', () => {
+  const sim = h.load();
+  const ahead = veh('gon', 12, true), own = [veh('coach', 25), veh('coach', 25)], picked = veh('box', 15, true);
+  const old = [ahead, veh('loco', 30), veh('tender', 20), ...own, picked];
+  const power = [veh('loco', 30), veh('tender', 20)], cars = [veh('box', 15), veh('caboose', 10)];
+  const p = sim.CARS.swapPlan(old, power, cars);
+  assert.deepEqual([...p.vehicles], [ahead, ...power, ...cars, picked]);
+  assert.ok(own.every(v => p.dropped.includes(v)));
+  assert.equal(p.a0, 62); assert.equal(p.a1, 62);
+  assert.equal(p.length, lens(p.vehicles));
+});
+
+test('shoving cars with nothing behind, the engine\'s front coupler is the joint that stays put', () => {
+  const sim = h.load();
+  const ahead = [veh('box', 15, true), veh('box', 15, true)];
+  const p = sim.CARS.swapPlan([...ahead, veh('loco', 30), veh('tender', 20)], [veh('loco', 22)], null);
+  assert.equal(p.a0, 30); assert.equal(p.a1, 30);
+  const light = sim.CARS.swapPlan([veh('loco', 30), veh('tender', 20)], [veh('loco', 22)], [veh('coach', 25)]);
+  assert.equal(light.a0, 50, 'a light engine keeps its rear coupler where it was');
+  assert.equal(light.a1, 22);
+});
