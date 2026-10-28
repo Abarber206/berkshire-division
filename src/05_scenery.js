@@ -670,6 +670,7 @@ function buildStations() {
       // spout reaches over the track: modelled in waterTower toward -z of base (which faces track)
     }
   }
+  if (WORLD.custom) return;   // the rest is the Berkshire Division's own terminal
   const eng = ROUTE.features.engine;
   coalingTower(linePlace(eng, ROUTE.coal.sLine, 0));
   sandHouse(linePlace(eng, 300, 0));

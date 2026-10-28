@@ -303,6 +303,84 @@ details.keys kbd{color:var(--brass)}
   #btnPlayers{padding:0 6px}
 }
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* ---------- layout editor ---------- */
+#editor{position:fixed;inset:0;z-index:30;background:#0d1214;touch-action:none}
+#edCanvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:crosshair}
+#edTop{position:absolute;left:0;right:0;top:0;display:flex;gap:6px;align-items:center;flex-wrap:wrap;
+  padding:calc(env(safe-area-inset-top,0px) + 8px) calc(env(safe-area-inset-right,0px) + 10px) 8px calc(env(safe-area-inset-left,0px) + 10px);
+  background:linear-gradient(rgba(10,14,17,.94),rgba(10,14,17,.78));border-bottom:1px solid var(--rule)}
+#edTop .sp{flex:1}
+#edTop .btn{padding:8px 10px;font-size:11px;white-space:nowrap}
+#edTop .icon-btn{width:36px;height:34px}
+#edTop .icon-btn:disabled{opacity:.35}
+#edName{flex:0 1 200px;height:34px}
+.edTitle{font-family:var(--f-display);font-weight:800;font-size:20px;letter-spacing:1px;color:#f3efe2;margin-right:2px}
+#edInfo{position:absolute;left:calc(env(safe-area-inset-left,0px) + 10px);top:calc(env(safe-area-inset-top,0px) + 62px);width:min(300px,calc(100vw - 20px));
+  padding:8px 10px;display:flex;flex-direction:column;gap:6px;font-size:12px;line-height:1.35}
+#edStats{font-family:var(--f-num);font-size:11px;color:var(--ink-dim)}
+#edStats b{color:var(--ink);font-weight:600}
+#edIssues{display:flex;flex-direction:column;gap:3px}
+#edIssues button{text-align:left;background:rgba(238,75,61,.1);border:1px solid rgba(238,75,61,.45);border-radius:4px;padding:5px 7px;font-size:11.5px;color:#f3c4be}
+#edIssues .ok{color:var(--clear);font-size:11.5px}
+#edHint{color:var(--ink-dim);font-size:12px}
+#edHint b{color:var(--ink);font-weight:600}
+#edMsg{position:absolute;left:50%;transform:translateX(-50%);top:calc(env(safe-area-inset-top,0px) + 64px);z-index:3;pointer-events:none;
+  background:rgba(14,19,23,.95);border:1px solid var(--rule);border-left:3px solid var(--brass);border-radius:4px;padding:7px 12px;font-size:13px;
+  max-width:min(92vw,440px);opacity:0;transition:opacity .25s}
+#edMsg.on{opacity:1}
+#edMsg.bad{border-left-color:var(--stop)}#edMsg.good{border-left-color:var(--clear)}
+#edDock{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom,0px) + 10px);width:min(760px,calc(100vw - 20px));
+  padding:6px;display:flex;flex-direction:column;gap:6px}
+#edTabs{display:flex;gap:4px}
+#edTabs button{flex:1;border:1px solid var(--rule);background:transparent;border-radius:4px;padding:6px 4px;font-size:10.5px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:var(--ink-dim)}
+#edTabs button[aria-selected="true"]{color:var(--brass);border-color:var(--brass-deep);background:rgba(207,166,81,.08)}
+#edPal{display:flex;gap:5px;overflow-x:auto;padding-bottom:2px;scrollbar-width:thin;align-items:stretch}
+#edPal .grp{display:flex;gap:4px;align-items:stretch;flex:none}
+#edPal .grp+.grp{border-left:1px solid var(--rule);padding-left:5px}
+.pc{flex:none;border:1px solid #33424c;background:linear-gradient(#1d262c,#141b20);border-radius:5px;padding:4px 6px 5px;display:flex;flex-direction:column;align-items:center;gap:2px;
+  font-size:10.5px;font-weight:600;min-width:62px;line-height:1.1}
+.pc canvas{width:56px;height:30px;display:block}
+.pc small{font-weight:400;color:var(--ink-dim);font-size:9.5px}
+.pc[aria-pressed="true"]{border-color:var(--brass);background:linear-gradient(#2a2416,#1c180f);color:#f6e2ad}
+.pc:disabled{opacity:.4}
+.chips{display:flex;flex-direction:column;gap:3px;justify-content:center}
+.chips .lbl{font-size:9px}
+.chips div{display:flex;gap:3px}
+.chip{border:1px solid var(--rule);background:var(--steel-2);border-radius:4px;padding:5px 6px;font:600 10.5px var(--f-num);color:var(--ink-dim)}
+.chip[aria-pressed="true"]{border-color:var(--brass);color:#f6e2ad;background:linear-gradient(#2a2416,#1c180f)}
+#edSel{position:absolute;right:calc(env(safe-area-inset-right,0px) + 10px);top:calc(env(safe-area-inset-top,0px) + 62px);width:min(280px,calc(100vw - 20px));
+  padding:10px;display:flex;flex-direction:column;gap:8px;font-size:12px}
+#edSel h3{margin:0;font-size:14px;font-weight:700;letter-spacing:.3px}
+#edSel .sub{color:var(--ink-dim);font-size:11.5px;margin-top:-4px}
+#edSel .acts{display:flex;gap:5px;flex-wrap:wrap}
+#edSel .btn{padding:7px 9px;font-size:10.5px}
+#edSel .btn.warn{border-color:rgba(238,75,61,.6);color:#f3c4be}
+#edSel .btn[aria-pressed="true"]{border-color:var(--brass);color:#f6e2ad}
+#edSt{display:flex;flex-direction:column;gap:6px;border-top:1px solid var(--rule);padding-top:8px}
+#btList{display:flex;flex-wrap:wrap;gap:6px;font-size:12px}
+#btList span{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--rule);border-radius:12px;padding:3px 9px}
+#btList i{width:8px;height:8px;border-radius:50%;display:inline-block}
+#edTogBtn.on{border-color:var(--clear);color:var(--clear)}
+.edModal{position:absolute;inset:0;z-index:4;display:flex;align-items:center;justify-content:center;background:rgba(5,8,10,.7);padding:16px}
+.edModal .card{background:rgba(14,19,23,.97);border:1px solid var(--rule);border-radius:8px;padding:14px;width:min(420px,100%);max-height:100%;overflow:auto;display:flex;flex-direction:column;gap:10px}
+.edModal h2{margin:0;font-family:var(--f-display);font-size:28px;letter-spacing:1px}
+#edList{display:flex;flex-direction:column;gap:4px}
+#edList button{display:flex;justify-content:space-between;gap:8px;text-align:left;border:1px solid var(--rule);background:var(--steel-2);border-radius:5px;padding:8px 10px;font-size:13px;font-weight:600}
+#edList button small{color:var(--ink-dim);font-weight:400;font-family:var(--f-num);font-size:11px}
+#edList button[aria-current="true"]{border-color:var(--brass)}
+.edModal .acts{display:flex;gap:6px;flex-wrap:wrap}
+.edModal .btn{font-size:11px}
+#grpRail .row2{display:flex;gap:6px;flex-wrap:wrap}
+#grpRail .btn{flex:1;white-space:nowrap}
+@media (max-width:600px){
+  .edTitle{display:none}
+  #edName{flex:1 1 120px}
+  #edInfo{top:auto;bottom:calc(env(safe-area-inset-bottom,0px) + 136px);max-height:30vh;overflow:auto}
+  #edInfo.min #edHint,#edInfo.min #edIssues{display:none}
+  #edSel{top:auto;bottom:calc(env(safe-area-inset-bottom,0px) + 136px);right:10px;left:10px;width:auto}
+  #edMsg{top:calc(env(safe-area-inset-top,0px) + 104px)}
+}
 </style>
 
 <style>html,body{margin:0;padding:0}:root{padding:0}</style>
@@ -379,6 +457,56 @@ details.keys kbd{color:var(--brass)}
 
 <div id="bigMsg" hidden><div class="card"><h2 id="bigTitle">Derailed</h2><p id="bigBody"></p><div class="acts"><button class="btn prim" id="bigRetry">Re-rail and continue</button><button class="btn" id="bigMenu">Main menu</button></div></div></div>
 
+<div id="editor" hidden>
+  <canvas id="edCanvas" aria-label="Layout plan. Tap an amber end to build from it."></canvas>
+  <div id="edTop">
+    <button class="btn" id="edBack" type="button">Menu</button>
+    <span class="edTitle">Layout editor</span>
+    <input id="edName" class="mpIn" maxlength="32" placeholder="Name your railroad" autocomplete="off" spellcheck="false" aria-label="Layout name">
+    <button class="btn" id="edFileBtn" type="button">Layouts</button>
+    <button class="btn" id="edTogBtn" type="button">Build together</button>
+    <span class="sp"></span>
+    <button class="icon-btn" id="edUndo" type="button" aria-label="Undo" disabled><svg viewBox="0 0 24 24"><path d="M9 7L4 12l5 5"/><path d="M4 12h10a6 6 0 0 1 0 12"/></svg></button>
+    <button class="icon-btn" id="edRedo" type="button" aria-label="Redo" disabled><svg viewBox="0 0 24 24"><path d="M15 7l5 5-5 5"/><path d="M20 12H10a6 6 0 0 0 0 12"/></svg></button>
+    <button class="icon-btn" id="edFit" type="button" aria-label="Show the whole layout"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/></svg></button>
+    <button class="btn prim" id="edDrive" type="button">Drive it</button>
+  </div>
+  <div id="edInfo" class="hud-box">
+    <div id="edStats"></div>
+    <div id="edIssues"></div>
+    <div id="edHint"></div>
+  </div>
+  <div id="edMsg" role="status" aria-live="polite"></div>
+  <div id="edSel" class="hud-box" hidden></div>
+  <div id="edDock" class="hud-box">
+    <div id="edTabs" role="tablist"></div>
+    <div id="edPal"></div>
+  </div>
+  <div id="edTog" class="edModal" hidden><div class="card">
+    <h2>Build together</h2>
+    <p class="help" id="btIntro">Lay track with friends on one shared layout. Everyone sees each piece as it goes down, and when you tap <b>Drive it</b> you all end up in the same room on the same railroad.</p>
+    <div class="mpRow"><input id="btName" class="mpIn" maxlength="16" placeholder="Your name" autocomplete="off" spellcheck="false" aria-label="Your name"></div>
+    <div class="mpRow" id="btSolo"><button class="btn prim" id="btCreate" type="button">Start building</button><input id="btCode" class="mpIn code" maxlength="6" placeholder="CODE" autocomplete="off" spellcheck="false" autocapitalize="characters" aria-label="Build code"><button class="btn" id="btJoin" type="button">Join</button></div>
+    <div class="mpRow" id="btIn" hidden><span class="mpCode" id="btCodeBig"></span><button class="btn" id="btShare" type="button">Share link</button><button class="btn" id="btLeave" type="button">Leave</button></div>
+    <div class="mpStatus" id="btStatus"></div>
+    <div id="btList"></div>
+    <div class="acts"><button class="btn prim" id="btClose" type="button">Done</button></div>
+  </div></div>
+  <div id="edFiles" class="edModal" hidden><div class="card">
+    <h2>Layouts</h2>
+    <div id="edList"></div>
+    <div class="acts">
+      <button class="btn" id="edNew" type="button">New blank</button>
+      <button class="btn" id="edTpl" type="button">New from sample</button>
+      <button class="btn" id="edImportBtn" type="button">Import file</button>
+      <button class="btn" id="edExport" type="button">Export this one</button>
+      <button class="btn" id="edDelete" type="button">Delete this one</button>
+    </div>
+    <div class="acts"><button class="btn prim" id="edFilesClose" type="button">Done</button></div>
+    <input type="file" id="edImport" accept=".json,application/json" hidden>
+  </div></div>
+</div>
+
 <div id="menu" class="overlay">
   <div class="sheet">
     <div class="brandmark">
@@ -389,6 +517,9 @@ details.keys kbd{color:var(--brass)}
       <p class="help" id="helpText">Fire up, set the <b>reverser</b> forward, release the <b>train brake</b> to RUN, then ease the <b>throttle</b> open. Heavy throttle on a wet rail will slip the drivers. Check the switch card before every turnout: diverging routes are 30 mph.</p>
     </div>
     <div class="form">
+      <div class="fgroup" id="grpRail"><span class="lbl">Railroad</span><div class="seg" id="optRail"></div>
+        <div class="row2"><button class="btn" id="btnEditor" type="button">Build your own layout</button></div>
+      </div>
       <div class="fgroup" id="grpMP"><span class="lbl">Multiplayer</span>
         <div class="mp">
           <div class="mpRow"><input id="mpName" class="mpIn" maxlength="16" placeholder="Your name" autocomplete="off" spellcheck="false" aria-label="Your name"></div>
@@ -1037,6 +1168,291 @@ function buildRoute() {
 }
 
 /* ============================================================================
+   Custom layouts: a catalogue of track pieces with exact endpoints, the joint
+   finder the editor and the game share, and building the track network from a
+   layout drawn in the editor.
+
+   A piece is placed by its origin (X, N, h): the A end, heading into the piece.
+   Every piece is generated from that pose with PathBuilder, so an end computed
+   in the editor is the same number the network is built from. Two ends join
+   when they sit on the same point facing each other; the snapping in the editor
+   copies the exact pose of the end it attaches to, so joints are flush.
+   ========================================================================== */
+const LAYOUT = {
+  bounds: { x0: -5400, x1: 5400, n0: -1400, n1: 6400 },   // inside the detailed terrain
+  joinTol: 0.05, joinAng: 0.01,                           // m, rad: what counts as joined
+  gapTol: 3,                                              // ends closer than this but not joined are reported
+  minFlexR: 100,                                          // tightest join curve allowed
+  lead: 4.0,                                              // stock rail ahead of the points on a turnout
+};
+const TURNOUTS = {
+  yard: { name: 'Yard turnout', sub: '15° · R 180 m', R: 180, deg: 15, lim: 15 },
+  main: { name: 'Main turnout', sub: '7.5° · R 400 m', R: 400, deg: 7.5, lim: 30 },
+  par:  { name: 'Siding turnout', sub: 'Parallel at 4.5 m', R: 235, off: 4.5, lim: 30 },
+};
+const STRAIGHTS = [25, 50, 100, 200];
+const CURVE_R = [180, 300, 500, 800, 1200];
+const CURVE_DEG = [7.5, 15, 30, 45];
+const wrapPi = a => { a = (a + Math.PI) % TAU; if (a < 0) a += TAU; return a - Math.PI; };
+
+/* paths and ends of a piece in world plan coordinates
+   ports[i] = { X, N, h } with h the outward heading (leaving the piece)
+   paths[j] = { pts, a, b }: point list from port a to port b              */
+function pieceGeom(p) {
+  const P0 = { X: p.X, N: p.N, h: p.h };
+  const run = (pose, fn) => { const b = new PathBuilder(pose.X, pose.N, pose.h); fn(b); return b; };
+  const start = { X: P0.X, N: P0.N, h: P0.h + Math.PI };
+  const endOf = b => ({ X: b.X, N: b.N, h: b.h });
+  if (p.t === 'straight' || p.t === 'curve') {
+    const b = run(P0, b => p.t === 'straight' ? b.straight(p.L) : b.arc(p.dir * p.R, p.deg));
+    return { ports: [start, endOf(b)], paths: [{ pts: b.pts, a: 0, b: 1, R: p.t === 'curve' ? p.R : 0 }] };
+  }
+  if (p.t === 'turnout') {
+    const T = TURNOUTS[p.k];
+    const lead = run(P0, b => b.straight(LAYOUT.lead)), pts = lead.pose();
+    const thruLen = T.off ? jogLen(T.off, T.R) : T.R * Math.sin(T.deg * Math.PI / 180);
+    const thru = run(pts, b => b.straight(thruLen));
+    const div = run(pts, b => T.off ? b.jog(p.dir * T.off, T.R) : b.arc(p.dir * T.R, T.deg));
+    return {
+      ports: [start, endOf(thru), endOf(div), { X: pts.X, N: pts.N, h: pts.h, internal: true }],
+      paths: [{ pts: lead.pts, a: 0, b: 3 }, { pts: thru.pts, a: 3, b: 1 }, { pts: div.pts, a: 3, b: 2, R: T.R }],
+      sw: { port: 3, trunk: 0, normal: 1, reverse: 2, lim: T.lim },
+    };
+  }
+  if (p.t === 'flex') {
+    const f = flexPath(P0, p.b);
+    return { ports: [start, { X: p.b.X, N: p.b.N, h: p.b.h }], paths: [{ pts: f.pts, a: 0, b: 1, R: f.minR }] };
+  }
+  return { ports: [], paths: [] };
+}
+
+/* A smooth join from pose a (heading into the join) to end b (heading out of it, i.e. the
+   direction of travel on arrival). Cubic Bézier resampled by arc length. */
+function flexPath(a, b) {
+  const d = Math.hypot(b.X - a.X, b.N - a.N), L = d * 0.42;
+  const p0 = [a.X, a.N], p1 = [a.X + Math.cos(a.h) * L, a.N + Math.sin(a.h) * L];
+  const p3 = [b.X, b.N], p2 = [b.X - Math.cos(b.h) * L, b.N - Math.sin(b.h) * L];
+  const at = t => { const u = 1 - t, A = u * u * u, B = 3 * u * u * t, C = 3 * u * t * t, D = t * t * t; return [A * p0[0] + B * p1[0] + C * p2[0] + D * p3[0], A * p0[1] + B * p1[1] + C * p2[1] + D * p3[1]]; };
+  const tan = t => { const u = 1 - t; return [3 * u * u * (p1[0] - p0[0]) + 6 * u * t * (p2[0] - p1[0]) + 3 * t * t * (p3[0] - p2[0]), 3 * u * u * (p1[1] - p0[1]) + 6 * u * t * (p2[1] - p1[1]) + 3 * t * t * (p3[1] - p2[1])]; };
+  const n = Math.max(64, Math.ceil(d * 4));
+  const T = [0], S = [0]; let prev = p0;
+  for (let i = 1; i <= n; i++) { const t = i / n, q = at(t); S.push(S[i - 1] + Math.hypot(q[0] - prev[0], q[1] - prev[1])); T.push(t); prev = q; }
+  const total = S[n], m = Math.max(2, Math.ceil(total / 0.5));
+  const pts = []; let j = 0, hPrev = a.h;
+  for (let i = 0; i <= m; i++) {
+    const s = total * i / m;
+    while (j < n - 1 && S[j + 1] < s) j++;
+    const t = lerp(T[j], T[j + 1], clamp((s - S[j]) / ((S[j + 1] - S[j]) || 1), 0, 1));
+    const q = i === 0 ? p0 : i === m ? p3 : at(t), g = tan(i === 0 ? 0 : i === m ? 1 : t);
+    let h = Math.atan2(g[1], g[0]); h = hPrev + wrapPi(h - hPrev); hPrev = h;
+    pts.push({ X: q[0], N: q[1], h, k: 0, s });
+  }
+  let minR = Infinity;
+  for (let i = 0; i < pts.length; i++) {
+    const a2 = pts[Math.max(0, i - 1)], b2 = pts[Math.min(pts.length - 1, i + 1)];
+    const k = (b2.h - a2.h) / ((b2.s - a2.s) || 1); pts[i].k = k;
+    if (Math.abs(k) > 1e-9) minR = Math.min(minR, 1 / Math.abs(k));
+  }
+  return { pts, minR, len: total };
+}
+
+/* Place piece p so that its port j lands on end E (outward heading E.h), facing it. */
+function attachPiece(p, j, E) {
+  const loc = pieceGeom({ ...p, X: 0, N: 0, h: 0 }).ports[j];
+  const phi = wrapPi(E.h + Math.PI - loc.h), c = Math.cos(phi), s = Math.sin(phi);
+  if (j === 0) return { ...p, X: E.X, N: E.N, h: wrapPi(E.h) };   // exact: the A end is the origin
+  return { ...p, X: E.X - (c * loc.X - s * loc.N), N: E.N - (s * loc.X + c * loc.N), h: phi };
+}
+
+/* Analyse a layout: every port, which ports are joined, and what is wrong with it. */
+function layoutGraph(map) {
+  const pieces = map.pieces.map(p => ({ p, g: pieceGeom(p) }));
+  const ports = [];
+  pieces.forEach((P, pi) => { P.base = ports.length; P.g.ports.forEach((q, j) => ports.push({ pi, j, X: q.X, N: q.N, h: q.h, internal: !!q.internal, mate: -1, id: ports.length })); });
+  const cell = q => Math.floor(q.X / 4) + ',' + Math.floor(q.N / 4);
+  const hash = new Map();
+  for (const q of ports) { if (q.internal) continue; const k = cell(q); if (!hash.has(k)) hash.set(k, []); hash.get(k).push(q); }
+  const near = (q, r, fn) => { const cx = Math.floor(q.X / 4), cn = Math.floor(q.N / 4), w = Math.ceil(r / 4); for (let i = cx - w; i <= cx + w; i++) for (let j = cn - w; j <= cn + w; j++) for (const o of hash.get(i + ',' + j) || []) if (o !== q) fn(o, Math.hypot(o.X - q.X, o.N - q.N)); };
+  for (const q of ports) {
+    if (q.internal || q.mate >= 0) continue;
+    let best = null, bd = LAYOUT.joinTol;
+    near(q, LAYOUT.joinTol, (o, d) => { if (o.mate >= 0 || o.pi === q.pi) return; if (Math.abs(wrapPi(o.h - q.h - Math.PI)) > LAYOUT.joinAng) return; if (d <= bd) { bd = d; best = o; } });
+    if (best) { q.mate = best.id; best.mate = q.id; }
+  }
+  const issues = [];
+  const seen = new Set();
+  for (const q of ports) {
+    if (q.internal || q.mate >= 0) continue;
+    near(q, LAYOUT.gapTol, (o, d) => {
+      if (o.mate >= 0 || o.internal || o.pi === q.pi) return;
+      const key = Math.min(q.id, o.id) + ':' + Math.max(q.id, o.id); if (seen.has(key)) return; seen.add(key);
+      const kink = Math.abs(wrapPi(o.h - q.h - Math.PI)) * 180 / Math.PI;
+      issues.push({ kind: 'gap', X: (q.X + o.X) / 2, N: (q.N + o.N) / 2, text: d < LAYOUT.joinTol ? `Ends meet at a ${kink.toFixed(1)}° kink` : `Gap of ${d < 0.1 ? (d * 100).toFixed(1) + ' cm' : d.toFixed(2) + ' m'} between two ends`, a: q.id, b: o.id });
+    });
+  }
+  // out of bounds and crossings (no diamonds yet)
+  const B = LAYOUT.bounds;
+  const segs = new Map(), segList = [];
+  pieces.forEach((P, pi) => P.g.paths.forEach(path => {
+    let prev = null;
+    for (let i = 0; i < path.pts.length; i += 4) {
+      const q = path.pts[i];
+      if (q.X < B.x0 || q.X > B.x1 || q.N < B.n0 || q.N > B.n1) { if (!P.out) { P.out = true; issues.push({ kind: 'bounds', X: q.X, N: q.N, text: 'Track runs off the edge of the world', pi }); } }
+      if (prev) segList.push([prev.X, prev.N, q.X, q.N, pi]);
+      prev = q;
+    }
+    const L = path.pts[path.pts.length - 1]; if (prev && prev !== L) segList.push([prev.X, prev.N, L.X, L.N, pi]);
+  }));
+  for (const s of segList) { const k = Math.floor((s[0] + s[2]) / 40) + ',' + Math.floor((s[1] + s[3]) / 40); if (!segs.has(k)) segs.set(k, []); segs.get(k).push(s); }
+  const adj = new Set();
+  for (const q of ports) if (q.mate >= 0) { const o = ports[q.mate]; adj.add(q.pi + ':' + o.pi); }
+  const cross = (a, b) => { const d1x = a[2] - a[0], d1n = a[3] - a[1], d2x = b[2] - b[0], d2n = b[3] - b[1]; const den = d1x * d2n - d1n * d2x; if (Math.abs(den) < 1e-9) return null; const t = ((b[0] - a[0]) * d2n - (b[1] - a[1]) * d2x) / den, u = ((b[0] - a[0]) * d1n - (b[1] - a[1]) * d1x) / den; return t >= 0 && t < 1 && u >= 0 && u < 1 ? [a[0] + d1x * t, a[1] + d1n * t] : null; };
+  const crossSeen = new Set();
+  for (const [k, list] of segs) {
+    const [ci, cj] = k.split(',').map(Number);
+    const cand = []; for (let i = ci - 1; i <= ci + 1; i++) for (let j = cj - 1; j <= cj + 1; j++) for (const s of segs.get(i + ',' + j) || []) cand.push(s);
+    for (const a of list) for (const b of cand) {
+      if (a[4] >= b[4] || adj.has(a[4] + ':' + b[4])) continue;
+      const x = cross(a, b); if (!x) continue;
+      const key = a[4] + ':' + b[4] + ':' + Math.round(x[0] / 5) + ':' + Math.round(x[1] / 5); if (crossSeen.has(key)) continue; crossSeen.add(key);
+      issues.push({ kind: 'cross', X: x[0], N: x[1], text: 'Two tracks cross here without a junction' });
+    }
+  }
+  let len = 0, minR = Infinity, nSw = 0;
+  for (const P of pieces) { for (const path of P.g.paths) { len += path.pts[path.pts.length - 1].s; if (path.R) minR = Math.min(minR, path.R); } if (P.g.sw) nSw++; }
+  const open = ports.filter(q => !q.internal && q.mate < 0);
+  return { pieces, ports, open, issues, len, minR, nSw };
+}
+
+/* chain the pieces into edges and nodes on NET, then fill ROUTE for the rest of the game */
+function buildLayoutRoute(map) {
+  const G = layoutGraph(map);
+  const paths = [];
+  G.pieces.forEach((P, pi) => P.g.paths.forEach((path, j) => paths.push({ pi, j, pts: path.pts, R: path.R || 0, pa: P.base + path.a, pb: P.base + path.b })));
+  // junction id for a port: joined ports share the lower id
+  const jn = id => { const q = G.ports[id]; return q.mate >= 0 ? Math.min(id, q.mate) : id; };
+  const att = new Map(); // junction -> [{path, end}]
+  paths.forEach((P, i) => { for (const [end, port] of [[0, P.pa], [1, P.pb]]) { const k = jn(port); if (!att.has(k)) att.set(k, []); att.get(k).push({ path: i, end }); } });
+  const through = k => att.get(k).length === 2;
+  // speed limit of each path from its tightest curvature: about 1.1 m/s² of unbalanced lateral acceleration
+  const limitOf = pts => { let k = 0; for (const q of pts) k = Math.max(k, Math.abs(q.k)); return k < 1e-6 ? 70 : clamp(Math.floor(Math.sqrt(1.1 / k) / MPH / 5) * 5, 10, 70); };
+  paths.forEach(P => { P.lim = limitOf(P.pts); });
+  const nextOf = (k, i, end) => att.get(k).find(a => !(a.path === i && a.end === end));
+  const nodes = new Map(), nodeOf = k => { if (!nodes.has(k)) nodes.set(k, NET.node()); return nodes.get(k); };
+  const placed = new Map(), endAtt = new Map(), visited = new Set();
+  const flip = pts => { const L = pts[pts.length - 1].s; return pts.slice().reverse().map(q => ({ X: q.X, N: q.N, h: q.h + Math.PI, k: -q.k, s: L - q.s })); };
+  let nEdge = 0;
+  const makeEdge = (seq, kA, kB) => {
+    const pts = []; let off = 0;
+    for (const st of seq) {
+      const P = paths[st.path];
+      let q = st.rev ? flip(P.pts) : P.pts;
+      const dh = pts.length ? Math.round((pts[pts.length - 1].h - q[0].h) / TAU) * TAU : 0;
+      for (let i = pts.length ? 1 : 0; i < q.length; i++) pts.push({ X: q[i].X, N: q[i].N, h: q[i].h + dh, k: q[i].k, s: off + q[i].s });
+      const L = q[q.length - 1].s;
+      placed.set(st.path, { s0: off, s1: off + L, rev: st.rev });
+      off += L;
+    }
+    const limit = paths[seq[0].path].lim;
+    const e = NET.edge(pts, { kind: 'main', name: map.name || 'Layout', limit });
+    e.setProfile(() => 0);
+    easeCant(e);
+    NET.attach(e, 0, nodeOf(kA)); NET.attach(e, 1, nodeOf(kB));
+    const f = seq[0], l = seq[seq.length - 1];
+    endAtt.set(f.path + ':' + (f.rev ? 1 : 0), { edge: e, end: 0 });
+    endAtt.set(l.path + ':' + (l.rev ? 0 : 1), { edge: e, end: 1 });
+    for (const st of seq) placed.get(st.path).edge = e;
+    nEdge++;
+    return e;
+  };
+  /* one edge per run of paths with the same speed limit between switches and ends */
+  const walk = (i, end) => {
+    const seq = []; let cur = i, e0 = end; const kA = jn(e0 ? paths[i].pb : paths[i].pa); let kB;
+    for (;;) {
+      seq.push({ path: cur, rev: e0 === 1 }); visited.add(cur);
+      const exit = 1 - e0, k = jn(exit ? paths[cur].pb : paths[cur].pa);
+      if (!through(k)) { kB = k; break; }
+      const nx = nextOf(k, cur, exit);
+      if (visited.has(nx.path) || paths[nx.path].lim !== paths[i].lim) { kB = k; break; }
+      cur = nx.path; e0 = nx.end;
+    }
+    return makeEdge(seq, kA, kB);
+  };
+  const boundary = (i, end) => { const k = jn(end ? paths[i].pb : paths[i].pa); if (!through(k)) return true; return paths[nextOf(k, i, end).path].lim !== paths[i].lim; };
+  for (let pass = 0; pass < 2; pass++)   // runs that start at a switch, an end or a change of limit; then loops of one limit
+    paths.forEach((P, i) => { for (const end of [0, 1]) { if (visited.has(i)) return; if (pass || boundary(i, end)) walk(i, end); } });
+  // switches
+  let swN = 0;
+  G.pieces.forEach((P, pi) => {
+    const sw = P.g.sw; if (!sw) return;
+    const pid = j => paths.findIndex(x => x.pi === pi && x.j === j);
+    const k = jn(P.base + sw.port);
+    const trunk = endAtt.get(pid(sw.trunk) + ':1'), normal = endAtt.get(pid(sw.normal) + ':0'), reverse = endAtt.get(pid(sw.reverse) + ':0');
+    if (!trunk || !normal || !reverse) return;
+    const T = TURNOUTS[P.p.k];
+    const s = NET.addSwitch(nodeOf(k), trunk, normal, reverse, P.p.name || ('Switch ' + (++swN)), ['Straight', 'Diverging']);
+    s.divLimit = T.lim; s.layoutKind = P.p.k; s.pieceId = P.p.id;
+  });
+  for (const nd of NET.nodes) if (nd.att.length === 1) ROUTE.bumpers.push(nd);
+  // stations (with a water column for steam) on straights the editor marked
+  const lineOf = e => ({ edge: e, len: e.len, locate: s => ({ edge: e, s: clamp(s, 0, e.len) }) });
+  G.pieces.forEach((P, pi) => {
+    const st = P.p.st; if (!st) return;
+    const pl = placed.get(paths.findIndex(x => x.pi === pi)); if (!pl) return;
+    const s = (pl.s0 + pl.s1) / 2, side = (st.side || 1) * (pl.rev ? -1 : 1), line = lineOf(pl.edge);
+    ROUTE.stations.push({ name: st.name || 'Station', line, sLine: s, edge: pl.edge, s, side, kind: st.big ? 'depot' : 'small' });
+    const sw = clamp(s + (pl.s1 - pl.s0) * 0.3, 4, pl.edge.len - 4);
+    ROUTE.water.push({ line, sLine: sw, edge: pl.edge, s: sw, side, kind: 'column' });
+  });
+  // signals ahead of facing-point turnouts on long approaches
+  for (const sw of NET.switches) {
+    if (sw.layoutKind === 'yard') continue;
+    const t = sw.trunk, tp = new TrackPos(t.edge, t.end ? t.edge.len : 0, t.end ? -1 : 1);
+    if (tp.advance(160, null) !== 0) continue;   // not enough approach for a signal
+    ROUTE.signals.push({ sw, line: lineOf(tp.e), sLine: tp.s, dir: -tp.o });
+  }
+  ROUTE.coal = null;
+  ROUTE.mainLen = G.len;
+  ROUTE.layout = { map, graph: G, placed, paths, lineOf };
+  return G;
+}
+
+/* superelevation that runs in and out over about 40 m instead of stepping at a joint */
+function easeCant(e) {
+  const n = e.n, W = Math.max(1, Math.round(20 / e.ds)), pre = new Float64Array(n + 1);
+  for (let i = 0; i < n; i++) pre[i + 1] = pre[i] + e.K[i];
+  for (let i = 0; i < n; i++) {
+    const a = Math.max(0, i - W), b = Math.min(n, i + W + 1), k = (pre[b] - pre[a]) / (b - a);
+    const E = clamp(105 * Math.abs(k), 0, 0.1);
+    e.C[i] = Math.sign(k) * Math.asin(E / 1.5);
+  }
+}
+
+/* where the train is made up on a layout: the start marker, or the middle of the longest edge */
+function layoutStart(map) {
+  const L = ROUTE.layout;
+  if (map.start) {
+    const pi = L.graph.pieces.findIndex(P => P.p.id === map.start.id);
+    const path = L.paths.findIndex(x => x.pi === pi);
+    const pl = path >= 0 ? L.placed.get(path) : null;
+    if (pl) return { edge: pl.edge, s: (pl.s0 + pl.s1) / 2, o: (map.start.dir || 1) * (pl.rev ? -1 : 1) };
+  }
+  let best = NET.edges[0]; for (const e of NET.edges) if (e.len > best.len) best = e;
+  return { edge: best, s: best.len / 2, o: 1 };
+}
+
+/* ---------- saved layouts (localStorage) ---------- */
+const LAYOUTS = {
+  all() { try { const o = JSON.parse(localStorage.getItem('bd_layouts') || '{}'); return o && typeof o === 'object' ? o : {}; } catch (e) { return {}; } },
+  get(id) { return LAYOUTS.all()[id] || null; },
+  put(map) { const o = LAYOUTS.all(); map.saved = Date.now(); o[map.id] = map; try { localStorage.setItem('bd_layouts', JSON.stringify(o)); return true; } catch (e) { return false; } },
+  remove(id) { const o = LAYOUTS.all(); delete o[id]; try { localStorage.setItem('bd_layouts', JSON.stringify(o)); } catch (e) {} },
+  newId: () => 'L' + Date.now().toString(36) + Math.floor(Math.random() * 1296).toString(36),
+};
+/* the layout this page was opened to drive (?layout=id), or null for the Berkshire Division */
+const PLAY_LAYOUT = (() => { try { const id = new URLSearchParams(location.search).get('layout'); const m = id && LAYOUTS.get(id); return m && m.pieces && m.pieces.length ? m : null; } catch (e) { return null; } })();
+
+/* ============================================================================
    World: terrain, river, track meshes (rails, ties, ballast, turnouts)
    ========================================================================== */
 const MAT = {};
@@ -1127,6 +1543,7 @@ function makeMaterials() {
 const INNER = { x0: -6000, x1: 6000, n0: -2000, n1: 7000, step: 20 };
 function riverX(N) { const A = n => 170 * Math.sin(n / 700) + 70 * Math.sin(n / 230 + 1); return -1203 + A(N) - A(2402); }
 function naturalH(X, N) {
+  if (WORLD.custom) return layoutH(X, N);
   let h = 6.5 * Noise.fbm(X / 1600 + 3.1, N / 1600 - 1.7, 4) + 2.2 * Noise.fbm(X / 320, N / 320, 3);
   // Kenton Hill (track crest at +13.5)
   h += 15.5 * Math.exp(-(((X - 1900) / 1150) ** 2 + ((N - 2400) / 820) ** 2));
@@ -1137,11 +1554,19 @@ function naturalH(X, N) {
   return h;
 }
 function riverDist(X, N) {
+  if (WORLD.custom) return 1e9;
   let d = 1e9;
   if (N > 2402 - 40) d = Math.abs(X - riverX(N));
   else if (N > WORLD.lake.N) { const t = (N - WORLD.lake.N) / (2402 - WORLD.lake.N); const x = lerp(WORLD.lake.X, riverX(2402), smooth(0, 1, t)); d = Math.abs(X - x); }
   const dl = Math.hypot(X - WORLD.lake.X, N - WORLD.lake.N) - WORLD.lake.r;
   return Math.min(d, Math.max(dl + 22, 0));
+}
+/* custom layouts sit in open, gently rolling farm country with hills only at the horizon */
+function layoutH(X, N) {
+  let h = 3.4 * Noise.fbm(X / 1700 + 3.1, N / 1700 - 1.7, 4) + 1.3 * Noise.fbm(X / 330, N / 330, 3);
+  const er = Math.hypot(X / 8200, (N - 2500) / 6400);
+  h += 70 * smooth(1.0, 1.6, er) * (0.55 + 0.45 * Noise.fbm(X / 2600 - 5, N / 2600, 3));
+  return h;
 }
 function heightRaw(X, N) {
   let h = naturalH(X, N);
@@ -2383,6 +2808,7 @@ function buildStations() {
       // spout reaches over the track: modelled in waterTower toward -z of base (which faces track)
     }
   }
+  if (WORLD.custom) return;   // the rest is the Berkshire Division's own terminal
   const eng = ROUTE.features.engine;
   coalingTower(linePlace(eng, ROUTE.coal.sLine, 0));
   sandHouse(linePlace(eng, 300, 0));
@@ -5314,13 +5740,18 @@ function drawMinimap() {
   const c = $('minimap'), g = c.getContext('2d'), W = c.width, H = c.height;
   g.fillStyle = 'rgba(10,14,17,0.92)'; g.fillRect(0, 0, W, H);
   const p = GAME.train.vehicles[0].pos;
-  drawNet(g, W, H, p.x, -p.z, 0.11, { w: 1.6, sr: 5, labels: true, fs: 15, river: true });
+  drawNet(g, W, H, p.x, -p.z, 0.11, { w: 1.6, sr: 5, labels: true, fs: 15, river: !WORLD.custom });
   g.fillStyle = '#8d9aa2'; g.font = '600 14px "IBM Plex Sans Condensed", sans-serif'; g.textAlign = 'right'; g.fillText('MAP', W - 10, H - 10);
 }
 MAP.open = function () {
   MAP.visible = true; $('mapView').hidden = false;
   const p = GAME.train ? GAME.train.vehicles[0].pos : { x: 0, z: -2400 };
   MAP.cx = 0; MAP.cn = 2700; MAP.scale = Math.min(innerWidth / 11000, innerHeight / 7600);
+  if (WORLD.custom) { // frame the whole layout
+    let x0 = Infinity, x1 = -Infinity, n0 = Infinity, n1 = -Infinity;
+    for (const L of MAP.lines) for (const q of L.pts) { x0 = Math.min(x0, q[0]); x1 = Math.max(x1, q[0]); n0 = Math.min(n0, q[1]); n1 = Math.max(n1, q[1]); }
+    MAP.cx = (x0 + x1) / 2; MAP.cn = (n0 + n1) / 2; MAP.scale = clamp(Math.min(innerWidth / (x1 - x0 + 200), innerHeight / (n1 - n0 + 200)) * 0.85, 0.04, 3);
+  }
   MAP.draw();
 };
 MAP.close = function () { MAP.visible = false; $('mapView').hidden = true; };
@@ -5334,7 +5765,7 @@ MAP.draw = function () {
   const step = 1000 * MAP.scale; const ox = (innerWidth / 2 - MAP.cx * MAP.scale) % step, oy = (innerHeight / 2 + MAP.cn * MAP.scale) % step;
   for (let x = ox; x < innerWidth; x += step) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, innerHeight); g.stroke(); }
   for (let y = oy; y < innerHeight; y += step) { g.beginPath(); g.moveTo(0, y); g.lineTo(innerWidth, y); g.stroke(); }
-  MAP.t = drawNet(g, innerWidth, innerHeight, MAP.cx, MAP.cn, MAP.scale, { w: 1, sr: clamp(MAP.scale * 60, 6, 11), labels: true, fs: 13, swLabels: MAP.scale > 0.35, river: true });
+  MAP.t = drawNet(g, innerWidth, innerHeight, MAP.cx, MAP.cn, MAP.scale, { w: 1, sr: clamp(MAP.scale * 60, 6, 11), labels: true, fs: 13, swLabels: MAP.scale > 0.35, river: !WORLD.custom });
   g.fillStyle = '#8d9aa2'; g.font = '500 12px "IBM Plex Mono", monospace'; g.textAlign = 'left'; g.fillText('1 km grid', 14, innerHeight - 14);
 };
 function setupMap() {
@@ -5480,7 +5911,7 @@ class MiniMQTT {
   raw(p) { if (this.ws && this.ws.readyState === 1) { try { this.ws.send(p); } catch (e) {} } }
   sendSub(topic) { const id = this.pid = (this.pid % 65535) + 1; this.raw(mqPacket(0x82, [Uint8Array.of(id >> 8, id & 255), mqStr(topic), Uint8Array.of(0)])); }
   subscribe(topic) { this.subs.push(topic); if (this.ok) this.sendSub(topic); }
-  publish(topic, text) { if (this.ok) this.raw(mqPacket(0x30, [mqStr(topic), MQ_TE.encode(text)])); }
+  publish(topic, text, retain) { if (this.ok) this.raw(mqPacket(retain ? 0x31 : 0x30, [mqStr(topic), MQ_TE.encode(text)])); }
   close() {
     this.closed = true; clearTimeout(this.retryT); clearInterval(this.pingT);
     if (this.ws) { try { if (this.ok) this.ws.send(Uint8Array.of(0xE0, 0)); this.ws.close(); } catch (e) {} }
@@ -5519,7 +5950,7 @@ const MP_CODE = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 const MP_SPAWNS = [['Yard 2', -175], ['Yard 3', -140], ['Yard 4', -112], ['Yard 1', -200], ['Fostoria Siding', -320], ['Kenton Siding', -220], ['Main', 3200], ['Main', 9800], ['Main', 16000], ['Quarry Branch', -700]];
 const MP_SPAWN_NAMES = { 'Yard 2': 'Yard 2, Bellevue', 'Yard 3': 'Yard 3, Bellevue', 'Yard 4': 'Yard 4, Bellevue', 'Yard 1': 'Yard 1, Bellevue', 'Fostoria Siding': 'the Fostoria siding', 'Kenton Siding': 'the Kenton siding', 'Main': 'the main line', 'Quarry Branch': 'the quarry branch' };
 const MP = {
-  on: false, ready: false, code: '', id: '', name: '', color: '', peers: new Map(), links: [], room: null, topic: '',
+  on: false, ready: false, code: '', ly: '', id: '', name: '', color: '', peers: new Map(), links: [], room: null, topic: '',
   q: 0, sentAt: 0, dirty: false, spawned: false, needSpawn: false, swv: null, seen: null, pend: new Map(), lt: null,
   chatN: 0, chat: null, log: [], watching: null, edges: null, panelT: 0, joinedAt: 0, autoJoin: '', last: null,
   brokers: ['wss://broker.hivemq.com:8884/mqtt', 'wss://broker.emqx.io:8084/mqtt'],
@@ -5540,7 +5971,9 @@ function mpClean(r) {
   const o = { id: r.id, q: Math.round(n(r.q, 0, 1e12)), bye: r.bye ? 1 : 0 };
   if (o.bye) return o;
   o.nm = mpText(r.nm, 16) || 'Engineer';
-  o.e = Number.isInteger(r.e) && MP.edges && MP.edges.has(r.e) ? r.e : -1;
+  o.ly = typeof r.ly === 'string' ? r.ly.slice(0, 16) : '';
+  o.other = o.ly !== MP.ly ? 1 : 0;   // on another railroad: chat only
+  o.e = !o.other && Number.isInteger(r.e) && MP.edges && MP.edges.has(r.e) ? r.e : -1;
   if (o.e >= 0) {
     o.lk = LOCO_SPEC[r.lk] ? r.lk : '765'; o.ck = CONSISTS[r.ck] ? r.ck : 'light';
     o.u = Math.round(n(r.u, 1, 3, 1)); o.lv = LIVERIES[r.lv] ? r.lv : 'ss'; o.mx = r.mx ? 1 : 0;
@@ -5551,7 +5984,7 @@ function mpClean(r) {
     o.ex = n(r.ex, 0, 1.5); o.rpm = n(r.rpm, 0, 1200); o.dr = r.dr ? 1 : 0;
   }
   o.pz = r.pz ? 1 : 0;
-  o.sw = Array.isArray(r.sw) && r.sw.length === NET.switches.length ? r.sw.map(x => Math.round(n(x, 0, 2e9))) : null;
+  o.sw = !o.other && Array.isArray(r.sw) && r.sw.length === NET.switches.length ? r.sw.map(x => Math.round(n(x, 0, 2e9))) : null;
   o.lt = Array.isArray(r.lt) && r.lt.length === 2 ? [Math.round(n(r.lt[0], 0, 255)), Math.round(n(r.lt[1], 0, 1e9))] : null;
   o.ch = Array.isArray(r.ch) && r.ch.length === 2 ? [Math.round(n(r.ch[0], 0, 1e9)), mpText(r.ch[1], 80)] : null;
   return o;
@@ -5587,6 +6020,7 @@ function mpOpts(st) {
   return { units: st.u, livery: st.lv, mix: !!st.mx, custom: cu, number: st.lv === 'custom' ? (st.no || 4401) : null };
 }
 function mpLocoLabel(st) {
+  if (st && st.other) return 'On another railroad';
   if (!st || st.e < 0) return 'In the menu';
   const loco = st.lk === 'diesel' ? (st.lv === 'custom' ? 'Custom' : LIVERIES[st.lv].init) + ' diesel' + (st.u > 1 ? ' ×' + st.u : '') : (st.lk === '765' ? 'NKP 765' : 'PM 1225');
   return loco + ' · ' + CONSISTS[st.ck].name;
@@ -5763,6 +6197,7 @@ MP.worldReady = function () {
   MP.ready = true;
   MP.edges = new Map(NET.edges.map(e => [e.id, e]));
   MP.ui();
+  MP.ly = WORLD.custom ? layoutHash(PLAY_LAYOUT) : '';
   if (MP.autoJoin) MP.join(MP.autoJoin);
 };
 MP.create = function () {
@@ -5778,9 +6213,10 @@ MP.connect = function (code, creator) {
   MP.spawned = creator && GAME.running; MP.needSpawn = !MP.spawned;
   MP.topic = 'bdiv/v1/' + code;
   const will = { topic: MP.topic, payload: JSON.stringify({ id: MP.id, bye: 1 }) };
-  MP.links = MP.brokers.map((url, i) => { const l = new MiniMQTT(url, 'bd-' + MP.id + '-' + i, will, (t, txt) => MP.onText(txt), () => MP.ui()); l.subscribe(MP.topic); return l; });
+  MP.links = MP.brokers.map((url, i) => { const l = new MiniMQTT(url, 'bd-' + MP.id + '-' + i, will, (t, txt) => t === MP.topic ? MP.onText(txt) : MP.onWorldText(txt), () => MP.ui()); l.subscribe(MP.topic); l.subscribe(MP.topic + '/w'); return l; });
+  MP.worldJoin(creator);
   mpRoomLink(code, st => MP.receive(st), id => MP.drop(id, 'left')).then(link => { if (link && MP.on && MP.code === code) { MP.room = link; MP.ui(); } else if (link) link.close(); });
-  try { history.replaceState(null, '', location.pathname + '?room=' + code); } catch (e) {}
+  try { history.replaceState(null, '', location.pathname + mpQuery(code)); } catch (e) {}
   MP.dirty = true; MP.ui(); startLabel();
   setTimeout(() => MP.ui(), 2500); setTimeout(() => MP.ui(), 9000);
 };
@@ -5796,7 +6232,7 @@ MP.leave = function (quiet) {
   MP.links = []; MP.room = null; MP.on = false; MP.code = ''; MP.needSpawn = false; MP.spawned = false;
   for (const id of [...MP.peers.keys()]) MP.drop(id, null);
   MP.unwatch(); $('mpPanel').hidden = true;
-  try { history.replaceState(null, '', location.pathname); } catch (e) {}
+  try { history.replaceState(null, '', location.pathname + mpQuery('')); } catch (e) {}
   if (!quiet) toast('Left the room. You are driving solo.', '', 3000);
   MP.ui(); startLabel();
 };
@@ -5888,7 +6324,7 @@ MP.drop = function (id, why) {
 };
 MP.state = function () {
   const T = GAME.train, g = GAME.settings;
-  const st = { id: MP.id, q: ++MP.q, nm: MP.name, e: -1, pz: (S.paused || !GAME.running) ? 1 : 0 };
+  const st = { id: MP.id, q: ++MP.q, nm: MP.name, ly: MP.ly, e: -1, pz: (S.paused || !GAME.running) ? 1 : 0 };
   if (MP.spawned && T) {
     const f = T.pts[0].tp;
     Object.assign(st, {
@@ -6072,6 +6508,114 @@ MP.drawMap = function (g, tx, ty, opt) {
 };
 
 /* ============================================================================
+   Which railroad a room runs on. Everyone in a room has to drive the same track,
+   so the room carries its world on <room>/w: the built-in division, or a layout
+   from the editor sent whole. The message is retained by the brokers so a late
+   joiner gets it at once. The room's creator announces its world; in a room with
+   no creator (everyone came from a shared build), the first player to find it
+   silent claims it. A creator's word beats a claim, a newer one beats an older,
+   and anyone on a different world loads the room's and rejoins.
+   ========================================================================== */
+/* a layout's identity: the sanitised pieces in id order, its name and start */
+function layoutCanon(m) {
+  const v = m && edValidImport(m); if (!v) return '';
+  v.pieces.sort((a, b) => a.id - b.id);
+  return JSON.stringify({ name: v.name, pieces: v.pieces, start: v.start });
+}
+const layoutHash = m => mpHash(layoutCanon(m)).toString(36);
+
+function mpQuery(room) {   // keep ?layout= when the room part of the address changes
+  const q = new URLSearchParams(location.search); q.delete('room');
+  if (room) q.set('room', room);
+  const t = q.toString(); return t ? '?' + t : '';
+}
+MP.world = null;
+MP.worldJoin = function (creator) {
+  MP.world = creator ? { at: Date.now(), id: MP.id, ly: MP.ly, cr: 1 } : null;
+  clearTimeout(MP.worldT);
+  // nothing is sent until a broker is reached, so every step waits for a live link
+  const code = MP.code; let since = 0, asked = false;
+  const step = () => {
+    if (!MP.on || MP.code !== code) return;
+    if (MP.status() !== 'on') { since = 0; MP.worldT = setTimeout(step, 500); return; }
+    if (creator) { MP.sendWorld(true); return; }
+    if (MP.world) return;
+    if (!since) since = performance.now();
+    // ask whoever holds the world, then claim it ourselves if the room stays quiet for 4 s
+    if (!asked && performance.now() - since > 400) { asked = true; MP.pubWorld(JSON.stringify({ id: MP.id, wq: 1 })); }
+    if (performance.now() - since < 4000) { MP.worldT = setTimeout(step, 500); return; }
+    MP.world = { at: Date.now(), id: MP.id, ly: MP.ly, cr: 0 }; MP.sendWorld(true);
+  };
+  MP.worldT = setTimeout(step, 300);
+};
+MP.pubWorld = function (txt, retain) { for (const l of MP.links) l.publish(MP.topic + '/w', txt, retain); };
+MP.sendWorld = function (retain) {
+  if (!MP.on || !MP.world || MP.world.ly !== MP.ly) return;
+  const lay = WORLD.custom ? layoutCanon(PLAY_LAYOUT) : '';
+  MP.pubWorld(JSON.stringify({ id: MP.world.id, at: MP.world.at, cr: MP.world.cr, ly: MP.ly, nm: WORLD.custom ? PLAY_LAYOUT.name : 'Berkshire Division', lay }), retain);
+};
+MP.onWorldText = function (txt) {
+  if (!MP.on || txt.length > 2e6) return;
+  let r; try { r = JSON.parse(txt); } catch (e) { return; }
+  if (!r || typeof r.id !== 'string' || !/^[a-z0-9]{6,16}$/.test(r.id)) return;
+  if (r.wq) { if (r.id !== MP.id && MP.world && MP.world.ly === MP.ly) setTimeout(() => MP.sendWorld(false), 200 + Math.random() * 800); return; }
+  if (typeof r.ly !== 'string' || typeof r.at !== 'number' || !isFinite(r.at)) return;
+  const cur = MP.world, cr = r.cr ? 1 : 0;
+  if (MP.creator) return;   // the creator's railroad stands
+  if (cur && (cur.cr > cr || (cur.cr === cr && (cur.at > r.at || (cur.at === r.at && cur.id >= r.id))))) return;
+  MP.world = { at: r.at, id: r.id, ly: r.ly, cr };
+  if (r.ly !== MP.ly) MP.adoptWorld(r);
+};
+MP.adoptWorld = function (r) {
+  let id = '';
+  if (r.ly) {
+    let m = null; try { m = edValidImport(JSON.parse(r.lay)); } catch (e) { m = null; }
+    if (!m || layoutHash(m) !== r.ly) return;
+    m.id = 'R' + r.ly; m.from = 'room';
+    if (!LAYOUTS.put(m)) { MP.say("This room runs on a layout your browser couldn't save.", true); return; }
+    id = m.id;
+  }
+  // never bounce between worlds: one reload per room and railroad
+  const key = MP.code + ':' + r.ly;
+  try {
+    const o = JSON.parse(sessionStorage.getItem('bd_world') || 'null');
+    if (o && o.key === key && Date.now() - o.t < 30000) { MP.say("Could not load the room's railroad.", true); return; }
+    sessionStorage.setItem('bd_world', JSON.stringify({ key, t: Date.now() }));
+  } catch (e) {}
+  const name = mpText(r.nm, 32) || 'the room\'s railroad';
+  MP.say(`This room runs on ${name}. Loading it…`); toast(`This room runs on ${name}. Loading it…`, '', 4000);
+  const q = new URLSearchParams(); if (id) q.set('layout', id); q.set('room', MP.code);
+  setTimeout(() => { location.href = location.pathname + '?' + q.toString(); }, 1200);
+};
+
+/* a free stretch of a custom layout for a new train in a room */
+MP.layoutSlot = function (need) {
+  for (const p of MP.peers.values()) if (p.rt && p.rt.tp && !p.rt.placed) p.rt.frame(0, p.st, camera.position, true);
+  const others = [];
+  for (const p of MP.peers.values()) if (p.rt && p.rt.placed) for (let i = 0; i < p.rt.polyN; i++) others.push(p.rt.poly[i]);
+  const cands = [];
+  const st = layoutStart(PLAY_LAYOUT); cands.push(new TrackPos(st.edge, st.s, st.o));
+  for (const e of [...NET.edges].sort((a, b) => b.len - a.len)) for (let s = e.len - 20; s > 20; s -= 80) { cands.push(new TrackPos(e, s, 1)); cands.push(new TrackPos(e, e.len - s, -1)); }
+  for (const c of cands) {
+    const tp = layoutFit(c, need); if (!tp) continue;
+    const w = tp.clone(); w.advance(30, null);
+    let clear = true;
+    for (let d = 0; d < need + 60 && clear; d += 6) {
+      w.pose(FR); for (const q of others) if (q.distanceTo(FR.p) < 3.4) { clear = false; break; }
+      if (w.advance(-6, null) !== 0) break;
+    }
+    if (clear) return tp;
+  }
+  return null;
+};
+/* the driving room for a shared build: the same for everyone driving the same version of the layout */
+function driveCode(buildCode, m) {
+  let h = mpHash(buildCode + ':' + layoutHash(m)), c = '';
+  for (let i = 0; i < 6; i++) { c += MP_CODE[h % MP_CODE.length]; h = Math.floor(h / MP_CODE.length) ^ (i * 2654435761 >>> 0); h >>>= 0; }
+  return c;
+}
+
+/* ============================================================================
    Game: boot, world loading, main loop, rules, HUD
    ========================================================================== */
 const GAME = {
@@ -6106,7 +6650,9 @@ async function loadWorld() {
   const prog = (p, t) => { $('loadBar').firstElementChild.style.width = Math.round(p * 100) + '%'; $('loadText').textContent = t; };
   prog(0.02, 'Surveying the line…'); await frame();
   makeMaterials(); sceneryMaterials(); rollingMaterials();
-  buildRoute(); mapPrepare();
+  WORLD.custom = !!PLAY_LAYOUT;
+  if (WORLD.custom) { WORLD.roadsX = []; WORLD.roadN = 1e7; buildLayoutRoute(PLAY_LAYOUT); } else buildRoute();
+  mapPrepare();
   prog(0.06, 'Grading the right of way…'); await frame();
   buildLattice();
   detailTextures(); planTowns();
@@ -6116,13 +6662,15 @@ async function loadWorld() {
     if (k % 3 === 0) { prog(0.08 + 0.42 * k / tot, `Shaping farm country… ${k}/${tot}`); await frame(); }
   }
   WORLD.hgrid.ready = true;
-  buildFarTerrain(scene); buildWater(scene);
-  prog(0.52, 'Laying 13.8 miles of jointed rail…'); await frame();
+  buildFarTerrain(scene); if (!WORLD.custom) buildWater(scene);
+  prog(0.52, WORLD.custom ? `Laying ${fmtMi(ROUTE.mainLen)} of track on ${PLAY_LAYOUT.name || 'your layout'}…` : 'Laying 13.8 miles of jointed rail…'); await frame();
   buildTrack(scene); buildTrackHash();
   prog(0.68, 'Raising depots, towers and the river bridge…'); await frame();
-  buildStations(); buildBridge(scene); buildRoads(scene); buildSignals(scene); buildSigns();
+  if (WORLD.custom) { buildStations(); buildSignals(scene); }
+  else { buildStations(); buildBridge(scene); buildRoads(scene); buildSignals(scene); buildSigns(); }
   prog(0.78, 'Stringing the pole line…'); await frame();
-  buildFarms(); buildTowns(scene); buildPoleLine(scene);
+  if (WORLD.custom) { SCN.farms = []; buildTowns(scene); }
+  else { buildFarms(); buildTowns(scene); buildPoleLine(scene); }
   prog(0.82, 'Planting corn and fencing pastures…'); await frame();
   buildCorn(scene); buildPastureLife(scene);
   prog(0.86, 'Planting woodlots…'); await frame();
@@ -6131,12 +6679,12 @@ async function loadWorld() {
   buildSky(scene, renderer); buildFX(scene);
   for (const st of ROUTE.stations) { st.edge.pose(st.s, FR); st.p = FR.p.clone(); }
   for (const w of ROUTE.water) { w.edge.pose(w.s, FR); w.p = FR.p.clone(); }
-  { const c = ROUTE.coal; c.edge.pose(c.s, FR); c.p = FR.p.clone(); }
+  if (ROUTE.coal) { const c = ROUTE.coal; c.edge.pose(c.s, FR); c.p = FR.p.clone(); }
   setupViewInput($('gl'), camera); setupLevers(); setupButtons(); setupMap();
   linearizeObject(scene);
   makeTrain();
   applyLook(GAME.settings.time, GAME.settings.weather, renderer, scene);
-  prog(1, `${(ROUTE.mainLen / MILE).toFixed(1)} mi mainline · ${NET.switches.length} switches · ${WORLD.treeCount.toLocaleString()} trees`);
+  prog(1, WORLD.custom ? `${PLAY_LAYOUT.name || 'Your layout'} · ${fmtMi(ROUTE.mainLen)} of track · ${NET.switches.length} switches` : `${(ROUTE.mainLen / MILE).toFixed(1)} mi mainline · ${NET.switches.length} switches · ${WORLD.treeCount.toLocaleString()} trees`);
   GAME.ready = true;
   $('btnStart').disabled = false;
   MP.worldReady();
@@ -6159,6 +6707,7 @@ function makeTrain() {
   if (GAME.train) GAME.train.dispose();
   const t = new Train(scene, GAME.settings.loco, GAME.settings.consist, dieselOpts());
   GAME.train = t;
+  if (WORLD.custom) { placeOnLayout(t); return; }
   let line = ROUTE.lines['Yard 2'], sFront = line.len - 175;
   GAME.spawnName = 'Yard 2, Bellevue';
   if (MP.on) {
@@ -6174,6 +6723,36 @@ function makeTrain() {
   }
   const loc = line.locate(sFront);
   t.place(new TrackPos(loc.edge, loc.s, 1));
+  finishTrain(t);
+}
+/* custom layout: the start marker, slid forward until the whole train is on the rails */
+function placeOnLayout(t, light) {
+  if (!MP.on) for (const s of NET.switches) { s.state = 0; s.anim = 0; }
+  const st = layoutStart(PLAY_LAYOUT), need = t.length + 4;
+  let tp = layoutFit(new TrackPos(st.edge, st.s, st.o), need);
+  GAME.spawnName = PLAY_LAYOUT.name || 'your layout';
+  if (!tp && !light && GAME.settings.consist !== 'light') {
+    t.dispose();
+    toast('That train is longer than the track, so you have a light engine.', 'warn', 5200);
+    const t2 = new Train(scene, GAME.settings.loco, 'light', dieselOpts()); GAME.train = t2; placeOnLayout(t2, true); return;
+  }
+  if (MP.on) {
+    // in a room, find a stretch of track no other train is on
+    const slot = MP.layoutSlot(need); if (slot) tp = slot;
+    MP.spawned = true; MP.needSpawn = false; MP.dirty = true;
+  }
+  t.place(tp || new TrackPos(st.edge, st.s, st.o));
+  finishTrain(t);
+}
+/* slide a front position forward until `need` metres of track lie behind it; null if the track is too short */
+function layoutFit(tp, need) {
+  const room = dir => { let d = Infinity; peekPath(tp, dir, 20000, (node, dd) => { if (!node) { d = dd; return true; } }); return d; };
+  const behind = room(-1), ahead = room(1);
+  if (behind + ahead < need + 8) return null;
+  if (behind < need) tp.advance(Math.min(need - behind, Math.max(0, ahead - 6)), null);
+  return tp;
+}
+function finishTrain(t) {
   prepareTrain(t);
   if (!t.diesel) applySteamFinish(GAME.settings.finish);
   resetState();
@@ -6277,7 +6856,7 @@ GAME.start = function () {
   audioInit(); buildWhistleIfReady();
   if (!GAME.running || GAME.needNewTrain()) {
     makeTrain(); GAME.train.consistKey = GAME.settings.consist;
-    if (GAME.running) toast('New train made up on Yard 2.', 'good');
+    if (GAME.running) toast(`New train made up on ${WORLD.custom ? GAME.spawnName : 'Yard 2'}.`, 'good');
     GAME.intro();
   }
   GAME.running = true; S.paused = false; S.autoFire = GAME.settings.fire === 'auto';
@@ -6290,6 +6869,7 @@ GAME.start = function () {
 };
 GAME.intro = function () {
   if (MP.on) setTimeout(() => toast(`Made up on ${GAME.spawnName}. The switches are shared with everyone in the room.`, '', 5600), 600);
+  else if (WORLD.custom) setTimeout(() => toast(`On ${GAME.spawnName}. Every switch is lined straight: tap one or use Throw to change it.`, '', 5000), 600);
   else setTimeout(() => toast('Yard 2, Bellevue. The ladder is lined out to the main.', '', 5000), 600);
   if (GAME.train && GAME.train.diesel) setTimeout(() => toast((GAME.train.nUnits > 1 ? GAME.train.nUnits + ' units in multiple: they all answer the lead cab. ' : '') + 'Reverser to forward, engine brake off, then notch out the throttle.', '', 6500), 5200);
   else setTimeout(() => toast('Reverser forward, engine brake off, then ease the throttle open.', '', 6000), 5200);
@@ -6434,7 +7014,7 @@ function nearbyService() {
   const tm = T.tender.root.matrixWorld;
   const hatch = new THREE.Vector3(6.675 - 10.6, 4, 0).applyMatrix4(tm), bunker = new THREE.Vector3(6.675 - 3.6, 4, 0).applyMatrix4(tm);
   for (const w of ROUTE.water) { const d = Math.hypot(hatch.x - w.p.x, hatch.z - w.p.z) - (w.kind === 'tower' ? 0 : 0); if (d < 6.5) { if (GAME.filling === 'water') return { label: 'Taking water…', btn: 'Stop', go: () => { GAME.filling = null; } }; return { label: 'Water spout over the hatch', btn: 'Take water', go: () => { GAME.filling = 'water'; } }; } }
-  const c = ROUTE.coal; if (Math.hypot(bunker.x - c.p.x, bunker.z - c.p.z) < 6) { if (GAME.filling === 'coal') return { label: 'Coaling…', btn: 'Stop', go: () => { GAME.filling = null; } }; return { label: 'Under the coal chute', btn: 'Take coal', go: () => { GAME.filling = 'coal'; } }; }
+  const c = ROUTE.coal; if (c && Math.hypot(bunker.x - c.p.x, bunker.z - c.p.z) < 6) { if (GAME.filling === 'coal') return { label: 'Coaling…', btn: 'Stop', go: () => { GAME.filling = null; } }; return { label: 'Under the coal chute', btn: 'Take coal', go: () => { GAME.filling = 'coal'; } }; }
   return null;
 }
 
@@ -6691,6 +7271,825 @@ GAME.restore = function (d) {
   } catch (err) { console.warn('restore failed', err); }
 };
 boot();
+
+/* ============================================================================
+   Layout editor: lay your own railroad on a plan view from straights, curves,
+   turnouts and join curves. A new piece snaps onto an open end with that end's
+   exact pose, so joints are flush; the joint finder in 03b decides what is
+   joined, here and when the layout is built into 3D track.
+   ========================================================================== */
+const ED = {
+  map: null, G: null, idx: new Map(), view: { cx: 0, cn: 2500, sc: 0.4 }, W: 0, H: 0,
+  active: null, sel: null, armed: null, attach: 0, rot: 0, join: null, ghost: null, hoverEnd: null,
+  undo: [], redo: [], curveR: 300, curveDeg: 15, tab: 'straight', warned: false, dirty: true, open: false,
+};
+const ED_PORT_NAMES = ['A', 'B', 'C'];
+
+function edBlank(name) { return { v: 1, id: LAYOUTS.newId(), name: name || 'My railroad', pieces: [], nid: 1, start: null }; }
+const edExt = spec => spec.t === 'turnout' ? 3 : 2;   // external ends of a piece
+function edLabel(p) {
+  if (p.t === 'straight') return { h: `Straight ${p.L} m`, s: `${Math.round(p.L / FT)} ft of tangent track` };
+  if (p.t === 'curve') return { h: `Curve ${p.dir > 0 ? 'left' : 'right'}`, s: `Radius ${p.R} m · ${p.deg}° · ${(p.R * p.deg * Math.PI / 180).toFixed(1)} m long` };
+  if (p.t === 'turnout') { const T = TURNOUTS[p.k]; return { h: `${T.name}, ${p.dir > 0 ? 'left' : 'right'} hand`, s: `${T.sub} · diverging route ${T.lim} mph` }; }
+  if (p.t === 'flex') { const f = flexPath(p, p.b); return { h: 'Join curve', s: `${f.len.toFixed(1)} m · tightest radius ${f.minR === Infinity ? 'straight' : Math.round(f.minR) + ' m'}` }; }
+  return { h: 'Piece', s: '' };
+}
+
+/* ---------- model changes (all go through here so undo and autosave see them) ---------- */
+function edRebuild() {
+  ED.G = layoutGraph(ED.map);
+  ED.idx = new Map(ED.G.pieces.map((P, i) => [P.p.id, i]));
+  for (const P of ED.G.pieces) {
+    let x0 = Infinity, x1 = -Infinity, n0 = Infinity, n1 = -Infinity;
+    for (const path of P.g.paths) for (const q of path.pts) { if (q.X < x0) x0 = q.X; if (q.X > x1) x1 = q.X; if (q.N < n0) n0 = q.N; if (q.N > n1) n1 = q.N; }
+    P.bb = [x0 - 6, x1 + 6, n0 - 6, n1 + 6];
+  }
+  if (ED.active && !edPort(ED.active)) ED.active = null;
+  if (ED.active) { const q = edPort(ED.active); if (q.mate >= 0) ED.active = null; }
+  if (ED.sel != null && !ED.idx.has(ED.sel)) ED.sel = null;
+  ED.warned = false;
+  edPanels(); ED.dirty = true;
+}
+/* A change is what one edit did: pieces added, removed and altered, and the name or
+   start if they moved. Undo applies the inverse of our own changes only, so in a
+   shared build it never takes back what someone else laid. */
+function edSnap() { return { p: new Map(ED.map.pieces.map(x => [x.id, JSON.stringify(x)])), name: ED.map.name, start: JSON.stringify(ED.map.start || null) }; }
+function edDiff(a) {
+  const ch = { add: [], del: [], set: [] }, seen = new Set();
+  for (const x of ED.map.pieces) { seen.add(x.id); const o = a.p.get(x.id), n = JSON.stringify(x); if (o === undefined) ch.add.push(JSON.parse(n)); else if (o !== n) ch.set.push([JSON.parse(o), JSON.parse(n)]); }
+  for (const [id, o] of a.p) if (!seen.has(id)) ch.del.push(JSON.parse(o));
+  if (a.name !== ED.map.name) ch.name = [a.name, ED.map.name];
+  if (a.start !== JSON.stringify(ED.map.start || null)) ch.start = [JSON.parse(a.start), ED.map.start || null];
+  return ch.add.length || ch.del.length || ch.set.length || ch.name || ch.start ? ch : null;
+}
+const edInvert = ch => ({ add: ch.del, del: ch.add, set: ch.set.map(([o, n]) => [n, o]), name: ch.name && [ch.name[1], ch.name[0]], start: ch.start && [ch.start[1], ch.start[0]] });
+function edApply(ch) {
+  const P = ED.map.pieces, at = id => P.findIndex(x => x.id === id);
+  for (const x of ch.del) { const i = at(x.id); if (i >= 0) P.splice(i, 1); }
+  for (const x of ch.add) { const i = at(x.id); if (i >= 0) P[i] = x; else P.push(x); }
+  for (const [, x] of ch.set) { const i = at(x.id); if (i >= 0) P[i] = x; else P.push(x); }
+  if (ch.name) ED.map.name = ch.name[1];
+  if (ch.start) ED.map.start = ch.start[1];
+}
+function edCommit(fn) {
+  const a = edSnap(); fn();
+  const ch = edDiff(a); if (!ch) return;
+  ED.undo.push(ch); if (ED.undo.length > 200) ED.undo.shift(); ED.redo = [];
+  edRebuild(); edSave(); BT.send(ch);
+}
+function edSave() { if (!LAYOUTS.put(ED.map)) edMsg('Could not save: browser storage is full or blocked.', 'bad'); }
+function edUndo(redo) {
+  const from = redo ? ED.redo : ED.undo, to = redo ? ED.undo : ED.redo;
+  if (!from.length) return;
+  const ch = from.pop(), go = redo ? ch : edInvert(ch);
+  edApply(go); to.push(ch);
+  ED.active = null; ED.armed = null; ED.join = null;
+  edRebuild(); edSave(); BT.send(go);
+}
+/* a piece id nobody else in a shared build will pick */
+function edNewId() { let id; do id = 1 + Math.floor(Math.random() * 2e9); while (ED.idx.has(id)); return id; }
+function edPort(ref) { const i = ED.idx.get(ref.pid); if (i === undefined) return null; const P = ED.G.pieces[i]; return ED.G.ports[P.base + ref.j] || null; }
+const edRefOf = q => ({ pid: ED.G.pieces[q.pi].p.id, j: q.j });
+
+/* place spec attached by its port j to end E, or free at (X, N, h) */
+function edPlace(spec, E, j, X, N, h) {
+  const base = { ...spec, id: edNewId() };
+  return E ? attachPiece(base, j % edExt(spec), E) : { ...base, X, N, h };
+}
+function edAdd(spec, E, j, X, N, h) {
+  const p = edPlace(spec, E, j, X, N, h);
+  if (!edInBounds(p)) { edMsg('That would run off the edge of the world.', 'bad'); return null; }
+  edCommit(() => { ED.map.pieces.push(p); });
+  // carry on from the far end of the new piece
+  const P = ED.G.pieces[ED.idx.get(p.id)], jj = E ? j % edExt(spec) : -1;
+  const order = spec.t === 'turnout' ? (jj === 0 ? [1, 2] : [0, 1, 2]) : [1, 0];
+  ED.active = null;
+  for (const k of order) { if (k === jj) continue; const q = ED.G.ports[P.base + k]; if (q.mate < 0) { ED.active = { pid: p.id, j: k }; break; } }
+  if (!ED.active && E) edMsg('Joined up: that closes the track.', 'good');
+  edPanels(); ED.dirty = true;
+  return p;
+}
+function edInBounds(p) {
+  const B = LAYOUT.bounds, g = pieceGeom(p);
+  for (const path of g.paths) for (const q of path.pts) if (q.X < B.x0 || q.X > B.x1 || q.N < B.n0 || q.N > B.n1) return false;
+  return true;
+}
+function edDelete(pid) {
+  const i = ED.idx.get(pid); if (i === undefined) return;
+  const P = ED.G.pieces[i];
+  // the piece this one was attached to keeps building from the freed end
+  let back = null;
+  for (let k = 0; k < edExt(P.p); k++) { const q = ED.G.ports[P.base + k]; if (q.mate >= 0) { back = edRefOf(ED.G.ports[q.mate]); break; } }
+  edCommit(() => {
+    ED.map.pieces = ED.map.pieces.filter(p => p.id !== pid);
+    if (ED.map.start && ED.map.start.id === pid) ED.map.start = null;
+  });
+  ED.sel = null; ED.active = back && edPort(back) ? back : null;
+  edPanels(); ED.dirty = true;
+}
+function edUpdatePiece(pid, fn) {
+  edCommit(() => { const p = ED.map.pieces.find(x => x.id === pid); if (p) fn(p); });
+}
+function edJoin(a, b) {
+  const qa = edPort(a), qb = edPort(b);
+  if (!qa || !qb || qa === qb) return;
+  const d = Math.hypot(qa.X - qb.X, qa.N - qb.N);
+  if (d < 1) { edMsg('Those ends already touch. Line them up with the pieces instead.', 'bad'); return; }
+  const spec = { t: 'flex', X: qa.X, N: qa.N, h: qa.h, b: { X: qb.X, N: qb.N, h: qb.h + Math.PI } };
+  const f = flexPath(spec, spec.b);
+  if (f.minR < LAYOUT.minFlexR) { edMsg(`Too sharp to join: the curve would be ${Math.round(f.minR)} m radius (${LAYOUT.minFlexR} m is the tightest allowed). Lay more track toward the other end first.`, 'bad'); return; }
+  const p = { ...spec, id: edNewId() };
+  if (!edInBounds(p)) { edMsg('That join would run off the edge of the world.', 'bad'); return; }
+  edCommit(() => { ED.map.pieces.push(p); });
+  ED.active = null; ED.join = null; edMsg(`Joined with a ${f.len.toFixed(0)} m curve, radius ${f.minR === Infinity ? 'straight' : Math.round(f.minR) + ' m'} at its tightest.`, 'good');
+  edPanels();
+}
+function edRotateSel(dir) {
+  const i = ED.idx.get(ED.sel); if (i === undefined) return;
+  const P = ED.G.pieces[i];
+  for (let k = 0; k < edExt(P.p); k++) if (ED.G.ports[P.base + k].mate >= 0) { edMsg('Only a piece that is not joined to anything can be turned.', 'bad'); return; }
+  if (P.p.t === 'flex') return;
+  // turn about the middle of the piece
+  const g = P.g, mid = g.paths[0].pts[(g.paths[0].pts.length / 2) | 0], a = dir * Math.PI / 12, c = Math.cos(a), s = Math.sin(a);
+  const dx = P.p.X - mid.X, dn = P.p.N - mid.N;
+  const np = { ...P.p, X: mid.X + c * dx - s * dn, N: mid.N + s * dx + c * dn, h: wrapPi(P.p.h + a) };
+  if (!edInBounds(np)) { edMsg('That would run off the edge of the world.', 'bad'); return; }
+  edUpdatePiece(ED.sel, p => { p.X = np.X; p.N = np.N; p.h = np.h; });
+}
+
+/* ---------- view ---------- */
+const edTX = X => ED.W / 2 + (X - ED.view.cx) * ED.view.sc, edTY = N => ED.H / 2 - (N - ED.view.cn) * ED.view.sc;
+const edWX = x => ED.view.cx + (x - ED.W / 2) / ED.view.sc, edWN = y => ED.view.cn - (y - ED.H / 2) / ED.view.sc;
+function edFit() {
+  const pcs = ED.G ? ED.G.pieces : [];
+  if (!pcs.length) { ED.view.cx = 0; ED.view.cn = 2500; ED.view.sc = Math.min(ED.W, ED.H) / 1600; ED.dirty = true; return; }
+  let x0 = Infinity, x1 = -Infinity, n0 = Infinity, n1 = -Infinity;
+  for (const P of pcs) { x0 = Math.min(x0, P.bb[0]); x1 = Math.max(x1, P.bb[1]); n0 = Math.min(n0, P.bb[2]); n1 = Math.max(n1, P.bb[3]); }
+  ED.view.cx = (x0 + x1) / 2; ED.view.cn = (n0 + n1) / 2;
+  ED.view.sc = clamp(Math.min(ED.W / (x1 - x0 + 120), (ED.H - 220) / (n1 - n0 + 120)), 0.03, 30);
+  ED.dirty = true;
+}
+function edZoom(f, x, y) {
+  const X = edWX(x), N = edWN(y);
+  ED.view.sc = clamp(ED.view.sc * f, 0.03, 40);
+  ED.view.cx = X - (x - ED.W / 2) / ED.view.sc; ED.view.cn = N + (y - ED.H / 2) / ED.view.sc;
+  ED.dirty = true;
+}
+
+/* ---------- drawing ---------- */
+function edStroke(g, pts, off, step = 1) {
+  g.beginPath();
+  for (let i = 0; i < pts.length; i += step) {
+    const q = pts[i]; const x = edTX(q.X - Math.sin(q.h) * off), y = edTY(q.N + Math.cos(q.h) * off);
+    i ? g.lineTo(x, y) : g.moveTo(x, y);
+  }
+  const L = pts[pts.length - 1]; if ((pts.length - 1) % step) g.lineTo(edTX(L.X - Math.sin(L.h) * off), edTY(L.N + Math.cos(L.h) * off));
+  g.stroke();
+}
+function edDrawPiece(g, P, mode) {
+  const sc = ED.view.sc, step = sc > 2 ? 1 : sc > 0.4 ? 4 : 10;
+  const ghost = mode === 'ghost', bad = mode === 'bad', sel = mode === 'sel';
+  g.lineCap = 'butt'; g.lineJoin = 'round';
+  for (const path of P.g.paths) {
+    const pts = path.pts;
+    if (sel) { g.strokeStyle = 'rgba(207,166,81,0.45)'; g.lineWidth = Math.max(10, 7 * sc); edStroke(g, pts, 0, step); }
+    g.strokeStyle = bad ? 'rgba(238,75,61,0.55)' : ghost ? 'rgba(82,212,131,0.35)' : '#4a4843'; g.lineWidth = Math.max(3, 4.4 * sc); edStroke(g, pts, 0, step);
+    if (sc > 5 && !ghost && !bad) {   // ties
+      g.strokeStyle = '#5c4a39'; g.lineWidth = Math.max(1, 0.23 * sc); g.beginPath();
+      for (let i = 0; i < pts.length; i++) { const q = pts[i], c = Math.cos(q.h), s = Math.sin(q.h); g.moveTo(edTX(q.X + s * 1.3), edTY(q.N - c * 1.3)); g.lineTo(edTX(q.X - s * 1.3), edTY(q.N + c * 1.3)); }
+      g.stroke();
+    }
+    const railC = bad ? '#ffb4ab' : ghost ? '#a9f0c4' : P.p.t === 'turnout' ? '#e6d3a1' : P.p.t === 'flex' ? '#b9d4df' : '#c9d2d6';
+    g.strokeStyle = railC;
+    if (sc > 2.2) { g.lineWidth = Math.max(1, 0.15 * sc); edStroke(g, pts, RAIL_OFF, step); edStroke(g, pts, -RAIL_OFF, step); }
+    else { g.lineWidth = sc > 0.6 ? 1.6 : 1.2; edStroke(g, pts, 0, step); }
+  }
+  // the points of a turnout
+  if (P.g.sw && !ghost) { const q = P.g.ports[3]; g.fillStyle = bad ? '#ffb4ab' : '#cfa651'; g.beginPath(); g.arc(edTX(q.X), edTY(q.N), clamp(1.2 * sc, 2.5, 6), 0, TAU); g.fill(); }
+}
+function edDraw() {
+  const c = $('edCanvas'), dpr = Math.min(2, devicePixelRatio || 1), W = innerWidth, H = innerHeight;
+  if (c.width !== Math.round(W * dpr) || c.height !== Math.round(H * dpr)) { c.width = Math.round(W * dpr); c.height = Math.round(H * dpr); }
+  ED.W = W; ED.H = H;
+  const g = c.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.fillStyle = '#1b231d'; g.fillRect(0, 0, W, H);
+  const sc = ED.view.sc;
+  // outside the world
+  const B = LAYOUT.bounds;
+  g.fillStyle = '#0d1214'; g.beginPath(); g.rect(0, 0, W, H); g.rect(edTX(B.x0), edTY(B.n1), (B.x1 - B.x0) * sc, (B.n1 - B.n0) * sc); g.fill('evenodd');
+  // grid: 10 m, 100 m, 1 km as the zoom allows
+  for (const [step, a] of [[10, 0.035], [100, 0.06], [1000, 0.1]]) {
+    if (step * sc < 9) continue;
+    g.strokeStyle = `rgba(255,255,255,${a})`; g.lineWidth = 1; g.beginPath();
+    const x0 = Math.max(B.x0, Math.floor(edWX(0) / step) * step), x1 = Math.min(B.x1, edWX(W)), n0 = Math.max(B.n0, Math.floor(edWN(H) / step) * step), n1 = Math.min(B.n1, edWN(0));
+    for (let X = x0; X <= x1; X += step) { const x = Math.round(edTX(X)) + 0.5; g.moveTo(x, edTY(Math.max(B.n0, edWN(H)))); g.lineTo(x, edTY(n1)); }
+    for (let N = n0; N <= n1; N += step) { const y = Math.round(edTY(N)) + 0.5; g.moveTo(edTX(Math.max(B.x0, edWX(0))), y); g.lineTo(edTX(x1), y); }
+    g.stroke();
+  }
+  g.strokeStyle = 'rgba(207,166,81,0.35)'; g.lineWidth = 1.5; g.strokeRect(edTX(B.x0), edTY(B.n1), (B.x1 - B.x0) * sc, (B.n1 - B.n0) * sc);
+  const G = ED.G; if (!G) return;
+  const vis = P => !(edTX(P.bb[1]) < -20 || edTX(P.bb[0]) > W + 20 || edTY(P.bb[2]) < -20 || edTY(P.bb[3]) > H + 20);
+  // stations under the track
+  for (const P of G.pieces) {
+    if (!P.p.st || !vis(P)) continue;
+    const pts = P.g.paths[0].pts, side = P.p.st.side || 1;
+    g.strokeStyle = 'rgba(207,166,81,0.55)'; g.lineWidth = Math.max(2, 4 * sc); g.lineCap = 'butt';
+    edStroke(g, pts.slice(Math.floor(pts.length * 0.15), Math.ceil(pts.length * 0.85)), -side * 4.4, 1);
+    const m = pts[(pts.length / 2) | 0], off = -side * (12 + 14 / Math.max(sc, 0.05));
+    g.fillStyle = '#cfa651'; g.font = '600 12px "IBM Plex Sans Condensed", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText((P.p.st.name || 'Station').toUpperCase(), edTX(m.X - Math.sin(m.h) * off), edTY(m.N + Math.cos(m.h) * off));
+  }
+  for (const P of G.pieces) if (vis(P)) edDrawPiece(g, P, P.p.id === ED.sel ? 'sel' : '');
+  // joints: a hairline across the rails where two pieces meet flush
+  if (sc > 1.5) {
+    g.strokeStyle = 'rgba(0,0,0,0.55)'; g.lineWidth = 1; g.beginPath();
+    for (const q of G.ports) { if (q.internal || q.mate < q.id) continue; const c = Math.cos(q.h), s = Math.sin(q.h); g.moveTo(edTX(q.X + s * 1.1), edTY(q.N - c * 1.1)); g.lineTo(edTX(q.X - s * 1.1), edTY(q.N + c * 1.1)); }
+    g.stroke();
+  }
+  // start marker
+  if (ED.map.start && ED.idx.has(ED.map.start.id)) {
+    const P = G.pieces[ED.idx.get(ED.map.start.id)], pts = P.g.paths[0].pts, m = pts[(pts.length / 2) | 0];
+    const h = m.h + (ED.map.start.dir < 0 ? Math.PI : 0), r = clamp(9 * sc, 9, 18), x = edTX(m.X), y = edTY(m.N), c = Math.cos(h), s = Math.sin(h);
+    g.fillStyle = '#ffe08a'; g.strokeStyle = '#000'; g.lineWidth = 1.5; g.beginPath();
+    g.moveTo(x + c * r, y - s * r); g.lineTo(x - c * r * 0.7 - s * r * 0.6, y + s * r * 0.7 - c * r * 0.6); g.lineTo(x - c * r * 0.7 + s * r * 0.6, y + s * r * 0.7 + c * r * 0.6); g.closePath(); g.fill(); g.stroke();
+  }
+  // ghost of the piece about to be placed
+  if (ED.ghost) edDrawPiece(g, { p: ED.ghost.p, g: pieceGeom(ED.ghost.p) }, ED.ghost.ok ? 'ghost' : 'bad');
+  // open ends
+  const r = 6;
+  for (const q of G.open) {
+    const x = edTX(q.X), y = edTY(q.N); if (x < -20 || y < -20 || x > W + 20 || y > H + 20) continue;
+    const isA = ED.active && edPort(ED.active) === q, isJ = ED.join && edPort(ED.join) === q, hov = ED.hoverEnd === q;
+    const c = Math.cos(q.h), s = Math.sin(q.h);
+    g.strokeStyle = isA || isJ ? '#fff2c9' : '#f2b33d'; g.lineWidth = 2;
+    g.beginPath(); g.moveTo(x, y); g.lineTo(x + c * (isA ? 22 : 12), y - s * (isA ? 22 : 12)); g.stroke();
+    if (isA) { const ax = x + c * 22, ay = y - s * 22; g.fillStyle = '#fff2c9'; g.beginPath(); g.moveTo(ax + c * 7, ay - s * 7); g.lineTo(ax - s * 5, ay - c * 5); g.lineTo(ax + s * 5, ay + c * 5); g.closePath(); g.fill(); }
+    g.fillStyle = isA || isJ ? '#fff2c9' : '#f2b33d'; g.strokeStyle = '#000'; g.lineWidth = 1.5;
+    g.beginPath(); g.arc(x, y, isA || isJ || hov ? r + 2 : r, 0, TAU); g.fill(); g.stroke();
+  }
+  BT.drawPeers(g);
+  // problems
+  const pulse = 0.7 + 0.3 * Math.sin(performance.now() / 260);
+  for (const is of G.issues) {
+    const x = edTX(is.X), y = edTY(is.N); if (x < -30 || y < -30 || x > W + 30 || y > H + 30) continue;
+    g.fillStyle = 'rgba(238,75,61,0.16)'; g.strokeStyle = `rgba(238,75,61,${pulse})`; g.lineWidth = 3;
+    g.beginPath(); g.arc(x, y, 16 + 3 * pulse, 0, TAU); g.fill(); g.stroke();
+  }
+  // scale bar
+  const target = 120 / sc, pow = Math.pow(10, Math.floor(Math.log10(target))), nice = [1, 2, 5, 10].map(k => k * pow).find(v => v >= target * 0.6) || pow, bw = nice * sc;
+  const bx = 14, by = H - (innerWidth <= 600 ? 150 : 132) ;
+  g.fillStyle = '#dfe4e6'; g.fillRect(bx, by, bw, 2); g.fillRect(bx, by - 4, 1.5, 6); g.fillRect(bx + bw - 1.5, by - 4, 1.5, 6);
+  g.font = '500 11px "IBM Plex Mono", monospace'; g.textAlign = 'left'; g.textBaseline = 'bottom'; g.fillText(nice >= 1000 ? nice / 1000 + ' km' : nice + ' m', bx, by - 5);
+}
+
+/* ---------- panels ---------- */
+function edMsg(t, kind = '') {
+  const m = $('edMsg'); m.textContent = t; m.className = 'on ' + kind;
+  clearTimeout(edMsg.t); edMsg.t = setTimeout(() => { m.className = kind; }, kind === 'bad' ? 5200 : 3400);
+}
+function edPanels() {
+  const G = ED.G; if (!G) return;
+  $('edName').value === ED.map.name || ($('edName').value = ED.map.name);
+  $('edUndo').disabled = !ED.undo.length; $('edRedo').disabled = !ED.redo.length;
+  $('edStats').innerHTML = G.pieces.length
+    ? `<b>${fmtMi(G.len)}</b> of track · <b>${G.pieces.length}</b> pieces · <b>${G.nSw}</b> switch${G.nSw === 1 ? '' : 'es'} · <b>${G.open.length}</b> open end${G.open.length === 1 ? '' : 's'}`
+    : 'Empty layout';
+  const iss = $('edIssues'); iss.innerHTML = '';
+  if (G.pieces.length) {
+    if (!G.issues.length) { const d = document.createElement('div'); d.className = 'ok'; d.textContent = G.open.length ? 'Every joint is flush. Open ends get bumping posts.' : 'Every joint is flush and the track is continuous.'; iss.appendChild(d); }
+    for (const is of G.issues.slice(0, 4)) {
+      const b = document.createElement('button'); b.type = 'button'; b.textContent = is.text + ' (show)';
+      b.addEventListener('click', () => { ED.view.cx = is.X; ED.view.cn = is.N; ED.view.sc = Math.max(ED.view.sc, 6); ED.dirty = true; });
+      iss.appendChild(b);
+    }
+    if (G.issues.length > 4) { const d = document.createElement('div'); d.className = 'ok'; d.style.color = 'var(--stop)'; d.textContent = `and ${G.issues.length - 4} more marked in red`; iss.appendChild(d); }
+  }
+  let hint;
+  if (ED.join) hint = '<b>Join:</b> now tap the open end to join it to. The editor draws the smoothest curve between them.';
+  else if (ED.tab === 'tools' && ED.joinArmed) hint = '<b>Join:</b> tap the first of two open ends.';
+  else if (ED.armed) hint = `Tap the map to put it down, or tap an amber end to attach it there. <b>Turn</b> and <b>Flip end</b> are under Tools. Attaching by end <b>${ED_PORT_NAMES[ED.attach % edExt(ED.armed)]}</b>.`;
+  else if (ED.active) hint = 'Tap a piece below to add it at the highlighted end. Tap any other amber end to build from there, or a piece to select it.';
+  else if (!G.pieces.length) hint = 'Pick a piece below and tap the map to lay it down. Then keep picking pieces: each one snaps flush onto the open end.';
+  else hint = 'Tap an amber end to build from it, or tap a piece to select it.';
+  $('edHint').innerHTML = hint;
+  edPalState(); edSelCard();
+}
+function edSelCard() {
+  const box = $('edSel');
+  const i = ED.sel != null ? ED.idx.get(ED.sel) : undefined;
+  if (i === undefined) { box.hidden = true; return; }
+  const P = ED.G.pieces[i], p = P.p, lab = edLabel(p);
+  const free = [...Array(edExt(p)).keys()].every(k => ED.G.ports[P.base + k].mate < 0);
+  const isStart = ED.map.start && ED.map.start.id === p.id;
+  const canStation = p.t === 'straight' && p.L >= 50;
+  box.hidden = false;
+  box.innerHTML = `<h3>${lab.h}</h3><div class="sub">${lab.s}</div>
+    <div class="acts">
+      <button class="btn warn" type="button" data-a="del">Delete</button>
+      ${p.t !== 'turnout' ? `<button class="btn" type="button" data-a="start" aria-pressed="${!!isStart}">${isStart ? 'Start: turn around' : 'Start here'}</button>` : ''}
+      ${canStation ? `<button class="btn" type="button" data-a="st" aria-pressed="${!!p.st}">${p.st ? 'Remove station' : 'Add station'}</button>` : ''}
+      ${free && p.t !== 'flex' ? '<button class="btn" type="button" data-a="rl">Turn ⟲</button><button class="btn" type="button" data-a="rr">Turn ⟳</button>' : ''}
+      <button class="btn" type="button" data-a="close">Done</button>
+    </div>
+    ${p.st ? `<div id="edSt"><input class="mpIn" id="edStName" maxlength="24" value="${(p.st.name || '').replace(/"/g, '&quot;')}" placeholder="Station name" aria-label="Station name">
+      <div class="acts"><button class="btn" type="button" data-a="sl" aria-pressed="${p.st.side < 0}">Left side</button><button class="btn" type="button" data-a="sr" aria-pressed="${p.st.side > 0}">Right side</button>
+      <button class="btn" type="button" data-a="big" aria-pressed="${!!p.st.big}">Town</button><button class="btn" type="button" data-a="small" aria-pressed="${!p.st.big}">Halt</button></div></div>` : ''}
+    ${p.t === 'straight' && p.L < 50 ? '<div class="sub" style="margin:0">Stations go on straights of 50 m or more.</div>' : ''}`;
+  box.querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+    const a = b.dataset.a;
+    if (a === 'del') edDelete(p.id);
+    else if (a === 'close') { ED.sel = null; edPanels(); ED.dirty = true; }
+    else if (a === 'start') edCommit(() => { ED.map.start = isStart ? { id: p.id, dir: -(ED.map.start.dir || 1) } : { id: p.id, dir: 1 }; });
+    else if (a === 'st') edUpdatePiece(p.id, x => { if (x.st) delete x.st; else x.st = { name: edStationName(), side: 1, big: true }; });
+    else if (a === 'sl' || a === 'sr') edUpdatePiece(p.id, x => { x.st.side = a === 'sl' ? -1 : 1; });
+    else if (a === 'big' || a === 'small') edUpdatePiece(p.id, x => { x.st.big = a === 'big'; });
+    else if (a === 'rl' || a === 'rr') edRotateSel(a === 'rl' ? 1 : -1);
+  }));
+  const nm = $('edStName');
+  if (nm) nm.addEventListener('change', () => edUpdatePiece(p.id, x => { x.st.name = nm.value.trim().slice(0, 24) || 'Station'; }));
+}
+function edStationName() {
+  const used = new Set(ED.map.pieces.filter(p => p.st).map(p => p.st.name));
+  for (const n of ['Millersburg', 'Ashland', 'Wooster', 'Orrville', 'Galion', 'Crestline', 'Bucyrus', 'Upper Sandusky', 'Marion', 'Findlay', 'Lima', 'Van Wert']) if (!used.has(n)) return n;
+  return 'Station ' + (used.size + 1);
+}
+
+/* ---------- palette ---------- */
+function edIcon(cv, spec) {
+  const dpr = 2; cv.width = 56 * dpr; cv.height = 30 * dpr;
+  const g = cv.getContext('2d'); g.scale(dpr, dpr);
+  const geo = pieceGeom({ ...spec, X: 0, N: 0, h: 0 });
+  let x0 = Infinity, x1 = -Infinity, n0 = Infinity, n1 = -Infinity;
+  for (const path of geo.paths) for (const q of path.pts) { x0 = Math.min(x0, q.X); x1 = Math.max(x1, q.X); n0 = Math.min(n0, q.N); n1 = Math.max(n1, q.N); }
+  const span = Math.max(x1 - x0, (n1 - n0) * 1.9, 30), s = 48 / span, cx = (x0 + x1) / 2, cn = (n0 + n1) / 2;
+  g.lineCap = 'round'; g.strokeStyle = spec.t === 'turnout' ? '#e6d3a1' : '#c9d2d6'; g.lineWidth = 2.4;
+  for (const path of geo.paths) { g.beginPath(); path.pts.forEach((q, i) => { const x = 28 + (q.X - cx) * s, y = 15 - (q.N - cn) * s; i ? g.lineTo(x, y) : g.moveTo(x, y); }); g.stroke(); }
+}
+const ED_TABS = { straight: 'Straight', curve: 'Curve', turnout: 'Turnout', tools: 'Tools' };
+function edPalette() {
+  const tabs = $('edTabs'); tabs.innerHTML = '';
+  for (const k in ED_TABS) {
+    const b = document.createElement('button'); b.type = 'button'; b.role = 'tab'; b.textContent = ED_TABS[k]; b.setAttribute('aria-selected', String(ED.tab === k));
+    b.addEventListener('click', () => { ED.tab = k; ED.joinArmed = false; ED.join = null; edPalette(); edPanels(); });
+    tabs.appendChild(b);
+  }
+  const pal = $('edPal'); pal.innerHTML = '';
+  const grp = () => { const d = document.createElement('div'); d.className = 'grp'; pal.appendChild(d); return d; };
+  const piece = (host, spec, name, sub) => {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'pc'; b.spec = spec;
+    const cv = document.createElement('canvas'); edIcon(cv, spec); b.appendChild(cv);
+    b.insertAdjacentHTML('beforeend', `<span>${name}</span>${sub ? `<small>${sub}</small>` : ''}`);
+    b.addEventListener('click', () => edPick(spec));
+    host.appendChild(b);
+  };
+  const chips = (host, label, vals, cur, fmt, set) => {
+    const w = document.createElement('div'); w.className = 'chips'; w.innerHTML = `<span class="lbl">${label}</span>`;
+    const row = document.createElement('div'); w.appendChild(row);
+    for (const v of vals) { const c = document.createElement('button'); c.type = 'button'; c.className = 'chip'; c.textContent = fmt(v); c.setAttribute('aria-pressed', String(v === cur)); c.addEventListener('click', () => { set(v); edPalette(); }); row.appendChild(c); }
+    host.appendChild(w);
+  };
+  if (ED.tab === 'straight') { const g = grp(); for (const L of STRAIGHTS) piece(g, { t: 'straight', L }, L + ' m', Math.round(L / FT) + ' ft'); }
+  else if (ED.tab === 'curve') {
+    const a = grp(); chips(a, 'Radius', CURVE_R, ED.curveR, v => v + ' m', v => { ED.curveR = v; }); chips(a, 'Angle', CURVE_DEG, ED.curveDeg, v => v + '°', v => { ED.curveDeg = v; });
+    const b = grp();
+    piece(b, { t: 'curve', R: ED.curveR, deg: ED.curveDeg, dir: 1 }, 'Left', `R ${ED.curveR} · ${ED.curveDeg}°`);
+    piece(b, { t: 'curve', R: ED.curveR, deg: ED.curveDeg, dir: -1 }, 'Right', `R ${ED.curveR} · ${ED.curveDeg}°`);
+  } else if (ED.tab === 'turnout') {
+    for (const k of ['main', 'par', 'yard']) { const g = grp(), T = TURNOUTS[k]; for (const dir of [1, -1]) piece(g, { t: 'turnout', k, dir }, `${T.name.split(' ')[0]} ${dir > 0 ? 'L' : 'R'}`, T.sub); }
+  } else {
+    const g = grp();
+    const tool = (name, sub, fn, pressed) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'pc'; b.style.minWidth = '74px'; b.innerHTML = `<span style="font-size:18px;line-height:30px">${sub}</span><span>${name}</span>`; if (pressed) b.setAttribute('aria-pressed', 'true'); b.addEventListener('click', fn); g.appendChild(b); return b; };
+    tool('Join ends', '⤳', () => { ED.joinArmed = !ED.joinArmed; ED.join = null; ED.armed = null; ED.ghost = null; edPalette(); edPanels(); }, ED.joinArmed);
+    tool('Flip end', '⇄', () => { ED.attach = (ED.attach + 1) % 3; edMsg(`New pieces attach by end ${ED_PORT_NAMES[ED.attach]}${ED.attach ? ': the far end of a straight or curve, or the straight / diverging end of a turnout.' : ', the usual end.'}`); edPanels(); edGhostAt(ED.lastPtr); });
+    tool('Turn ⟲', '⟲', () => { if (ED.sel != null) edRotateSel(1); else { ED.rot = wrapPi(ED.rot + Math.PI / 12); edGhostAt(ED.lastPtr); edMsg(`Free pieces point ${Math.round((ED.rot * 180 / Math.PI + 360) % 360)}° from east.`); } });
+    tool('Turn ⟳', '⟳', () => { if (ED.sel != null) edRotateSel(-1); else { ED.rot = wrapPi(ED.rot - Math.PI / 12); edGhostAt(ED.lastPtr); edMsg(`Free pieces point ${Math.round((ED.rot * 180 / Math.PI + 360) % 360)}° from east.`); } });
+    tool('Delete', '⌫', () => edDeleteKey());
+  }
+  edPalState();
+}
+function edPalState() {
+  for (const b of document.querySelectorAll('#edPal .pc')) if (b.spec) b.setAttribute('aria-pressed', String(!!ED.armed && JSON.stringify(ED.armed) === JSON.stringify(b.spec)));
+}
+function edPick(spec) {
+  ED.joinArmed = false; ED.join = null;
+  if (ED.active) { const E = edPort(ED.active); if (E) { ED.armed = null; ED.ghost = null; edAdd(spec, E, ED.attach); return; } }
+  ED.armed = (ED.armed && JSON.stringify(ED.armed) === JSON.stringify(spec)) ? null : spec;
+  if (!ED.armed) ED.ghost = null; else edGhostAt(ED.lastPtr);
+  edPanels();
+}
+function edDeleteKey() {
+  if (ED.sel != null) { edDelete(ED.sel); return; }
+  if (ED.active) { edDelete(ED.active.pid); return; }
+  edMsg('Select a piece first, or pick an end to delete the piece behind it.');
+}
+
+/* ---------- pointer ---------- */
+function edEndAt(x, y, rad) {
+  let best = null, bd = rad;
+  for (const q of ED.G.open) { const d = Math.hypot(edTX(q.X) - x, edTY(q.N) - y); if (d < bd) { bd = d; best = q; } }
+  return best;
+}
+function edPieceAt(x, y) {
+  let best = null, bd = 14;
+  for (const P of ED.G.pieces) {
+    if (edTX(P.bb[1]) < x - 20 || edTX(P.bb[0]) > x + 20 || edTY(P.bb[2]) < y - 20 || edTY(P.bb[3]) > y + 20) continue;
+    for (const path of P.g.paths) for (let i = 0; i < path.pts.length; i += 2) { const q = path.pts[i], d = Math.hypot(edTX(q.X) - x, edTY(q.N) - y); if (d < bd) { bd = d; best = P; } }
+  }
+  return best;
+}
+function edGhostAt(ptr) {
+  if (!ptr || !ED.armed) { ED.ghost = null; ED.dirty = true; return; }
+  const E = edEndAt(ptr.x, ptr.y, ptr.touch ? 34 : 26);
+  let p;
+  if (E) p = edPlace(ED.armed, E, ED.attach);
+  else p = edPlace(ED.armed, null, 0, Math.round(edWX(ptr.x)), Math.round(edWN(ptr.y)), ED.rot);
+  ED.ghost = { p, E, ok: edInBounds(p) };
+  ED.dirty = true;
+}
+function edTap(x, y, touch) {
+  const E = edEndAt(x, y, touch ? 30 : 20);
+  if (ED.joinArmed) {
+    if (!E) { edMsg('Tap an open (amber) end.'); return; }
+    if (!ED.join) { ED.join = edRefOf(E); edPanels(); ED.dirty = true; return; }
+    const a = ED.join; if (edPort(a) === E) { ED.join = null; edPanels(); return; }
+    edJoin(a, edRefOf(E)); return;
+  }
+  if (ED.armed) {
+    const spec = ED.armed; ED.armed = null; ED.ghost = null;
+    if (E) edAdd(spec, E, ED.attach);
+    else edAdd(spec, null, 0, Math.round(edWX(x)), Math.round(edWN(y)), ED.rot);
+    return;
+  }
+  if (E) { ED.active = edRefOf(E); ED.sel = null; edPanels(); ED.dirty = true; return; }
+  const P = edPieceAt(x, y);
+  if (P) { ED.sel = P.p.id; edPanels(); ED.dirty = true; return; }
+  ED.sel = null; ED.active = null; edPanels(); ED.dirty = true;
+}
+function edInput() {
+  const c = $('edCanvas'), ptrs = new Map(); let tap = null, pinch = null;
+  c.addEventListener('pointerdown', e => {
+    c.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    tap = ptrs.size === 1 && e.button === 0 ? { x: e.clientX, y: e.clientY, touch: e.pointerType !== 'mouse' } : null;
+    if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), sc: ED.view.sc, mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2 }; }
+  });
+  c.addEventListener('pointermove', e => {
+    ED.lastPtr = { x: e.clientX, y: e.clientY, touch: e.pointerType !== 'mouse' };
+    if (!ptrs.has(e.pointerId)) {
+      if (e.pointerType === 'mouse') { const E = edEndAt(e.clientX, e.clientY, 20); if (E !== ED.hoverEnd) { ED.hoverEnd = E; ED.dirty = true; } if (ED.armed) edGhostAt(ED.lastPtr); }
+      return;
+    }
+    const p = ptrs.get(e.pointerId), dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
+    if (tap && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) > 7) tap = null;
+    if (ptrs.size === 2 && pinch) {
+      const [a, b] = [...ptrs.values()], d = Math.hypot(a.x - b.x, a.y - b.y), mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+      edZoom(pinch.sc * d / pinch.d / ED.view.sc, mx, my);
+      ED.view.cx -= (mx - pinch.mx) / ED.view.sc; ED.view.cn += (my - pinch.my) / ED.view.sc; pinch.mx = mx; pinch.my = my;
+    } else if (!tap) { ED.view.cx -= dx / ED.view.sc; ED.view.cn += dy / ED.view.sc; ED.dirty = true; if (ED.armed && e.pointerType === 'mouse') edGhostAt(ED.lastPtr); }
+  });
+  const up = e => {
+    if (tap && ptrs.size === 1 && e.type === 'pointerup') edTap(e.clientX, e.clientY, tap.touch);
+    ptrs.delete(e.pointerId); tap = null; if (ptrs.size < 2) pinch = null;
+  };
+  c.addEventListener('pointerup', up); c.addEventListener('pointercancel', up);
+  c.addEventListener('pointerleave', e => { if (e.pointerType === 'mouse' && ED.armed) { ED.ghost = null; ED.dirty = true; } });
+  c.addEventListener('wheel', e => { e.preventDefault(); edZoom(Math.exp(-e.deltaY * 0.0016), e.clientX, e.clientY); if (ED.armed) edGhostAt(ED.lastPtr); }, { passive: false });
+  c.addEventListener('contextmenu', e => e.preventDefault());
+  addEventListener('keydown', e => {
+    if (!ED.open) return;
+    if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+    const k = e.key.toLowerCase(), mod = e.ctrlKey || e.metaKey;
+    let used = true;
+    if (mod && k === 'z') edUndo(e.shiftKey);
+    else if (mod && k === 'y') edUndo(true);
+    else if (k === 'delete' || k === 'backspace') edDeleteKey();
+    else if (k === 'escape') { ED.armed = null; ED.ghost = null; ED.join = null; ED.joinArmed = false; ED.sel = null; edPalette(); edPanels(); ED.dirty = true; }
+    else if (k === 'q' || k === 'e') { const d = k === 'q' ? 1 : -1; if (ED.sel != null) edRotateSel(d); else { ED.rot = wrapPi(ED.rot + d * Math.PI / 12); edGhostAt(ED.lastPtr); } }
+    else if (k === 'f') { ED.attach = (ED.attach + 1) % 3; edPanels(); edGhostAt(ED.lastPtr); }
+    else if (k === 'j') { ED.tab = 'tools'; ED.joinArmed = !ED.joinArmed; ED.join = null; edPalette(); edPanels(); }
+    else used = false;
+    if (used) { e.preventDefault(); e.stopImmediatePropagation(); }
+  }, true);
+}
+
+/* ---------- files ---------- */
+function edLoad(map) {
+  if (BT.on && map.shared !== BT.code) BT.leave(true);   // a different layout is not the shared one
+  ED.map = map;
+  ED.undo = []; ED.redo = []; ED.active = null; ED.sel = null; ED.armed = null; ED.ghost = null; ED.join = null; ED.joinArmed = false;
+  try { localStorage.setItem('bd_layout_last', map.id); } catch (e) {}
+  edRebuild(); edFit();
+}
+function edFiles(show) {
+  $('edFiles').hidden = !show; if (!show) return;
+  const list = $('edList'); list.innerHTML = '';
+  const all = Object.values(LAYOUTS.all()).sort((a, b) => (b.saved || 0) - (a.saved || 0));
+  if (!all.length) list.innerHTML = '<div class="help">No saved layouts yet.</div>';
+  for (const m of all) {
+    const b = document.createElement('button'); b.type = 'button'; if (m.id === ED.map.id) b.setAttribute('aria-current', 'true');
+    const n = (m.pieces || []).length;
+    b.innerHTML = `<span></span><small>${n} piece${n === 1 ? '' : 's'}</small>`; b.firstChild.textContent = m.name || 'Untitled';
+    b.addEventListener('click', () => { edLoad(m); edFiles(false); });
+    list.appendChild(b);
+  }
+}
+function edExport() {
+  const blob = new Blob([JSON.stringify({ berkshireLayout: 1, ...ED.map }, null, 1)], { type: 'application/json' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = (ED.map.name || 'layout').replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '-').toLowerCase() + '.json';
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+function edValidImport(o) {
+  if (!o || !Array.isArray(o.pieces) || o.pieces.length > 5000) return null;
+  const num = v => typeof v === 'number' && isFinite(v);
+  const pieces = [];
+  for (const p of o.pieces) {
+    if (!p || !num(p.X) || !num(p.N) || !num(p.h) || !num(p.id)) return null;
+    const q = { id: p.id | 0, t: p.t, X: p.X, N: p.N, h: p.h };
+    if (p.t === 'straight' && STRAIGHTS.includes(p.L)) q.L = p.L;
+    else if (p.t === 'curve' && CURVE_R.includes(p.R) && CURVE_DEG.includes(p.deg) && (p.dir === 1 || p.dir === -1)) Object.assign(q, { R: p.R, deg: p.deg, dir: p.dir });
+    else if (p.t === 'turnout' && TURNOUTS[p.k] && (p.dir === 1 || p.dir === -1)) Object.assign(q, { k: p.k, dir: p.dir });
+    else if (p.t === 'flex' && p.b && num(p.b.X) && num(p.b.N) && num(p.b.h)) q.b = { X: p.b.X, N: p.b.N, h: p.b.h };
+    else return null;
+    if (p.st && q.t === 'straight') q.st = { name: String(p.st.name || 'Station').slice(0, 24), side: p.st.side < 0 ? -1 : 1, big: !!p.st.big };
+    pieces.push(q);
+  }
+  const start = o.start && num(o.start.id) ? { id: o.start.id | 0, dir: o.start.dir < 0 ? -1 : 1 } : null;
+  return { v: 1, id: LAYOUTS.newId(), name: String(o.name || 'Imported layout').slice(0, 32), pieces, nid: 1, start };
+}
+
+/* a sample railroad built with the same snapping the editor uses */
+function edSample() {
+  const m = edBlank('Lakeshore Loop');
+  const add = (spec, E, j = 0) => { const p = E ? attachPiece({ ...spec, id: m.nid }, j, E) : { ...spec, id: m.nid, ...E0 }; m.nid++; m.pieces.push(p); return { p, ports: pieceGeom(p).ports }; };
+  const E0 = { X: -900, N: 1600, h: 0 };
+  const S = L => ({ t: 'straight', L }), C = (dir, deg = 15, R = 500) => ({ t: 'curve', R, deg, dir });
+  // south side: passing siding outside the loop
+  let a = add(S(200), null), end = a.ports[1];
+  const t1 = add({ t: 'turnout', k: 'par', dir: -1 }, end);
+  const main = add(S(200), t1.ports[1]), main2 = add(S(200), main.ports[1]);
+  const sd = add(S(200), t1.ports[2]); add(S(200), sd.ports[1]);
+  const t2 = add({ t: 'turnout', k: 'par', dir: 1 }, main2.ports[1], 1);
+  m.start = { id: main.p.id, dir: 1 };
+  end = add(S(200), t2.ports[0]).ports[1];
+  // east curve
+  for (let i = 0; i < 12; i++) end = add(C(1), end).ports[1];
+  // north side: station and a spur to an industry
+  const n1 = add(S(200), end); n1.p.st = { name: 'Lakeshore', side: 1, big: true }; end = n1.ports[1];
+  end = add(S(100), end).ports[1];
+  const t3 = add({ t: 'turnout', k: 'yard', dir: 1 }, end);
+  let sp = add(C(-1, 15, 180), t3.ports[2]).ports[1]; sp = add(S(100), sp).ports[1]; add(S(50), sp);
+  end = t3.ports[1];
+  for (const L of [200, 200, 100, 50, 25]) end = add(S(L), end).ports[1];
+  // a short straight join brings the north side out exactly over the start, then the west curve closes the loop
+  const j = { t: 'flex', id: m.nid++, X: end.X, N: end.N, h: end.h, b: { X: E0.X, N: end.N, h: end.h } }; m.pieces.push(j);
+  end = pieceGeom(j).ports[1];
+  for (let i = 0; i < 12; i++) end = add(C(1), end).ports[1];
+  return m;
+}
+
+/* ---------- menu hook-up ---------- */
+function edOpen() {
+  ED.open = true; $('editor').hidden = false;
+  if (!ED.map) {
+    let last = null; try { last = localStorage.getItem('bd_layout_last'); } catch (e) {}
+    const m = (PLAY_LAYOUT && LAYOUTS.get(PLAY_LAYOUT.id)) || (last && LAYOUTS.get(last)) || Object.values(LAYOUTS.all())[0];
+    ED.W = innerWidth; ED.H = innerHeight;
+    edLoad(m || edBlank());
+    if (!m) LAYOUTS.put(ED.map);
+  } else { edRebuild(); }
+  edPalette(); edPanels(); ED.dirty = true;
+  (function tick() { if (!ED.open) return; if (ED.dirty || (ED.G && ED.G.issues.length)) { ED.dirty = false; edDraw(); } requestAnimationFrame(tick); })();
+}
+function edClose() { ED.open = false; $('editor').hidden = true; edFiles(false); railMenu(); }
+function edDrive() {
+  if (!ED.map.pieces.length) { edMsg('Lay some track first.', 'bad'); return; }
+  const bad = ED.G.issues.length;
+  if (bad && !ED.warned) { ED.warned = true; edMsg(`${bad} problem${bad === 1 ? ' is' : 's are'} marked in red. Tap Drive it again to drive anyway.`, 'bad'); return; }
+  edSave();
+  // building together: everyone driving this version of the layout meets in the same room
+  location.href = location.pathname + '?layout=' + encodeURIComponent(ED.map.id) + (BT.on ? '&room=' + driveCode(BT.code, ED.map) : '');
+}
+function railMenu() {
+  const host = $('optRail'); if (!host) return;
+  host.innerHTML = '';
+  const cur = PLAY_LAYOUT ? PLAY_LAYOUT.id : '';
+  const opts = [['', 'Berkshire Division', '13.8 mi · built in']];
+  for (const m of Object.values(LAYOUTS.all()).filter(m => (m.pieces || []).length).sort((a, b) => (b.saved || 0) - (a.saved || 0)).slice(0, 5)) opts.push([m.id, m.name || 'Untitled', `${(m.pieces || []).length} pieces · yours`]);
+  for (const [id, name, sub] of opts) {
+    const b = document.createElement('button'); b.type = 'button'; b.setAttribute('aria-pressed', String(id === cur));
+    b.innerHTML = '<span></span><small></small>'; b.firstChild.textContent = name; b.lastChild.textContent = sub;
+    const changed = id && id === cur && (LAYOUTS.get(id) || {}).saved !== PLAY_LAYOUT.saved;
+    if (changed) b.lastChild.textContent = 'Edited · tap to reload';
+    b.addEventListener('click', () => {
+      if (id === cur && !changed) return;
+      if (id && !((LAYOUTS.get(id) || {}).pieces || []).length) return;
+      location.href = location.pathname + (id ? '?layout=' + encodeURIComponent(id) : '');
+    });
+    host.appendChild(b);
+  }
+}
+function edInit() {
+  $('btnEditor').addEventListener('click', edOpen);
+  $('edBack').addEventListener('click', edClose);
+  $('edDrive').addEventListener('click', edDrive);
+  $('edUndo').addEventListener('click', () => edUndo(false));
+  $('edRedo').addEventListener('click', () => edUndo(true));
+  $('edFit').addEventListener('click', edFit);
+  $('edName').addEventListener('change', () => { const v = $('edName').value.trim().slice(0, 32) || 'My railroad'; if (v !== ED.map.name) edCommit(() => { ED.map.name = v; }); });
+  $('edFileBtn').addEventListener('click', () => edFiles(true));
+  $('edFilesClose').addEventListener('click', () => edFiles(false));
+  $('edNew').addEventListener('click', () => { const m = edBlank('Railroad ' + (Object.keys(LAYOUTS.all()).length + 1)); LAYOUTS.put(m); edLoad(m); edFiles(false); });
+  $('edTpl').addEventListener('click', () => { const m = edSample(); LAYOUTS.put(m); edLoad(m); edFiles(false); edMsg('A sample loop with a passing siding, a station and a spur. Change anything.', 'good'); });
+  $('edExport').addEventListener('click', edExport);
+  $('edImportBtn').addEventListener('click', () => $('edImport').click());
+  $('edImport').addEventListener('change', async e => {
+    const f = e.target.files && e.target.files[0]; e.target.value = ''; if (!f) return;
+    let o = null; try { o = edValidImport(JSON.parse(await f.text())); } catch (err) { o = null; }
+    if (!o) { edMsg('That file is not a layout this editor can read.', 'bad'); return; }
+    LAYOUTS.put(o); edLoad(o); edFiles(false); edMsg(`Imported ${o.name}.`, 'good');
+  });
+  $('edDelete').addEventListener('click', () => {
+    const b = $('edDelete');
+    if (!b.dataset.arm) { b.dataset.arm = '1'; b.textContent = 'Tap again to delete'; setTimeout(() => { delete b.dataset.arm; b.textContent = 'Delete this one'; }, 3000); return; }
+    delete b.dataset.arm; b.textContent = 'Delete this one';
+    LAYOUTS.remove(ED.map.id);
+    const next = Object.values(LAYOUTS.all())[0] || edBlank(); if (!LAYOUTS.get(next.id)) LAYOUTS.put(next);
+    edLoad(next); edFiles(true);
+  });
+  addEventListener('resize', () => { if (ED.open) ED.dirty = true; });
+  edInput();
+  railMenu();
+  if (PLAY_LAYOUT) {
+    const lede = document.querySelector('.lede');
+    if (lede) lede.textContent = `${PLAY_LAYOUT.name || 'Your layout'}: a railroad you laid in the editor. Every switch can be thrown from the map or the switch card, and stations have water for the steam engines.`;
+  }
+}
+edInit();
+
+/* ============================================================================
+   Building together. Players in a build room edit one layout over the same
+   public MQTT relays the driving rooms use (topic bdiv/v1/b/<code>).
+
+   Every edit goes out as the change it made (pieces added, removed, altered),
+   which is applied by piece id, so edits made at the same moment by different
+   people both land. A newcomer asks for the whole layout and the member with
+   the lowest id answers. Each member also reports a fingerprint of the layout
+   every few seconds; anyone who has drifted from that member asks again, so the
+   room always settles on one layout.
+   ========================================================================== */
+const BT = { on: false, code: '', topic: '', links: [], peers: new Map(), seen: new Set(), seq: 0, synced: false, cursor: null, sentP: 0, drift: 0 };
+
+BT.send = function (ch) { if (BT.on) BT.pub({ t: 'ch', ch }); };
+BT.pub = function (o) {
+  o.id = MP.id; o.n = ++BT.seq;
+  const txt = JSON.stringify(o);
+  for (const l of BT.links) l.publish(BT.topic, txt);
+};
+BT.hash = function () { return layoutHash(ED.map); };
+BT.connect = function (code, creator, keep) {
+  if (BT.on) BT.leave(true);
+  BT.on = true; BT.code = code; BT.topic = 'bdiv/v1/b/' + code; BT.synced = creator; BT.peers.clear(); BT.seen.clear(); BT.drift = 0;
+  const will = { topic: BT.topic, payload: JSON.stringify({ id: MP.id, n: 0, t: 'bye' }) };
+  BT.links = MP.brokers.map((url, i) => { const l = new MiniMQTT(url, 'bb-' + MP.id + '-' + i, will, (t, txt) => BT.onText(txt), () => BT.ui()); l.subscribe(BT.topic); return l; });
+  if (!creator) {
+    // our screen becomes the shared layout, kept as its own saved copy; if the room is empty we carry on with that copy
+    if (!keep) { const m = edBlank('Shared layout ' + code); m.id = 'B' + code; m.shared = code; const old = LAYOUTS.get(m.id); edLoad(old ? Object.assign(old, { shared: code }) : m); }
+    let asks = 0;
+    BT.askT = setInterval(() => {
+      if (BT.synced || !BT.links.some(l => l.ok)) return;
+      if (++asks > 3 && !BT.peers.size) { BT.synced = true; clearInterval(BT.askT); BT.ui(); return; }
+      BT.pub({ t: 'req' });
+    }, 1500);
+  } else { ED.map.shared = code; edSave(); }
+  try { history.replaceState(null, '', location.pathname + '?build=' + code); } catch (e) {}
+  BT.ui(); edPanels();
+};
+BT.leave = function (quiet) {
+  if (!BT.on) return;
+  BT.pub({ t: 'bye' });
+  for (const l of BT.links) l.close();
+  clearInterval(BT.askT);
+  BT.on = false; BT.links = []; BT.peers.clear(); BT.code = '';
+  try { history.replaceState(null, '', location.pathname + location.search.replace(/[?&]build=[A-Z0-9]+/, '').replace(/^&/, '?')); } catch (e) {}
+  if (!quiet) edMsg('Left the build. The layout stays saved on this device.');
+  BT.ui(); ED.dirty = true;
+};
+BT.onText = function (txt) {
+  if (!BT.on || txt.length > 2e6) return;
+  let r; try { r = JSON.parse(txt); } catch (e) { return; }
+  if (!r || typeof r.id !== 'string' || !/^[a-z0-9]{6,16}$/.test(r.id) || r.id === MP.id) return;
+  const key = r.id + ':' + r.n; if (BT.seen.has(key)) return;   // both relays deliver everything
+  BT.seen.add(key); if (BT.seen.size > 4000) BT.seen = new Set([...BT.seen].slice(-2000));
+  let p = BT.peers.get(r.id);
+  if (r.t === 'bye') { if (p) { BT.peers.delete(r.id); edMsg(`${p.nm} left the build.`); BT.ui(); ED.dirty = true; } return; }
+  if (!p) {
+    if (BT.peers.size >= 12) return;
+    p = { id: r.id, nm: 'Builder', color: MP_COLORS[mpHash(r.id) % MP_COLORS.length], at: 0, x: null, a: null, h: '' };
+    BT.peers.set(r.id, p);
+  }
+  p.at = performance.now();
+  if (r.t === 'p') {
+    const nm = mpText(r.nm, 16) || 'Builder'; if (p.nm !== nm) { const first = p.nm === 'Builder' && !p.named; p.nm = nm; p.named = true; if (first) edMsg(`${nm} is building with you.`, 'good'); BT.ui(); }
+    p.x = Array.isArray(r.x) && r.x.length === 2 && r.x.every(v => typeof v === 'number' && isFinite(v)) ? r.x : null;
+    p.a = r.a && typeof r.a.pid === 'number' && typeof r.a.j === 'number' ? { pid: r.a.pid, j: r.a.j } : null;
+    p.h = typeof r.h === 'string' ? r.h.slice(0, 16) : '';
+    p.synced = !!r.s;
+    ED.dirty = true;
+    return;
+  }
+  if (r.t === 'req') { if (BT.synced && BT.leader() === MP.id) BT.pub({ t: 'snap', to: r.id, map: { name: ED.map.name, pieces: ED.map.pieces, start: ED.map.start || null } }); return; }
+  if (r.t === 'snap') {
+    if (r.to !== MP.id) return;
+    const m = edValidImport(r.map); if (!m) return;
+    ED.map.name = m.name; ED.map.pieces = m.pieces; ED.map.start = m.start;
+    ED.undo = []; ED.redo = []; ED.active = null; ED.sel = null;
+    const first = !BT.synced; BT.synced = true; BT.drift = 0; clearInterval(BT.askT);
+    edRebuild(); edSave(); if (first) { edFit(); edMsg(`Building ${m.name} together.`, 'good'); }
+    return;
+  }
+  if (r.t === 'ch' && BT.synced) {
+    const ch = BT.clean(r.ch); if (!ch) return;
+    edApply(ch); edRebuild(); edSave();
+  }
+};
+/* a change from someone else, checked piece by piece like an imported file */
+BT.clean = function (ch) {
+  if (!ch || typeof ch !== 'object') return null;
+  const list = a => { if (!Array.isArray(a)) return []; const m = edValidImport({ pieces: a }); return m ? m.pieces : null; };
+  const add = list(ch.add), del = list(ch.del);
+  const setN = list((ch.set || []).map(x => Array.isArray(x) ? x[1] : null)), setO = list((ch.set || []).map(x => Array.isArray(x) ? x[0] : null));
+  if (!add || !del || !setN || !setO) return null;
+  const out = { add, del, set: setN.map((n, i) => [setO[i], n]) };
+  if (Array.isArray(ch.name)) out.name = [String(ch.name[0]).slice(0, 32), mpText(String(ch.name[1]), 32) || 'Shared layout'];
+  if (Array.isArray(ch.start)) { const s = ch.start[1]; out.start = [null, s && typeof s.id === 'number' ? { id: s.id | 0, dir: s.dir < 0 ? -1 : 1 } : null]; }
+  return out;
+};
+BT.leader = function () { let id = BT.synced ? MP.id : ''; for (const p of BT.peers.values()) if (p.synced && (!id || p.id < id)) id = p.id; return id; };
+BT.tick = function () {
+  if (!BT.on) return;
+  const now = performance.now();
+  for (const p of [...BT.peers.values()]) if (now - p.at > 15000) { BT.peers.delete(p.id); BT.ui(); ED.dirty = true; }
+  const moved = BT.cursorDirty && now - BT.sentP > 150;
+  if (moved || now - BT.sentP > 2500) {
+    BT.sentP = now; BT.cursorDirty = false;
+    BT.pub({ t: 'p', nm: MP.name, x: BT.cursor, a: ED.active, h: BT.synced ? BT.hash() : '', s: BT.synced ? 1 : 0 });
+    // drifted from the leader's layout for two reports running: fetch it again
+    const L = BT.peers.get(BT.leader());
+    if (BT.synced && L && L.h && L.h !== BT.hash()) { if (++BT.drift >= 3) { BT.synced = false; BT.pub({ t: 'req' }); BT.askT = setInterval(() => { if (!BT.synced) BT.pub({ t: 'req' }); }, 2500); } }
+    else BT.drift = 0;
+  }
+};
+setInterval(BT.tick, 100);
+BT.pointer = function (x, y) { if (!BT.on) return; BT.cursor = [Math.round(edWX(x) * 10) / 10, Math.round(edWN(y) * 10) / 10]; BT.cursorDirty = true; };
+BT.drawPeers = function (g) {
+  if (!BT.on) return;
+  g.font = '600 12px "IBM Plex Sans Condensed", sans-serif'; g.textAlign = 'left'; g.textBaseline = 'middle';
+  for (const p of BT.peers.values()) {
+    if (p.a) { const q = edPort(p.a); if (q) { g.strokeStyle = p.color; g.lineWidth = 3; g.beginPath(); g.arc(edTX(q.X), edTY(q.N), 11, 0, TAU); g.stroke(); } }
+    if (!p.x) continue;
+    const x = edTX(p.x[0]), y = edTY(p.x[1]);
+    g.fillStyle = p.color; g.strokeStyle = '#000'; g.lineWidth = 1.2;
+    g.beginPath(); g.moveTo(x, y); g.lineTo(x + 11, y + 4); g.lineTo(x + 4, y + 11); g.closePath(); g.fill(); g.stroke();
+    g.lineWidth = 3; g.strokeStyle = 'rgba(0,0,0,0.7)'; g.strokeText(p.nm, x + 12, y + 14); g.fillText(p.nm, x + 12, y + 14);
+  }
+};
+BT.ui = function () {
+  const b = $('edTogBtn'); if (!b) return;
+  const n = BT.peers.size;
+  b.classList.toggle('on', BT.on); b.textContent = BT.on ? (n ? `Building with ${n}` : `Room ${BT.code}`) : 'Build together';
+  $('btSolo').hidden = BT.on; $('btIn').hidden = !BT.on; $('btCodeBig').textContent = BT.code;
+  const ok = BT.links.some(l => l.ok), dead = BT.links.length && BT.links.every(l => l.dead);
+  $('btStatus').textContent = !BT.on ? 'Start a build and send your friends the code, or type theirs.'
+    : dead ? "Couldn't reach the room server. Check your connection, then try again."
+    : !ok ? `Connecting to ${BT.code}…` : !BT.synced ? 'Fetching the shared layout…'
+    : n ? `Building with ${n} other${n > 1 ? 's' : ''}. Tap Drive it and you all meet in the same room.` : 'Nobody else yet: send your friends the link or the code.';
+  const list = $('btList'); list.textContent = '';
+  const chip = (c, t) => { const s = document.createElement('span'); const i = document.createElement('i'); i.style.background = c; s.appendChild(i); s.appendChild(document.createTextNode(t)); list.appendChild(s); };
+  if (BT.on) { chip(MP_ME, MP.name + ' (you)'); for (const p of BT.peers.values()) chip(p.color, p.nm); }
+};
+BT.share = function () {
+  const url = location.origin + location.pathname + '?build=' + BT.code;
+  if (navigator.share) { navigator.share({ title: 'Berkshire Division', text: `Build a railroad with me. Code ${BT.code}`, url }).catch(() => {}); return; }
+  try { navigator.clipboard.writeText(url).then(() => edMsg('Link copied. Send it to your friends.', 'good'), () => edMsg('Build code: ' + BT.code)); } catch (e) { edMsg('Build code: ' + BT.code); }
+};
+function btInit() {
+  const nm = $('btName'), code = $('btCode');
+  $('edTogBtn').addEventListener('click', () => { nm.value = MP.name; $('edTog').hidden = false; BT.ui(); });
+  $('btClose').addEventListener('click', () => { $('edTog').hidden = true; });
+  nm.addEventListener('input', () => { MP.name = mpText(nm.value, 16) || 'Engineer'; try { localStorage.setItem('bd_name', MP.name); } catch (e) {} $('mpName').value = MP.name; BT.cursorDirty = true; });
+  code.addEventListener('input', () => { const v = code.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6); if (v !== code.value) code.value = v; });
+  $('btCreate').addEventListener('click', () => { let c = ''; for (let i = 0; i < 5; i++) c += MP_CODE[(Math.random() * MP_CODE.length) | 0]; BT.connect(c, true); });
+  $('btJoin').addEventListener('click', () => { const c = code.value; if (c.length < 4) { $('btStatus').textContent = 'Type the code your friend sent you.'; code.focus(); return; } BT.connect(c, false); });
+  $('btLeave').addEventListener('click', () => BT.leave());
+  $('btShare').addEventListener('click', BT.share);
+  addEventListener('pagehide', () => { if (BT.on) BT.pub({ t: 'bye' }); });
+  $('edCanvas').addEventListener('pointermove', e => BT.pointer(e.clientX, e.clientY));
+  $('edCanvas').addEventListener('pointerdown', e => BT.pointer(e.clientX, e.clientY));
+  // ?build=CODE opens the editor straight into that build
+  let c = ''; try { c = (new URLSearchParams(location.search).get('build') || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); } catch (e) {}
+  if (c.length >= 4 && c.length <= 6) { edOpen(); const own = Object.values(LAYOUTS.all()).find(m => m.shared === c); if (own) edLoad(own); BT.connect(c, false, !!own); }
+}
+btInit();
 
 </script>
 </body>

@@ -33,7 +33,9 @@ async function loadWorld() {
   const prog = (p, t) => { $('loadBar').firstElementChild.style.width = Math.round(p * 100) + '%'; $('loadText').textContent = t; };
   prog(0.02, 'Surveying the line…'); await frame();
   makeMaterials(); sceneryMaterials(); rollingMaterials();
-  buildRoute(); mapPrepare();
+  WORLD.custom = !!PLAY_LAYOUT;
+  if (WORLD.custom) { WORLD.roadsX = []; WORLD.roadN = 1e7; buildLayoutRoute(PLAY_LAYOUT); } else buildRoute();
+  mapPrepare();
   prog(0.06, 'Grading the right of way…'); await frame();
   buildLattice();
   detailTextures(); planTowns();
@@ -43,13 +45,15 @@ async function loadWorld() {
     if (k % 3 === 0) { prog(0.08 + 0.42 * k / tot, `Shaping farm country… ${k}/${tot}`); await frame(); }
   }
   WORLD.hgrid.ready = true;
-  buildFarTerrain(scene); buildWater(scene);
-  prog(0.52, 'Laying 13.8 miles of jointed rail…'); await frame();
+  buildFarTerrain(scene); if (!WORLD.custom) buildWater(scene);
+  prog(0.52, WORLD.custom ? `Laying ${fmtMi(ROUTE.mainLen)} of track on ${PLAY_LAYOUT.name || 'your layout'}…` : 'Laying 13.8 miles of jointed rail…'); await frame();
   buildTrack(scene); buildTrackHash();
   prog(0.68, 'Raising depots, towers and the river bridge…'); await frame();
-  buildStations(); buildBridge(scene); buildRoads(scene); buildSignals(scene); buildSigns();
+  if (WORLD.custom) { buildStations(); buildSignals(scene); }
+  else { buildStations(); buildBridge(scene); buildRoads(scene); buildSignals(scene); buildSigns(); }
   prog(0.78, 'Stringing the pole line…'); await frame();
-  buildFarms(); buildTowns(scene); buildPoleLine(scene);
+  if (WORLD.custom) { SCN.farms = []; buildTowns(scene); }
+  else { buildFarms(); buildTowns(scene); buildPoleLine(scene); }
   prog(0.82, 'Planting corn and fencing pastures…'); await frame();
   buildCorn(scene); buildPastureLife(scene);
   prog(0.86, 'Planting woodlots…'); await frame();
@@ -58,12 +62,12 @@ async function loadWorld() {
   buildSky(scene, renderer); buildFX(scene);
   for (const st of ROUTE.stations) { st.edge.pose(st.s, FR); st.p = FR.p.clone(); }
   for (const w of ROUTE.water) { w.edge.pose(w.s, FR); w.p = FR.p.clone(); }
-  { const c = ROUTE.coal; c.edge.pose(c.s, FR); c.p = FR.p.clone(); }
+  if (ROUTE.coal) { const c = ROUTE.coal; c.edge.pose(c.s, FR); c.p = FR.p.clone(); }
   setupViewInput($('gl'), camera); setupLevers(); setupButtons(); setupMap();
   linearizeObject(scene);
   makeTrain();
   applyLook(GAME.settings.time, GAME.settings.weather, renderer, scene);
-  prog(1, `${(ROUTE.mainLen / MILE).toFixed(1)} mi mainline · ${NET.switches.length} switches · ${WORLD.treeCount.toLocaleString()} trees`);
+  prog(1, WORLD.custom ? `${PLAY_LAYOUT.name || 'Your layout'} · ${fmtMi(ROUTE.mainLen)} of track · ${NET.switches.length} switches` : `${(ROUTE.mainLen / MILE).toFixed(1)} mi mainline · ${NET.switches.length} switches · ${WORLD.treeCount.toLocaleString()} trees`);
   GAME.ready = true;
   $('btnStart').disabled = false;
   MP.worldReady();
@@ -86,6 +90,7 @@ function makeTrain() {
   if (GAME.train) GAME.train.dispose();
   const t = new Train(scene, GAME.settings.loco, GAME.settings.consist, dieselOpts());
   GAME.train = t;
+  if (WORLD.custom) { placeOnLayout(t); return; }
   let line = ROUTE.lines['Yard 2'], sFront = line.len - 175;
   GAME.spawnName = 'Yard 2, Bellevue';
   if (MP.on) {
@@ -101,6 +106,36 @@ function makeTrain() {
   }
   const loc = line.locate(sFront);
   t.place(new TrackPos(loc.edge, loc.s, 1));
+  finishTrain(t);
+}
+/* custom layout: the start marker, slid forward until the whole train is on the rails */
+function placeOnLayout(t, light) {
+  if (!MP.on) for (const s of NET.switches) { s.state = 0; s.anim = 0; }
+  const st = layoutStart(PLAY_LAYOUT), need = t.length + 4;
+  let tp = layoutFit(new TrackPos(st.edge, st.s, st.o), need);
+  GAME.spawnName = PLAY_LAYOUT.name || 'your layout';
+  if (!tp && !light && GAME.settings.consist !== 'light') {
+    t.dispose();
+    toast('That train is longer than the track, so you have a light engine.', 'warn', 5200);
+    const t2 = new Train(scene, GAME.settings.loco, 'light', dieselOpts()); GAME.train = t2; placeOnLayout(t2, true); return;
+  }
+  if (MP.on) {
+    // in a room, find a stretch of track no other train is on
+    const slot = MP.layoutSlot(need); if (slot) tp = slot;
+    MP.spawned = true; MP.needSpawn = false; MP.dirty = true;
+  }
+  t.place(tp || new TrackPos(st.edge, st.s, st.o));
+  finishTrain(t);
+}
+/* slide a front position forward until `need` metres of track lie behind it; null if the track is too short */
+function layoutFit(tp, need) {
+  const room = dir => { let d = Infinity; peekPath(tp, dir, 20000, (node, dd) => { if (!node) { d = dd; return true; } }); return d; };
+  const behind = room(-1), ahead = room(1);
+  if (behind + ahead < need + 8) return null;
+  if (behind < need) tp.advance(Math.min(need - behind, Math.max(0, ahead - 6)), null);
+  return tp;
+}
+function finishTrain(t) {
   prepareTrain(t);
   if (!t.diesel) applySteamFinish(GAME.settings.finish);
   resetState();
@@ -204,7 +239,7 @@ GAME.start = function () {
   audioInit(); buildWhistleIfReady();
   if (!GAME.running || GAME.needNewTrain()) {
     makeTrain(); GAME.train.consistKey = GAME.settings.consist;
-    if (GAME.running) toast('New train made up on Yard 2.', 'good');
+    if (GAME.running) toast(`New train made up on ${WORLD.custom ? GAME.spawnName : 'Yard 2'}.`, 'good');
     GAME.intro();
   }
   GAME.running = true; S.paused = false; S.autoFire = GAME.settings.fire === 'auto';
@@ -217,6 +252,7 @@ GAME.start = function () {
 };
 GAME.intro = function () {
   if (MP.on) setTimeout(() => toast(`Made up on ${GAME.spawnName}. The switches are shared with everyone in the room.`, '', 5600), 600);
+  else if (WORLD.custom) setTimeout(() => toast(`On ${GAME.spawnName}. Every switch is lined straight: tap one or use Throw to change it.`, '', 5000), 600);
   else setTimeout(() => toast('Yard 2, Bellevue. The ladder is lined out to the main.', '', 5000), 600);
   if (GAME.train && GAME.train.diesel) setTimeout(() => toast((GAME.train.nUnits > 1 ? GAME.train.nUnits + ' units in multiple: they all answer the lead cab. ' : '') + 'Reverser to forward, engine brake off, then notch out the throttle.', '', 6500), 5200);
   else setTimeout(() => toast('Reverser forward, engine brake off, then ease the throttle open.', '', 6000), 5200);
@@ -361,7 +397,7 @@ function nearbyService() {
   const tm = T.tender.root.matrixWorld;
   const hatch = new THREE.Vector3(6.675 - 10.6, 4, 0).applyMatrix4(tm), bunker = new THREE.Vector3(6.675 - 3.6, 4, 0).applyMatrix4(tm);
   for (const w of ROUTE.water) { const d = Math.hypot(hatch.x - w.p.x, hatch.z - w.p.z) - (w.kind === 'tower' ? 0 : 0); if (d < 6.5) { if (GAME.filling === 'water') return { label: 'Taking water…', btn: 'Stop', go: () => { GAME.filling = null; } }; return { label: 'Water spout over the hatch', btn: 'Take water', go: () => { GAME.filling = 'water'; } }; } }
-  const c = ROUTE.coal; if (Math.hypot(bunker.x - c.p.x, bunker.z - c.p.z) < 6) { if (GAME.filling === 'coal') return { label: 'Coaling…', btn: 'Stop', go: () => { GAME.filling = null; } }; return { label: 'Under the coal chute', btn: 'Take coal', go: () => { GAME.filling = 'coal'; } }; }
+  const c = ROUTE.coal; if (c && Math.hypot(bunker.x - c.p.x, bunker.z - c.p.z) < 6) { if (GAME.filling === 'coal') return { label: 'Coaling…', btn: 'Stop', go: () => { GAME.filling = null; } }; return { label: 'Under the coal chute', btn: 'Take coal', go: () => { GAME.filling = 'coal'; } }; }
   return null;
 }
 
