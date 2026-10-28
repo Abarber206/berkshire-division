@@ -2410,6 +2410,7 @@ function updateTrackLOD(cam) {
   for (const g of WORLD.poleGroups || []) g.forEach(m => m.visible = m.userData.c.distanceTo(cp) - m.userData.r < 1800);
   // buildings and signals stay until the fog has hidden them, so they never blink out in clear air
   const far = fogFar(6500);
+  updateWire(cp);
   for (const b of WORLD.binGroups || []) b.visible = b.userData.c.distanceTo(cp) - b.userData.r < Math.max(3400, far);
   for (const sg of SCN.signals) { const d = Math.hypot(sg.X - cp.x, -sg.N - cp.z); for (const h of sg.heads) h.visible = d < Math.max(3500, far); }
   for (const t of WORLD.tiles) { const d = t.c.distanceTo(cp) - t.r; const near = d < 2300; t.hi.visible = near; t.lo.visible = !near; }
@@ -3329,6 +3330,7 @@ function buildFarms() {
 }
 
 function finalizeScenery(scene) {
+  sceneryBoxes();   // before the bins merge: the overhead line keeps its masts clear of all of it
   const mats = { ...SMAT, steel: SMAT.steel, redPaint: MAT.redPaint, tie: MAT.tie };
   WORLD.binGroups = [];
   for (const [, gb] of SCN.bins) {
@@ -3777,6 +3779,193 @@ function updateDetailLOD(cam, scene, dt) {
   }
   for (const g of DET.cornGroups) g.visible = g.userData.c.distanceTo(cp) - g.userData.r < 3200;
   for (const g of DET.lifeGroups) g.visible = g.userData.c.distanceTo(cp) - g.userData.r < 900;
+}
+
+/* ============================================================================
+   Overhead line over both main tracks, for the electric trainsets.
+   Simple catenary of the kind on modern high-speed lines: a contact wire 5.5 m above the rail
+   hung by droppers from a messenger 1.1 m higher, zigzagged 0.2 m either side of the track centre so
+   it wears the pantograph strips evenly, and pulled to the outside of curves at each support. Supports
+   come every 63 m on tangents and closer on curves, so a chord never strays more than 0.3 m from the
+   track centre. Each support is a single mast with a boom out over both tracks where one side is clear,
+   a two-mast portal where sidings, platforms or buildings crowd both sides, and on the river bridge a
+   pair of drop tubes hung from the truss's lateral struts. Masts stand at least 3 m from any track
+   centre and clear of roads, the river, the pole line and every structure in the scenery. The line is
+   built the first time an electric train is out, and only shown while one is.
+   ========================================================================== */
+const WIRE = { built: false, groups: [], H: 5.5, MH: 6.6, BOOM: 7.15, TOP: 8.3, misses: 0, missAt: [], supports: [] };
+
+/* plan boxes of everything standing in the scenery, taken before the bins are merged: [x0, x1, y0, y1, z0, z1] in world axes */
+function sceneryBoxes() {
+  const hash = new Map(), C = 50, list = [];
+  for (const [, gb] of SCN.bins) for (const k in gb.bins) for (const g of gb.bins[k]) {
+    if (!g.boundingBox) g.computeBoundingBox();
+    const b = g.boundingBox; if (b.isEmpty() || b.max.x - b.min.x > 300 || b.max.z - b.min.z > 300) continue;
+    const r = [b.min.x, b.max.x, b.min.y, b.max.y, b.min.z, b.max.z]; list.push(r);
+    for (let i = Math.floor(r[0] / C); i <= Math.floor(r[1] / C); i++) for (let j = Math.floor(r[4] / C); j <= Math.floor(r[5] / C); j++) {
+      const key = i + ',' + j; if (!hash.has(key)) hash.set(key, []); hash.get(key).push(r);
+    }
+  }
+  SCN.boxes = { hash, C, n: list.length };
+}
+/* is world point (x, y, z) inside any scenery box grown by pad? */
+function inScenery(x, y, z, pad) {
+  const B = SCN.boxes; if (!B) return false;
+  const l = B.hash.get(Math.floor(x / B.C) + ',' + Math.floor(z / B.C)); if (!l) return false;
+  for (const r of l) if (x > r[0] - pad && x < r[1] + pad && y > r[2] - pad && y < r[3] + pad && z > r[4] - pad && z < r[5] + pad) return true;
+  return false;
+}
+
+function wireMaterials() {
+  if (WIRE.mat) return WIRE.mat;
+  WIRE.mat = {
+    galv: new THREE.MeshLambertMaterial({ color: 0x5d6366 }),
+    concrete: SMAT.concrete,
+    ins: new THREE.MeshLambertMaterial({ color: 0x6e3f26 }),
+    line: new THREE.LineBasicMaterial({ color: 0x1e2022, transparent: true, opacity: 0.9 }),
+  };
+  return WIRE.mat;
+}
+
+function buildWire(scene) {
+  if (WIRE.built) return; WIRE.built = true;
+  const main = ROUTE.main, main2 = ROUTE.main2;
+  if (WORLD.custom || !main || !main2) return;
+  const mat = wireMaterials();
+  const b = ROUTE.bridge, bridge0 = b ? b.s - 76 : -1, bridge1 = b ? b.s + 76 : -1;
+  const v = new THREE.Vector3();
+
+  /* ---- where the supports go, along track 1 ---- */
+  const maxK = (s0, s1) => { let k = 0; for (let s = s0; s <= s1; s += 4) { const loc = main.locate(s); k = Math.max(k, Math.abs(loc.edge.curv(loc.s))); } return k; };
+  const spanFrom = s => { const k = maxK(s, s + 63); return k > 1e-6 ? Math.min(63, Math.sqrt(8 * 0.3 / k)) : 63; };
+  const at = [];
+  for (let s = 0; s < main.len - 20;) {
+    if (b && s > bridge0 - 63 && s < bridge1) {
+      // last mast short of the bridge, the truss struts across it, first mast beyond
+      if (s < bridge0) at.push({ s: bridge0, kind: 'mast' });
+      for (const x of [-48, -24, 8, 32]) at.push({ s: b.s + x, kind: 'bridge' });
+      s = bridge1 + spanFrom(bridge1) * 0.6; continue;
+    }
+    at.push({ s, kind: 'mast' });
+    s += spanFrom(s);
+  }
+
+  /* ---- a clear place for a mast at lateral offset lat (from track 1, + toward track 2) ---- */
+  const place = (s, lat) => linePlace(main, s, lat);
+  const roadClear = (X, N) => { for (const rx of WORLD.roadsX) if (Math.abs(X - rx) < 9) return false; return Math.abs(N - WORLD.roadN) < 9.5 ? false : true; };
+  const mastClear = (s, lat, y) => {
+    const p = place(s, lat);
+    if (trackGap(p.X, p.N) < 3.0 || !roadClear(p.X, p.N) || riverDist(p.X, p.N) < 10) return false;
+    for (const sg of SCN.signals) if (Math.hypot(sg.X - p.X, sg.N - p.N) < 5) return false;   // nor crowd a signal
+    for (let h = -1; h <= WIRE.TOP + 0.3; h += 0.5) for (const [dx, dz] of [[0, 0], [0.45, 0.45], [-0.45, 0.45], [0.45, -0.45], [-0.45, -0.45]]) if (inScenery(p.X + dx, y + h, -p.N + dz, 0.4)) return false;
+    return true;
+  };
+  // nothing in the way of a boom running at boom height from lat a to lat b
+  const boomClear = (s, a, c, y) => { for (let l = Math.min(a, c); l <= Math.max(a, c); l += 0.5) { const p = place(s, l); if (inScenery(p.X, y + WIRE.BOOM, -p.N, 0.4)) return false; } return true; };
+
+  const bins = new Map();
+  const binFor = (X, N) => { const k = Math.floor((X + 20000) / 1500) + ',' + Math.floor((N + 20000) / 1500); if (!bins.has(k)) bins.set(k, { gb: new GeoBin(), lines: [] }); return bins.get(k); };
+  const reg = [[], []];   // registration points per track, in order along the line
+  let zig = 1;
+
+  // the two tracks at a support: track 1's frame, and where track 2 lies across it
+  const frameAt = s => {
+    const p1 = place(s, 0), loc2 = main2.locate(ROUTE.to2(s));
+    loc2.edge.pose(loc2.s, FR);
+    const z2 = (FR.p.x - p1.X) * Math.sin(p1.yaw) + (FR.p.z + p1.N) * Math.cos(p1.yaw);
+    return { s, p1, z2, y2: FR.p.y - p1.y, base: baseM(p1.X, p1.y, p1.N, p1.yaw) };
+  };
+  // track 2 lies to one side (sg); a mast stands 3.4 m out from either track, its boom reaching 0.6 m past the far one
+  const chooseMast = F => {
+    const { s, p1, z2 } = F, sg = Math.sign(z2) || 1, zO = -sg * 3.4, zI = z2 + sg * 3.4;
+    if (mastClear(s, zO, p1.y) && boomClear(s, zO, z2 + sg * 0.6, p1.y)) return { z: [zO], far: z2 + sg * 0.6 };
+    if (mastClear(s, zI, p1.y) && boomClear(s, -sg * 0.6, zI, p1.y)) return { z: [zI], far: -sg * 0.6 };
+    // both sides crowded: a portal between the nearest clear spots either side
+    let a = null, c = null;
+    for (let d = 0; d <= 9.1; d += 0.5) if (mastClear(s, zO - sg * d, p1.y)) { a = zO - sg * d; break; }
+    for (let d = 0; d <= 20; d += 0.5) if (mastClear(s, zI + sg * d, p1.y)) { c = zI + sg * d; break; }
+    return a !== null && c !== null && boomClear(s, a, c, p1.y) ? { z: [a, c] } : null;
+  };
+  for (const sp of at) {
+    let F = frameAt(sp.s), mast = null;
+    if (sp.kind === 'mast') {
+      // slide a support a little along the track if its own spot is crowded
+      for (const dd of [0, 8, -8, 16, -16, 24]) { F = dd ? frameAt(sp.s + dd) : F; mast = chooseMast(F); if (mast) break; }
+      if (!mast) { WIRE.misses++; WIRE.missAt.push(Math.round(sp.s)); continue; }
+    }
+    const { s, p1, z2, y2, base } = F, tz = [0, z2], ty = [0, y2];
+    const g = binFor(p1.X, p1.N).gb;
+    const k = main.locate(s), curv = k.edge.curv(k.s);
+    const stagger = Math.abs(curv) > 1 / 5000 ? -0.2 * Math.sign(curv) : 0.2 * (zig = -zig);
+    const yB = WIRE.BOOM;
+    if (mast) {
+      for (const zm of mast.z) {
+        const gy = groundUnder(base, 0, zm, 0.9, 0.9), top = Math.max(gy[1], -0.3) + 0.25;
+        footing(g, 'concrete', base, 0, zm, 0.9, 0.9, top);
+        const hTop = mast.z.length > 1 ? yB + 0.3 : WIRE.TOP, hh = hTop - top;
+        // wide-flange mast: two flanges and a web
+        for (const dz of [-0.13, 0.13]) g.add('galv', new THREE.BoxGeometry(0.26, hh, 0.025), P(base, 0, top + hh / 2, zm + dz));
+        g.add('galv', new THREE.BoxGeometry(0.02, hh, 0.26), P(base, 0, top + hh / 2, zm));
+        g.add('galv', new THREE.BoxGeometry(0.42, 0.04, 0.42), P(base, 0, top + 0.02, zm));          // base plate on the foundation
+        g.add('galv', new THREE.BoxGeometry(0.3, 0.02, 0.3), P(base, 0, hTop + 0.01, zm));           // cap
+      }
+      // the boom: a box girder out over both tracks, or a light truss between portal masts
+      const ends = mast.z.length > 1 ? mast.z : [mast.z[0], mast.far], z0 = Math.min(...ends), z1 = Math.max(...ends);
+      if (mast.z.length > 1) {
+        for (const dy of [-0.22, 0.22]) g.add('galv', new THREE.BoxGeometry(0.16, 0.08, z1 - z0), P(base, 0, yB + dy, (z0 + z1) / 2));
+        const n = Math.max(2, Math.round((z1 - z0) / 1.6));
+        for (let i = 0; i <= n; i++) g.add('galv', new THREE.BoxGeometry(0.1, 0.44, 0.06), P(base, 0, yB, z0 + (z1 - z0) * i / n));
+      } else {
+        g.add('galv', new THREE.BoxGeometry(0.16, 0.2, z1 - z0), P(base, 0, yB, (z0 + z1) / 2));
+        // tie rod from the mast head to two thirds of the way out
+        const zm = mast.z[0], end = [0, yB + 0.1, zm + (mast.far - zm) * 0.66];
+        g.add('galv', barGeo(0.025, [0, WIRE.TOP - 0.15, zm], end, 6), base.clone());
+      }
+    }
+    // the hangers: drop tube with an insulator, a messenger clamp, and a steady arm out to the contact wire
+    const yTop = sp.kind === 'bridge' ? 7.55 : yB;
+    for (let t = 0; t < 2; t++) {
+      const z = tz[t], y0 = ty[t], st = t && Math.abs(curv) <= 1 / 5000 ? -stagger : stagger, yR = y0 + WIRE.H + 0.32;
+      g.add('galv', new THREE.CylinderGeometry(0.035, 0.035, yTop - yR), P(base, 0, (yTop + yR) / 2, z));
+      g.add('ins', new THREE.CylinderGeometry(0.07, 0.07, 0.42, 10), P(base, 0, y0 + WIRE.MH + 0.38, z));
+      for (let i = 0; i < 4; i++) g.add('ins', new THREE.CylinderGeometry(0.11, 0.11, 0.03, 12), P(base, 0, y0 + WIRE.MH + 0.22 + i * 0.1, z));
+      g.add('galv', new THREE.BoxGeometry(0.16, 0.08, 0.1), P(base, 0, y0 + WIRE.MH, z));
+      g.add('galv', barGeo(0.018, [0, yR + 0.02, z], [0, y0 + WIRE.H + 0.02, z + st], 6), base.clone());
+      g.add('galv', new THREE.BoxGeometry(0.08, 0.05, 0.05), P(base, 0, y0 + WIRE.H + 0.025, z + st));   // contact wire clamp
+      const C = new THREE.Vector3(0, y0 + WIRE.H, z + st).applyMatrix4(base), Mp = new THREE.Vector3(0, y0 + WIRE.MH, z).applyMatrix4(base);
+      reg[t].push({ C, M: Mp });
+    }
+    WIRE.supports.push({ s, kind: sp.kind, z: mast ? mast.z : null, X: p1.X, N: p1.N });
+  }
+
+  /* ---- wires: straight contact chords between registrations, a sagging messenger, droppers about every 9 m ---- */
+  for (const R of reg) for (let i = 0; i < R.length; i++) {
+    const A = R[i], B = R[(i + 1) % R.length], d = A.C.distanceTo(B.C);
+    if (d > 140) continue;
+    const L = binFor(A.C.x, -A.C.z).lines, n = Math.max(2, Math.round(d / 9)), sag = Math.min(0.6, 0.42 * (d / 63) ** 2);
+    L.push(A.C.x, A.C.y, A.C.z, B.C.x, B.C.y, B.C.z);
+    let prev = A.M;
+    for (let j = 1; j <= n; j++) {
+      const t = j / n, m = new THREE.Vector3().lerpVectors(A.M, B.M, t); m.y -= sag * 4 * t * (1 - t);
+      L.push(prev.x, prev.y, prev.z, m.x, m.y, m.z); prev = m;
+      if (j < n) { const c = new THREE.Vector3().lerpVectors(A.C, B.C, t); L.push(m.x, m.y, m.z, c.x, c.y, c.z); }
+    }
+  }
+  for (const [, bn] of bins) {
+    const grp = bn.gb.build(mat, { cast: true });
+    if (bn.lines.length) { const lg = new THREE.BufferGeometry(); lg.setAttribute('position', new THREE.Float32BufferAttribute(bn.lines, 3)); grp.add(new THREE.LineSegments(lg, mat.line)); }
+    const sph = new THREE.Box3().setFromObject(grp).getBoundingSphere(new THREE.Sphere());
+    grp.userData = { c: sph.center, r: sph.radius }; grp.visible = false;
+    scene.add(grp); WIRE.groups.push(grp);
+  }
+  if (WIRE.misses) console.warn('overhead line: no clear place for', WIRE.misses, 'supports');
+}
+
+/* shown while an electric train is out, near the camera */
+function updateWire(cp) {
+  const want = !!(GAME.train && GAME.train.elec) || (MP.on && [...MP.peers.values()].some(p => p.rt && p.rt.train.elec));
+  if (want && !WIRE.built) buildWire(scene);
+  for (const g of WIRE.groups) g.visible = want && g.userData.c.distanceTo(cp) - g.userData.r < 3400;
 }
 
 /* ============================================================================
@@ -5380,6 +5569,729 @@ CPL.point = function (x, y) {
 };
 
 /* ============================================================================
+   High-speed trainsets: fixed electric multiple units that run as one train.
+   JR East E5 series "Hayabusa" Shinkansen: ten cars, 253 m, 9,600 kW from
+   32 x 300 kW motors on cars 2-9, 320 km/h. 3.35 m wide, 3.65 m high, end cars
+   26.5 m with a 15 m nose, intermediate cars 25 m, bogie centres 17.5 m,
+   2.5 m bogie wheelbase, 860 mm wheels. Tokiwa green over Hiun white with a
+   Hayate pink stripe. Pantographs on cars 3 and 7, one raised in service.
+   Amtrak Acela Express (Bombardier / Alstom, 2000): two 4,600 kW power cars and
+   six tilting coaches, 202.3 m, 150 mph in service. Power cars 21.22 m long,
+   3.18 m wide, 4.32 m high, truck centres 10.74 m, 40 in wheels; coaches 26.64 m,
+   3.16 m wide, 4.23 m high, truck centres 18.14 m, 36 in wheels.
+   Local frame like the diesel: +X forward, origin midway between the truck
+   centres at rail top. a = metres back from the car's front end.
+   ========================================================================== */
+const HSR = {
+  e5: {
+    name: 'E5 Hayabusa', vmaxKmh: 320, wireH: 5.5,
+    /* type, length, mass (t), motored, pantograph at a, seating class, number */
+    cars: [
+      { type: 'nose', len: 26.5, t: 41.9, motor: false, cls: 'ord', num: 'E523-19' },
+      { type: 'mid', len: 25, t: 45.9, motor: true, cls: 'ord', num: 'E526-119' },
+      { type: 'mid', len: 25, t: 46.0, motor: true, cls: 'ord', num: 'E525-19', pan: 7.6 },
+      { type: 'mid', len: 25, t: 46.3, motor: true, cls: 'ord', num: 'E526-219' },
+      { type: 'mid', len: 25, t: 46.1, motor: true, cls: 'ord', num: 'E525-419' },
+      { type: 'mid', len: 25, t: 46.8, motor: true, cls: 'ord', num: 'E526-319' },
+      { type: 'mid', len: 25, t: 46.8, motor: true, cls: 'ord', num: 'E525-119', pan: 7.6, raised: true },
+      { type: 'mid', len: 25, t: 46.0, motor: true, cls: 'ord', num: 'E526-419' },
+      { type: 'mid', len: 25, t: 45.8, motor: true, cls: 'green', num: 'E515-19' },
+      { type: 'nose', len: 26.5, t: 42.7, motor: false, cls: 'gran', num: 'E514-19' },
+    ],
+  },
+  acela: {
+    name: 'Acela Express', wireH: 5.5,
+    cars: [
+      { type: 'power', len: 21.22, t: 93, motor: true, num: '2010' },
+      { type: 'coach', len: 26.64, t: 64, cls: 'first', num: '3210' },
+      { type: 'coach', len: 26.64, t: 63, cls: 'bus', num: '3510' },
+      { type: 'coach', len: 26.64, t: 63, cls: 'bus', num: '3520' },
+      { type: 'coach', len: 26.64, t: 62, cls: 'cafe', num: '3310' },
+      { type: 'coach', len: 26.64, t: 63, cls: 'bus', num: '3530' },
+      { type: 'coach', len: 26.64, t: 64, cls: 'bus', num: '3540' },
+      { type: 'power', len: 21.22, t: 93, motor: true, num: '2011' },
+    ],
+  },
+};
+/* air resistance of each car in lbf per mph squared, [leading, in the train]; with the rolling terms this gives
+   the E5 about 0.04 m/s2 in hand at 320 km/h on the level, and the Acela a balancing speed a little over 165 mph */
+const HS_AERO = { e5: { nose: [0.12, 0.03], mid: [0.3, 0.024] }, acela: { power: [0.2, 0.045], coach: [0.3, 0.03] } };
+/* E5: 32 motors x 300 kW, 1.71 km/h/s starting (about 250 kN on the 453.5 t set with a full load), 320 km/h.
+   Acela: two power cars, each 4,600 kW and 49,500 lbf starting. Regenerative braking on both; the
+   Acela's power cars can also burn it in rheostats when the line will not take it. */
+Object.assign(LOCO_SPEC, {
+  e5: { road: 'JR EAST', num: 'U19', short: 'JRE', cls: 'E5', built: 'Hitachi / Kawasaki, 2013', set: 'e5', diesel: true, elec: true, hs: true,
+    weight: 453500 / 0.4536, adhesive: 369700 / 0.4536, te: 250e3 / LBF, P: 9.6e6, TEmax: 250e3, RP: 10.5e6, RBmax: 235e3, rheo: false, vmax: 320 / 1.609344, whistle: 'shin', bell: false, ditch: false },
+  acela: { road: 'AMTRAK', num: '2010', short: 'AMTK', cls: 'Acela', built: 'Bombardier / Alstom, 2000', set: 'acela', diesel: true, elec: true, hs: true,
+    weight: 1246000, adhesive: 408000, te: 99000, P: 9.2e6, TEmax: 440e3, RP: 8.0e6, RBmax: 300e3, rheo: true, vmax: 150, whistle: 'k5', bell: true, ditch: true },
+});
+
+function hsMaterials() {
+  if (RMAT.hsGlass) return;
+  const mk = (c, m, r, extra = {}) => new THREE.MeshStandardMaterial({ color: c, metalness: m, roughness: r, ...extra });
+  RMAT.hsGlass = mk(0x0d1418, 0.6, 0.06, { side: THREE.DoubleSide });
+  RMAT.hsWin = new THREE.MeshStandardMaterial({ color: 0x141b20, metalness: 0.4, roughness: 0.08, emissive: 0xeaf1ff, emissiveIntensity: 0 });
+  SCN.winMats.push(RMAT.hsWin);
+  RMAT.hsUnder = mk(0x2b2e30, 0.4, 0.7, { side: THREE.DoubleSide });
+  RMAT.hsBogie = mk(0x3a3d40, 0.5, 0.55);
+  RMAT.hsSteel = mk(0x8b9095, 0.8, 0.35);
+  RMAT.hsRubber = mk(0x1b1c1d, 0.0, 0.92, { side: THREE.DoubleSide });
+  RMAT.hsSeam = mk(0x5d6266, 0.3, 0.6);
+  RMAT.hsIns = mk(0x9a5a3a, 0.1, 0.4);       // brown porcelain insulators
+  RMAT.hsPan = mk(0x9ea3a8, 0.7, 0.35);
+  RMAT.hsCarbon = mk(0x1c1d1e, 0.2, 0.6);
+  RMAT.hsTail = new THREE.MeshBasicMaterial({ color: 0xff2a1e });
+  RMAT.hsTailOff = mk(0x5a1612, 0.4, 0.2);
+  RMAT.hsLamp = mk(0xd9dde0, 0.6, 0.12);     // lamp housing behind the lens
+}
+
+/* ---------------- lofted bodies ----------------
+   A half section runs from the bottom centre round the right side to the roof centre:
+   flat bottom, rounded bottom corner (radius ch), a side from yb + ch to the shoulder ys (leaning in by
+   tum at the top), then a superellipse (exponent n) over to the roof at yt. Point CUT_I lies on the side
+   at height cut, where the body is cut away over the bogies. */
+const HS_HALF = 24, CUT_I = 6;
+function hsHalf(p, cut) {
+  const pts = [[0, p.yb], [(p.w - p.ch) * 0.5, p.yb], [p.w - p.ch, p.yb]];
+  for (let i = 1; i <= 3; i++) { const t = i / 3 * Math.PI / 2; pts.push([p.w - p.ch + Math.sin(t) * p.ch, p.yb + p.ch - Math.cos(t) * p.ch]); }
+  const y0 = p.yb + p.ch, tum = p.tum || 0, zs = y => p.w - tum * clamp((y - y0) / Math.max(0.01, p.ys - y0), 0, 1) ** 1.6;
+  const yc = clamp(cut, y0 + 0.002, p.ys - 0.002);
+  pts.push([zs(yc), yc]);
+  for (let i = 1; i <= 3; i++) { const y = lerp(yc, p.ys, i / 3); pts.push([zs(y), y]); }
+  const ws = p.w - tum;
+  for (let i = 1; i <= 14; i++) { const t = i / 14 * Math.PI / 2; pts.push([ws * Math.pow(Math.cos(t), 2 / p.n), p.ys + (p.yt - p.ys) * Math.pow(Math.sin(t), 2 / p.n)]); }
+  pts[pts.length - 1][0] = 0;
+  return pts;
+}
+/* the whole ring, bottom centre round the right side, over the roof and down the left side */
+function hsRing(p, cut) {
+  const h = hsHalf(p, cut), R = h.slice();
+  for (let i = HS_HALF - 2; i >= 0; i--) R.push([-h[i][0], h[i][1]]);
+  return R;
+}
+const RING_N = 2 * HS_HALF - 1, CUT_L = RING_N - 1 - CUT_I;   // 47 points; the left cut point
+/* the half width of the body at height y on station ring R (right side) */
+function ringZ(R, y) {
+  for (let i = 0; i < HS_HALF - 1; i++) {
+    const a = R[i], b = R[i + 1];
+    if ((a[1] - y) * (b[1] - y) <= 0 && a[1] !== b[1]) return lerp(a[0], b[0], (y - a[1]) / (b[1] - a[1]));
+  }
+  return 0;
+}
+
+/* the height of the roof at |z| on station ring R */
+function ringTop(R, z) {
+  for (let i = HS_HALF - 1; i > 0; i--) {
+    const a = R[i], b = R[i - 1];
+    if (z >= a[0] && z <= b[0] && b[0] > a[0]) return lerp(a[1], b[1], (z - a[0]) / (b[0] - a[0]));
+  }
+  return R[HS_HALF - 1][1];
+}
+/* Triangles from stations (each {a, R}) over ring indices idx, with UVs planar in (a, y) */
+function loftInto(acc, st, idx, ref, uvL, uvH, out = 0) {
+  const base = acc.pos.length / 3;
+  for (const s of st) for (const j of idx) {
+    const [z, y] = s.R[j], k = out ? 1 + out / Math.max(0.3, Math.hypot(z, y - 1.6)) : 1;
+    acc.pos.push(ref - s.a, out ? 1.6 + (y - 1.6) * k : y, z * k);
+    acc.uv.push(s.a / uvL, y / uvH);
+  }
+  const n = idx.length;
+  for (let i = 0; i < st.length - 1; i++) for (let j = 0; j < n - 1; j++) {
+    const A = base + i * n + j, B = A + 1, C = A + n + 1, D = A + n;
+    acc.idx.push(A, B, C, A, C, D);
+  }
+}
+/* a flat polygon (convex or star-shaped about its centroid) given as [x, y, z] points, facing nrm */
+function capInto(acc, pts, nrm, uvf) {
+  const base = acc.pos.length / 3, c = [0, 0, 0];
+  for (const p of pts) { c[0] += p[0] / pts.length; c[1] += p[1] / pts.length; c[2] += p[2] / pts.length; }
+  for (const p of [c, ...pts]) { acc.pos.push(p[0], p[1], p[2]); acc.uv.push(...(uvf ? uvf(p) : [0, 0])); }
+  for (let i = 0; i < pts.length; i++) {
+    const a = base + 1 + i, b = base + 1 + (i + 1) % pts.length;
+    const e1 = [pts[i][0] - c[0], pts[i][1] - c[1], pts[i][2] - c[2]], q = pts[(i + 1) % pts.length], e2 = [q[0] - c[0], q[1] - c[1], q[2] - c[2]];
+    const nx = e1[1] * e2[2] - e1[2] * e2[1], ny = e1[2] * e2[0] - e1[0] * e2[2], nz = e1[0] * e2[1] - e1[1] * e2[0];
+    if (nx * nrm[0] + ny * nrm[1] + nz * nrm[2] >= 0) acc.idx.push(base, a, b); else acc.idx.push(base, b, a);
+  }
+}
+const newMesh = () => ({ pos: [], uv: [], idx: [] });
+function meshGeo(acc) {
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(acc.pos, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(acc.uv, 2));
+  g.setIndex(acc.idx); g.computeVertexNormals();
+  return g;
+}
+/* a rounded rectangle lying on the plane z = 0, in (x, y) */
+function rrectGeo(w, h, r, seg = 4) {
+  const s = new THREE.Shape(), x0 = -w / 2, x1 = w / 2, y0 = -h / 2, y1 = h / 2;
+  s.moveTo(x0 + r, y0); s.lineTo(x1 - r, y0); s.quadraticCurveTo(x1, y0, x1, y0 + r); s.lineTo(x1, y1 - r); s.quadraticCurveTo(x1, y1, x1 - r, y1);
+  s.lineTo(x0 + r, y1); s.quadraticCurveTo(x0, y1, x0, y1 - r); s.lineTo(x0, y0 + r); s.quadraticCurveTo(x0, y0, x0 + r, y0);
+  return new THREE.ShapeGeometry(s, seg);
+}
+
+/* Build the body of one car. B describes the body:
+   sect(a) -> section params at a; len; ends: [front, rear] each 'nose' | 'joint'; cut: bogie well height;
+   wells: [[a0, a1], ...] cut away for the bogies; skin: material key; uvL/uvH texture size in metres. */
+function hsBody(gb, B, ref) {
+  const L = B.len, st = [];
+  const grid = new Set([...B.stations]);
+  for (const [w0, w1] of B.wells) { grid.add(w0); grid.add(w1); for (let a = w0; a < w1; a += 0.5) grid.add(a); }
+  const as = [...grid].filter(a => a >= B.a0 - 1e-6 && a <= B.a1 + 1e-6).sort((x, y) => x - y);
+  for (const a of as) st.push({ a, R: hsRing(B.sect(a), B.cut) });
+  const skin = newMesh(), under = newMesh();
+  const upper = []; for (let j = CUT_I; j <= CUT_L; j++) upper.push(j);
+  const lower = []; for (let j = CUT_L; j < RING_N; j++) lower.push(j); for (let j = 1; j <= CUT_I; j++) lower.push(j);
+  lower[lower.indexOf(RING_N - 1)] = 0;
+  loftInto(skin, st, upper, ref, B.uvL, B.uvH);
+  // below the cut: everywhere except over the bogies, where the well roof and its end walls close the body
+  const inWell = (a0, a1) => B.wells.some(([w0, w1]) => a0 >= w0 - 1e-6 && a1 <= w1 + 1e-6);
+  let run = [];
+  const flush = () => { if (run.length > 1) loftInto(skin, run, lower, ref, B.uvL, B.uvH); run = []; };
+  for (let i = 0; i < st.length; i++) {
+    if (i < st.length - 1 && inWell(st[i].a, st[i + 1].a)) { run.push(st[i]); flush(); continue; }
+    run.push(st[i]);
+  }
+  flush();
+  for (const [w0, w1] of B.wells) {
+    const ws = st.filter(s => s.a >= w0 - 1e-6 && s.a <= w1 + 1e-6);
+    // well roof: a flat plate at the cut height from side to side
+    const base = under.pos.length / 3;
+    for (const s of ws) { const zr = s.R[CUT_I][0], zl = s.R[CUT_L][0]; under.pos.push(ref - s.a, B.cut, zl, ref - s.a, B.cut, zr); under.uv.push(0, 0, 0, 0); }
+    for (let i = 0; i < ws.length - 1; i++) { const A = base + 2 * i; under.idx.push(A, A + 2, A + 3, A, A + 3, A + 1); }
+    for (const [s, n] of [[ws[0], -1], [ws[ws.length - 1], 1]]) {
+      const pts = lower.map(j => [ref - s.a, s.R[j][1], s.R[j][0]]);
+      capInto(under, pts, [n, 0, 0]);
+    }
+  }
+  // flat ends at a joint (the rubber gangway cover closes the rest)
+  for (const [s, n] of [[st[0], 1], [st[st.length - 1], -1]]) {
+    if (s.R[0][1] >= s.R[HS_HALF - 1][1] - 0.01) continue;   // a nose closes to a point
+    const pts = []; for (let j = 0; j < RING_N - 1; j++) pts.push([ref - s.a, s.R[j][1], s.R[j][0]]);
+    capInto(under, pts, [n, 0, 0]);
+  }
+  gb.add(B.skin, meshGeo(skin));
+  gb.add('hsUnder', meshGeo(under));
+  return st;
+}
+/* Full-section rubber gangway cover from the body end out to the car end (a0 -> a1), a little inside the body */
+function hsGangway(gb, sect, a0, a1, ref, k = 0.975) {
+  const p = sect(a0), R = hsRing({ ...p, w: p.w * k, yt: 1.6 + (p.yt - 1.6) * k, yb: p.yb + 0.08, ys: p.ys, ch: p.ch * k }, 1.0);
+  const acc = newMesh(), idx = []; for (let j = 0; j < RING_N; j++) idx.push(j);
+  loftInto(acc, [{ a: a0, R }, { a: a1, R }], idx, ref, 1, 1);
+  const pts = []; for (let j = 0; j < RING_N - 1; j++) pts.push([ref - a1, R[j][1], R[j][0]]);
+  capInto(acc, pts, [a1 > a0 ? -1 : 1, 0, 0]);
+  gb.add('hsRubber', meshGeo(acc));
+  // folds of the bellows
+  for (let a = Math.min(a0, a1) + 0.05; a < Math.max(a0, a1) - 0.02; a += 0.075) {
+    const r2 = R.map(([z, y]) => [z * 1.004, 1.6 + (y - 1.6) * 1.004]), f = newMesh();
+    loftInto(f, [{ a, R: r2 }, { a: a + 0.02, R: r2 }], idx, ref, 1, 1);
+    gb.add('hsRubber', meshGeo(f));
+  }
+}
+
+/* ---------------- liveries ---------------- */
+/* texture over (a, y): u = a / uvL, v = y / uvH. draw(g, X, Y) gets metre to pixel mappers */
+function hsSkin(key, uvL, uvH, w, h, draw, opts = {}) {
+  if (RMAT[key]) return RMAT[key];
+  const tex = canvasTex(w, h, (g, W, H) => draw(g, a => a / uvL * W, y => H - y / uvH * H, W, H));
+  return (RMAT[key] = new THREE.MeshStandardMaterial({ map: tex, metalness: opts.metal ?? 0.25, roughness: opts.rough ?? 0.32, side: THREE.DoubleSide }));
+}
+const E5C = { green: '#0f6b4c', white: '#eef0ec', pink: '#e8558f', silver: '#a9adb1' };
+
+/* ---------------- E5 ---------------- */
+const E5 = { HW: 1.675, ROOF: 3.65, LN: 15.0, CUT: 1.12, YB: 0.62, SH: 2.62, BOG: 17.5, OV: 3.75, WB: 2.5, R: 0.43, GW: 0.3 };
+/* section of an E5 body at a metres from the nose tip (end car), or anywhere on an intermediate car (nose = false) */
+function e5Sect(a, nose) {
+  const { HW, ROOF, LN, YB, SH } = E5;
+  if (!nose || a >= LN) return { yb: YB, w: HW, ys: SH, yt: ROOF, ch: 0.24, n: 2.5 };
+  const t = clamp(a / LN, 0, 1);
+  let w = 0.62 + (HW - 0.62) * (1 - Math.pow(1 - t, 2.4));
+  let yt = 1.0 + (ROOF - 1.0) * Math.pow(Math.sin(t * Math.PI / 2), 1.45) + 0.2 * Math.exp(-(((a - 10.0) / 1.9) ** 2)) * (1 - smooth(12.5, LN, a));
+  yt = Math.min(yt, ROOF + 0.0);
+  let yb = YB - 0.3 * (1 - smooth(0, 4.5, a));
+  let ys = yb + 0.3 + (SH - YB - 0.3) * Math.pow(smooth(0, 9, a), 0.7);
+  let ch = 0.24;
+  const n = lerp(2.0, 2.5, t);
+  // the tip rounds off to a point in both plan and side view
+  const RC = 0.9, q = Math.sqrt(Math.max(0, 1 - (1 - Math.min(a, RC) / RC) ** 2)), yc = 0.68;
+  if (a < RC) { w *= q; yb = yc + (yb - yc) * q; yt = yc + (yt - yc) * q; ys = yc + (ys - yc) * q; ch *= q; }
+  return { yb, w: Math.max(w, 0.0005), ys, yt, ch: Math.min(ch, Math.max(0.0004, (ys - yb) * 0.45)), n };
+}
+/* the green over the white: the boundary (top of the pink stripe) at a from the nose tip */
+const e5Line = a => a >= E5.LN ? 2.86 : 0.98 + (2.86 - 0.98) * Math.pow(a / E5.LN, 0.85);
+function e5Skin(nose) {
+  const L = nose ? 26.5 : 25;
+  return hsSkin(nose ? 'e5SkinNose' : 'e5SkinMid', L, 4, 2048, 256, (g, X, Y, W, H) => {
+    g.fillStyle = E5C.white; g.fillRect(0, 0, W, H);
+    g.beginPath(); g.moveTo(0, 0);
+    for (let a = 0; a <= L + 0.01; a += 0.1) g.lineTo(X(a), Y(nose ? e5Line(a) : 2.86));
+    g.lineTo(W, 0); g.closePath(); g.fillStyle = E5C.green; g.fill();
+    g.beginPath();
+    for (let a = 0; a <= L + 0.01; a += 0.1) g.lineTo(X(a), Y(nose ? e5Line(a) : 2.86));
+    for (let a = L; a >= -0.01; a -= 0.1) g.lineTo(X(a), Y((nose ? e5Line(a) : 2.86) - 0.085));
+    g.closePath(); g.fillStyle = E5C.pink; g.fill();
+    // a faint panel line along the bottom of the body side
+    g.fillStyle = 'rgba(0,0,0,0.12)'; g.fillRect(0, Y(0.9), W, 1);
+  });
+}
+/* E5 car: def from HSR.e5.cars. Built nose forward (a = 0 at the nose tip or the joint at car 1's end) */
+function buildE5Car(def, idx) {
+  hsMaterials();
+  const nose = def.type === 'nose', L = def.len;
+  const t0 = nose ? L - E5.OV - E5.BOG : E5.OV, t1 = L - E5.OV, ref = (t0 + t1) / 2, x = a => ref - a;
+  const root = new THREE.Group(), body = new THREE.Group(); root.add(body);
+  const gb = new GeoBin();
+  const skinKey = nose ? 'e5SkinNose' : 'e5SkinMid'; e5Skin(nose);
+  const sect = a => e5Sect(a, nose);
+  const stations = [];
+  if (nose) { for (const a of [0, 0.01, 0.03, 0.06, 0.1, 0.16, 0.24, 0.34, 0.47, 0.62, 0.8, 1.0, 1.25]) stations.push(a); for (let a = 1.5; a < E5.LN; a += 0.35) stations.push(a); }
+  for (const a of [nose ? E5.LN : E5.GW, L - E5.GW]) stations.push(a);
+  const wells = [[t0 - 1.75, t0 + 1.75], [t1 - 1.75, t1 + 1.75]];
+  hsBody(gb, { len: L, a0: nose ? 0 : E5.GW, a1: L - E5.GW, stations, wells, cut: E5.CUT, sect, skin: skinKey, uvL: L, uvH: 4 }, ref);
+  if (!nose) hsGangway(gb, sect, E5.GW, 0.0, ref);
+  hsGangway(gb, sect, L - E5.GW, L, ref);
+
+  /* ---- windows, doors, lettering ---- */
+  const HW = E5.HW, side = s => s * (HW + 0.004);
+  const win = (a, y, w, h, k = 'hsWin') => { for (const s of [-1, 1]) gb.add(k, rrectGeo(w, h, Math.min(w, h) * 0.22), M(x(a), y, side(s), 0, s > 0 ? 0 : Math.PI, 0)); };
+  const door = (a, w = 1.0) => {
+    for (const s of [-1, 1]) {
+      const z = s * (HW + 0.003);
+      for (const da of [-w / 2, w / 2]) gb.box('hsSeam', 0.012, 1.62, 0.004, x(a + da), 0.95 + 0.81, z);
+      gb.box('hsSeam', w, 0.012, 0.004, x(a), 2.57, z);
+      gb.add('hsWin', rrectGeo(0.36, 0.5, 0.08), M(x(a), 2.22, s * (HW + 0.005), 0, s > 0 ? 0 : Math.PI, 0));   // door window
+      gb.box('hsSeam', w * 0.9, 0.05, 0.08, x(a), 0.93, s * (HW - 0.01));   // step plate in the doorway sill
+    }
+  };
+  const pitch = def.cls === 'gran' ? 1.3 : def.cls === 'green' ? 1.16 : 1.04, wW = def.cls === 'ord' ? 0.62 : 0.78;
+  // seating saloon between the vestibules; car 1 and car 10 lose the front of the car to the nose and cab
+  const s0 = nose ? E5.LN + 1.2 : 3.4, s1 = L - 3.1, door1 = L - 1.85;
+  const n = Math.floor((s1 - s0) / pitch);
+  for (let i = 0; i < n; i++) win(s0 + (s1 - s0 - (n - 1) * pitch) / 2 + i * pitch, 2.33, wW, 0.5);
+  door(door1);
+  if (!nose) door(1.85);
+  else {
+    // crew door behind the cab, and the cab side window
+    for (const s of [-1, 1]) {
+      const z = s * (ringZ(hsRing(sect(13.3), E5.CUT), 1.8) + 0.003);
+      for (const da of [-0.33, 0.33]) gb.box('hsSeam', 0.012, 1.6, 0.004, x(13.3 + da), 1.0 + 0.8, z);
+      gb.box('hsSeam', 0.66, 0.012, 0.004, x(13.3), 2.6, z);
+    }
+  }
+  // car number by the door, and a class mark on the Green and Gran Class cars
+  const nk = 'e5n_' + def.num; RMAT[nk] = RMAT[nk] || textDecal(def.num, 512, 96, '#2b2f31', 'sans', 54);
+  for (const s of [-1, 1]) gb.add(nk, new THREE.PlaneGeometry(0.9, 0.17), M(x(door1 - (s > 0 ? -0.95 : 0.95)), 1.55, s * (HW + 0.006), 0, s > 0 ? 0 : Math.PI, 0));
+  if (def.cls !== 'ord') {
+    const ck = 'e5c_' + def.cls; RMAT[ck] = RMAT[ck] || decalMat(128, 128, (g, w, h) => { g.fillStyle = def.cls === 'gran' ? '#b8954a' : '#2f8f4e'; g.beginPath(); g.moveTo(64, 8); g.lineTo(120, 64); g.lineTo(64, 120); g.lineTo(8, 64); g.closePath(); g.fill(); g.fillStyle = '#fff'; g.font = 'bold 54px Arial'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(def.cls === 'gran' ? 'G' : '✿', 64, 68); });
+    for (const s of [-1, 1]) gb.add(ck, new THREE.PlaneGeometry(0.22, 0.22), M(x(door1 + (s > 0 ? 0.85 : -0.85)), 2.34, s * (HW + 0.006), 0, s > 0 ? 0 : Math.PI, 0));
+  }
+
+  /* ---- the cab: windscreen over the canopy, headlights low on the nose ---- */
+  let lens = null, lenses = [], beam = null, halo = null;
+  if (nose) {
+    // windscreen: the top of the canopy between a = 8.5 and 11.5, a superellipse patch over the roof centre
+    const acc = newMesh(), st = [];
+    const A0 = 8.4, A1 = 11.6;
+    for (let k = 0; k <= 16; k++) {
+      const a = lerp(A0, A1, k / 16), p = sect(a), gq = Math.sin(Math.PI * k / 16) ** 0.45, th0 = Math.PI / 2 - (Math.PI / 2 - 0.55) * gq, R = [];
+      const ws = p.w - (p.tum || 0);
+      for (let j = 0; j <= 10; j++) { const th = lerp(th0, Math.PI - th0, j / 10), c = Math.cos(th); R.push([Math.sign(c) * ws * Math.pow(Math.abs(c), 2 / p.n), p.ys + (p.yt - p.ys) * Math.pow(Math.sin(th), 2 / p.n)]); }
+      st.push({ a, R });
+    }
+    const idx = []; for (let j = 0; j <= 10; j++) idx.push(j);
+    loftInto(acc, st, idx, ref, 1, 1, 0.006);
+    gb.add('hsGlass', meshGeo(acc));
+    // headlights: a slim lamp each side on the white just under the line, about 3 m back from the tip
+    for (const s of [-1, 1]) {
+      const a0 = 2.3, a1 = 4.1, la = newMesh(), st2 = [];
+      for (let k = 0; k <= 8; k++) {
+        const a = lerp(a0, a1, k / 8), R0 = hsRing(sect(a), E5.CUT), yl = e5Line(a) - 0.16, hgt = 0.11 * Math.sin(Math.PI * k / 8) ** 0.5 + 0.004, R = [];
+        for (const y of [yl - hgt, yl, yl + hgt * 0.6]) R.push([s * (ringZ(R0, y) + 0.004), y]);
+        st2.push({ a, R });
+      }
+      loftInto(la, st2, s > 0 ? [0, 1, 2] : [2, 1, 0], ref, 1, 1);
+      const m = new THREE.Mesh(meshGeo(la), RMAT.lens); body.add(m); lenses.push(m);
+    }
+    lens = lenses[0];
+    const hy = 1.3;
+    const beamG = new THREE.ConeGeometry(7, 70, 24, 1, true); beamG.translate(0, -35, 0); beamG.rotateZ(Math.PI / 2);
+    beam = new THREE.Mesh(beamG, new THREE.MeshBasicMaterial({ color: 0xfff2c8, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: true }));
+    beam.position.set(x(0.5), hy, 0); beam.rotation.z = -0.03; body.add(beam);
+    halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: haloTex(), color: 0xffffff, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0 }));
+    halo.position.set(x(0.2), 0.95, 0); halo.scale.set(2.2, 1.4, 1); body.add(halo);
+    // obstacle deflector (snow plough) under the tip
+    gb.add('hsUnder', plowGeo(x(0.5), x(2.4), 1.15, 0.16, 0.8));
+  }
+  /* ---- roof: pantograph on cars 3 and 7, roof fairing at the gangways ---- */
+  const pans = [];
+  if (def.pan) pans.push(hsPantograph(gb, body, { a: def.pan, ref, roofAt: z => ringTop(hsRing(sect(def.pan), E5.CUT), z), roof: E5.ROOF, w: 1.45, L1: 1.42, L2: 1.52, raised: !!def.raised, rise: HSR.e5.wireH }));
+  /* ---- bogies ---- */
+  const trucks = [], wheels = [];
+  for (const ta of [t0, t1]) { const B = hsBogie({ wb: E5.WB, R: E5.R, motor: def.motor, top: E5.CUT, w: 1.03 }); trucks.push(B.grp); wheels.push(...B.wheels); }
+  body.add(gb.build({ ...RMAT }));
+  const hit = new THREE.Mesh(new THREE.BoxGeometry(L, 3.2, 3.3), RMAT.hit); hit.position.set(x(L / 2), 2.1, 0); body.add(hit);
+  root.traverse(o => { if (o.isMesh && o.material !== RMAT.hsGlass && o.material !== RMAT.hit) { o.castShadow = true; o.receiveShadow = true; } });
+  if (beam) beam.castShadow = false;
+  return {
+    root, body, trucks, wheels, rW: E5.R, wb: E5.WB, len: L, frame: [t0, t1], ref, pans, lens, lenses, beam, halo, ditch: [], set: 'e5', nose, motor: def.motor, mass: def.t * 1000, num: def.num,
+    headlightPos: new THREE.Vector3(x(0.6), 1.25, 0), cabEye: new THREE.Vector3(x(10.6), 3.05, 0.42), hornPos: new THREE.Vector3(x(2.0), 1.0, 0), cabLightPos: new THREE.Vector3(x(11.0), 2.9, 0),
+    enginePos: new THREE.Vector3(x(L / 2), 0.8, 0), skin: {},
+  };
+}
+
+/* obstacle deflector under a nose: a blunt V in plan from xTip back to xBack (half width hw at the back),
+   standing from y0 above the rail up to y1 inside the body */
+function plowGeo(xTip, xBack, hw, y0, y1) {
+  const sh = new THREE.Shape();
+  sh.moveTo(xTip, -0.18); sh.lineTo(xTip, 0.18); sh.lineTo(xBack, hw); sh.lineTo(xBack, -hw); sh.closePath();
+  return new THREE.ExtrudeGeometry(sh, { depth: y1 - y0, bevelEnabled: false }).rotateX(Math.PI / 2).translate(0, y1, 0);
+}
+
+/* ---------------- bogies ----------------
+   A bolsterless bogie: H-frame of two side beams and two transoms, axle boxes on coil springs, an air
+   spring on each side beam carrying the body, yaw dampers, disc brakes; motored bogies carry two
+   frame-hung traction motors between the axles. Local frame at the bogie centre, rail top. */
+function hsBogie(o) {
+  hsMaterials();
+  const grp = new THREE.Group(), tg = new GeoBin(), W = o.w, h = o.wb / 2, R = o.R;
+  const yF = R + 0.16;                      // side beam centre
+  for (const s of [-1, 1]) {
+    const z = s * W;
+    // side beam dipping between the axle boxes
+    const sf = new THREE.Shape();
+    sf.moveTo(-h - 0.42, yF + 0.04); sf.lineTo(-h - 0.42, yF + 0.2); sf.lineTo(-h + 0.3, yF + 0.2); sf.quadraticCurveTo(-h + 0.6, yF + 0.2, -h + 0.75, yF + 0.05);
+    sf.lineTo(h - 0.75, yF + 0.05); sf.quadraticCurveTo(h - 0.6, yF + 0.2, h - 0.3, yF + 0.2); sf.lineTo(h + 0.42, yF + 0.2); sf.lineTo(h + 0.42, yF + 0.04);
+    sf.lineTo(h - 0.3, yF + 0.04); sf.quadraticCurveTo(h - 0.6, yF + 0.04, h - 0.75, yF - 0.14); sf.lineTo(-h + 0.75, yF - 0.14); sf.quadraticCurveTo(-h + 0.6, yF + 0.04, -h + 0.3, yF + 0.04); sf.closePath();
+    tg.add('hsBogie', new THREE.ExtrudeGeometry(sf, { depth: 0.2, bevelEnabled: true, bevelThickness: 0.015, bevelSize: 0.015, bevelSegments: 1 }).translate(0, 0, z - 0.1));
+    for (const x of [-h, h]) {
+      tg.box('hsBogie', 0.4, 0.3, 0.26, x, R, z);                                                       // axle box
+      tg.add('hsSteel', new THREE.CylinderGeometry(0.11, 0.11, 0.1, 14).rotateX(Math.PI / 2), M(x, R, s * (W + 0.15)));   // end cap
+      tg.add('hsBogie', new THREE.CylinderGeometry(0.11, 0.11, yF + 0.04 - (R + 0.15), 10), M(x + 0.0, (R + 0.15 + yF + 0.04) / 2, z));   // axle spring
+      tg.box('hsBogie', 0.7, 0.07, 0.12, x - Math.sign(x) * 0.45, R + 0.02, z);                          // axle box guide arm
+    }
+    // air spring on the side beam, its top plate bearing on the underside of the body
+    tg.add('hsRubber', new THREE.CylinderGeometry(0.3, 0.3, o.top - 0.035 - (yF + 0.2), 18), M(0, (yF + 0.2 + o.top - 0.035) / 2, z));
+    tg.add('hsBogie', new THREE.CylinderGeometry(0.33, 0.33, 0.035, 18), M(0, o.top - 0.0175, z));
+    // yaw damper along the outside of the frame
+    tg.add('hsSteel', new THREE.CylinderGeometry(0.05, 0.05, 1.2, 8).rotateZ(Math.PI / 2), M(0.75, yF + 0.12, s * (W + 0.17)));
+    tg.box('hsBogie', 0.1, 0.12, 0.12, 0.1, yF + 0.12, s * (W + 0.17)); tg.box('hsBogie', 0.12, 0.2, 0.08, 0.1, yF + 0.12, s * (W + 0.1));
+  }
+  for (const x of [-0.42, 0.42]) tg.box('hsBogie', 0.24, 0.26, 2 * W - 0.1, x, yF + 0.0, 0);   // transoms
+  if (o.motor) {
+    // traction motors hung from the transoms, driving the axles through gearboxes
+    const mx = 0.76;                          // the motor nests against the transom's outer face
+    for (const x of [-1, 1]) {
+      tg.add('hsBogie', new THREE.CylinderGeometry(0.27, 0.27, 0.62, 16).rotateX(Math.PI / 2), M(x * mx, R + 0.02, -0.1));
+      tg.box('hsBogie', h - mx, 0.42, 0.26, x * (h + mx) / 2, R, 0.33);              // gearbox from the motor's shaft end out to the axle
+    }
+  } else for (const s of [-1, 1]) {
+    // brake units hung off the transom, reaching out toward each axle
+    const x0 = 0.5, x1 = h - 0.28;
+    tg.box('hsBogie', x1 - x0, 0.3, 0.9, s * (x0 + x1) / 2, R + 0.1, 0);
+  }
+  grp.add(tg.build(RMAT));
+  const ax = plainAxle(R), wheels = [];
+  for (const x of [-h, h]) {
+    const wg = new THREE.Group(); wg.position.set(x, R, 0);
+    wg.add(new THREE.Mesh(ax.black, RMAT.black), new THREE.Mesh(ax.tire, RMAT.tire));
+    // wheel-mounted brake discs on both faces of each wheel web
+    for (const s of [-1, 1]) wg.add(new THREE.Mesh(new THREE.CylinderGeometry(R * 0.82, R * 0.82, 0.04, 24).rotateX(Math.PI / 2).translate(0, 0, s * (RAIL_OFF - 0.12)), RMAT.hsSteel));
+    // axle journals running out through the hubs into the axle boxes
+    for (const s of [-1, 1]) wg.add(new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.085, W - 0.62, 12).rotateX(Math.PI / 2).translate(0, 0, s * (W + 0.62) / 2), RMAT.black));
+    grp.add(wg); wheels.push(wg);
+  }
+  grp.traverse(m => { if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; } });
+  return { grp, wheels };
+}
+
+/* ---------------- pantograph ----------------
+   A single-arm pantograph on insulators: the lower arm rises from a hinge at the back of the base frame,
+   the upper arm folds back over it to the collector head. set(h) puts the top of the head h above the rail. */
+function hsPantograph(gb, body, o) {
+  const x0 = o.ref - o.a, yB = o.roof + 0.34, Lb = 1.5;
+  // base frame on four insulators
+  for (const dx of [-Lb / 2, Lb / 2]) for (const z of [-0.45, 0.45]) {
+    gb.add('hsIns', new THREE.CylinderGeometry(0.07, 0.09, 0.3, 10), M(x0 + dx, o.roof + 0.15, z));
+    for (let k = 0; k < 3; k++) gb.add('hsIns', new THREE.CylinderGeometry(0.11, 0.11, 0.025, 12), M(x0 + dx, o.roof + 0.07 + k * 0.08, z));
+    const r0 = o.roofAt(Math.abs(z) + 0.12);
+    gb.box('hsBogie', 0.24, o.roof + 0.025 - r0 + 0.01, 0.24, x0 + dx, (o.roof + 0.025 + r0 - 0.01) / 2, z);   // mounting pad, down onto the curve of the roof
+  }
+  for (const z of [-0.45, 0.45]) gb.box('hsPan', Lb + 0.16, 0.06, 0.08, x0, yB, z);
+  for (const dx of [-Lb / 2, Lb / 2]) gb.box('hsPan', 0.08, 0.06, 0.98, x0 + dx, yB, 0);
+  gb.box('hsBogie', 0.5, 0.18, 0.5, x0 + Lb / 2 - 0.3, yB + 0.08, 0);   // air cylinder that raises it
+  const P0 = [x0 + Lb / 2 - 0.12, yB + 0.08];   // hinge of the lower arm, at the base's rear end
+  const lower = new THREE.Group(), upper = new THREE.Group(), head = new THREE.Group();
+  {
+    const g = new GeoBin();
+    for (const z of [-0.32, 0.32]) g.add('hsPan', barGeo(0.035, [0, 0, z], [o.L1, 0, z * 0.25], 8));
+    g.add('hsPan', barGeo(0.03, [0.15, 0, -0.32], [0.15, 0, 0.32], 6));
+    g.add('hsPan', barGeo(0.045, [0, 0, -0.38], [0, 0, 0.38], 10));
+    g.add('hsPan', barGeo(0.04, [o.L1, 0, -0.12], [o.L1, 0, 0.12], 10));   // knee pin the upper arm hangs on
+    lower.add(g.build(RMAT));
+  }
+  {
+    const g = new GeoBin();
+    g.add('hsPan', barGeo(0.03, [0, 0, 0], [o.L2, 0, 0], 8));
+    g.add('hsPan', barGeo(0.018, [0.25, -0.08, 0], [o.L2 * 0.85, -0.02, 0], 6));
+    upper.add(g.build(RMAT));
+  }
+  {
+    const g = new GeoBin(), hw = o.w / 2;
+    // two carbon strips on a frame, with horns turned down at each end
+    for (const dx of [-0.13, 0.13]) { g.box('hsCarbon', 0.05, 0.035, 2 * hw - 0.3, dx, -0.0175, 0); g.box('hsPan', 0.06, 0.04, 2 * hw - 0.3, dx, -0.055, 0); }
+    for (const s of [-1, 1]) {
+      g.add('hsPan', barGeo(0.02, [0, -0.05, s * (hw - 0.15)], [0, -0.15, s * hw], 6));
+      for (const dx of [-0.13, 0.13]) g.add('hsPan', barGeo(0.014, [dx, -0.04, s * (hw - 0.15)], [0, -0.15, s * (hw - 0.02)], 6));
+      g.box('hsPan', 0.32, 0.04, 0.04, 0, -0.08, s * 0.35);
+    }
+    g.box('hsPan', 0.06, 0.12, 0.06, 0, -0.12, 0);
+    g.box('hsPan', 0.32, 0.04, 0.06, 0, -0.08, 0);          // centre cross member tying the strip frames to the post
+    g.box('hsPan', 0.08, 0.1, 0.1, 0, -0.04, 0);            // knuckle where the upper arm meets the head
+    head.add(g.build(RMAT));
+  }
+  for (const grp of [lower, upper, head]) { grp.traverse(m => { if (m.isMesh) m.castShadow = true; }); body.add(grp); }
+  const pan = { lower, upper, head, P0, L1: o.L1, L2: o.L2, raised: o.raised, hx: P0[0] - 0.1, down: yB + 0.27, rise: o.rise, h: -1 };
+  pan.set = h => {
+    if (Math.abs(h - pan.h) < 1e-4) return; pan.h = h;
+    // the collector head travels up a near-vertical line just behind the hinge; solve the two-arm linkage for it
+    const hx = pan.hx, hy = h - 0.0, dx = hx - P0[0], dy = hy - P0[1], d = Math.hypot(dx, dy);
+    const c = clamp((pan.L1 * pan.L1 + d * d - pan.L2 * pan.L2) / (2 * pan.L1 * d), -1, 1);
+    const phi = Math.atan2(dy, dx), al = phi - Math.acos(c);    // the knee swings out ahead of the hinge, away from the head
+    const K = [P0[0] + Math.cos(al) * pan.L1, P0[1] + Math.sin(al) * pan.L1];
+    lower.position.set(P0[0], P0[1], 0); lower.rotation.set(0, 0, al);
+    upper.position.set(K[0], K[1], 0); upper.rotation.set(0, 0, Math.atan2(hy - K[1], hx - K[0]));
+    head.position.set(hx, hy, 0);
+  };
+  pan.set(o.raised ? o.rise : pan.down);
+  return pan;
+}
+
+/* ---------------- Acela Express ---------------- */
+const AC = { PW: 1.59, CW: 1.58, PROOF: 4.32, CROOF: 4.23, LN: 4.8, PCUT: 1.32, CCUT: 1.2, PBOG: 10.74, CBOG: 18.14, PWB: 3.0, CWB: 2.6, PR: 0.508, CR: 0.457, GW: 0.32 };
+const ACC = { silver: '#c4c8cc', band: '#2c3238', skirt: '#3d4247', blue: '#2f6aa3', logo: '#2a5d8f' };
+/* power car section at a from the nose (cab end) */
+function acPowerSect(a) {
+  const { PW, PROOF, LN } = AC;
+  if (a >= LN) return { yb: 0.55, w: PW, ys: 3.62, yt: PROOF, ch: 0.16, n: 3.0, tum: 0.1 };
+  const t = clamp(a / LN, 0, 1), tw = clamp(a / 3.0, 0, 1);
+  let w = 1.12 + (PW - 1.12) * (1 - (1 - tw) ** 2);
+  let yt = 1.75 + (PROOF - 1.75) * Math.pow(Math.sin(t * Math.PI / 2), 1.15);
+  let yb = 0.55 - 0.22 * (1 - smooth(0, 2.0, a));
+  let ys = yb + 0.6 + (3.62 - 0.55 - 0.6) * Math.pow(smooth(0, LN, a), 0.8);
+  let ch = 0.16, tum = 0.1 * smooth(0, LN, a);
+  const n = lerp(2.2, 3.0, t);
+  const RC = 0.35, q = Math.sqrt(Math.max(0, 1 - (1 - Math.min(a, RC) / RC) ** 2)), yc = 1.05;
+  if (a < RC) { w *= q; yb = yc + (yb - yc) * q; yt = yc + (yt - yc) * q; ys = yc + (ys - yc) * q; ch *= q; tum *= q; }
+  return { yb, w: Math.max(w, 0.0005), ys, yt, ch: Math.min(ch, Math.max(0.0004, (ys - yb) * 0.45)), n, tum };
+}
+/* tilting coach: a narrower upper body so it can lean 4.2 degrees inside the loading gauge */
+const acCoachSect = () => ({ yb: 0.7, w: AC.CW, ys: 3.5, yt: AC.CROOF, ch: 0.14, n: 2.4, tum: 0.26 });
+const AC_GANG = () => ({ yb: 0.98, w: 0.8, ys: 3.05, yt: 3.5, ch: 0.08, n: 3 });
+function acSkin(power) {
+  const L = power ? 21.22 : 26.64;
+  return hsSkin(power ? 'acSkinPower' : 'acSkinCoach', L, 4.4, 2048, 256, (g, X, Y, W, H) => {
+    g.fillStyle = ACC.silver; g.fillRect(0, 0, W, H);
+    // fluting on the lower body, as the stainless panels catch the light
+    g.fillStyle = 'rgba(255,255,255,0.10)'; for (let y = 1.0; y < 2.15; y += 0.11) g.fillRect(0, Y(y), W, 1);
+    g.fillStyle = ACC.skirt; g.fillRect(0, Y(0.98), W, H - Y(0.98));
+    // dark window band, and the blue line under it
+    if (power) {
+      g.beginPath(); g.moveTo(X(0.0), Y(2.05)); g.bezierCurveTo(X(1.2), Y(2.15), X(2.2), Y(2.28), X(3.0), Y(2.3)); g.lineTo(X(L), Y(2.3)); g.lineTo(X(L), Y(2.95)); g.lineTo(X(0), Y(2.95)); g.closePath();
+      g.fillStyle = ACC.band; g.fill();
+      g.fillStyle = ACC.blue; g.beginPath(); g.moveTo(X(0.4), Y(2.0)); g.bezierCurveTo(X(1.4), Y(2.1), X(2.3), Y(2.2), X(3.0), Y(2.22)); g.lineTo(X(L), Y(2.22)); g.lineTo(X(L), Y(2.26)); g.lineTo(X(3.0), Y(2.26)); g.bezierCurveTo(X(2.3), Y(2.25), X(1.4), Y(2.15), X(0.4), Y(2.05)); g.closePath(); g.fill();
+    } else {
+      g.fillStyle = ACC.band; g.fillRect(0, Y(2.95), W, Y(2.3) - Y(2.95));
+      g.fillStyle = ACC.blue; g.fillRect(0, Y(2.26), W, Y(2.22) - Y(2.26));
+    }
+  }, { metal: 0.55, rough: 0.33 });
+}
+function buildAcelaCar(def, idx) {
+  hsMaterials();
+  const power = def.type === 'power', L = def.len, bog = power ? AC.PBOG : AC.CBOG;
+  const t0 = (L - bog) / 2, t1 = t0 + bog, ref = (t0 + t1) / 2, x = a => ref - a;
+  const root = new THREE.Group(), body = new THREE.Group(); root.add(body);
+  const gb = new GeoBin();
+  const skinKey = power ? 'acSkinPower' : 'acSkinCoach'; acSkin(power);
+  const sect = power ? acPowerSect : acCoachSect, cut = power ? AC.PCUT : AC.CCUT, hw = power ? AC.PW : AC.CW;
+  const stations = [];
+  if (power) { for (const a of [0, 0.01, 0.03, 0.06, 0.1, 0.16, 0.24, 0.35, 0.5]) stations.push(a); for (let a = 0.7; a < AC.LN; a += 0.25) stations.push(a); stations.push(AC.LN); }
+  else stations.push(AC.GW);
+  stations.push(L - AC.GW);
+  const half = power ? 1.85 : 1.6;
+  const wells = [[t0 - half, t0 + half], [t1 - half, t1 + half]];
+  hsBody(gb, { len: L, a0: power ? 0 : AC.GW, a1: L - AC.GW, stations, wells, cut, sect, skin: skinKey, uvL: L, uvH: 4.4 }, ref);
+  if (!power) hsGangway(gb, () => AC_GANG(), AC.GW, 0, ref, 1);
+  hsGangway(gb, () => AC_GANG(), L - AC.GW, L, ref, 1);
+  const R0 = hsRing(sect(L / 2), cut);
+  /* a window or panel lying on the (leaning) side at height y */
+  const onSide = (k, geo, a, y, out = 0.004) => {
+    const z = ringZ(R0, y), lean = Math.atan2(ringZ(R0, y - 0.15) - ringZ(R0, y + 0.15), 0.3);
+    for (const s of [-1, 1]) gb.add(k, geo.clone(), M(x(a), y, s * (z + out), s * lean, s > 0 ? 0 : Math.PI, 0));
+  };
+  const door = (a, w = 0.95) => {
+    for (const da of [-w / 2, w / 2]) for (let y = 1.0; y < 2.9; y += 0.19) onSide('hsSeam', new THREE.BoxGeometry(0.012, 0.2, 0.006), a + da, y + 0.095, 0.003);
+    onSide('hsSeam', new THREE.BoxGeometry(w, 0.012, 0.006), a, 2.96, 0.003);
+    onSide('hsWin', rrectGeo(0.4, 0.62, 0.07), a, 2.5, 0.005);
+  };
+  if (power) {
+    // cab side window and crew door, cooling grilles, the name on the side
+    onSide('hsWin', rrectGeo(0.95, 0.55, 0.1), 3.55, 2.62, 0.006);
+    door(5.0, 0.7);
+    for (const [a0, a1] of [[13.6, 16.3], [16.8, 19.5]]) onSide('acGrille', new THREE.PlaneGeometry(a1 - a0, 0.78), (a0 + a1) / 2, 1.62, 0.005);
+    RMAT.acGrille = RMAT.acGrille || new THREE.MeshStandardMaterial({ color: 0x9aa0a5, metalness: 0.6, roughness: 0.45, map: louverTex() });
+    RMAT.acLogo = RMAT.acLogo || decalMat(1024, 256, (g, w, h) => { g.fillStyle = ACC.logo; g.font = 'italic 600 170px "Helvetica Neue", Arial, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; if (g.letterSpacing !== undefined) g.letterSpacing = '6px'; g.fillText('Acela', w / 2, h / 2 + 10); });
+    for (const s of [-1, 1]) gb.add('acLogo', new THREE.PlaneGeometry(4.0, 1.0), M(x(10.2), 1.62, s * (ringZ(R0, 1.62) + 0.006), 0, s > 0 ? 0 : Math.PI, 0));
+  } else {
+    const pitch = def.cls === 'first' ? 1.36 : 1.17, s0 = 3.0, s1 = L - 2.4, n = Math.floor((s1 - s0) / pitch);
+    for (let i = 0; i < n; i++) onSide('hsWin', rrectGeo(1.0, 0.62, 0.1), s0 + (s1 - s0 - (n - 1) * pitch) / 2 + i * pitch, 2.62, 0.005);
+    door(1.55);
+  }
+  const nk = 'acn_' + def.num; RMAT[nk] = RMAT[nk] || textDecal(def.num, 256, 96, '#2c3238', 'sans', 60);
+  onSide(nk, new THREE.PlaneGeometry(0.5, 0.19), power ? 7.0 : L - 1.6, 1.7, 0.006);
+
+  let lens = null, lenses = [], beam = null, halo = null; const ditch = [];
+  if (power) {
+    // big raked windscreen, two headlights low in the nose with ditch lights out at the corners, a pilot
+    const acc = newMesh(), st = [], A0 = 1.0, A1 = 3.7;
+    for (let k = 0; k <= 16; k++) {
+      const a = lerp(A0, A1, k / 16), p = sect(a), gq = Math.sin(Math.PI * k / 16) ** 0.35, th0 = Math.PI / 2 - (Math.PI / 2 - 0.62) * gq, R = [];
+      const ws = p.w - (p.tum || 0);
+      for (let j = 0; j <= 10; j++) { const th = lerp(th0, Math.PI - th0, j / 10), c = Math.cos(th); R.push([Math.sign(c) * ws * Math.pow(Math.abs(c), 2 / p.n), p.ys + (p.yt - p.ys) * Math.pow(Math.sin(th), 2 / p.n)]); }
+      st.push({ a, R });
+    }
+    const idw = []; for (let j = 0; j <= 10; j++) idw.push(j);
+    loftInto(acc, st, idw, ref, 1, 1, 0.006); gb.add('hsGlass', meshGeo(acc));
+    for (const s of [-1, 1]) {
+      // lamps let into the nose: find where the lamp's axis meets the skin, face the lens along the skin's normal there
+      // and run the housing back through the skin into the body
+      const seat = (y, z, r) => {
+        const zr = a => ringZ(hsRing(sect(a), cut), y);
+        let lo = 0.05, hi = 6; for (let k = 0; k < 40; k++) { const mid = (lo + hi) / 2; if (zr(mid) < Math.abs(z)) lo = mid; else hi = mid; }
+        const aS = (lo + hi) / 2, tx = x(aS + 0.05) - x(aS - 0.05), tz = Math.sign(z) * (zr(aS + 0.05) - zr(aS - 0.05));
+        const n = new THREE.Vector3(-tz, 0, tx).normalize(); if (n.x * Math.sign(x(0) - x(1)) < 0) n.negate();
+        const P = new THREE.Vector3(x(aS), y, z);
+        const hg = new THREE.CylinderGeometry(r, r, 0.3, 20).translate(0, -0.144, 0);
+        hg.applyMatrix4(new THREE.Matrix4().makeRotationFromQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), n))); hg.translate(P.x, P.y, P.z);
+        gb.add('hsLamp', hg);
+        const lp = P.clone().addScaledVector(n, 0.01), rot = Math.atan2(n.x, n.z);
+        return { lp, rot, n };
+      };
+      const L1 = seat(1.12, s * 0.62, 0.15);
+      const ln = new THREE.Mesh(new THREE.CircleGeometry(0.12, 20), RMAT.lens); ln.position.copy(L1.lp); ln.rotation.y = L1.rot; body.add(ln); lenses.push(ln);
+      const L2 = seat(0.78, s * 1.05, 0.1);
+      const dl = new THREE.Mesh(new THREE.CircleGeometry(0.075, 16), new THREE.MeshBasicMaterial({ color: 0xfff3d6 })); dl.position.copy(L2.lp); dl.rotation.y = L2.rot; body.add(dl);
+      const dh = new THREE.Sprite(new THREE.SpriteMaterial({ map: haloTex(), color: 0xffffff, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0 }));
+      dh.position.copy(L2.lp).addScaledVector(L2.n, 0.03); dh.scale.set(1.2, 1.2, 1); body.add(dh);
+      ditch.push({ lens: dl, halo: dh });
+    }
+    lens = lenses[0];
+    const beamG = new THREE.ConeGeometry(7, 70, 24, 1, true); beamG.translate(0, -35, 0); beamG.rotateZ(Math.PI / 2);
+    beam = new THREE.Mesh(beamG, new THREE.MeshBasicMaterial({ color: 0xfff2c8, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: true }));
+    beam.position.set(x(0.3), 1.12, 0); beam.rotation.z = -0.03; body.add(beam);
+    halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: haloTex(), color: 0xffffff, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0 }));
+    halo.position.set(x(0.2), 1.12, 0); halo.scale.set(2.2, 1.6, 1); body.add(halo);
+    // pilot and snow plow below the nose
+    gb.add('hsUnder', plowGeo(x(0.7), x(2.6), 1.2, 0.16, 0.75));
+  }
+  const pans = [];
+  if (power) {
+    const roofAt = z => ringTop(hsRing(sect(15), cut), z);
+    pans.push(hsPantograph(gb, body, { a: 12.6, ref, roofAt, roof: AC.PROOF, w: 1.95, L1: 1.25, L2: 1.35, raised: false, rise: HSR.acela.wireH }));
+    pans.push(hsPantograph(gb, body, { a: 16.6, ref, roofAt, roof: AC.PROOF, w: 1.95, L1: 1.25, L2: 1.35, raised: true, rise: HSR.acela.wireH }));
+  }
+  const trucks = [], wheels = [];
+  for (const ta of [t0, t1]) { const B = hsBogie({ wb: power ? AC.PWB : AC.CWB, R: power ? AC.PR : AC.CR, motor: power, top: cut, w: 1.03 }); trucks.push(B.grp); wheels.push(...B.wheels); }
+  body.add(gb.build({ ...RMAT }));
+  const hit = new THREE.Mesh(new THREE.BoxGeometry(L, 3.8, 3.2), RMAT.hit); hit.position.set(x(L / 2), 2.4, 0); body.add(hit);
+  root.traverse(o => { if (o.isMesh && o.material !== RMAT.hsGlass && o.material !== RMAT.hit) { o.castShadow = true; o.receiveShadow = true; } });
+  if (beam) beam.castShadow = false;
+  return {
+    root, body, trucks, wheels, rW: power ? AC.PR : AC.CR, wb: power ? AC.PWB : AC.CWB, len: L, frame: [t0, t1], ref, pans, lens, lenses, beam, halo, ditch, set: 'acela', nose: power, motor: power, mass: def.t * 1000, num: def.num,
+    tilt: !power, tiltY: 1.3,
+    headlightPos: new THREE.Vector3(x(0.4), 1.12, 0), cabEye: new THREE.Vector3(x(2.9), 3.25, 0.62), hornPos: new THREE.Vector3(x(6), AC.PROOF + 0.1, 0), cabLightPos: new THREE.Vector3(x(3.2), 3.6, 0),
+    enginePos: new THREE.Vector3(x(L / 2), 2.0, 0), skin: {},
+  };
+}
+
+/* ---------------- the trainset ---------------- */
+/* every car of set key, front to back; the last cab car (or power car) runs turned */
+function buildTrainset(key) {
+  const D = HSR[key], n = D.cars.length;
+  return D.cars.map((def, i) => {
+    const m = key === 'e5' ? buildE5Car(def, i) : buildAcelaCar(def, i);
+    [m.aeroLead, m.aero] = HS_AERO[key][def.type];
+    m.reversed = n > 1 && i === n - 1;
+    m.lead = i === 0;
+    if (m.lens) {
+      // headlights on the leading cab, red tail lights on the trailing one
+      for (const l of m.lenses) l.material = m.lead ? RMAT.lens : RMAT.hsTail;
+      if (!m.lead) { m.beam.visible = false; m.halo.visible = false; m.ditch.forEach(d => { d.lens.material.color.setScalar(0.12); d.halo.visible = false; }); }
+    }
+    return m;
+  });
+}
+/* the vehicle record for car m of a trainset */
+function setVehicle(m, i) {
+  const frame = m.reversed ? [m.len - m.frame[1], m.len - m.frame[0]] : m.frame.slice();
+  return { kind: i === 0 ? 'loco' : 'loco2', model: m, len: m.len, frame, trucks: [], mass: m.mass, axles: 4, area: 0, aero: m.aero, aeroLead: m.aeroLead,
+    brakeA: 0.8, disc: true, emu: true, motor: m.motor, reversed: m.reversed, noCouple: true };
+}
+/* every frame: pantographs up to the wire or folded down, and the tilting coaches leaning into the curves */
+function animateTrainset(T, dt) {
+  const panK = T.remote ? 1 : S.pan, v = T.remote ? 0 : S.v;
+  for (const veh of T.vehicles) {
+    const m = veh.model; if (!m || !m.set) continue;
+    for (const p of m.pans) p.set(p.raised ? lerp(p.down, p.rise, smooth(0, 1, panK)) : p.down);
+    if (m.tilt && veh.fp) {
+      const tp = veh.fp[0].tp, k = tp.e.curv(tp.s) * tp.o * (veh.reversed ? -1 : 1);
+      // active tilt takes out most of the unbalanced lateral acceleration, up to 4.2 degrees
+      const want = clamp(0.75 * v * v * k / 9.81, -0.0733, 0.0733);
+      m.tiltA = (m.tiltA || 0) + clamp(want - (m.tiltA || 0), -0.03 * dt, 0.03 * dt);
+      const b = m.body; b.matrixAutoUpdate = false;
+      b.matrix.makeTranslation(0, m.tiltY, 0).multiply(_m4.makeRotationX(-m.tiltA)).multiply(new THREE.Matrix4().makeTranslation(0, -m.tiltY, 0));
+      b.matrixWorldNeedsUpdate = true;
+    }
+  }
+}
+
+/* ---------------- sound ----------------
+   The voice of a trainset under power: the inverters' switching tone, which climbs in steps at low speed
+   (asynchronous PWM) and then holds while the motors' own whine rises with speed; the cooling blowers
+   whenever the main breaker is in; and the pantograph's hiss on the wire at speed. */
+function updateElectricAudio(T, inCab) {
+  if (!AU.on) return;
+  const ctx = AU.ctx, t = ctx.currentTime;
+  if (!AU.ez) {
+    const Z = AU.ez = {};
+    const gain = (v = 0) => { const g = ctx.createGain(); g.gain.value = v; return g; };
+    Z.out = gain(0); Z.out.connect(AU.loco);
+    Z.inv = ctx.createOscillator(); Z.inv.type = 'sawtooth'; Z.invF = ctx.createBiquadFilter(); Z.invF.type = 'bandpass'; Z.invF.Q.value = 6; Z.invG = gain(0);
+    Z.inv.connect(Z.invF); Z.invF.connect(Z.invG); Z.invG.connect(Z.out);
+    Z.m1 = ctx.createOscillator(); Z.m1.type = 'triangle'; Z.m2 = ctx.createOscillator(); Z.m2.type = 'sine'; Z.mG = gain(0);
+    Z.m1.connect(Z.mG); Z.m2.connect(Z.mG); Z.mG.connect(Z.out);
+    const n = ctx.createBufferSource(); n.buffer = AU.noise; n.loop = true; Z.bF = ctx.createBiquadFilter(); Z.bF.type = 'bandpass'; Z.bF.frequency.value = 480; Z.bF.Q.value = 0.7; Z.bG = gain(0);
+    n.connect(Z.bF); Z.bF.connect(Z.bG); Z.bG.connect(Z.out);
+    const w = ctx.createBufferSource(); w.buffer = AU.white; w.loop = true; Z.pF = ctx.createBiquadFilter(); Z.pF.type = 'highpass'; Z.pF.frequency.value = 2600; Z.pG = gain(0);
+    w.connect(Z.pF); Z.pF.connect(Z.pG); Z.pG.connect(AU.loco);
+    for (const o of [Z.inv, Z.m1, Z.m2]) o.start();
+    n.start(0, Math.random()); w.start(0, Math.random());
+  }
+  const Z = AU.ez, on = !!(T && T.elec);
+  if (!on) { for (const g of [Z.out, Z.pG]) g.gain.setTargetAtTime(0, t, 0.05); return; }
+  const v = Math.abs(S.v), sp = LOCO_SPEC[T.locoKey];
+  const work = clamp((Math.abs(S.TE) + S.DBF + S.blend) / sp.TEmax, 0, 1.2);
+  // carrier steps up through a scale below about 40 km/h, then follows the motor frequency
+  const step = Math.min(7, Math.floor(v / 1.6)), carrier = v < 11 ? 420 * Math.pow(2, step / 6) : 280 + 22 * v;
+  Z.inv.frequency.setTargetAtTime(carrier, t, 0.04); Z.invF.frequency.setTargetAtTime(carrier * 2, t, 0.04);
+  Z.invG.gain.setTargetAtTime(0.09 * work * (1 - 0.7 * smooth(10, 30, v)), t, 0.1);
+  Z.m1.frequency.setTargetAtTime(24 + v * 21, t, 0.1); Z.m2.frequency.setTargetAtTime(48 + v * 42, t, 0.1);
+  Z.mG.gain.setTargetAtTime(0.05 * (0.25 + work) * Math.min(1, v / 3), t, 0.15);
+  Z.bG.gain.setTargetAtTime(S.vcb ? 0.12 + 0.12 * work : 0, t, 0.6);
+  Z.out.gain.setTargetAtTime(inCab ? 0.45 : 1, t, 0.1);
+  Z.pG.gain.setTargetAtTime(S.pan > 0.99 ? 0.06 * smooth(15, 80, v) : 0, t, 0.3);
+}
+
+/* ============================================================================
    Train: consist, track-following, poses, wheel & rod animation
    ========================================================================== */
 const CONSISTS = {
@@ -5514,7 +6426,7 @@ class Consist {
       if ((v.kind === 'loco' || v.kind === 'loco2') && this.diesel) {
         const U = v.model;
         U.trucks.forEach((tg, k) => { tg.matrixAutoUpdate = false; frameMatrix(v.fp[k].F, tg.matrix); if (v.reversed) tg.matrix.multiply(_m4.makeRotationY(Math.PI)); tg.matrixWorldNeedsUpdate = true; });
-        const wa = (v.reversed ? 1 : -1) * this.dist / DG.rW; for (const w of U.wheels) w.rotation.z = wa;
+        const wa = (v.reversed ? 1 : -1) * this.dist / (U.rW || DG.rW); for (const w of U.wheels) w.rotation.z = wa;
         v.root.updateMatrixWorld(true);
       } else if (v.kind === 'loco') {
         const lf = v.leadPt.F;
@@ -5554,7 +6466,18 @@ class Train extends Consist {
     this.diesel = !!spec.diesel;
     const engMass = spec.weight * 0.4536; // engine only (lb → kg)
     let L;
-    if (this.diesel) {
+    if (spec.set) {
+      // a fixed high-speed trainset: every car belongs to the train, and the cab car at each end has the controls
+      this.elec = true;
+      this.units = buildTrainset(spec.set); this.nUnits = 1;
+      this.units.forEach((m, i) => {
+        const wrap = new THREE.Group(); wrap.add(m.root); if (m.reversed) m.root.rotation.y = Math.PI;
+        scene.add(wrap); m.trucks.forEach(t => scene.add(t));
+        const v = setVehicle(m, i); v.root = wrap; this.vehicles.push(v); m.vehicle = v;
+      });
+      L = this.units[0];
+      this.tender = null;
+    } else if (this.diesel) {
       // a lashup of one to three units; the last unit runs backward so there is a cab at each end
       const n = clamp(opts.units || 1, 1, 3);
       this.units = []; this.nUnits = n;
@@ -5581,7 +6504,7 @@ class Train extends Consist {
     }
     this.loco = L;
     // cars
-    const list = CONSISTS[consistKey].build(r);
+    const list = spec.set ? [] : CONSISTS[consistKey].build(r);
     let n = 0;
     for (const [type, flag] of list) {
       const num = type === 'coach' ? 3010 + (n++) * 7 : 10000 + ((r() * 89999) | 0);
@@ -5617,6 +6540,7 @@ class Train extends Consist {
   }
   update(dt, theta = 0, rev = 0) {
     super.update(dt, theta, rev);
+    if (this.elec) animateTrainset(this, dt);
     // headlight follows the lamp
     const L = this.loco;
     L.root.updateMatrixWorld(true);
@@ -5863,7 +6787,9 @@ CARS.contact = function (A, dir, hit) {
     return;
   }
   const ka = endCoupler(A, aEnd), kb = endCoupler(B, hit.end);
-  const couple = knOf(ka) === KN_OPEN || knOf(kb) === KN_OPEN;
+  // a high-speed trainset's nose coupler is under a fairing and only mates with another set: it buffs freight cars
+  const sealed = ka.v.noCouple || kb.v.noCouple;
+  const couple = !sealed && (knOf(ka) === KN_OPEN || knOf(kb) === KN_OPEN);
   if (!couple) {
     // both knuckles closed (or a lock still lifted against the other car): the cars buff and get shoved along
     const [uA, uB] = buff(consistMass(A), dir * velOf(A), consistMass(B), dir * vB, buffE(closing));
@@ -5875,6 +6801,7 @@ CARS.contact = function (A, dir, hit) {
     if (closing > COUPLE_DAMAGE) toast(`Slammed the cars at ${mph} mph. Nothing derailed, but that wrecks lading and draft gear.`, 'bad', 4200, 'slam');
     else if (closing > COUPLE_HARD) toast(`Hit the cars hard at ${mph} mph and shoved them along. Ease in at 4 mph or less.`, 'bad', 3800, 'hardshove');
     else if (CARS.cutFrom === X && performance.now() - CARS.cutAt < 6000) toast('Pin pulled, still shoving: the cars part as soon as you ease off or brake.', '', 3600, 'stillshove');
+    else if (sealed && closing > 0.15) toast('A trainset\'s coupler sits behind its nose cover and only mates with another trainset, so it can push cars but not pick them up.', 'warn', 4800, 'sealed');
     else if (closing > 0.3) toast('Both knuckles are closed, so the cars are only shoved. Tap a coupler to open its knuckle, then ease in to couple.', 'warn', 4800, 'shove');
     return;
   }
@@ -6157,7 +7084,9 @@ function placeFit(C, front, skip, via) {
   const fwd = R.clone(); fwd.advance(len, null);
   if (out.line.length || !sameTP(fwd, F)) { out.why = 'points'; return out; }
   // couplers that now meet another
-  const touch = (from, dir, end) => { const h = carFrom(from, dir, 0.06, idx, skip); if (h && h.end && h.facing && !h.c.ai) out.joins.push({ end, c: h.c, cEnd: h.end }); };
+  // a trainset's nose coupler sits behind its fairing and takes no cars
+  const sealed = (c, end) => endCoupler(c, end).v.noCouple;
+  const touch = (from, dir, end) => { const h = carFrom(from, dir, 0.06, idx, skip); if (h && h.end && h.facing && !h.c.ai && !sealed(C, end) && !sealed(h.c, h.end)) out.joins.push({ end, c: h.c, cEnd: h.end }); };
   touch(F, 1, 'front'); touch(R, -1, 'rear');
   out.ok = true;
   return out;
@@ -6247,6 +7176,7 @@ const S = {
   TE: 0, use: 0, gen: 0, cut: 0, mu: 0.27, grade: 0, limit: 70,
   dead: false, derailed: false, paused: false, time: 0, warnTimer: 0,
   notch: 0, dyn: 0, dbLoad: 0, DBF: 0, rpm: 300, engineRun: true, crank: 0, load: 0, fuel: 18927, turbo: 0.15, ditch: true, ditchFlash: 0, slipCtl: false, amps: 0,
+  pan: 1, panUp: true, vcb: true, vcbT: 0, kW: 0, kWh: 0, rbMax: 0, blend: 0,
 };
 const ENV = { mu: 0.27, wind: new THREE.Vector3(-1.2, 0, 0.6) };
 const DRIVER_C = Math.PI * 2 * LG.rD, VCYL = Math.PI / 4 * 0.635 * 0.635 * 0.864;
@@ -6262,7 +7192,8 @@ function physicsStep(dt, train) {
   const DSL = train.diesel;
   let TEcmd = 0;
   const nU = DSL ? train.nUnits : 1;
-  if (DSL) TEcmd = dieselPower(dt) * nU;
+  if (train.elec) TEcmd = electricPower(dt, spec);
+  else if (DSL) TEcmd = dieselPower(dt) * nU;
   else {
   /* ----------------- boiler & front end ----------------- */
   const n = Math.abs(S.vw) / DRIVER_C;                 // driver revolutions per second
@@ -6316,7 +7247,7 @@ function physicsStep(dt, train) {
   for (const step of [1, -1]) {
     let prev = step > 0 ? S.ER : V[li].brake.BP;
     for (let i = step > 0 ? li : li - 1; i >= 0 && i < V.length; i += step) {
-      const b = V[i].brake, tau = i === li ? 0.35 : 0.22;
+      const b = V[i].brake, tau = train.elec ? 0.04 : i === li ? 0.35 : 0.22;   // a trainset's brakes are electrically controlled, all at once
       const nb = b.BP + (prev - b.BP) * Math.min(1, dt / tau);
       b.dBP = (nb - b.BP) / dt; if (nb > b.BP) chargeFlow += nb - b.BP;
       b.BP = nb; prev = b.BP;
@@ -6392,6 +7323,8 @@ function physicsStep(dt, train) {
   let M = 0, Fgrade = 0, Fres = 0, Fbrake = 0;
   const vm = Math.abs(S.v) / MPH;
   const shoe = 1.25 - 0.5 * smooth(0, 35, Math.abs(S.v));
+  const disc = 1 - 0.3 * smooth(20, 90, Math.abs(S.v));   // disc brakes, held back at speed to what the rail will take
+  let motorBrake = 0;
   let gradeLead = 0, limit = 99;
   for (let i = 0; i < V.length; i++) {
     const v = V[i];
@@ -6402,15 +7335,28 @@ function physicsStep(dt, train) {
     if (i === li) gradeLead = f.y;
     const tons = mass / STON;
     const k = Math.abs(v.fp[0].tp.e.curv(v.fp[0].tp.s));
-    let R = 1.3 * tons + 29 * v.axles + (v.kind === 'coach' ? 0.03 : 0.045) * tons * vm + (i === 0 ? 0.0024 * 125 : 0.0005 * (v.area || 90)) * vm * vm;
-    if (v.kind === 'loco' || v.kind === 'loco2') R += 14 * tons;
+    // a trainset's streamlined cab takes the air at whichever end is leading
+    const leading = i === (S.v >= 0 ? 0 : V.length - 1);
+    const aero = v.aero !== undefined ? (leading ? v.aeroLead : v.aero) : (i === 0 ? 0.0024 * 125 : 0.0005 * (v.area || 90));
+    let R = 1.3 * tons + 29 * v.axles + (v.kind === 'coach' || v.emu ? 0.03 : 0.045) * tons * vm + aero * vm * vm;
+    if ((v.kind === 'loco' || v.kind === 'loco2') && !v.emu) R += 14 * tons;
     R += 0.8 * tons * 1746.4 * k;
     R += (v.kind === 'coach' || v.kind === 'loco' || v.kind === 'loco2' || v.kind === 'tender' ? 7 : 14) * tons * (1 - smooth(0.15, 2.0, Math.abs(S.v)));
     Fres += R * LBF;
     const isLoco = v.kind === 'loco' || v.kind === 'loco2';
     const bc = isLoco ? S.BCloco : v.brake.BC;
-    Fbrake += mass * v.brakeA * (bc / 64) * shoe + (isLoco && DSL ? S.DBF : 0);
-    for (const p of [v.fp[0], v.fp[1]]) limit = Math.min(limit, p.tp.e.limit);
+    const fb = mass * v.brakeA * (bc / 64) * (v.disc ? disc : shoe);
+    Fbrake += fb + (isLoco && DSL && !train.elec ? S.DBF : 0);
+    if (v.motor) motorBrake += fb;
+    for (const p of [v.fp[0], v.fp[1]]) limit = Math.min(limit, spec.hs ? hsLimit(p.tp, spec) : p.tp.e.limit);
+  }
+  if (train.elec) {
+    // the regenerative brake comes in on the motored cars first and the discs make up the rest (blending)
+    Fbrake += S.DBF;
+    S.blend = Math.min(motorBrake, Math.max(0, S.rbMax - S.DBF));
+    const regen = (S.DBF + S.blend) * Math.abs(S.v);
+    S.kW = (Math.abs(S.TE) * Math.abs(S.v) / 0.92 - regen * 0.85) / 1000 + (S.vcb ? 180 : 0);   // auxiliaries: air, cooling, the cars' heat and light
+    S.kWh += S.kW * dt / 3600;
   }
   S.limit = Math.min(limit, JOB.vmax()); S.grade = gradeLead;
   const Meff = M * 1.04;
@@ -6431,6 +7377,17 @@ function physicsStep(dt, train) {
   S.theta -= S.vw * dt / LG.rD;
   S.M = M;
   return S.v * dt;
+}
+
+/* A high-speed set runs at its own top speed on main track (and straight through the turnouts there), with
+   each curve posted for 1.5 m/s2 of lateral acceleration, rounded down to 5 mph. Everything else (yards,
+   sidings, crossovers) keeps its own limit. */
+function hsLimit(tp, spec) {
+  const e = tp.e;
+  if (e.kind !== 'main' || e.limit < 70) return e.limit;
+  const k = Math.abs(e.curv(tp.s));
+  const curve = k > 1e-5 ? Math.floor(Math.sqrt(1.5 / k) / MPH / 5) * 5 : Infinity;
+  return Math.min(Math.floor(spec.vmax / 5) * 5, curve);
 }
 
 /* An attentive fireman: holds 240 psi and half a glass. */
@@ -6478,6 +7435,35 @@ function dieselPower(dt) {
   S.amps = TE / 814e3 * 1350 - S.DBF / 445e3 * 760;
   S.turbo += ((S.engineRun ? 0.12 + 0.88 * rf * (0.35 + 0.65 * S.load) : 0) - S.turbo) * Math.min(1, dt * 0.55);
   S.Psc = 0; S.cut = 0; S.use = 0;
+  return dir * TE;
+}
+
+/* Electric trainset: pantograph and main breaker, power controller, traction motors fed from the line,
+   regenerative brake, and the speed governor at the set's top speed. */
+function electricPower(dt, spec) {
+  const notch = Math.round(S.throttle * 8); S.notch = notch;
+  const dir = S.reverser > 0.5 ? 1 : (S.reverser < -0.5 ? -1 : 0);
+  const v = Math.abs(S.v);
+  // the pantograph takes about 7 s to rise and 3 s to drop; the breaker closes once it is on the wire
+  S.pan = clamp(S.pan + (S.panUp ? dt / 7 : -dt / 3), 0, 1);
+  if (S.panUp && S.pan >= 1) { if (!S.vcb) { S.vcbT += dt; if (S.vcbT > 1.5) { S.vcb = true; S.vcbT = 0; GAME.event('vcb'); } } }
+  else { if (S.vcb) GAME.event('vcbOpen'); S.vcb = false; S.vcbT = 0; }
+  S.engineRun = S.vcb; S.rpm = S.vcb ? 600 : 0;   // the compressor runs off the auxiliary supply
+  const regenOn = S.dyn > 0.06;
+  if (regenOn && notch > 0) GAME.event('dynInterlock');
+  const powerOK = S.vcb && notch > 0 && dir !== 0 && !regenOn;
+  // IGBT inverters answer in a second or two
+  S.load += clamp((powerOK ? 1 : 0) - S.load, -1.5 * dt, 0.6 * dt);
+  const nf = notch / 8, vmax = spec.vmax * MPH;
+  const gov = 1 - smooth(vmax - 2, vmax + 0.5, v);
+  const P = spec.P * nf * S.load * gov, TEcap = spec.TEmax * Math.min(1, nf * 1.6) * S.load * gov;
+  const TE = S.load > 0.001 ? Math.min(TEcap, P / Math.max(v, 0.5)) : 0;
+  // regeneration back into the line needs the breaker in; power cars with rheostats can burn it off instead
+  S.rbMax = (S.vcb || spec.rheo ? 1 : 0) * Math.min(spec.RBmax, spec.RP / Math.max(v, 0.1)) * smooth(0.6, 2.2, v);
+  S.dbLoad += clamp((regenOn ? (S.dyn - 0.06) / 0.94 : 0) - S.dbLoad, -1.0 * dt, 0.8 * dt);
+  S.DBF = S.rbMax * S.dbLoad;
+  S.amps = TE / spec.TEmax * 1000 - S.DBF / spec.RBmax * 800;
+  S.Psc = 0; S.cut = 0; S.use = 0; S.turbo = 0;
   return dir * TE;
 }
 
@@ -6538,6 +7524,8 @@ function audioInit() {
 const WHISTLES = {
   deep6: { kind: 'steam', notes: [164.8, 196.0, 220.0, 246.9, 293.7, 329.6], harm: [1, 0.56, 0.36, 0.24, 0.15, 0.09, 0.05], breath: 0.13, breathF: 1400, vib: [4.8, 0.0025], quill: 0.06, attack: 0.06, beat: 1.0018, pres: 2200 },
   bright3: { kind: 'steam', notes: [349.2, 440.0, 523.3], harm: [1, 0.7, 0.42, 0.3, 0.18, 0.12, 0.07], breath: 0.17, breathF: 2900, vib: [6.2, 0.0035], quill: 0.04, attack: 0.045, beat: 1.0025, pres: 2600 },
+  /* Shinkansen air horn: a bright two-tone (A5 over F#5) with few upper partials */
+  shin: { kind: 'horn', notes: [740.0, 880.0], harm: [1, 0.75, 0.5, 0.34, 0.22, 0.14, 0.08], breath: 0.025, breathF: 2400, vib: [0, 0], quill: 0, attack: 0.012, beat: 1.003, pres: 2400 },
   k5: { kind: 'horn', notes: [311.1, 370.0, 415.3, 493.9, 622.3], harm: [1, 0.92, 0.8, 0.7, 0.6, 0.52, 0.45, 0.38, 0.32, 0.27, 0.22, 0.18, 0.15, 0.12], breath: 0.035, breathF: 1300, vib: [0, 0], quill: 0, attack: 0.015, beat: 1.004, pres: 1500 },
 };
 function buildWhistle(def) {
@@ -6953,7 +7941,8 @@ function soundMix(dt, T, fx, tv) {
   setG(AU.drift.g, !DSL && !working && v > 1 && !Vv.roll.ok ? 0.08 * Math.min(1, v / 12) : 0);
   // rolling: the recorded take is sped up with the train
   duo(Vv.roll, AU.roar, 0.32 * Math.min(1, v / 22), Math.min(1, v / 18) ** 1.2 * (inCab ? 0.7 : 1), clamp(0.55 + v / 30, 0.6, 1.6), 0.2);
-  updateDieselAudio(DSL, inCab, T.nUnits || 1);
+  updateDieselAudio(DSL && !T.elec, inCab, T.nUnits || 1);
+  updateElectricAudio(T, inCab);
   // brake pipe venting at the brake valve, heard in and around the cab
   const b0 = T.lead.brake, vent = b0.dBP < -0.3 ? Math.min(1, -b0.dBP * 0.12) : 0;
   duo(Vv.bpx, AU.bpExhaust, Math.min(0.5, vent * 0.5), vent * (inCab ? 0.9 : 0.5), 1, 0.05);
@@ -6973,7 +7962,7 @@ function soundMix(dt, T, fx, tv) {
     for (const x of T.vehicles) {
       const dv = x.pos.distanceTo(cp); if (dv > 110 && !(inCab && x.kind === 'loco')) continue;
       const g = Math.min(1, v / 7) / (1 + Math.pow((inCab ? Math.max(4, dv) : dv) / 13, 1.4)) * (inCab ? 0.7 : 1);
-      const pts = (x.kind === 'loco' || x.kind === 'loco2') ? (DSL ? [[x.fp[0], 3, DG.axle], [x.fp[1], 3, DG.axle]] : [[x.leadPt, 1, 0], [x.fp[0], 4, 1.855]]) : x.tp.map((p, i) => [p, x.trucks[i].type === 'four' ? 2 : 3, x.trucks[i].sp || (x.trucks[i].type === 'four' ? 1.73 : 1.676)]);
+      const pts = (x.kind === 'loco' || x.kind === 'loco2') ? (DSL ? [[x.fp[0], x.emu ? 2 : 3, x.emu ? x.model.wb : DG.axle], [x.fp[1], x.emu ? 2 : 3, x.emu ? x.model.wb : DG.axle]] : [[x.leadPt, 1, 0], [x.fp[0], 4, 1.855]]) : x.tp.map((p, i) => [p, x.trucks[i].type === 'four' ? 2 : 3, x.trucks[i].sp || (x.trucks[i].type === 'four' ? 1.73 : 1.676)]);
       for (const [p, axles, sp] of pts) {
         const j = Math.floor(p.tp.s / 11.89), prev = mem.get(p);
         if (prev && prev.e === p.tp.e && prev.j !== j) for (let a = 0; a < axles; a++) sndJoint(g * (a === 0 ? 1 : 0.8), a * sp / v, inCab ? null : x.pos, v);
@@ -7472,12 +8461,12 @@ const LEVERS = {};
 function setupLevers() {
   const defs = {
     lvThrottle: { get: () => S.throttle, set: v => { S.throttle = v; }, fromY: t => GAME.isDiesel() ? Math.round((1 - t) * 8) / 8 : 1 - t, toY: v => 1 - v,
-      label: v => GAME.isDiesel() ? (Math.round(v * 8) ? 'N' + Math.round(v * 8) : 'IDLE') : Math.round(v * 100) + '%',
+      label: v => GAME.isDiesel() ? (Math.round(v * 8) ? (GAME.train.elec ? 'P' : 'N') + Math.round(v * 8) : (GAME.train.elec ? 'OFF' : 'IDLE')) : Math.round(v * 100) + '%',
       ticks: () => GAME.isDiesel() ? [...Array(9)].map((_, i) => [i / 8, '']) : [[0, ''], [0.25, ''], [0.5, ''], [0.75, ''], [1, '']] },
     lvReverser: { get: () => S.reverser, set: v => { S.reverser = v; },
       fromY: t => { if (GAME.isDiesel()) return t < 0.34 ? 1 : (t > 0.66 ? -1 : 0); let r = 1 - 2 * t; if (Math.abs(r) < 0.06) r = 0; return Math.round(r * 17) / 17; }, toY: v => (1 - v) / 2,
       label: v => GAME.isDiesel() ? (v > 0.5 ? 'FWD' : v < -0.5 ? 'REV' : 'N') : (v === 0 ? 'N' : (v > 0 ? 'F ' : 'R ') + Math.round(Math.abs(v) * 85) + '%'), ticks: [[0, 'F'], [0.5, 'N'], [1, 'R']] },
-    lvDyn: { get: () => S.dyn, set: v => { S.dyn = v; }, fromY: t => t < 0.04 ? 0 : t, toY: v => v, label: v => v < 0.03 ? 'OFF' : v < 0.06 ? 'SETUP' : 'DB ' + Math.round((v - 0.06) / 0.94 * 100) + '%', ticks: [[0, ''], [0.06, ''], [1, '']] },
+    lvDyn: { get: () => S.dyn, set: v => { S.dyn = v; }, fromY: t => t < 0.04 ? 0 : t, toY: v => v, label: v => v < 0.03 ? 'OFF' : v < 0.06 ? 'SETUP' : (GAME.train && GAME.train.elec ? 'RB ' : 'DB ') + Math.round((v - 0.06) / 0.94 * 100) + '%', ticks: [[0, ''], [0.06, ''], [1, '']] },
     lvBrake: { get: () => S.brakeH, set: v => { S.brakeH = v; }, fromY: t => { if (Math.abs(t - 0.12) < 0.04) return 0.12; if (Math.abs(t - 0.23) < 0.035) return 0.23; return t; }, toY: v => v, label: v => brakeLabel(v), ticks: [[0.03, 'REL'], [0.12, 'RUN'], [0.23, 'LAP'], [0.3, 'SVC'], [0.95, 'EMG']] },
     lvInd: { get: () => S.indH, set: v => { S.indH = v; }, fromY: t => t < 0.08 ? 0 : t, toY: v => v, label: v => Math.round(clamp((v - 0.1) / 0.9, 0, 1) * 45) + ' psi', ticks: [[0, 'REL'], [1, 'FULL']] },
   };
@@ -7518,7 +8507,7 @@ function setupButtons() {
   tog('btnSand', () => { S.sander = !S.sander; });
   tog('btnCocks', () => { if (GAME.isDiesel()) S.ditch = !S.ditch; else S.cocks = !S.cocks; });
   tog('btnLight', () => { S.light = (S.light + 1) % 3; });
-  tog('btnInj', () => { if (GAME.isDiesel()) { if (S.engineRun) { S.engineRun = false; toast('Engine shut down.', 'warn', 2200, 'eng'); } else if (S.crank <= 0 && S.fuel > 0) { S.crank = 6.5; toast('Cranking the prime mover…', '', 2200, 'eng'); } } else { GAME.manualFire('injector'); S.injector = !S.injector; } });
+  tog('btnInj', () => { if (GAME.train && GAME.train.elec) { S.panUp = !S.panUp; toast(S.panUp ? 'Raising the pantograph…' : 'Pantograph down: main breaker open.', S.panUp ? '' : 'warn', 2200, 'eng'); } else if (GAME.isDiesel()) { if (S.engineRun) { S.engineRun = false; toast('Engine shut down.', 'warn', 2200, 'eng'); } else if (S.crank <= 0 && S.fuel > 0) { S.crank = 6.5; toast('Cranking the prime mover…', '', 2200, 'eng'); } } else { GAME.manualFire('injector'); S.injector = !S.injector; } });
   tog('btnFire', () => { GAME.manualFire('stoker'); const steps = [0, 0.25, 0.5, 0.75, 1]; let i = steps.findIndex(s => s > S.stoker + 0.05); S.stoker = i < 0 ? 0 : steps[i]; });
   tog('btnBlower', () => { GAME.manualFire('blower'); S.blower = S.blower > 0.3 ? 0 : 0.65; });
   $('gaugeWrap').addEventListener('click', () => { const g = $('gaugeWrap'); g.classList.toggle('min'); try { localStorage.setItem('bd_gmin', g.classList.contains('min') ? '1' : ''); } catch (e) {} });
@@ -7593,6 +8582,7 @@ function drawGauges() {
   const T = GAME.train, b = T ? T.vehicles : null;
   // the end car farthest from the engine, which may be ahead of it when shoving
   const lastBP = b ? (T.li > b.length - 1 - T.li ? b[0] : b[b.length - 1]).brake.BP : 90;
+  if (T && T.elec) { drawElectricGauges(g, dial, b, lastBP); return; }
   if (GAME.isDiesel()) { drawDieselGauges(g, dial, b, lastBP); return; }
   dial(108, 112, 96, 300, 'BOILER PSI', [[S.P, '#151515']], [245, 300], 50, 10);
   g.font = '600 18px "IBM Plex Mono", monospace'; g.fillStyle = S.safety ? '#ee4b3d' : '#cfa651'; g.textAlign = 'center'; g.fillText(S.safety ? 'POPPING' : 'CHEST ' + Math.round(S.Psc), 108, 224);
@@ -7797,6 +8787,35 @@ function drawDieselGauges(g, dial, b, lastBP) {
   g.fillStyle = S.sander ? '#cfa651' : '#8d9aa2'; g.fillText(S.sander ? 'SAND ON' : 'SAND', 604, 222);
 }
 
+/* electric set: tractive and regenerative effort, air, line and power from the wire */
+function drawElectricGauges(g, dial, b, lastBP) {
+  const sp = LOCO_SPEC[GAME.train.locoKey], mx = Math.ceil(sp.TEmax / 1000 / 100) * 100 + 100;
+  const te = Math.abs(S.TE) / 1000, rb = (S.DBF + S.blend) / 1000;
+  dial(108, 112, 96, mx, 'TE · REGEN  kN', [[te, '#151515'], [rb, '#2a7fd0']], null, 100, 20);
+  g.font = '600 18px "IBM Plex Mono", monospace'; g.textAlign = 'center';
+  g.fillStyle = S.slipCtl ? '#ee4b3d' : '#cfa651'; g.fillText(S.slipCtl ? 'WHEEL SLIP' : (S.notch ? 'P' + S.notch : (S.dyn > 0.06 ? 'REGEN' : 'OFF')) + ' · ' + Math.round(Math.abs(S.v) * 3.6) + ' km/h', 108, 224);
+  dial(296, 86, 70, 160, 'MR · EQ', [[S.MR, '#c0281e'], [S.ER, '#151515']], null, 40, 10);
+  dial(458, 86, 70, 160, 'BP · BC', [[b ? GAME.train.lead.brake.BP : 90, '#151515'], [S.BCloco || 0, '#c0281e']], null, 40, 10);
+  g.font = '600 17px "IBM Plex Mono", monospace'; g.fillStyle = '#8d9aa2';
+  g.fillText((S.kW < 0 ? 'RETURN ' : 'DRAW ') + Math.abs(Math.round(S.kW)).toLocaleString() + ' kW', 296, 186); g.fillText('REAR ' + Math.round(lastBP), 458, 186);
+  g.fillText('LINE ' + (S.vcb ? '25.0 kV' : '—'), 296, 212);
+  g.fillStyle = S.vcb ? '#52d483' : (S.panUp ? '#f2b33d' : '#ee4b3d'); g.fillText(S.vcb ? 'BREAKER IN' : (S.panUp ? 'PAN RISING' : 'PAN DOWN'), 458, 212);
+  // pantograph height, where the diesel has its fuel gauge
+  const gx = 560, gy0 = 26, gy1 = 200, gw = 26;
+  g.fillStyle = '#6d531f'; g.fillRect(gx - 6, gy0 - 14, gw + 12, 12); g.fillRect(gx - 6, gy1 + 2, gw + 12, 12);
+  g.fillStyle = '#0d1418'; g.fillRect(gx, gy0, gw, gy1 - gy0);
+  const py = gy1 - S.pan * (gy1 - gy0);
+  g.fillStyle = '#9ea3a8'; g.fillRect(gx, py, gw, 4); g.fillStyle = 'rgba(158,163,168,0.25)'; g.fillRect(gx, py + 4, gw, gy1 - py - 4);
+  g.strokeStyle = '#cfa651'; g.lineWidth = 2; g.strokeRect(gx, gy0, gw, gy1 - gy0);
+  g.font = '600 15px "IBM Plex Sans Condensed", sans-serif'; g.fillStyle = '#8d9aa2'; g.textAlign = 'center'; g.fillText('PAN', gx + gw / 2, 226);
+  g.textAlign = 'left'; g.font = '600 16px "IBM Plex Mono", monospace';
+  g.fillStyle = '#8d9aa2'; g.fillText('ENERGY', 604, 40);
+  g.fillStyle = '#dfe4e6'; g.fillText(Math.round(S.kWh).toLocaleString(), 604, 66); g.fillStyle = '#8d9aa2'; g.fillText('kWh', 604, 86);
+  g.fillStyle = '#dfe4e6'; g.fillText(S.notch ? 'P' + S.notch : 'OFF', 604, 118); g.fillStyle = '#8d9aa2'; g.fillText('power', 604, 138);
+  g.fillStyle = S.dyn > 0.06 ? '#2a7fd0' : '#dfe4e6'; g.fillText(S.dyn > 0.06 ? Math.round(S.dbLoad * 100) + '%' : 'OFF', 604, 176); g.fillStyle = '#8d9aa2'; g.fillText('regen', 604, 196);
+  g.fillStyle = S.sander ? '#cfa651' : '#8d9aa2'; g.fillText(S.sander ? 'SAND ON' : 'SAND', 604, 222);
+}
+
 /* ============================================================================
    Multiplayer. Everyone in a room drives their own train on the same railroad,
    sees the others move, hears their whistles and bells, and shares the switches.
@@ -7992,14 +9011,14 @@ function mpOpts(st) {
 function mpLocoLabel(st) {
   if (st && st.other) return 'On another railroad';
   if (!st || st.e < 0) return 'In the menu';
-  const loco = st.lk === 'diesel' ? (st.lv === 'custom' ? 'Custom' : LIVERIES[st.lv].init) + ' diesel' + (st.u > 1 ? ' ×' + st.u : '') : (st.lk === '765' ? 'NKP 765' : 'PM 1225');
-  return loco + ' · ' + CONSISTS[st.ck].name;
+  const loco = HSR[st.lk] ? HSR[st.lk].name : st.lk === 'diesel' ? (st.lv === 'custom' ? 'Custom' : LIVERIES[st.lv].init) + ' diesel' + (st.u > 1 ? ' ×' + st.u : '') : (st.lk === '765' ? 'NKP 765' : 'PM 1225');
+  return HSR[st.lk] ? loco : loco + ' · ' + CONSISTS[st.ck].name;
 }
 function mpJoints(T, mem, speed, cp) {
   for (const v of T.vehicles) {
     const dv = v.pos.distanceTo(cp); if (dv > 110) continue;
     const g = Math.min(1, Math.abs(speed) / 7) / (1 + Math.pow(dv / 13, 1.4));
-    const pts = (v.kind === 'loco' || v.kind === 'loco2') ? (T.diesel ? [[v.fp[0], 3, DG.axle], [v.fp[1], 3, DG.axle]] : [[v.leadPt, 1, 0], [v.fp[0], 4, 1.855]]) : v.tp.map((p, i) => [p, v.trucks[i].type === 'four' ? 2 : 3, v.trucks[i].sp || (v.trucks[i].type === 'four' ? 1.73 : 1.676)]);
+    const pts = (v.kind === 'loco' || v.kind === 'loco2') ? (T.diesel ? [[v.fp[0], v.emu ? 2 : 3, v.emu ? v.model.wb : DG.axle], [v.fp[1], v.emu ? 2 : 3, v.emu ? v.model.wb : DG.axle]] : [[v.leadPt, 1, 0], [v.fp[0], 4, 1.855]]) : v.tp.map((p, i) => [p, v.trucks[i].type === 'four' ? 2 : 3, v.trucks[i].sp || (v.trucks[i].type === 'four' ? 1.73 : 1.676)]);
     for (const [p, axles, sp] of pts) {
       const j = Math.floor(p.tp.s / 11.89), prev = mem.get(p);
       if (prev && prev.e === p.tp.e && prev.j !== j) for (let a = 0; a < axles; a++) sndJoint(g * (a === 0 ? 1 : 0.8), a * sp / Math.max(0.5, Math.abs(speed)), v.pos, Math.abs(speed));
@@ -8022,7 +9041,7 @@ class RemoteTrain {
   }
   repaint(st) {
     const p = `${st.lv}|${st.mx}|${st.cu}|${st.no}`; if (p === this.paint) return; this.paint = p;
-    if (!this.train.diesel) return;
+    if (!this.train.diesel || this.train.elec) return;
     const o = mpOpts(st);
     this.train.units.forEach((m, u) => { const lv = dieselLiveryFor(o, u); applyLivery(m, lv, (o.number || lv.num) + u); });
   }
@@ -8073,7 +9092,9 @@ class RemoteTrain {
     }
     // exhaust
     if (d < 1500) {
-      if (T.diesel) {
+      if (T.elec) {
+        // electric: nothing out of a stack
+      } else if (T.diesel) {
         this.idleT += dt;
         if (this.idleT > 0.09 && st.rpm > 60) {
           this.idleT = 0;
@@ -8098,7 +9119,7 @@ class RemoteTrain {
     }
     // sound
     if (!AU.on) return;
-    if (!this.bus) this.bus = makeRemoteBus(T.diesel);
+    if (!this.bus) this.bus = makeRemoteBus(T.diesel && !T.elec);
     remoteSound(this, dt, st, d, cam);
     if (d < 160 && Math.abs(this.v) > 0.6) mpJoints(T, this.mem, this.v, cam);
   }
@@ -8282,7 +9303,7 @@ MP.state = function () {
       lk: T.locoKey, ck: T.consistKey, u: T.nUnits || 1, lv: g.livery, mx: g.mix ? 1 : 0, cu: g.livery === 'custom' ? [g.custom.body, g.custom.accent, g.custom.letter] : 0, no: g.livery === 'custom' ? (+g.number || 0) : 0,
       e: f.e.id, s: +f.s.toFixed(2), o: f.o, v: +S.v.toFixed(2), rv: +S.reverser.toFixed(2), wh: +S.whistle.toFixed(2), bl: S.bell ? 1 : 0, hl: S.light, dl: S.ditch ? 1 : 0,
       ex: T.diesel ? +S.load.toFixed(2) : (S.Psc > 6 && S.cut > 0 && S.throttle > 0.02 ? +clamp((S.Psc / 245) * (0.35 + S.cut * 1.25), 0, 1.3).toFixed(2) : 0),
-      rpm: T.diesel && S.engineRun ? Math.round(S.rpm) : 0, dr: S.derailed ? 1 : 0,
+      rpm: T.diesel && !T.elec && S.engineRun ? Math.round(S.rpm) : 0, dr: S.derailed ? 1 : 0,
     });
   }
   st.sw = NET.switches.map((sw, i) => MP.swv[i] * 2 + sw.state);
@@ -8653,7 +9674,7 @@ const stationNamed = n => ROUTE.stations.find(s => s.name === n);
 JOB.load = function () { try { JOB.best = JSON.parse(localStorage.getItem('bd_jobs') || '{}') || {}; } catch (e) { JOB.best = {}; } };
 JOB.save = function () { try { localStorage.setItem('bd_jobs', JSON.stringify(JOB.best)); } catch (e) {} };
 /* jobs are written for the built-in railroad, single player */
-JOB.available = () => !MP.on && !PLAY_LAYOUT;
+JOB.available = () => !MP.on && !PLAY_LAYOUT && !LOCO_SPEC[GAME.settings.loco].set;
 JOB.def = id => JOBS.find(j => j.id === id) || null;
 JOB.wanted = () => JOB.available() ? JOB.def(GAME.settings.job) : null;
 JOB.activeId = () => JOB.run && !JOB.run.over ? JOB.run.def.id : '';
@@ -9034,7 +10055,7 @@ function jobMenu() {
   const ok = JOB.available();
   $('grpJob').hidden = false;
   host.innerHTML = '';
-  if (!ok) { $('jobBrief').innerHTML = `<p class="help">${MP.on ? 'Jobs are single player for now. Leave the room to take one.' : 'Jobs are written for the Berkshire Division. Pick it under Railroad to take one.'}</p>`; refreshJobGroups(); return; }
+  if (!ok) { $('jobBrief').innerHTML = `<p class="help">${MP.on ? 'Jobs are single player for now. Leave the room to take one.' : LOCO_SPEC[GAME.settings.loco].set ? 'Jobs are written for engines that pick up and set out cars. Pick a steam or diesel engine to take one.' : 'Jobs are written for the Berkshire Division. Pick it under Railroad to take one.'}</p>`; refreshJobGroups(); return; }
   const opts = [['', 'Free run', 'No clock, no score', null]];
   for (const j of JOBS) { const b = JOB.best[j.id]; opts.push([j.id, j.name, `${{ switch: 'Switching', passenger: 'Passenger', freight: 'Freight' }[j.kind]} · ${j.level}`, b]); }
   const cur = JOB.def(GAME.settings.job) ? GAME.settings.job : '';
@@ -10159,6 +11180,7 @@ function resetState() {
     safety: false, lowWater: false, priming: false, dead: false, derailed: false, paused: false });
   S.autoFire = GAME.settings.fire === 'auto';
   Object.assign(S, { notch: 0, dyn: 0, dbLoad: 0, DBF: 0, rpm: 300, engineRun: true, crank: 0, load: 0, fuel: 18927, turbo: 0.15, ditch: true, ditchFlash: 0, slipCtl: false, amps: 0 });
+  Object.assign(S, { pan: 1, panUp: true, vcb: true, vcbT: 0, kW: 0, kWh: 0, rbMax: 0, blend: 0 });   // a trainset comes with its pantograph up and the breaker in
   if (LOCO_SPEC[GAME.settings.loco].diesel) { S.cocks = false; S.light = SKY.night ? 2 : 2; }
 }
 function makeTrain() {
@@ -10240,10 +11262,14 @@ GAME.swapLive = function () {
   const old = GAME.train, g = GAME.settings, j = JOB.wanted();
   if (!GAME.ready || !old) return false;
   if (!GAME.running) { if (!MP.on) makeTrain(); return true; }   // the train on show behind the menu
+  if (LOCO_SPEC[g.loco].set && JOB.activeId()) toast('A trainset cannot work this job. Resume makes up the trainset and ends the job, or pick a steam or diesel engine to stay on it.', 'warn', 6000, 'swap');
   if (MP.needSpawn || (j ? j.id : '') !== JOB.activeId()) return false;
-  const ck = JOB.consist(), units = +g.units || 1;
-  const newLoco = old.locoKey !== g.loco || (old.diesel && old.nUnits !== units), newCars = old.consistKey !== ck;
+  const ck = JOB.consist(), units = +g.units || 1, setNew = !!LOCO_SPEC[g.loco].set;
+  const newLoco = old.locoKey !== g.loco || (old.diesel && !old.elec && old.nUnits !== units);
+  // a trainset is the whole train: it drops the cars it replaces, and the cars come back when an engine replaces it
+  const newCars = setNew ? newLoco : old.elec ? ck !== 'light' || newLoco : old.consistKey !== ck;
   if (!newLoco && !newCars) return true;
+  if (setNew && old.vehicles.some(v => v.yard)) { toast('Set out the cars you picked up first: a trainset cannot haul them. Or press New train.', 'warn', 5200, 'swap'); return false; }
   const t = new Train(scene, g.loco, ck, dieselOpts());
   const power = t.vehicles.filter(isPower), built = t.vehicles.filter(v => !isPower(v));
   // a new road reletters the cars that came with the train
@@ -10272,21 +11298,27 @@ GAME.swapLive = function () {
     if (t.vehicles.includes(v)) v.brake = { AR: lb.AR, BC: lb.BC, BP: lb.BP, emerg: lb.emerg, released: lb.released };
     t.markerLamps(v);
   }
-  t.vehicles = plan.vehicles; t.consistKey = newCars ? ck : old.consistKey;
+  t.vehicles = plan.vehicles; t.consistKey = newCars || setNew ? ck : old.consistKey;
   t.layout(); t.buildInstances();
   t.place(front);
   prepareTrain(t, true);
   GAME.train = t;
   if (old.diesel !== t.diesel) carryOver();
-  else if (old.locoKey !== t.locoKey) { S.throttle = 0; S.notch = 0; S.dyn = 0; }
+  else if (old.locoKey !== t.locoKey) {
+    S.throttle = 0; S.notch = 0; S.dyn = 0;
+    // between a diesel and an electric set: the new power comes up running
+    if (old.elec !== t.elec) Object.assign(S, { engineRun: true, crank: 0, rpm: 300, panUp: true, pan: 1, vcb: true, vcbT: 0 });
+  }
   if (!t.diesel) applySteamFinish(g.finish);
   S.limit = Math.min(...t.pts.map(p => p.tp.e.limit));
   buildWhistleIfReady(); GAME.jointMem = new Map(); GAME.filling = null;
   t.update(0, S.theta, S.reverser);
   CARS.gen++; if (CARS.onChange) CARS.onChange();
   if (MP.on) MP.dirty = true;
-  const what = t.diesel ? (t.nUnits > 1 ? `${t.nUnits} diesels` : 'the diesel') : `${LOCO_SPEC[g.loco].short} ${g.loco}`, cars = { passenger: 'the passenger train', freight: 'the manifest freight' }[ck] || 'the train';
-  toast(newLoco && newCars ? `Now ${what} on ${cars}.` : newLoco ? `${what[0].toUpperCase() + what.slice(1)} coupled on.` : ck === 'light' ? 'Cut off from the train: running light.' : `Now running ${cars}.`, 'good', 3200, 'swap');
+  const what = t.elec ? `the ${HSR[LOCO_SPEC[g.loco].set].name}` : t.diesel ? (t.nUnits > 1 ? `${t.nUnits} diesels` : 'the diesel') : `${LOCO_SPEC[g.loco].short} ${g.loco}`, cars = { passenger: 'the passenger train', freight: 'the manifest freight' }[ck] || 'the train';
+  if (t.elec) toast(`Now running ${what}.`, 'good', 3200, 'swap');
+  else if (old.elec) toast(`Now ${what} on ${cars}.`, 'good', 3200, 'swap');
+  else toast(newLoco && newCars ? `Now ${what} on ${cars}.` : newLoco ? `${what[0].toUpperCase() + what.slice(1)} coupled on.` : ck === 'light' ? 'Cut off from the train: running light.' : `Now running ${cars}.`, 'good', 3200, 'swap');
   return true;
 };
 /* the same car, lettered for the road of train t */
@@ -10316,7 +11348,7 @@ function applyLiveriesLive() {
 const SAVE_KEYS = ['job', 'traffic', 'loco', 'consist', 'time', 'weather', 'fire', 'units', 'livery', 'mix', 'finish', 'custom', 'number'];
 function saveSettings() { try { const o = {}; for (const k of SAVE_KEYS) o[k] = GAME.settings[k]; localStorage.setItem('bd_settings', JSON.stringify(o)); } catch (e) {} }
 function loadSettings() { try { const o = JSON.parse(localStorage.getItem('bd_settings') || 'null'); if (o) for (const k of SAVE_KEYS) if (o[k] !== undefined) GAME.settings[k] = o[k]; } catch (e) {} if (!LOCO_SPEC[GAME.settings.loco]) GAME.settings.loco = '765'; if (!LIVERIES[GAME.settings.livery]) GAME.settings.livery = 'ss'; }
-GAME.needNewTrain = function () { const t = GAME.train, g = GAME.settings, j = JOB.wanted(); return !t || MP.needSpawn || t.locoKey !== g.loco || t.consistKey !== JOB.consist() || (j ? j.id : '') !== JOB.activeId() || (t.diesel && t.nUnits !== (+g.units || 1)); };
+GAME.needNewTrain = function () { const t = GAME.train, g = GAME.settings, j = JOB.wanted(); return !t || MP.needSpawn || t.locoKey !== g.loco || (!t.elec && t.consistKey !== JOB.consist()) || (j ? j.id : '') !== JOB.activeId() || (t.diesel && !t.elec && t.nUnits !== (+g.units || 1)); };
 function buildWhistleIfReady() { if (!AU.on) return; buildWhistle(WHISTLES[LOCO_SPEC[GAME.settings.loco].whistle]); }
 
 /* ---------------- menu ---------------- */
@@ -10333,8 +11365,9 @@ function segButtons(id, opts, key, onPick) {
 function buildMenu() {
   loadSettings();
   MP.init();
-  const locoOpts = { '765': { name: 'NKP 765', sub: 'S-2 · Lima 1944' }, '1225': { name: 'PM 1225', sub: 'N-1 · Lima 1941' }, 'diesel': { name: 'Wide-cab diesel', sub: 'AC · 4,400 hp' } };
-  segButtons('optLoco', locoOpts, 'loco', () => { GAME.swapLive(); specGrid(); startLabel(); refreshMenuGroups(); saveSettings(); });
+  const locoOpts = { '765': { name: 'NKP 765', sub: 'S-2 · Lima 1944' }, '1225': { name: 'PM 1225', sub: 'N-1 · Lima 1941' }, 'diesel': { name: 'Wide-cab diesel', sub: 'AC · 4,400 hp' },
+    'e5': { name: 'E5 Shinkansen', sub: 'Bullet train · 200 mph' }, 'acela': { name: 'Acela Express', sub: 'High speed · 150 mph' } };
+  segButtons('optLoco', locoOpts, 'loco', () => { GAME.swapLive(); jobMenu(); specGrid(); startLabel(); refreshMenuGroups(); saveSettings(); });
   const livOpts = {}; for (const k in LIVERIES) { const L = LIVERIES[k]; livOpts[k] = { name: L.name, sub: L.sub, swatch: `linear-gradient(90deg, ${hexCss(k === 'custom' ? GAME.settings.custom.body : L.body)} 0 64%, ${hexCss(k === 'custom' ? GAME.settings.custom.accent : L.accent)} 64% 100%)` }; }
   segButtons('optLivery', livOpts, 'livery', () => { applyLiveriesLive(); refreshMenuGroups(); specGrid(); saveSettings(); });
   segButtons('optUnits', { 1: { name: '1 unit', sub: '4,400 hp' }, 2: { name: '2 units', sub: '8,800 hp' }, 3: { name: '3 units', sub: '13,200 hp' } }, 'units', k => { GAME.settings.units = +k; GAME.swapLive(); startLabel(); refreshMenuGroups(); saveSettings(); });
@@ -10367,13 +11400,16 @@ function buildMenu() {
 }
 function specGrid() {
   const s = LOCO_SPEC[GAME.settings.loco];
-  const items = s.diesel
+  const items = s.set === 'e5'
+    ? [['10 cars', '8 motored, 2 trailers'], ['9,600 kW', '32 AC motors'], ['320 km/h', '199 mph'], ['253 m', 'Length'], ['454 t', 'Empty'], ['25 kV', 'Pantograph']]
+    : s.set === 'acela' ? [['2 + 6', 'Power cars + coaches'], ['9,200 kW', '12,400 hp'], ['150 mph', 'In service'], ['664 ft', 'Length'], ['4.2°', 'Coach tilt'], ['99k lbf', 'Starting effort']]
+    : s.diesel
     ? [['C-C', 'Wheel arrangement'], ['42 in', 'Wheels'], ['4,400 hp', 'V12 four-stroke'], ['73 ft 2 in', 'Length'], ['183k lbf', 'Starting effort'], ['5,000 gal', 'Fuel']]
     : [['2-8-4', 'Wheel arrangement'], ['69 in', 'Drivers'], ['25×34 in', 'Cylinders'], ['245 psi', 'Boiler'], [(s.te / 1000).toFixed(1) + 'k lbf', 'Tractive effort'], [s.cls + ' · ' + s.short, 'Class']];
   $('specGrid').innerHTML = items.map(([b, l]) => `<div><b>${b}</b><span>${l}</span></div>`).join('');
   const ht = $('helpText');
-  if (ht) { if (!ht.dataset.steam) ht.dataset.steam = ht.innerHTML; ht.innerHTML = s.diesel ? 'Set the <b>reverser</b> forward, release the <b>engine brake</b>, then notch out the <b>throttle</b>. Every unit in the lashup answers the lead cab. Hold speed down the grades with the <b>dynamic brake</b>, and check the switch card before every turnout: diverging routes are 30 mph.' : ht.dataset.steam; }
-  const ey = document.querySelector('.brandmark .eyebrow'); if (ey) ey.textContent = s.diesel ? (GAME.settings.livery === 'custom' ? 'Custom paint' : LIVERIES[GAME.settings.livery].name) + ' · C-C diesel' : 'Lima Super Power · 2-8-4';
+  if (ht) { if (!ht.dataset.steam) ht.dataset.steam = ht.innerHTML; ht.innerHTML = s.elec ? 'Release the <b>brake</b>, set the <b>reverser</b> forward and notch the <b>power</b> controller. The pantograph is up and the main breaker is in; <b>Pantograph</b> (I) drops it. Slow with the <b>regenerative brake</b>, which also blends in under the train brake. Out on the main a high-speed set runs at its own top speed, and each curve has its own posted limit: watch for it ahead.' : s.diesel ? 'Set the <b>reverser</b> forward, release the <b>engine brake</b>, then notch out the <b>throttle</b>. Every unit in the lashup answers the lead cab. Hold speed down the grades with the <b>dynamic brake</b>, and check the switch card before every turnout: diverging routes are 30 mph.' : ht.dataset.steam; }
+  const ey = document.querySelector('.brandmark .eyebrow'); if (ey) ey.textContent = s.elec ? (s.set === 'e5' ? 'JR East · Shinkansen E5 series' : 'Amtrak · Acela Express') : s.diesel ? (GAME.settings.livery === 'custom' ? 'Custom paint' : LIVERIES[GAME.settings.livery].name) + ' · C-C diesel' : 'Lima Super Power · 2-8-4';
 }
 function startLabel() {
   const b = $('btnStart');
@@ -10381,10 +11417,11 @@ function startLabel() {
   b.textContent = GAME.needNewTrain() ? 'New train' : 'Resume';
 }
 function refreshMenuGroups() {
-  const d = !!LOCO_SPEC[GAME.settings.loco].diesel;
+  const sp = LOCO_SPEC[GAME.settings.loco], d = !!sp.diesel && !sp.set;
   $('grpLivery').hidden = !d; $('grpUnits').hidden = !d; $('grpMix').hidden = !d || (+GAME.settings.units || 1) < 2;
   $('customPaint').hidden = !d || GAME.settings.livery !== 'custom';
-  $('grpFinish').hidden = d; $('optFire').parentElement.hidden = d;
+  $('grpFinish').hidden = !!sp.diesel; $('optFire').parentElement.hidden = !!sp.diesel;
+  $('optTrain').parentElement.hidden = !!sp.set;   // a trainset is its own train
 }
 
 GAME.start = function () {
@@ -10414,7 +11451,8 @@ GAME.intro = function () {
   else if (WORLD.custom) setTimeout(() => toast(`On ${GAME.spawnName}. Every switch is lined straight: tap one or use Throw to change it.`, '', 5000), 600);
   else setTimeout(() => toast('Yard 2, Bellevue. The ladder is lined out to the main.', '', 5000), 600);
   if (!MP.on && !JOB.run && CARS.cuts.length) setTimeout(() => toast('Cars are waiting on Yard 3, Yard 4, the elevator track and quarry storage. Back in gently to couple; tap a coupler on the cars, or open Couplers (U), to work the knuckles and cut them off.', '', 7000, 'carsIntro'), 11500);
-  if (GAME.train && GAME.train.diesel) setTimeout(() => toast((GAME.train.nUnits > 1 ? GAME.train.nUnits + ' units in multiple: they all answer the lead cab. ' : '') + 'Reverser to forward, engine brake off, then notch out the throttle.', '', 6500), 5200);
+  if (GAME.train && GAME.train.elec) setTimeout(() => toast('Brake off, reverser forward, then notch the power controller. The set stays together: it cannot pick up cars.', '', 6500), 5200);
+  else if (GAME.train && GAME.train.diesel) setTimeout(() => toast((GAME.train.nUnits > 1 ? GAME.train.nUnits + ' units in multiple: they all answer the lead cab. ' : '') + 'Reverser to forward, engine brake off, then notch out the throttle.', '', 6500), 5200);
   else setTimeout(() => toast('Reverser forward, engine brake off, then ease the throttle open.', '', 6000), 5200);
 };
 GAME.pause = function (p) {
@@ -10441,7 +11479,9 @@ GAME.event = function (k) {
   else if (k === 'slipCtl') toast('Wheel slip control is trimming power. Sand helps on a wet rail.', 'warn', 3000, 'slipCtl');
   else if (k === 'started') { toast('Prime mover running.', 'good', 2200, 'start'); GAME.refreshKeys(); }
   else if (k === 'noFuel') { toast('Out of fuel. The engine has shut down.', 'bad', 4000, 'fuel'); GAME.refreshKeys(); }
-  else if (k === 'dynInterlock') toast('Throttle must be in idle while the dynamic brake is set up.', 'warn', 2800, 'dyn');
+  else if (k === 'dynInterlock') toast(GAME.train && GAME.train.elec ? 'Power controller must be off while the regenerative brake is applied.' : 'Throttle must be in idle while the dynamic brake is set up.', 'warn', 2800, 'dyn');
+  else if (k === 'vcb') { toast('On the wire: main breaker closed.', 'good', 2200, 'vcb'); GAME.refreshKeys(); }
+  else if (k === 'vcbOpen') { toast('Main breaker open: no power and no regenerative brake.', 'warn', 3000, 'vcb'); GAME.refreshKeys(); }
 };
 GAME.controlTouched = function () { };
 GAME.manualFire = function (what) {
@@ -10454,7 +11494,12 @@ GAME.refreshKeys = function () {
   on('btnBell', S.bell); on('btnSand', S.sander); on('btnLight', S.light > 0);
   $('btnLight').firstChild.textContent = ['Light off', 'Light dim', 'Light bright'][S.light];
   $('btnWhistle').firstChild.textContent = D ? 'Horn' : 'Whistle';
-  if (D) {
+  const sp = GAME.train ? LOCO_SPEC[GAME.train.locoKey] : null, E = !!(GAME.train && GAME.train.elec);
+  $('btnCocks').hidden = E && !sp.ditch; $('btnBell').hidden = E && !sp.bell;
+  if (E) {
+    on('btnCocks', S.ditch); $('btnCocks').firstChild.textContent = 'Ditch lights';
+    on('btnInj', S.panUp); $('btnInj').firstChild.textContent = S.panUp ? (S.vcb ? 'Pantograph' : 'Raising') : 'Pan down';
+  } else if (D) {
     on('btnCocks', S.ditch); $('btnCocks').firstChild.textContent = 'Ditch lights';
     on('btnInj', S.engineRun || S.crank > 0); $('btnInj').firstChild.textContent = S.crank > 0 ? 'Starting' : (S.engineRun ? 'Engine run' : 'Engine off');
   } else {
@@ -10757,10 +11802,16 @@ function dieselFX(dt, T, tv) {
   for (const m of T.units) { const p = T.unitWorld(m, m.enginePos); const d = p.distanceTo(camera.position); if (d < best) { best = d; src = p; } }
   return { src, working: S.load > 0.05 };
 }
+/* an electric set: no exhaust, the compressor on the auxiliary supply, and a spark at the pantograph now and then */
+function electricFX(dt, T, tv) {
+  if (S.pumping && S.vcb) { pumpT += dt; if (pumpT > 0.4) { pumpT = 0; GAME.pumpPh = (GAME.pumpPh || 0) + 1; if (GAME.pumpPh % 2) sndPump(GAME.pumpPh); } }
+  const src = T.unitWorld(T.loco, T.loco.enginePos);
+  return { src, working: S.load > 0.05 };
+}
 function effectsAndSound(dt, T) {
   const DSL = T.diesel;
   const tv = new THREE.Vector3().copy(T.lead.fwd).multiplyScalar(S.v);
-  const fx = DSL ? dieselFX(dt, T, tv) : steamFX(dt, T, tv);
+  const fx = T.elec ? electricFX(dt, T, tv) : DSL ? dieselFX(dt, T, tv) : steamFX(dt, T, tv);
   if (S.bell) { bellT += dt; if (bellT > (DSL ? 1.05 : 0.86)) { bellT = 0; sndBell(DSL); } } else bellT = 0.8;
   if (!AU.on) return;
   soundMix(dt, T, fx, tv);

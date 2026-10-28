@@ -9,8 +9,8 @@ const path = require('path');
 const vm = require('vm');
 
 const SRC = path.join(__dirname, '..', 'src');
-const FILES = ['01_util.js', '02_track.js', '06_models.js', '07_train.js', '07b_cars.js', '07c_place.js', '08_physics.js', '11d_jobs.js', '11e_traffic.js'];
-const EXPORTS = ['S', 'ENV', 'GAME', 'CARS', 'JOB', 'LOCO_SPEC', 'Consist', 'Cut', 'physicsStep', 'brakeZone', 'brakeLabel', 'consistMass',
+const FILES = ['01_util.js', '02_track.js', '06_models.js', '06e_hsr.js', '07_train.js', '07b_cars.js', '07c_place.js', '08_physics.js', '11d_jobs.js', '11e_traffic.js'];
+const EXPORTS = ['S', 'ENV', 'GAME', 'CARS', 'JOB', 'LOCO_SPEC', 'HSR', 'HS_AERO', 'setVehicle', 'hsLimit', 'Consist', 'Cut', 'physicsStep', 'brakeZone', 'brakeLabel', 'consistMass',
   'COUPLE_OK', 'COUPLE_HARD', 'COUPLE_DAMAGE', 'COUPLE_WRECK', 'KN_CLOSED', 'KN_OPEN', 'KN_LIFTED', 'HANDBRAKE', 'MPH', 'LBF', 'STON', 'PSI',
   'PathBuilder', 'Network', 'TrackPos', 'FOUL_LEN', 'POINTS_CLEAR',
   'IX', 'AI', 'routeWalk', 'PLACE', 'PLACE_SNAP', 'PLACE_CLEAR', 'endCoupler', 'carVehicle', 'signalRoute', 'signalAspect', 'swPair'];
@@ -94,6 +94,21 @@ function train(sim, nCars = 0, opt = {}) {
   sim.GAME.train = T;
   return T;
 }
+/* a high-speed trainset (key 'e5' or 'acela') as the physics sees it: every car a vehicle of the set */
+function trainset(sim, key, opt = {}) {
+  const cars = sim.HSR[key].cars, V = cars.map((def, i) => {
+    const [aeroLead, aero] = sim.HS_AERO[key][def.type];
+    const m = { len: def.len, frame: [3, def.len - 3], mass: def.t * 1000, motor: !!def.motor, aero, aeroLead, reversed: i === cars.length - 1 };
+    const v = Object.assign(vehicle('coach', m.mass, 4, opt), sim.setVehicle(m, i));
+    v.fp = [pivot(opt.grade || 0, opt.limit || 200), pivot(opt.grade || 0, opt.limit || 200)];
+    return v;
+  });
+  const T = stubConsist(V);
+  Object.assign(T, { locoKey: key, diesel: true, elec: true, nUnits: 1 });
+  Object.assign(sim.S, { pan: 1, panUp: true, vcb: true, cocks: false, indH: 0, brakeH: 0.12 });
+  sim.GAME.train = T;
+  return T;
+}
 /* a consist with the geometry and rendering hooks switched off */
 function stubConsist(vehicles) {
   return { vehicles, li: 0, inst: [], scene: { remove() {}, add() {} }, v: 0, rolling: false, stopT: 0, vented: false, dist: 0,
@@ -111,4 +126,4 @@ function run(sim, T, seconds, until, dt = 1 / 30) {
   return t;
 }
 
-module.exports = { Anything, load, train, vehicle, stubConsist, run, FREIGHT_CAR, Vector3 };
+module.exports = { Anything, load, train, trainset, vehicle, stubConsist, run, FREIGHT_CAR, Vector3 };
