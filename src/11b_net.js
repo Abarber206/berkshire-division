@@ -82,7 +82,7 @@ class MiniMQTT {
   raw(p) { if (this.ws && this.ws.readyState === 1) { try { this.ws.send(p); } catch (e) {} } }
   sendSub(topic) { const id = this.pid = (this.pid % 65535) + 1; this.raw(mqPacket(0x82, [Uint8Array.of(id >> 8, id & 255), mqStr(topic), Uint8Array.of(0)])); }
   subscribe(topic) { this.subs.push(topic); if (this.ok) this.sendSub(topic); }
-  publish(topic, text) { if (this.ok) this.raw(mqPacket(0x30, [mqStr(topic), MQ_TE.encode(text)])); }
+  publish(topic, text, retain) { if (this.ok) this.raw(mqPacket(retain ? 0x31 : 0x30, [mqStr(topic), MQ_TE.encode(text)])); }
   close() {
     this.closed = true; clearTimeout(this.retryT); clearInterval(this.pingT);
     if (this.ws) { try { if (this.ok) this.ws.send(Uint8Array.of(0xE0, 0)); this.ws.close(); } catch (e) {} }
@@ -121,7 +121,7 @@ const MP_CODE = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 const MP_SPAWNS = [['Yard 2', -175], ['Yard 3', -140], ['Yard 4', -112], ['Yard 1', -200], ['Fostoria Siding', -320], ['Kenton Siding', -220], ['Main', 3200], ['Main', 9800], ['Main', 16000], ['Quarry Branch', -700]];
 const MP_SPAWN_NAMES = { 'Yard 2': 'Yard 2, Bellevue', 'Yard 3': 'Yard 3, Bellevue', 'Yard 4': 'Yard 4, Bellevue', 'Yard 1': 'Yard 1, Bellevue', 'Fostoria Siding': 'the Fostoria siding', 'Kenton Siding': 'the Kenton siding', 'Main': 'the main line', 'Quarry Branch': 'the quarry branch' };
 const MP = {
-  on: false, ready: false, code: '', id: '', name: '', color: '', peers: new Map(), links: [], room: null, topic: '',
+  on: false, ready: false, code: '', ly: '', id: '', name: '', color: '', peers: new Map(), links: [], room: null, topic: '',
   q: 0, sentAt: 0, dirty: false, spawned: false, needSpawn: false, swv: null, seen: null, pend: new Map(), lt: null,
   chatN: 0, chat: null, log: [], watching: null, edges: null, panelT: 0, joinedAt: 0, autoJoin: '', last: null,
   brokers: ['wss://broker.hivemq.com:8884/mqtt', 'wss://broker.emqx.io:8084/mqtt'],
@@ -142,7 +142,9 @@ function mpClean(r) {
   const o = { id: r.id, q: Math.round(n(r.q, 0, 1e12)), bye: r.bye ? 1 : 0 };
   if (o.bye) return o;
   o.nm = mpText(r.nm, 16) || 'Engineer';
-  o.e = Number.isInteger(r.e) && MP.edges && MP.edges.has(r.e) ? r.e : -1;
+  o.ly = typeof r.ly === 'string' ? r.ly.slice(0, 16) : '';
+  o.other = o.ly !== MP.ly ? 1 : 0;   // on another railroad: chat only
+  o.e = !o.other && Number.isInteger(r.e) && MP.edges && MP.edges.has(r.e) ? r.e : -1;
   if (o.e >= 0) {
     o.lk = LOCO_SPEC[r.lk] ? r.lk : '765'; o.ck = CONSISTS[r.ck] ? r.ck : 'light';
     o.u = Math.round(n(r.u, 1, 3, 1)); o.lv = LIVERIES[r.lv] ? r.lv : 'ss'; o.mx = r.mx ? 1 : 0;
@@ -153,7 +155,7 @@ function mpClean(r) {
     o.ex = n(r.ex, 0, 1.5); o.rpm = n(r.rpm, 0, 1200); o.dr = r.dr ? 1 : 0;
   }
   o.pz = r.pz ? 1 : 0;
-  o.sw = Array.isArray(r.sw) && r.sw.length === NET.switches.length ? r.sw.map(x => Math.round(n(x, 0, 2e9))) : null;
+  o.sw = !o.other && Array.isArray(r.sw) && r.sw.length === NET.switches.length ? r.sw.map(x => Math.round(n(x, 0, 2e9))) : null;
   o.lt = Array.isArray(r.lt) && r.lt.length === 2 ? [Math.round(n(r.lt[0], 0, 255)), Math.round(n(r.lt[1], 0, 1e9))] : null;
   o.ch = Array.isArray(r.ch) && r.ch.length === 2 ? [Math.round(n(r.ch[0], 0, 1e9)), mpText(r.ch[1], 80)] : null;
   return o;
@@ -189,6 +191,7 @@ function mpOpts(st) {
   return { units: st.u, livery: st.lv, mix: !!st.mx, custom: cu, number: st.lv === 'custom' ? (st.no || 4401) : null };
 }
 function mpLocoLabel(st) {
+  if (st && st.other) return 'On another railroad';
   if (!st || st.e < 0) return 'In the menu';
   const loco = st.lk === 'diesel' ? (st.lv === 'custom' ? 'Custom' : LIVERIES[st.lv].init) + ' diesel' + (st.u > 1 ? ' ×' + st.u : '') : (st.lk === '765' ? 'NKP 765' : 'PM 1225');
   return loco + ' · ' + CONSISTS[st.ck].name;
@@ -365,7 +368,8 @@ MP.worldReady = function () {
   MP.ready = true;
   MP.edges = new Map(NET.edges.map(e => [e.id, e]));
   MP.ui();
-  if (MP.autoJoin && !WORLD.custom) MP.join(MP.autoJoin);
+  MP.ly = WORLD.custom ? layoutHash(PLAY_LAYOUT) : '';
+  if (MP.autoJoin) MP.join(MP.autoJoin);
 };
 MP.create = function () {
   let c = ''; for (let i = 0; i < 5; i++) c += MP_CODE[(Math.random() * MP_CODE.length) | 0];
@@ -380,9 +384,10 @@ MP.connect = function (code, creator) {
   MP.spawned = creator && GAME.running; MP.needSpawn = !MP.spawned;
   MP.topic = 'bdiv/v1/' + code;
   const will = { topic: MP.topic, payload: JSON.stringify({ id: MP.id, bye: 1 }) };
-  MP.links = MP.brokers.map((url, i) => { const l = new MiniMQTT(url, 'bd-' + MP.id + '-' + i, will, (t, txt) => MP.onText(txt), () => MP.ui()); l.subscribe(MP.topic); return l; });
+  MP.links = MP.brokers.map((url, i) => { const l = new MiniMQTT(url, 'bd-' + MP.id + '-' + i, will, (t, txt) => t === MP.topic ? MP.onText(txt) : MP.onWorldText(txt), () => MP.ui()); l.subscribe(MP.topic); l.subscribe(MP.topic + '/w'); return l; });
+  MP.worldJoin(creator);
   mpRoomLink(code, st => MP.receive(st), id => MP.drop(id, 'left')).then(link => { if (link && MP.on && MP.code === code) { MP.room = link; MP.ui(); } else if (link) link.close(); });
-  try { history.replaceState(null, '', location.pathname + '?room=' + code); } catch (e) {}
+  try { history.replaceState(null, '', location.pathname + mpQuery(code)); } catch (e) {}
   MP.dirty = true; MP.ui(); startLabel();
   setTimeout(() => MP.ui(), 2500); setTimeout(() => MP.ui(), 9000);
 };
@@ -398,7 +403,7 @@ MP.leave = function (quiet) {
   MP.links = []; MP.room = null; MP.on = false; MP.code = ''; MP.needSpawn = false; MP.spawned = false;
   for (const id of [...MP.peers.keys()]) MP.drop(id, null);
   MP.unwatch(); $('mpPanel').hidden = true;
-  try { history.replaceState(null, '', location.pathname); } catch (e) {}
+  try { history.replaceState(null, '', location.pathname + mpQuery('')); } catch (e) {}
   if (!quiet) toast('Left the room. You are driving solo.', '', 3000);
   MP.ui(); startLabel();
 };
@@ -490,7 +495,7 @@ MP.drop = function (id, why) {
 };
 MP.state = function () {
   const T = GAME.train, g = GAME.settings;
-  const st = { id: MP.id, q: ++MP.q, nm: MP.name, e: -1, pz: (S.paused || !GAME.running) ? 1 : 0 };
+  const st = { id: MP.id, q: ++MP.q, nm: MP.name, ly: MP.ly, e: -1, pz: (S.paused || !GAME.running) ? 1 : 0 };
   if (MP.spawned && T) {
     const f = T.pts[0].tp;
     Object.assign(st, {

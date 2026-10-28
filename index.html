@@ -358,15 +358,19 @@ details.keys kbd{color:var(--brass)}
 #edSel .btn.warn{border-color:rgba(238,75,61,.6);color:#f3c4be}
 #edSel .btn[aria-pressed="true"]{border-color:var(--brass);color:#f6e2ad}
 #edSt{display:flex;flex-direction:column;gap:6px;border-top:1px solid var(--rule);padding-top:8px}
-#edFiles{position:absolute;inset:0;z-index:4;display:flex;align-items:center;justify-content:center;background:rgba(5,8,10,.7);padding:16px}
-#edFiles .card{background:rgba(14,19,23,.97);border:1px solid var(--rule);border-radius:8px;padding:14px;width:min(420px,100%);max-height:100%;overflow:auto;display:flex;flex-direction:column;gap:10px}
-#edFiles h2{margin:0;font-family:var(--f-display);font-size:28px;letter-spacing:1px}
+#btList{display:flex;flex-wrap:wrap;gap:6px;font-size:12px}
+#btList span{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--rule);border-radius:12px;padding:3px 9px}
+#btList i{width:8px;height:8px;border-radius:50%;display:inline-block}
+#edTogBtn.on{border-color:var(--clear);color:var(--clear)}
+.edModal{position:absolute;inset:0;z-index:4;display:flex;align-items:center;justify-content:center;background:rgba(5,8,10,.7);padding:16px}
+.edModal .card{background:rgba(14,19,23,.97);border:1px solid var(--rule);border-radius:8px;padding:14px;width:min(420px,100%);max-height:100%;overflow:auto;display:flex;flex-direction:column;gap:10px}
+.edModal h2{margin:0;font-family:var(--f-display);font-size:28px;letter-spacing:1px}
 #edList{display:flex;flex-direction:column;gap:4px}
 #edList button{display:flex;justify-content:space-between;gap:8px;text-align:left;border:1px solid var(--rule);background:var(--steel-2);border-radius:5px;padding:8px 10px;font-size:13px;font-weight:600}
 #edList button small{color:var(--ink-dim);font-weight:400;font-family:var(--f-num);font-size:11px}
 #edList button[aria-current="true"]{border-color:var(--brass)}
-#edFiles .acts{display:flex;gap:6px;flex-wrap:wrap}
-#edFiles .btn{font-size:11px}
+.edModal .acts{display:flex;gap:6px;flex-wrap:wrap}
+.edModal .btn{font-size:11px}
 #grpRail .row2{display:flex;gap:6px;flex-wrap:wrap}
 #grpRail .btn{flex:1;white-space:nowrap}
 @media (max-width:600px){
@@ -460,6 +464,7 @@ details.keys kbd{color:var(--brass)}
     <span class="edTitle">Layout editor</span>
     <input id="edName" class="mpIn" maxlength="32" placeholder="Name your railroad" autocomplete="off" spellcheck="false" aria-label="Layout name">
     <button class="btn" id="edFileBtn" type="button">Layouts</button>
+    <button class="btn" id="edTogBtn" type="button">Build together</button>
     <span class="sp"></span>
     <button class="icon-btn" id="edUndo" type="button" aria-label="Undo" disabled><svg viewBox="0 0 24 24"><path d="M9 7L4 12l5 5"/><path d="M4 12h10a6 6 0 0 1 0 12"/></svg></button>
     <button class="icon-btn" id="edRedo" type="button" aria-label="Redo" disabled><svg viewBox="0 0 24 24"><path d="M15 7l5 5-5 5"/><path d="M20 12H10a6 6 0 0 0 0 12"/></svg></button>
@@ -477,7 +482,17 @@ details.keys kbd{color:var(--brass)}
     <div id="edTabs" role="tablist"></div>
     <div id="edPal"></div>
   </div>
-  <div id="edFiles" hidden><div class="card">
+  <div id="edTog" class="edModal" hidden><div class="card">
+    <h2>Build together</h2>
+    <p class="help" id="btIntro">Lay track with friends on one shared layout. Everyone sees each piece as it goes down, and when you tap <b>Drive it</b> you all end up in the same room on the same railroad.</p>
+    <div class="mpRow"><input id="btName" class="mpIn" maxlength="16" placeholder="Your name" autocomplete="off" spellcheck="false" aria-label="Your name"></div>
+    <div class="mpRow" id="btSolo"><button class="btn prim" id="btCreate" type="button">Start building</button><input id="btCode" class="mpIn code" maxlength="6" placeholder="CODE" autocomplete="off" spellcheck="false" autocapitalize="characters" aria-label="Build code"><button class="btn" id="btJoin" type="button">Join</button></div>
+    <div class="mpRow" id="btIn" hidden><span class="mpCode" id="btCodeBig"></span><button class="btn" id="btShare" type="button">Share link</button><button class="btn" id="btLeave" type="button">Leave</button></div>
+    <div class="mpStatus" id="btStatus"></div>
+    <div id="btList"></div>
+    <div class="acts"><button class="btn prim" id="btClose" type="button">Done</button></div>
+  </div></div>
+  <div id="edFiles" class="edModal" hidden><div class="card">
     <h2>Layouts</h2>
     <div id="edList"></div>
     <div class="acts">
@@ -5691,7 +5706,7 @@ class MiniMQTT {
   raw(p) { if (this.ws && this.ws.readyState === 1) { try { this.ws.send(p); } catch (e) {} } }
   sendSub(topic) { const id = this.pid = (this.pid % 65535) + 1; this.raw(mqPacket(0x82, [Uint8Array.of(id >> 8, id & 255), mqStr(topic), Uint8Array.of(0)])); }
   subscribe(topic) { this.subs.push(topic); if (this.ok) this.sendSub(topic); }
-  publish(topic, text) { if (this.ok) this.raw(mqPacket(0x30, [mqStr(topic), MQ_TE.encode(text)])); }
+  publish(topic, text, retain) { if (this.ok) this.raw(mqPacket(retain ? 0x31 : 0x30, [mqStr(topic), MQ_TE.encode(text)])); }
   close() {
     this.closed = true; clearTimeout(this.retryT); clearInterval(this.pingT);
     if (this.ws) { try { if (this.ok) this.ws.send(Uint8Array.of(0xE0, 0)); this.ws.close(); } catch (e) {} }
@@ -5730,7 +5745,7 @@ const MP_CODE = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 const MP_SPAWNS = [['Yard 2', -175], ['Yard 3', -140], ['Yard 4', -112], ['Yard 1', -200], ['Fostoria Siding', -320], ['Kenton Siding', -220], ['Main', 3200], ['Main', 9800], ['Main', 16000], ['Quarry Branch', -700]];
 const MP_SPAWN_NAMES = { 'Yard 2': 'Yard 2, Bellevue', 'Yard 3': 'Yard 3, Bellevue', 'Yard 4': 'Yard 4, Bellevue', 'Yard 1': 'Yard 1, Bellevue', 'Fostoria Siding': 'the Fostoria siding', 'Kenton Siding': 'the Kenton siding', 'Main': 'the main line', 'Quarry Branch': 'the quarry branch' };
 const MP = {
-  on: false, ready: false, code: '', id: '', name: '', color: '', peers: new Map(), links: [], room: null, topic: '',
+  on: false, ready: false, code: '', ly: '', id: '', name: '', color: '', peers: new Map(), links: [], room: null, topic: '',
   q: 0, sentAt: 0, dirty: false, spawned: false, needSpawn: false, swv: null, seen: null, pend: new Map(), lt: null,
   chatN: 0, chat: null, log: [], watching: null, edges: null, panelT: 0, joinedAt: 0, autoJoin: '', last: null,
   brokers: ['wss://broker.hivemq.com:8884/mqtt', 'wss://broker.emqx.io:8084/mqtt'],
@@ -5751,7 +5766,9 @@ function mpClean(r) {
   const o = { id: r.id, q: Math.round(n(r.q, 0, 1e12)), bye: r.bye ? 1 : 0 };
   if (o.bye) return o;
   o.nm = mpText(r.nm, 16) || 'Engineer';
-  o.e = Number.isInteger(r.e) && MP.edges && MP.edges.has(r.e) ? r.e : -1;
+  o.ly = typeof r.ly === 'string' ? r.ly.slice(0, 16) : '';
+  o.other = o.ly !== MP.ly ? 1 : 0;   // on another railroad: chat only
+  o.e = !o.other && Number.isInteger(r.e) && MP.edges && MP.edges.has(r.e) ? r.e : -1;
   if (o.e >= 0) {
     o.lk = LOCO_SPEC[r.lk] ? r.lk : '765'; o.ck = CONSISTS[r.ck] ? r.ck : 'light';
     o.u = Math.round(n(r.u, 1, 3, 1)); o.lv = LIVERIES[r.lv] ? r.lv : 'ss'; o.mx = r.mx ? 1 : 0;
@@ -5762,7 +5779,7 @@ function mpClean(r) {
     o.ex = n(r.ex, 0, 1.5); o.rpm = n(r.rpm, 0, 1200); o.dr = r.dr ? 1 : 0;
   }
   o.pz = r.pz ? 1 : 0;
-  o.sw = Array.isArray(r.sw) && r.sw.length === NET.switches.length ? r.sw.map(x => Math.round(n(x, 0, 2e9))) : null;
+  o.sw = !o.other && Array.isArray(r.sw) && r.sw.length === NET.switches.length ? r.sw.map(x => Math.round(n(x, 0, 2e9))) : null;
   o.lt = Array.isArray(r.lt) && r.lt.length === 2 ? [Math.round(n(r.lt[0], 0, 255)), Math.round(n(r.lt[1], 0, 1e9))] : null;
   o.ch = Array.isArray(r.ch) && r.ch.length === 2 ? [Math.round(n(r.ch[0], 0, 1e9)), mpText(r.ch[1], 80)] : null;
   return o;
@@ -5798,6 +5815,7 @@ function mpOpts(st) {
   return { units: st.u, livery: st.lv, mix: !!st.mx, custom: cu, number: st.lv === 'custom' ? (st.no || 4401) : null };
 }
 function mpLocoLabel(st) {
+  if (st && st.other) return 'On another railroad';
   if (!st || st.e < 0) return 'In the menu';
   const loco = st.lk === 'diesel' ? (st.lv === 'custom' ? 'Custom' : LIVERIES[st.lv].init) + ' diesel' + (st.u > 1 ? ' ×' + st.u : '') : (st.lk === '765' ? 'NKP 765' : 'PM 1225');
   return loco + ' · ' + CONSISTS[st.ck].name;
@@ -5974,7 +5992,8 @@ MP.worldReady = function () {
   MP.ready = true;
   MP.edges = new Map(NET.edges.map(e => [e.id, e]));
   MP.ui();
-  if (MP.autoJoin && !WORLD.custom) MP.join(MP.autoJoin);
+  MP.ly = WORLD.custom ? layoutHash(PLAY_LAYOUT) : '';
+  if (MP.autoJoin) MP.join(MP.autoJoin);
 };
 MP.create = function () {
   let c = ''; for (let i = 0; i < 5; i++) c += MP_CODE[(Math.random() * MP_CODE.length) | 0];
@@ -5989,9 +6008,10 @@ MP.connect = function (code, creator) {
   MP.spawned = creator && GAME.running; MP.needSpawn = !MP.spawned;
   MP.topic = 'bdiv/v1/' + code;
   const will = { topic: MP.topic, payload: JSON.stringify({ id: MP.id, bye: 1 }) };
-  MP.links = MP.brokers.map((url, i) => { const l = new MiniMQTT(url, 'bd-' + MP.id + '-' + i, will, (t, txt) => MP.onText(txt), () => MP.ui()); l.subscribe(MP.topic); return l; });
+  MP.links = MP.brokers.map((url, i) => { const l = new MiniMQTT(url, 'bd-' + MP.id + '-' + i, will, (t, txt) => t === MP.topic ? MP.onText(txt) : MP.onWorldText(txt), () => MP.ui()); l.subscribe(MP.topic); l.subscribe(MP.topic + '/w'); return l; });
+  MP.worldJoin(creator);
   mpRoomLink(code, st => MP.receive(st), id => MP.drop(id, 'left')).then(link => { if (link && MP.on && MP.code === code) { MP.room = link; MP.ui(); } else if (link) link.close(); });
-  try { history.replaceState(null, '', location.pathname + '?room=' + code); } catch (e) {}
+  try { history.replaceState(null, '', location.pathname + mpQuery(code)); } catch (e) {}
   MP.dirty = true; MP.ui(); startLabel();
   setTimeout(() => MP.ui(), 2500); setTimeout(() => MP.ui(), 9000);
 };
@@ -6007,7 +6027,7 @@ MP.leave = function (quiet) {
   MP.links = []; MP.room = null; MP.on = false; MP.code = ''; MP.needSpawn = false; MP.spawned = false;
   for (const id of [...MP.peers.keys()]) MP.drop(id, null);
   MP.unwatch(); $('mpPanel').hidden = true;
-  try { history.replaceState(null, '', location.pathname); } catch (e) {}
+  try { history.replaceState(null, '', location.pathname + mpQuery('')); } catch (e) {}
   if (!quiet) toast('Left the room. You are driving solo.', '', 3000);
   MP.ui(); startLabel();
 };
@@ -6099,7 +6119,7 @@ MP.drop = function (id, why) {
 };
 MP.state = function () {
   const T = GAME.train, g = GAME.settings;
-  const st = { id: MP.id, q: ++MP.q, nm: MP.name, e: -1, pz: (S.paused || !GAME.running) ? 1 : 0 };
+  const st = { id: MP.id, q: ++MP.q, nm: MP.name, ly: MP.ly, e: -1, pz: (S.paused || !GAME.running) ? 1 : 0 };
   if (MP.spawned && T) {
     const f = T.pts[0].tp;
     Object.assign(st, {
@@ -6283,6 +6303,114 @@ MP.drawMap = function (g, tx, ty, opt) {
 };
 
 /* ============================================================================
+   Which railroad a room runs on. Everyone in a room has to drive the same track,
+   so the room carries its world on <room>/w: the built-in division, or a layout
+   from the editor sent whole. The message is retained by the brokers so a late
+   joiner gets it at once. The room's creator announces its world; in a room with
+   no creator (everyone came from a shared build), the first player to find it
+   silent claims it. A creator's word beats a claim, a newer one beats an older,
+   and anyone on a different world loads the room's and rejoins.
+   ========================================================================== */
+/* a layout's identity: the sanitised pieces in id order, its name and start */
+function layoutCanon(m) {
+  const v = m && edValidImport(m); if (!v) return '';
+  v.pieces.sort((a, b) => a.id - b.id);
+  return JSON.stringify({ name: v.name, pieces: v.pieces, start: v.start });
+}
+const layoutHash = m => mpHash(layoutCanon(m)).toString(36);
+
+function mpQuery(room) {   // keep ?layout= when the room part of the address changes
+  const q = new URLSearchParams(location.search); q.delete('room');
+  if (room) q.set('room', room);
+  const t = q.toString(); return t ? '?' + t : '';
+}
+MP.world = null;
+MP.worldJoin = function (creator) {
+  MP.world = creator ? { at: Date.now(), id: MP.id, ly: MP.ly, cr: 1 } : null;
+  clearTimeout(MP.worldT);
+  // nothing is sent until a broker is reached, so every step waits for a live link
+  const code = MP.code; let since = 0, asked = false;
+  const step = () => {
+    if (!MP.on || MP.code !== code) return;
+    if (MP.status() !== 'on') { since = 0; MP.worldT = setTimeout(step, 500); return; }
+    if (creator) { MP.sendWorld(true); return; }
+    if (MP.world) return;
+    if (!since) since = performance.now();
+    // ask whoever holds the world, then claim it ourselves if the room stays quiet for 4 s
+    if (!asked && performance.now() - since > 400) { asked = true; MP.pubWorld(JSON.stringify({ id: MP.id, wq: 1 })); }
+    if (performance.now() - since < 4000) { MP.worldT = setTimeout(step, 500); return; }
+    MP.world = { at: Date.now(), id: MP.id, ly: MP.ly, cr: 0 }; MP.sendWorld(true);
+  };
+  MP.worldT = setTimeout(step, 300);
+};
+MP.pubWorld = function (txt, retain) { for (const l of MP.links) l.publish(MP.topic + '/w', txt, retain); };
+MP.sendWorld = function (retain) {
+  if (!MP.on || !MP.world || MP.world.ly !== MP.ly) return;
+  const lay = WORLD.custom ? layoutCanon(PLAY_LAYOUT) : '';
+  MP.pubWorld(JSON.stringify({ id: MP.world.id, at: MP.world.at, cr: MP.world.cr, ly: MP.ly, nm: WORLD.custom ? PLAY_LAYOUT.name : 'Berkshire Division', lay }), retain);
+};
+MP.onWorldText = function (txt) {
+  if (!MP.on || txt.length > 2e6) return;
+  let r; try { r = JSON.parse(txt); } catch (e) { return; }
+  if (!r || typeof r.id !== 'string' || !/^[a-z0-9]{6,16}$/.test(r.id)) return;
+  if (r.wq) { if (r.id !== MP.id && MP.world && MP.world.ly === MP.ly) setTimeout(() => MP.sendWorld(false), 200 + Math.random() * 800); return; }
+  if (typeof r.ly !== 'string' || typeof r.at !== 'number' || !isFinite(r.at)) return;
+  const cur = MP.world, cr = r.cr ? 1 : 0;
+  if (MP.creator) return;   // the creator's railroad stands
+  if (cur && (cur.cr > cr || (cur.cr === cr && (cur.at > r.at || (cur.at === r.at && cur.id >= r.id))))) return;
+  MP.world = { at: r.at, id: r.id, ly: r.ly, cr };
+  if (r.ly !== MP.ly) MP.adoptWorld(r);
+};
+MP.adoptWorld = function (r) {
+  let id = '';
+  if (r.ly) {
+    let m = null; try { m = edValidImport(JSON.parse(r.lay)); } catch (e) { m = null; }
+    if (!m || layoutHash(m) !== r.ly) return;
+    m.id = 'R' + r.ly; m.from = 'room';
+    if (!LAYOUTS.put(m)) { MP.say("This room runs on a layout your browser couldn't save.", true); return; }
+    id = m.id;
+  }
+  // never bounce between worlds: one reload per room and railroad
+  const key = MP.code + ':' + r.ly;
+  try {
+    const o = JSON.parse(sessionStorage.getItem('bd_world') || 'null');
+    if (o && o.key === key && Date.now() - o.t < 30000) { MP.say("Could not load the room's railroad.", true); return; }
+    sessionStorage.setItem('bd_world', JSON.stringify({ key, t: Date.now() }));
+  } catch (e) {}
+  const name = mpText(r.nm, 32) || 'the room\'s railroad';
+  MP.say(`This room runs on ${name}. Loading it…`); toast(`This room runs on ${name}. Loading it…`, '', 4000);
+  const q = new URLSearchParams(); if (id) q.set('layout', id); q.set('room', MP.code);
+  setTimeout(() => { location.href = location.pathname + '?' + q.toString(); }, 1200);
+};
+
+/* a free stretch of a custom layout for a new train in a room */
+MP.layoutSlot = function (need) {
+  for (const p of MP.peers.values()) if (p.rt && p.rt.tp && !p.rt.placed) p.rt.frame(0, p.st, camera.position, true);
+  const others = [];
+  for (const p of MP.peers.values()) if (p.rt && p.rt.placed) for (let i = 0; i < p.rt.polyN; i++) others.push(p.rt.poly[i]);
+  const cands = [];
+  const st = layoutStart(PLAY_LAYOUT); cands.push(new TrackPos(st.edge, st.s, st.o));
+  for (const e of [...NET.edges].sort((a, b) => b.len - a.len)) for (let s = e.len - 20; s > 20; s -= 80) { cands.push(new TrackPos(e, s, 1)); cands.push(new TrackPos(e, e.len - s, -1)); }
+  for (const c of cands) {
+    const tp = layoutFit(c, need); if (!tp) continue;
+    const w = tp.clone(); w.advance(30, null);
+    let clear = true;
+    for (let d = 0; d < need + 60 && clear; d += 6) {
+      w.pose(FR); for (const q of others) if (q.distanceTo(FR.p) < 3.4) { clear = false; break; }
+      if (w.advance(-6, null) !== 0) break;
+    }
+    if (clear) return tp;
+  }
+  return null;
+};
+/* the driving room for a shared build: the same for everyone driving the same version of the layout */
+function driveCode(buildCode, m) {
+  let h = mpHash(buildCode + ':' + layoutHash(m)), c = '';
+  for (let i = 0; i < 6; i++) { c += MP_CODE[h % MP_CODE.length]; h = Math.floor(h / MP_CODE.length) ^ (i * 2654435761 >>> 0); h >>>= 0; }
+  return c;
+}
+
+/* ============================================================================
    Game: boot, world loading, main loop, rules, HUD
    ========================================================================== */
 const GAME = {
@@ -6394,19 +6522,30 @@ function makeTrain() {
 }
 /* custom layout: the start marker, slid forward until the whole train is on the rails */
 function placeOnLayout(t, light) {
-  for (const s of NET.switches) { s.state = 0; s.anim = 0; }
-  const st = layoutStart(PLAY_LAYOUT), tp = new TrackPos(st.edge, st.s, st.o);
-  const room = dir => { let d = Infinity; peekPath(tp, dir, 20000, (node, dd) => { if (!node) { d = dd; return true; } }); return d; };
-  const need = t.length + 4, behind = room(-1), ahead = room(1);
+  if (!MP.on) for (const s of NET.switches) { s.state = 0; s.anim = 0; }
+  const st = layoutStart(PLAY_LAYOUT), need = t.length + 4;
+  let tp = layoutFit(new TrackPos(st.edge, st.s, st.o), need);
   GAME.spawnName = PLAY_LAYOUT.name || 'your layout';
-  if (behind + ahead < need + 8 && !light && GAME.settings.consist !== 'light') {
+  if (!tp && !light && GAME.settings.consist !== 'light') {
     t.dispose();
     toast('That train is longer than the track, so you have a light engine.', 'warn', 5200);
     const t2 = new Train(scene, GAME.settings.loco, 'light', dieselOpts()); GAME.train = t2; placeOnLayout(t2, true); return;
   }
-  if (behind < need) tp.advance(Math.min(need - behind, Math.max(0, ahead - 6)), null);
-  t.place(tp);
+  if (MP.on) {
+    // in a room, find a stretch of track no other train is on
+    const slot = MP.layoutSlot(need); if (slot) tp = slot;
+    MP.spawned = true; MP.needSpawn = false; MP.dirty = true;
+  }
+  t.place(tp || new TrackPos(st.edge, st.s, st.o));
   finishTrain(t);
+}
+/* slide a front position forward until `need` metres of track lie behind it; null if the track is too short */
+function layoutFit(tp, need) {
+  const room = dir => { let d = Infinity; peekPath(tp, dir, 20000, (node, dd) => { if (!node) { d = dd; return true; } }); return d; };
+  const behind = room(-1), ahead = room(1);
+  if (behind + ahead < need + 8) return null;
+  if (behind < need) tp.advance(Math.min(need - behind, Math.max(0, ahead - 6)), null);
+  return tp;
 }
 function finishTrain(t) {
   prepareTrain(t);
@@ -6966,30 +7105,56 @@ function edRebuild() {
   ED.warned = false;
   edPanels(); ED.dirty = true;
 }
+/* A change is what one edit did: pieces added, removed and altered, and the name or
+   start if they moved. Undo applies the inverse of our own changes only, so in a
+   shared build it never takes back what someone else laid. */
+function edSnap() { return { p: new Map(ED.map.pieces.map(x => [x.id, JSON.stringify(x)])), name: ED.map.name, start: JSON.stringify(ED.map.start || null) }; }
+function edDiff(a) {
+  const ch = { add: [], del: [], set: [] }, seen = new Set();
+  for (const x of ED.map.pieces) { seen.add(x.id); const o = a.p.get(x.id), n = JSON.stringify(x); if (o === undefined) ch.add.push(JSON.parse(n)); else if (o !== n) ch.set.push([JSON.parse(o), JSON.parse(n)]); }
+  for (const [id, o] of a.p) if (!seen.has(id)) ch.del.push(JSON.parse(o));
+  if (a.name !== ED.map.name) ch.name = [a.name, ED.map.name];
+  if (a.start !== JSON.stringify(ED.map.start || null)) ch.start = [JSON.parse(a.start), ED.map.start || null];
+  return ch.add.length || ch.del.length || ch.set.length || ch.name || ch.start ? ch : null;
+}
+const edInvert = ch => ({ add: ch.del, del: ch.add, set: ch.set.map(([o, n]) => [n, o]), name: ch.name && [ch.name[1], ch.name[0]], start: ch.start && [ch.start[1], ch.start[0]] });
+function edApply(ch) {
+  const P = ED.map.pieces, at = id => P.findIndex(x => x.id === id);
+  for (const x of ch.del) { const i = at(x.id); if (i >= 0) P.splice(i, 1); }
+  for (const x of ch.add) { const i = at(x.id); if (i >= 0) P[i] = x; else P.push(x); }
+  for (const [, x] of ch.set) { const i = at(x.id); if (i >= 0) P[i] = x; else P.push(x); }
+  if (ch.name) ED.map.name = ch.name[1];
+  if (ch.start) ED.map.start = ch.start[1];
+}
 function edCommit(fn) {
-  ED.undo.push(JSON.stringify(ED.map)); if (ED.undo.length > 200) ED.undo.shift(); ED.redo = [];
-  fn(); edRebuild(); edSave();
+  const a = edSnap(); fn();
+  const ch = edDiff(a); if (!ch) return;
+  ED.undo.push(ch); if (ED.undo.length > 200) ED.undo.shift(); ED.redo = [];
+  edRebuild(); edSave(); BT.send(ch);
 }
 function edSave() { if (!LAYOUTS.put(ED.map)) edMsg('Could not save: browser storage is full or blocked.', 'bad'); }
 function edUndo(redo) {
   const from = redo ? ED.redo : ED.undo, to = redo ? ED.undo : ED.redo;
   if (!from.length) return;
-  to.push(JSON.stringify(ED.map)); ED.map = JSON.parse(from.pop());
+  const ch = from.pop(), go = redo ? ch : edInvert(ch);
+  edApply(go); to.push(ch);
   ED.active = null; ED.armed = null; ED.join = null;
-  edRebuild(); edSave();
+  edRebuild(); edSave(); BT.send(go);
 }
+/* a piece id nobody else in a shared build will pick */
+function edNewId() { let id; do id = 1 + Math.floor(Math.random() * 2e9); while (ED.idx.has(id)); return id; }
 function edPort(ref) { const i = ED.idx.get(ref.pid); if (i === undefined) return null; const P = ED.G.pieces[i]; return ED.G.ports[P.base + ref.j] || null; }
 const edRefOf = q => ({ pid: ED.G.pieces[q.pi].p.id, j: q.j });
 
 /* place spec attached by its port j to end E, or free at (X, N, h) */
 function edPlace(spec, E, j, X, N, h) {
-  const base = { ...spec, id: ED.map.nid };
+  const base = { ...spec, id: edNewId() };
   return E ? attachPiece(base, j % edExt(spec), E) : { ...base, X, N, h };
 }
 function edAdd(spec, E, j, X, N, h) {
   const p = edPlace(spec, E, j, X, N, h);
   if (!edInBounds(p)) { edMsg('That would run off the edge of the world.', 'bad'); return null; }
-  edCommit(() => { ED.map.nid++; ED.map.pieces.push(p); });
+  edCommit(() => { ED.map.pieces.push(p); });
   // carry on from the far end of the new piece
   const P = ED.G.pieces[ED.idx.get(p.id)], jj = E ? j % edExt(spec) : -1;
   const order = spec.t === 'turnout' ? (jj === 0 ? [1, 2] : [0, 1, 2]) : [1, 0];
@@ -7028,9 +7193,9 @@ function edJoin(a, b) {
   const spec = { t: 'flex', X: qa.X, N: qa.N, h: qa.h, b: { X: qb.X, N: qb.N, h: qb.h + Math.PI } };
   const f = flexPath(spec, spec.b);
   if (f.minR < LAYOUT.minFlexR) { edMsg(`Too sharp to join: the curve would be ${Math.round(f.minR)} m radius (${LAYOUT.minFlexR} m is the tightest allowed). Lay more track toward the other end first.`, 'bad'); return; }
-  const p = { ...spec, id: ED.map.nid };
+  const p = { ...spec, id: edNewId() };
   if (!edInBounds(p)) { edMsg('That join would run off the edge of the world.', 'bad'); return; }
-  edCommit(() => { ED.map.nid++; ED.map.pieces.push(p); });
+  edCommit(() => { ED.map.pieces.push(p); });
   ED.active = null; ED.join = null; edMsg(`Joined with a ${f.len.toFixed(0)} m curve, radius ${f.minR === Infinity ? 'straight' : Math.round(f.minR) + ' m'} at its tightest.`, 'good');
   edPanels();
 }
@@ -7157,6 +7322,7 @@ function edDraw() {
     g.fillStyle = isA || isJ ? '#fff2c9' : '#f2b33d'; g.strokeStyle = '#000'; g.lineWidth = 1.5;
     g.beginPath(); g.arc(x, y, isA || isJ || hov ? r + 2 : r, 0, TAU); g.fill(); g.stroke();
   }
+  BT.drawPeers(g);
   // problems
   const pulse = 0.7 + 0.3 * Math.sin(performance.now() / 260);
   for (const is of G.issues) {
@@ -7402,7 +7568,8 @@ function edInput() {
 
 /* ---------- files ---------- */
 function edLoad(map) {
-  ED.map = map; ED.map.nid = Math.max(ED.map.nid || 1, ...ED.map.pieces.map(p => p.id + 1), 1);
+  if (BT.on && map.shared !== BT.code) BT.leave(true);   // a different layout is not the shared one
+  ED.map = map;
   ED.undo = []; ED.redo = []; ED.active = null; ED.sel = null; ED.armed = null; ED.ghost = null; ED.join = null; ED.joinArmed = false;
   try { localStorage.setItem('bd_layout_last', map.id); } catch (e) {}
   edRebuild(); edFit();
@@ -7494,7 +7661,8 @@ function edDrive() {
   const bad = ED.G.issues.length;
   if (bad && !ED.warned) { ED.warned = true; edMsg(`${bad} problem${bad === 1 ? ' is' : 's are'} marked in red. Tap Drive it again to drive anyway.`, 'bad'); return; }
   edSave();
-  location.href = location.pathname + '?layout=' + encodeURIComponent(ED.map.id);
+  // building together: everyone driving this version of the layout meets in the same room
+  location.href = location.pathname + '?layout=' + encodeURIComponent(ED.map.id) + (BT.on ? '&room=' + driveCode(BT.code, ED.map) : '');
 }
 function railMenu() {
   const host = $('optRail'); if (!host) return;
@@ -7547,12 +7715,176 @@ function edInit() {
   edInput();
   railMenu();
   if (PLAY_LAYOUT) {
-    $('grpMP').hidden = true;
     const lede = document.querySelector('.lede');
     if (lede) lede.textContent = `${PLAY_LAYOUT.name || 'Your layout'}: a railroad you laid in the editor. Every switch can be thrown from the map or the switch card, and stations have water for the steam engines.`;
   }
 }
 edInit();
+
+/* ============================================================================
+   Building together. Players in a build room edit one layout over the same
+   public MQTT relays the driving rooms use (topic bdiv/v1/b/<code>).
+
+   Every edit goes out as the change it made (pieces added, removed, altered),
+   which is applied by piece id, so edits made at the same moment by different
+   people both land. A newcomer asks for the whole layout and the member with
+   the lowest id answers. Each member also reports a fingerprint of the layout
+   every few seconds; anyone who has drifted from that member asks again, so the
+   room always settles on one layout.
+   ========================================================================== */
+const BT = { on: false, code: '', topic: '', links: [], peers: new Map(), seen: new Set(), seq: 0, synced: false, cursor: null, sentP: 0, drift: 0 };
+
+BT.send = function (ch) { if (BT.on) BT.pub({ t: 'ch', ch }); };
+BT.pub = function (o) {
+  o.id = MP.id; o.n = ++BT.seq;
+  const txt = JSON.stringify(o);
+  for (const l of BT.links) l.publish(BT.topic, txt);
+};
+BT.hash = function () { return layoutHash(ED.map); };
+BT.connect = function (code, creator, keep) {
+  if (BT.on) BT.leave(true);
+  BT.on = true; BT.code = code; BT.topic = 'bdiv/v1/b/' + code; BT.synced = creator; BT.peers.clear(); BT.seen.clear(); BT.drift = 0;
+  const will = { topic: BT.topic, payload: JSON.stringify({ id: MP.id, n: 0, t: 'bye' }) };
+  BT.links = MP.brokers.map((url, i) => { const l = new MiniMQTT(url, 'bb-' + MP.id + '-' + i, will, (t, txt) => BT.onText(txt), () => BT.ui()); l.subscribe(BT.topic); return l; });
+  if (!creator) {
+    // our screen becomes the shared layout, kept as its own saved copy; if the room is empty we carry on with that copy
+    if (!keep) { const m = edBlank('Shared layout ' + code); m.id = 'B' + code; m.shared = code; const old = LAYOUTS.get(m.id); edLoad(old ? Object.assign(old, { shared: code }) : m); }
+    let asks = 0;
+    BT.askT = setInterval(() => {
+      if (BT.synced || !BT.links.some(l => l.ok)) return;
+      if (++asks > 3 && !BT.peers.size) { BT.synced = true; clearInterval(BT.askT); BT.ui(); return; }
+      BT.pub({ t: 'req' });
+    }, 1500);
+  } else { ED.map.shared = code; edSave(); }
+  try { history.replaceState(null, '', location.pathname + '?build=' + code); } catch (e) {}
+  BT.ui(); edPanels();
+};
+BT.leave = function (quiet) {
+  if (!BT.on) return;
+  BT.pub({ t: 'bye' });
+  for (const l of BT.links) l.close();
+  clearInterval(BT.askT);
+  BT.on = false; BT.links = []; BT.peers.clear(); BT.code = '';
+  try { history.replaceState(null, '', location.pathname + location.search.replace(/[?&]build=[A-Z0-9]+/, '').replace(/^&/, '?')); } catch (e) {}
+  if (!quiet) edMsg('Left the build. The layout stays saved on this device.');
+  BT.ui(); ED.dirty = true;
+};
+BT.onText = function (txt) {
+  if (!BT.on || txt.length > 2e6) return;
+  let r; try { r = JSON.parse(txt); } catch (e) { return; }
+  if (!r || typeof r.id !== 'string' || !/^[a-z0-9]{6,16}$/.test(r.id) || r.id === MP.id) return;
+  const key = r.id + ':' + r.n; if (BT.seen.has(key)) return;   // both relays deliver everything
+  BT.seen.add(key); if (BT.seen.size > 4000) BT.seen = new Set([...BT.seen].slice(-2000));
+  let p = BT.peers.get(r.id);
+  if (r.t === 'bye') { if (p) { BT.peers.delete(r.id); edMsg(`${p.nm} left the build.`); BT.ui(); ED.dirty = true; } return; }
+  if (!p) {
+    if (BT.peers.size >= 12) return;
+    p = { id: r.id, nm: 'Builder', color: MP_COLORS[mpHash(r.id) % MP_COLORS.length], at: 0, x: null, a: null, h: '' };
+    BT.peers.set(r.id, p);
+  }
+  p.at = performance.now();
+  if (r.t === 'p') {
+    const nm = mpText(r.nm, 16) || 'Builder'; if (p.nm !== nm) { const first = p.nm === 'Builder' && !p.named; p.nm = nm; p.named = true; if (first) edMsg(`${nm} is building with you.`, 'good'); BT.ui(); }
+    p.x = Array.isArray(r.x) && r.x.length === 2 && r.x.every(v => typeof v === 'number' && isFinite(v)) ? r.x : null;
+    p.a = r.a && typeof r.a.pid === 'number' && typeof r.a.j === 'number' ? { pid: r.a.pid, j: r.a.j } : null;
+    p.h = typeof r.h === 'string' ? r.h.slice(0, 16) : '';
+    p.synced = !!r.s;
+    ED.dirty = true;
+    return;
+  }
+  if (r.t === 'req') { if (BT.synced && BT.leader() === MP.id) BT.pub({ t: 'snap', to: r.id, map: { name: ED.map.name, pieces: ED.map.pieces, start: ED.map.start || null } }); return; }
+  if (r.t === 'snap') {
+    if (r.to !== MP.id) return;
+    const m = edValidImport(r.map); if (!m) return;
+    ED.map.name = m.name; ED.map.pieces = m.pieces; ED.map.start = m.start;
+    ED.undo = []; ED.redo = []; ED.active = null; ED.sel = null;
+    const first = !BT.synced; BT.synced = true; BT.drift = 0; clearInterval(BT.askT);
+    edRebuild(); edSave(); if (first) { edFit(); edMsg(`Building ${m.name} together.`, 'good'); }
+    return;
+  }
+  if (r.t === 'ch' && BT.synced) {
+    const ch = BT.clean(r.ch); if (!ch) return;
+    edApply(ch); edRebuild(); edSave();
+  }
+};
+/* a change from someone else, checked piece by piece like an imported file */
+BT.clean = function (ch) {
+  if (!ch || typeof ch !== 'object') return null;
+  const list = a => { if (!Array.isArray(a)) return []; const m = edValidImport({ pieces: a }); return m ? m.pieces : null; };
+  const add = list(ch.add), del = list(ch.del);
+  const setN = list((ch.set || []).map(x => Array.isArray(x) ? x[1] : null)), setO = list((ch.set || []).map(x => Array.isArray(x) ? x[0] : null));
+  if (!add || !del || !setN || !setO) return null;
+  const out = { add, del, set: setN.map((n, i) => [setO[i], n]) };
+  if (Array.isArray(ch.name)) out.name = [String(ch.name[0]).slice(0, 32), mpText(String(ch.name[1]), 32) || 'Shared layout'];
+  if (Array.isArray(ch.start)) { const s = ch.start[1]; out.start = [null, s && typeof s.id === 'number' ? { id: s.id | 0, dir: s.dir < 0 ? -1 : 1 } : null]; }
+  return out;
+};
+BT.leader = function () { let id = BT.synced ? MP.id : ''; for (const p of BT.peers.values()) if (p.synced && (!id || p.id < id)) id = p.id; return id; };
+BT.tick = function () {
+  if (!BT.on) return;
+  const now = performance.now();
+  for (const p of [...BT.peers.values()]) if (now - p.at > 15000) { BT.peers.delete(p.id); BT.ui(); ED.dirty = true; }
+  const moved = BT.cursorDirty && now - BT.sentP > 150;
+  if (moved || now - BT.sentP > 2500) {
+    BT.sentP = now; BT.cursorDirty = false;
+    BT.pub({ t: 'p', nm: MP.name, x: BT.cursor, a: ED.active, h: BT.synced ? BT.hash() : '', s: BT.synced ? 1 : 0 });
+    // drifted from the leader's layout for two reports running: fetch it again
+    const L = BT.peers.get(BT.leader());
+    if (BT.synced && L && L.h && L.h !== BT.hash()) { if (++BT.drift >= 3) { BT.synced = false; BT.pub({ t: 'req' }); BT.askT = setInterval(() => { if (!BT.synced) BT.pub({ t: 'req' }); }, 2500); } }
+    else BT.drift = 0;
+  }
+};
+setInterval(BT.tick, 100);
+BT.pointer = function (x, y) { if (!BT.on) return; BT.cursor = [Math.round(edWX(x) * 10) / 10, Math.round(edWN(y) * 10) / 10]; BT.cursorDirty = true; };
+BT.drawPeers = function (g) {
+  if (!BT.on) return;
+  g.font = '600 12px "IBM Plex Sans Condensed", sans-serif'; g.textAlign = 'left'; g.textBaseline = 'middle';
+  for (const p of BT.peers.values()) {
+    if (p.a) { const q = edPort(p.a); if (q) { g.strokeStyle = p.color; g.lineWidth = 3; g.beginPath(); g.arc(edTX(q.X), edTY(q.N), 11, 0, TAU); g.stroke(); } }
+    if (!p.x) continue;
+    const x = edTX(p.x[0]), y = edTY(p.x[1]);
+    g.fillStyle = p.color; g.strokeStyle = '#000'; g.lineWidth = 1.2;
+    g.beginPath(); g.moveTo(x, y); g.lineTo(x + 11, y + 4); g.lineTo(x + 4, y + 11); g.closePath(); g.fill(); g.stroke();
+    g.lineWidth = 3; g.strokeStyle = 'rgba(0,0,0,0.7)'; g.strokeText(p.nm, x + 12, y + 14); g.fillText(p.nm, x + 12, y + 14);
+  }
+};
+BT.ui = function () {
+  const b = $('edTogBtn'); if (!b) return;
+  const n = BT.peers.size;
+  b.classList.toggle('on', BT.on); b.textContent = BT.on ? (n ? `Building with ${n}` : `Room ${BT.code}`) : 'Build together';
+  $('btSolo').hidden = BT.on; $('btIn').hidden = !BT.on; $('btCodeBig').textContent = BT.code;
+  const ok = BT.links.some(l => l.ok), dead = BT.links.length && BT.links.every(l => l.dead);
+  $('btStatus').textContent = !BT.on ? 'Start a build and send your friends the code, or type theirs.'
+    : dead ? "Couldn't reach the room server. Check your connection, then try again."
+    : !ok ? `Connecting to ${BT.code}…` : !BT.synced ? 'Fetching the shared layout…'
+    : n ? `Building with ${n} other${n > 1 ? 's' : ''}. Tap Drive it and you all meet in the same room.` : 'Nobody else yet: send your friends the link or the code.';
+  const list = $('btList'); list.textContent = '';
+  const chip = (c, t) => { const s = document.createElement('span'); const i = document.createElement('i'); i.style.background = c; s.appendChild(i); s.appendChild(document.createTextNode(t)); list.appendChild(s); };
+  if (BT.on) { chip(MP_ME, MP.name + ' (you)'); for (const p of BT.peers.values()) chip(p.color, p.nm); }
+};
+BT.share = function () {
+  const url = location.origin + location.pathname + '?build=' + BT.code;
+  if (navigator.share) { navigator.share({ title: 'Berkshire Division', text: `Build a railroad with me. Code ${BT.code}`, url }).catch(() => {}); return; }
+  try { navigator.clipboard.writeText(url).then(() => edMsg('Link copied. Send it to your friends.', 'good'), () => edMsg('Build code: ' + BT.code)); } catch (e) { edMsg('Build code: ' + BT.code); }
+};
+function btInit() {
+  const nm = $('btName'), code = $('btCode');
+  $('edTogBtn').addEventListener('click', () => { nm.value = MP.name; $('edTog').hidden = false; BT.ui(); });
+  $('btClose').addEventListener('click', () => { $('edTog').hidden = true; });
+  nm.addEventListener('input', () => { MP.name = mpText(nm.value, 16) || 'Engineer'; try { localStorage.setItem('bd_name', MP.name); } catch (e) {} $('mpName').value = MP.name; BT.cursorDirty = true; });
+  code.addEventListener('input', () => { const v = code.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6); if (v !== code.value) code.value = v; });
+  $('btCreate').addEventListener('click', () => { let c = ''; for (let i = 0; i < 5; i++) c += MP_CODE[(Math.random() * MP_CODE.length) | 0]; BT.connect(c, true); });
+  $('btJoin').addEventListener('click', () => { const c = code.value; if (c.length < 4) { $('btStatus').textContent = 'Type the code your friend sent you.'; code.focus(); return; } BT.connect(c, false); });
+  $('btLeave').addEventListener('click', () => BT.leave());
+  $('btShare').addEventListener('click', BT.share);
+  addEventListener('pagehide', () => { if (BT.on) BT.pub({ t: 'bye' }); });
+  $('edCanvas').addEventListener('pointermove', e => BT.pointer(e.clientX, e.clientY));
+  $('edCanvas').addEventListener('pointerdown', e => BT.pointer(e.clientX, e.clientY));
+  // ?build=CODE opens the editor straight into that build
+  let c = ''; try { c = (new URLSearchParams(location.search).get('build') || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); } catch (e) {}
+  if (c.length >= 4 && c.length <= 6) { edOpen(); const own = Object.values(LAYOUTS.all()).find(m => m.shared === c); if (own) edLoad(own); BT.connect(c, false, !!own); }
+}
+btInit();
 
 </script>
 </body>

@@ -350,15 +350,19 @@ details.keys kbd{color:var(--brass)}
 #edSel .btn.warn{border-color:rgba(238,75,61,.6);color:#f3c4be}
 #edSel .btn[aria-pressed="true"]{border-color:var(--brass);color:#f6e2ad}
 #edSt{display:flex;flex-direction:column;gap:6px;border-top:1px solid var(--rule);padding-top:8px}
-#edFiles{position:absolute;inset:0;z-index:4;display:flex;align-items:center;justify-content:center;background:rgba(5,8,10,.7);padding:16px}
-#edFiles .card{background:rgba(14,19,23,.97);border:1px solid var(--rule);border-radius:8px;padding:14px;width:min(420px,100%);max-height:100%;overflow:auto;display:flex;flex-direction:column;gap:10px}
-#edFiles h2{margin:0;font-family:var(--f-display);font-size:28px;letter-spacing:1px}
+#btList{display:flex;flex-wrap:wrap;gap:6px;font-size:12px}
+#btList span{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--rule);border-radius:12px;padding:3px 9px}
+#btList i{width:8px;height:8px;border-radius:50%;display:inline-block}
+#edTogBtn.on{border-color:var(--clear);color:var(--clear)}
+.edModal{position:absolute;inset:0;z-index:4;display:flex;align-items:center;justify-content:center;background:rgba(5,8,10,.7);padding:16px}
+.edModal .card{background:rgba(14,19,23,.97);border:1px solid var(--rule);border-radius:8px;padding:14px;width:min(420px,100%);max-height:100%;overflow:auto;display:flex;flex-direction:column;gap:10px}
+.edModal h2{margin:0;font-family:var(--f-display);font-size:28px;letter-spacing:1px}
 #edList{display:flex;flex-direction:column;gap:4px}
 #edList button{display:flex;justify-content:space-between;gap:8px;text-align:left;border:1px solid var(--rule);background:var(--steel-2);border-radius:5px;padding:8px 10px;font-size:13px;font-weight:600}
 #edList button small{color:var(--ink-dim);font-weight:400;font-family:var(--f-num);font-size:11px}
 #edList button[aria-current="true"]{border-color:var(--brass)}
-#edFiles .acts{display:flex;gap:6px;flex-wrap:wrap}
-#edFiles .btn{font-size:11px}
+.edModal .acts{display:flex;gap:6px;flex-wrap:wrap}
+.edModal .btn{font-size:11px}
 #grpRail .row2{display:flex;gap:6px;flex-wrap:wrap}
 #grpRail .btn{flex:1;white-space:nowrap}
 @media (max-width:600px){
@@ -449,6 +453,7 @@ details.keys kbd{color:var(--brass)}
     <span class="edTitle">Layout editor</span>
     <input id="edName" class="mpIn" maxlength="32" placeholder="Name your railroad" autocomplete="off" spellcheck="false" aria-label="Layout name">
     <button class="btn" id="edFileBtn" type="button">Layouts</button>
+    <button class="btn" id="edTogBtn" type="button">Build together</button>
     <span class="sp"></span>
     <button class="icon-btn" id="edUndo" type="button" aria-label="Undo" disabled><svg viewBox="0 0 24 24"><path d="M9 7L4 12l5 5"/><path d="M4 12h10a6 6 0 0 1 0 12"/></svg></button>
     <button class="icon-btn" id="edRedo" type="button" aria-label="Redo" disabled><svg viewBox="0 0 24 24"><path d="M15 7l5 5-5 5"/><path d="M20 12H10a6 6 0 0 0 0 12"/></svg></button>
@@ -466,7 +471,17 @@ details.keys kbd{color:var(--brass)}
     <div id="edTabs" role="tablist"></div>
     <div id="edPal"></div>
   </div>
-  <div id="edFiles" hidden><div class="card">
+  <div id="edTog" class="edModal" hidden><div class="card">
+    <h2>Build together</h2>
+    <p class="help" id="btIntro">Lay track with friends on one shared layout. Everyone sees each piece as it goes down, and when you tap <b>Drive it</b> you all end up in the same room on the same railroad.</p>
+    <div class="mpRow"><input id="btName" class="mpIn" maxlength="16" placeholder="Your name" autocomplete="off" spellcheck="false" aria-label="Your name"></div>
+    <div class="mpRow" id="btSolo"><button class="btn prim" id="btCreate" type="button">Start building</button><input id="btCode" class="mpIn code" maxlength="6" placeholder="CODE" autocomplete="off" spellcheck="false" autocapitalize="characters" aria-label="Build code"><button class="btn" id="btJoin" type="button">Join</button></div>
+    <div class="mpRow" id="btIn" hidden><span class="mpCode" id="btCodeBig"></span><button class="btn" id="btShare" type="button">Share link</button><button class="btn" id="btLeave" type="button">Leave</button></div>
+    <div class="mpStatus" id="btStatus"></div>
+    <div id="btList"></div>
+    <div class="acts"><button class="btn prim" id="btClose" type="button">Done</button></div>
+  </div></div>
+  <div id="edFiles" class="edModal" hidden><div class="card">
     <h2>Layouts</h2>
     <div id="edList"></div>
     <div class="acts">

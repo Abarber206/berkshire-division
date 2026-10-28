@@ -110,19 +110,30 @@ function makeTrain() {
 }
 /* custom layout: the start marker, slid forward until the whole train is on the rails */
 function placeOnLayout(t, light) {
-  for (const s of NET.switches) { s.state = 0; s.anim = 0; }
-  const st = layoutStart(PLAY_LAYOUT), tp = new TrackPos(st.edge, st.s, st.o);
-  const room = dir => { let d = Infinity; peekPath(tp, dir, 20000, (node, dd) => { if (!node) { d = dd; return true; } }); return d; };
-  const need = t.length + 4, behind = room(-1), ahead = room(1);
+  if (!MP.on) for (const s of NET.switches) { s.state = 0; s.anim = 0; }
+  const st = layoutStart(PLAY_LAYOUT), need = t.length + 4;
+  let tp = layoutFit(new TrackPos(st.edge, st.s, st.o), need);
   GAME.spawnName = PLAY_LAYOUT.name || 'your layout';
-  if (behind + ahead < need + 8 && !light && GAME.settings.consist !== 'light') {
+  if (!tp && !light && GAME.settings.consist !== 'light') {
     t.dispose();
     toast('That train is longer than the track, so you have a light engine.', 'warn', 5200);
     const t2 = new Train(scene, GAME.settings.loco, 'light', dieselOpts()); GAME.train = t2; placeOnLayout(t2, true); return;
   }
-  if (behind < need) tp.advance(Math.min(need - behind, Math.max(0, ahead - 6)), null);
-  t.place(tp);
+  if (MP.on) {
+    // in a room, find a stretch of track no other train is on
+    const slot = MP.layoutSlot(need); if (slot) tp = slot;
+    MP.spawned = true; MP.needSpawn = false; MP.dirty = true;
+  }
+  t.place(tp || new TrackPos(st.edge, st.s, st.o));
   finishTrain(t);
+}
+/* slide a front position forward until `need` metres of track lie behind it; null if the track is too short */
+function layoutFit(tp, need) {
+  const room = dir => { let d = Infinity; peekPath(tp, dir, 20000, (node, dd) => { if (!node) { d = dd; return true; } }); return d; };
+  const behind = room(-1), ahead = room(1);
+  if (behind + ahead < need + 8) return null;
+  if (behind < need) tp.advance(Math.min(need - behind, Math.max(0, ahead - 6)), null);
+  return tp;
 }
 function finishTrain(t) {
   prepareTrain(t);

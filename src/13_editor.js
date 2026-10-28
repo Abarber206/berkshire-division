@@ -36,30 +36,56 @@ function edRebuild() {
   ED.warned = false;
   edPanels(); ED.dirty = true;
 }
+/* A change is what one edit did: pieces added, removed and altered, and the name or
+   start if they moved. Undo applies the inverse of our own changes only, so in a
+   shared build it never takes back what someone else laid. */
+function edSnap() { return { p: new Map(ED.map.pieces.map(x => [x.id, JSON.stringify(x)])), name: ED.map.name, start: JSON.stringify(ED.map.start || null) }; }
+function edDiff(a) {
+  const ch = { add: [], del: [], set: [] }, seen = new Set();
+  for (const x of ED.map.pieces) { seen.add(x.id); const o = a.p.get(x.id), n = JSON.stringify(x); if (o === undefined) ch.add.push(JSON.parse(n)); else if (o !== n) ch.set.push([JSON.parse(o), JSON.parse(n)]); }
+  for (const [id, o] of a.p) if (!seen.has(id)) ch.del.push(JSON.parse(o));
+  if (a.name !== ED.map.name) ch.name = [a.name, ED.map.name];
+  if (a.start !== JSON.stringify(ED.map.start || null)) ch.start = [JSON.parse(a.start), ED.map.start || null];
+  return ch.add.length || ch.del.length || ch.set.length || ch.name || ch.start ? ch : null;
+}
+const edInvert = ch => ({ add: ch.del, del: ch.add, set: ch.set.map(([o, n]) => [n, o]), name: ch.name && [ch.name[1], ch.name[0]], start: ch.start && [ch.start[1], ch.start[0]] });
+function edApply(ch) {
+  const P = ED.map.pieces, at = id => P.findIndex(x => x.id === id);
+  for (const x of ch.del) { const i = at(x.id); if (i >= 0) P.splice(i, 1); }
+  for (const x of ch.add) { const i = at(x.id); if (i >= 0) P[i] = x; else P.push(x); }
+  for (const [, x] of ch.set) { const i = at(x.id); if (i >= 0) P[i] = x; else P.push(x); }
+  if (ch.name) ED.map.name = ch.name[1];
+  if (ch.start) ED.map.start = ch.start[1];
+}
 function edCommit(fn) {
-  ED.undo.push(JSON.stringify(ED.map)); if (ED.undo.length > 200) ED.undo.shift(); ED.redo = [];
-  fn(); edRebuild(); edSave();
+  const a = edSnap(); fn();
+  const ch = edDiff(a); if (!ch) return;
+  ED.undo.push(ch); if (ED.undo.length > 200) ED.undo.shift(); ED.redo = [];
+  edRebuild(); edSave(); BT.send(ch);
 }
 function edSave() { if (!LAYOUTS.put(ED.map)) edMsg('Could not save: browser storage is full or blocked.', 'bad'); }
 function edUndo(redo) {
   const from = redo ? ED.redo : ED.undo, to = redo ? ED.undo : ED.redo;
   if (!from.length) return;
-  to.push(JSON.stringify(ED.map)); ED.map = JSON.parse(from.pop());
+  const ch = from.pop(), go = redo ? ch : edInvert(ch);
+  edApply(go); to.push(ch);
   ED.active = null; ED.armed = null; ED.join = null;
-  edRebuild(); edSave();
+  edRebuild(); edSave(); BT.send(go);
 }
+/* a piece id nobody else in a shared build will pick */
+function edNewId() { let id; do id = 1 + Math.floor(Math.random() * 2e9); while (ED.idx.has(id)); return id; }
 function edPort(ref) { const i = ED.idx.get(ref.pid); if (i === undefined) return null; const P = ED.G.pieces[i]; return ED.G.ports[P.base + ref.j] || null; }
 const edRefOf = q => ({ pid: ED.G.pieces[q.pi].p.id, j: q.j });
 
 /* place spec attached by its port j to end E, or free at (X, N, h) */
 function edPlace(spec, E, j, X, N, h) {
-  const base = { ...spec, id: ED.map.nid };
+  const base = { ...spec, id: edNewId() };
   return E ? attachPiece(base, j % edExt(spec), E) : { ...base, X, N, h };
 }
 function edAdd(spec, E, j, X, N, h) {
   const p = edPlace(spec, E, j, X, N, h);
   if (!edInBounds(p)) { edMsg('That would run off the edge of the world.', 'bad'); return null; }
-  edCommit(() => { ED.map.nid++; ED.map.pieces.push(p); });
+  edCommit(() => { ED.map.pieces.push(p); });
   // carry on from the far end of the new piece
   const P = ED.G.pieces[ED.idx.get(p.id)], jj = E ? j % edExt(spec) : -1;
   const order = spec.t === 'turnout' ? (jj === 0 ? [1, 2] : [0, 1, 2]) : [1, 0];
@@ -98,9 +124,9 @@ function edJoin(a, b) {
   const spec = { t: 'flex', X: qa.X, N: qa.N, h: qa.h, b: { X: qb.X, N: qb.N, h: qb.h + Math.PI } };
   const f = flexPath(spec, spec.b);
   if (f.minR < LAYOUT.minFlexR) { edMsg(`Too sharp to join: the curve would be ${Math.round(f.minR)} m radius (${LAYOUT.minFlexR} m is the tightest allowed). Lay more track toward the other end first.`, 'bad'); return; }
-  const p = { ...spec, id: ED.map.nid };
+  const p = { ...spec, id: edNewId() };
   if (!edInBounds(p)) { edMsg('That join would run off the edge of the world.', 'bad'); return; }
-  edCommit(() => { ED.map.nid++; ED.map.pieces.push(p); });
+  edCommit(() => { ED.map.pieces.push(p); });
   ED.active = null; ED.join = null; edMsg(`Joined with a ${f.len.toFixed(0)} m curve, radius ${f.minR === Infinity ? 'straight' : Math.round(f.minR) + ' m'} at its tightest.`, 'good');
   edPanels();
 }
@@ -227,6 +253,7 @@ function edDraw() {
     g.fillStyle = isA || isJ ? '#fff2c9' : '#f2b33d'; g.strokeStyle = '#000'; g.lineWidth = 1.5;
     g.beginPath(); g.arc(x, y, isA || isJ || hov ? r + 2 : r, 0, TAU); g.fill(); g.stroke();
   }
+  BT.drawPeers(g);
   // problems
   const pulse = 0.7 + 0.3 * Math.sin(performance.now() / 260);
   for (const is of G.issues) {
@@ -472,7 +499,8 @@ function edInput() {
 
 /* ---------- files ---------- */
 function edLoad(map) {
-  ED.map = map; ED.map.nid = Math.max(ED.map.nid || 1, ...ED.map.pieces.map(p => p.id + 1), 1);
+  if (BT.on && map.shared !== BT.code) BT.leave(true);   // a different layout is not the shared one
+  ED.map = map;
   ED.undo = []; ED.redo = []; ED.active = null; ED.sel = null; ED.armed = null; ED.ghost = null; ED.join = null; ED.joinArmed = false;
   try { localStorage.setItem('bd_layout_last', map.id); } catch (e) {}
   edRebuild(); edFit();
@@ -564,7 +592,8 @@ function edDrive() {
   const bad = ED.G.issues.length;
   if (bad && !ED.warned) { ED.warned = true; edMsg(`${bad} problem${bad === 1 ? ' is' : 's are'} marked in red. Tap Drive it again to drive anyway.`, 'bad'); return; }
   edSave();
-  location.href = location.pathname + '?layout=' + encodeURIComponent(ED.map.id);
+  // building together: everyone driving this version of the layout meets in the same room
+  location.href = location.pathname + '?layout=' + encodeURIComponent(ED.map.id) + (BT.on ? '&room=' + driveCode(BT.code, ED.map) : '');
 }
 function railMenu() {
   const host = $('optRail'); if (!host) return;
@@ -617,7 +646,6 @@ function edInit() {
   edInput();
   railMenu();
   if (PLAY_LAYOUT) {
-    $('grpMP').hidden = true;
     const lede = document.querySelector('.lede');
     if (lede) lede.textContent = `${PLAY_LAYOUT.name || 'Your layout'}: a railroad you laid in the editor. Every switch can be thrown from the map or the switch card, and stations have water for the steam engines.`;
   }
