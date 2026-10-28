@@ -34,19 +34,21 @@ async function loadWorld() {
   prog(0.02, 'Surveying the line…'); await frame();
   makeMaterials(); sceneryMaterials(); rollingMaterials();
   WORLD.custom = !!PLAY_LAYOUT;
-  if (WORLD.custom) { WORLD.roadsX = []; WORLD.roadN = 1e7; buildLayoutRoute(PLAY_LAYOUT); } else buildRoute();
+  if (WORLD.custom) { WORLD.roadsX = []; WORLD.roadN = 1e7; buildLayoutRoute(PLAY_LAYOUT); }
+  else if (ROUTE_KEY === 'laurel') { WORLD.roadsX = []; WORLD.roadN = 1e7; buildMountainRoute(); mtPrepare(); }
+  else buildRoute();
   mapPrepare();
   prog(0.06, 'Grading the right of way…'); await frame();
   buildLattice();
   detailTextures(); planTowns();
   const T = 1500; let k = 0; const tot = ((INNER.x1 - INNER.x0) / T) * ((INNER.n1 - INNER.n0) / T);
   for (let x = INNER.x0; x < INNER.x1; x += T) for (let n = INNER.n0; n < INNER.n1; n += T) {
-    buildTerrainTile(x, n, T, INNER.step, scene); k++;
-    if (k % 3 === 0) { prog(0.08 + 0.42 * k / tot, `Shaping farm country… ${k}/${tot}`); await frame(); }
+    buildTerrainTile(x, n, T, INNER.step, scene, !!WORLD.mtn); k++;
+    if (k % (WORLD.mtn ? 24 : 3) === 0) { prog(0.08 + 0.42 * k / tot, WORLD.mtn ? `Raising the mountains… ${k}/${tot}` : `Shaping farm country… ${k}/${tot}`); await frame(); }
   }
   WORLD.hgrid.ready = true;
   buildFarTerrain(scene); if (!WORLD.custom) buildWater(scene);
-  prog(0.52, WORLD.custom ? `Laying ${fmtMi(ROUTE.mainLen)} of track on ${PLAY_LAYOUT.name || 'your layout'}…` : 'Laying 13.8 miles of jointed rail…'); await frame();
+  prog(0.52, WORLD.custom ? `Laying ${fmtMi(ROUTE.mainLen)} of track on ${PLAY_LAYOUT.name || 'your layout'}…` : `Laying ${(ROUTE.mainLen / MILE).toFixed(1)} miles of jointed rail…`); await frame();
   buildTrack(scene); buildTrackHash();
   prog(0.68, 'Raising depots, towers and the river bridge…'); await frame();
   if (WORLD.custom) { buildStations(); buildSignals(scene); }
