@@ -176,7 +176,7 @@ SND.init = function () {
     cocks: new Bed('cocks', L, { seg: [1, 2], xf: 0.4 }), fire: new Bed('fire', L), bpx: new Bed('bpx', L, { seg: [1, 2], xf: 0.4 }),
     turbo: new Bed('turbo', L), dyn: new Bed('dyn', L), comp: new Bed('comp', L), motor: new Bed('motor', L),
     roll: new Bed('roll', W, { seg: [2, 4], xf: 0.9 }), flange: new Bed('flange', W, { seg: [1.2, 2.6], xf: 0.5, vary: 0.05 }), squeal: new Bed('squeal', W, { seg: [1, 2], xf: 0.4, vary: 0.04 }),
-    wind: new Bed('wind', A, { seg: [3, 6], xf: 1.2 }), birds: new Bed('birds', A, { seg: [6, 11], xf: 1.8 }), night: new Bed('night', A, { seg: [6, 11], xf: 1.8 }),
+    wind: new Bed('wind', A, { seg: [3, 6], xf: 1.2 }), crickets: new Bed('crickets', A, { seg: [6, 11], xf: 1.8 }), birds: new Bed('birds', A, { seg: [6, 11], xf: 1.8 }), night: new Bed('night', A, { seg: [6, 11], xf: 1.8 }),
   };
   SND.dz = (SND_DZ || []).map((r, i) => ({ rpm: r.rpm, load: r.load || 0, bed: new Bed('dz', L, { i, seg: [1.6, 3.2], xf: 0.6 }) }));
   SND.whistle = null; SND.whKey = null;
@@ -282,6 +282,7 @@ function ambience(dt, inCab, v) {
   const out = inCab ? 0.35 : 1;
   Vv.birds.set(!night && !snow ? (wet ? 0.5 : 1) * out * (SND_GAIN.birds || 1) : 0, 1, 1.5);
   Vv.night.set(night && !snow ? out * (SND_GAIN.night || 1) : 0, 1, 1.5);
+  Vv.crickets.set(night && !snow ? out * (SND_GAIN.crickets || 1) : 0, 1, 2);
   if (Vv.birds.ok) return;
   sndChirpT -= dt; if (sndChirpT < 0) { sndChirpT = 1.5 + Math.random() * (night ? 2 : 5); if (!inCab && !snow) sndChirp(night); }
 }
@@ -310,7 +311,11 @@ function dieselRec(on, inCab, units) {
   duo(Vv.dyn, null, 0, on ? S.dbLoad * cab : 0, 0.8 + 0.3 * S.dbLoad, 0.4);
   const v = Math.abs(S.v), work = clamp((Math.abs(S.TE) + S.DBF) / 445e3, 0, 1.4);
   duo(Vv.motor, null, 0, on ? work * Math.min(1, v / 2) * cab * 0.6 : 0, clamp(0.4 + v / 25, 0.4, 1.8), 0.15);
-  duo(Vv.comp, null, 0, on && S.pumping && S.engineRun ? cab : 0, 1, 0.3);
+  const pumping = on && S.pumping && S.engineRun;
+  duo(Vv.comp, null, 0, pumping ? cab : 0, 1, 0.3);
+  // the compressor unloads and the air dryer spits when the main reservoir is full
+  if (SND.wasPumping && !pumping && on) SND.shot('purge', AU.loco, { gain: (SND_GAIN.purge || 1) * cab, delay: 0.4 });
+  SND.wasPumping = pumping;
   return true;
 }
 
