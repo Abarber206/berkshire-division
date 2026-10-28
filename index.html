@@ -10378,6 +10378,10 @@ function mpClean(r) {
     o.wk = o.dr && Array.isArray(r.wk) && r.wk.length >= 4 ? [n(r.wk[0], 0, 5000), r.wk[1] < 0 ? -1 : 1, Math.round(n(r.wk[2], 1, 2e9, 1)), n(r.wk[3], 0, 1), n(r.wk[4], 0, 150)] : null;
   }
   o.pz = r.pz ? 1 : 0;
+  // send time on their clock, and their echo of ours: [our send time, ms they held it]
+  o.ts = n(r.ts, 0, 1e12);
+  const ak = r.ak && typeof r.ak === 'object' ? r.ak[MP.id] : null;
+  o.ak = Array.isArray(ak) && ak.length === 2 ? [n(ak[0], 0, 1e12), n(ak[1], 0, 1e5)] : null;
   o.sw = !o.other && Array.isArray(r.sw) && r.sw.length === NET.switches.length ? r.sw.map(x => Math.round(n(x, 0, 2e9))) : null;
   o.lt = Array.isArray(r.lt) && r.lt.length === 2 ? [Math.round(n(r.lt[0], 0, 255)), Math.round(n(r.lt[1], 0, 1e9))] : null;
   // a hit on someone's train: [their id, count, mph, x, z of the point of impact]
@@ -10452,9 +10456,12 @@ class RemoteTrain {
     const o = mpOpts(st);
     this.train.units.forEach((m, u) => { const lv = dieselLiveryFor(o, u); applyLivery(m, lv, (o.number || lv.num) + u); });
   }
-  target(st) {
+  /* lat: how old this state is by now, in seconds. The train has run on since it was sent, so it is
+     drawn that much further along, or it trails its true place by the network delay. */
+  target(st, lat = 0) {
     const e = MP.edges.get(st.e); if (!e) return;
     const tp = new TrackPos(e, clamp(st.s, 0, e.len), st.o);
+    if (lat > 0 && st.v && !st.dr) tp.advance(st.v * lat, null);
     // since: when this train appeared where it is, so a train made up on top of ours is not taken for a collision
     if (!this.tp) { this.tp = tp; this.err = 0; this.since = performance.now(); }
     else { const d = trackDelta(this.tp, tp); if (d === null || Math.abs(d) > 45) { this.tp = tp; this.err = 0; this.since = performance.now(); } else this.err = d; }
@@ -10687,6 +10694,9 @@ MP.receive = function (raw) {
     MP.ui();
   } else if (st.q <= p.q) return;
   p.q = st.q; p.st = st; p.at = performance.now();
+  // round trip from their echo of our send time, less the time they held it before replying
+  p.ts = st.ts; p.rx = p.at;
+  if (st.ak) { const rtt = p.at - st.ak[0] - st.ak[1]; if (rtt > 0 && rtt < 5000) p.rtt = p.rtt ? p.rtt * 0.85 + rtt * 0.15 : rtt; }
   if (st.sw) MP.mergeSwitches(p, st.sw);
   if (st.hx && st.hx[0] === MP.id && st.hx[1] > (p.hx || 0)) { const fresh = p.hx !== undefined; p.hx = st.hx[1]; if (fresh) MP.struck(p, st.hx); }
   else if (p.hx === undefined) p.hx = st.hx ? st.hx[1] : 0;
@@ -10696,8 +10706,10 @@ MP.receive = function (raw) {
   if (p.rt && p.rt.key !== key) { p.rt.dispose(); p.rt = null; }
   if (!p.rt) { try { p.rt = new RemoteTrain(p, st); } catch (e) { console.warn('remote train', e); return; } }
   p.rt.repaint(st);
-  p.rt.target(st);
+  p.rt.target(st, MP.lag(p));
 };
+/* one-way delay to a player in seconds: half the measured round trip, a guess until there is one */
+MP.lag = p => clamp((p.rtt || 300) / 2000, 0, 1.5);
 MP.drop = function (id, why) {
   const p = MP.peers.get(id); if (!p) return;
   if (MP.watching === id) MP.unwatch();
@@ -10709,7 +10721,10 @@ MP.drop = function (id, why) {
 };
 MP.state = function () {
   const T = GAME.train, g = GAME.settings;
-  const st = { id: MP.id, q: ++MP.q, nm: MP.name, ly: MP.ly, e: -1, pz: (S.paused || !GAME.running) ? 1 : 0 };
+  const now = performance.now();
+  const st = { id: MP.id, q: ++MP.q, nm: MP.name, ly: MP.ly, e: -1, pz: (S.paused || !GAME.running) ? 1 : 0, ts: Math.round(now) };
+  // echo each player's last send time so they can time the round trip
+  if (MP.peers.size) { st.ak = {}; for (const p of MP.peers.values()) if (p.ts !== undefined) st.ak[p.id] = [p.ts, Math.round(now - p.rx)]; }
   if (MP.spawned && T) {
     const f = T.pts[0].tp;
     Object.assign(st, {
@@ -10971,7 +10986,7 @@ MP.panel = function () {
     let right = st.e >= 0 ? Math.round(Math.abs(st.v) / MPH) + ' mph' : '';
     if (st.dr) right = 'Derailed'; else if (st.pz && st.e >= 0) right = 'In the menu';
     if (me && p.rt && p.rt.placed) right += ' · ' + fmtMi(me.distanceTo(p.rt.train.lead.pos));
-    row(p.color, st.nm, mpLocoLabel(st), right, p.id);
+    row(p.color, st.nm, mpLocoLabel(st) + (p.rtt ? ` · ${Math.round(p.rtt / 2)} ms` : ''), right, p.id);
   }
 };
 MP.drawMap = function (g, tx, ty, opt) {
