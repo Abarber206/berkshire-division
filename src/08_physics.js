@@ -4,7 +4,7 @@
 const S = {
   throttle: 0, reverser: 0, brakeH: 0.12, indH: 0.6,
   sander: false, cocks: true, bell: false, light: 1, injector: false, blower: 0.35, stoker: 0.45, whistle: 0, autoFire: true,
-  v: 0, vw: 0, slip: false, theta: 0, odo: 0,
+  v: 0, vw: 0, slip: false, slide: false, slideN: 0, theta: 0, odo: 0,
   P: 238, Psc: 0, W: 0.62, fire: 0.55, coal: 19958, water: 83280, sand: 1800,
   MR: 140, ER: 90, pumping: false, bailoff: false,
   safety: false, lowWater: false, priming: false,
@@ -19,6 +19,11 @@ const DRIVER_C = Math.PI * 2 * LG.rD, VCYL = Math.PI / 4 * 0.635 * 0.635 * 0.864
 function brakeZone(h) {
   if (h < 0.06) return 'REL'; if (h < 0.18) return 'RUN'; if (h < 0.28) return 'LAP'; if (h < 0.9) return 'SRV'; return 'EMG';
 }
+/* Wheels sliding. A steam-era train has no wheel slide protection: an emergency application at speed locks the
+   wheels and they skid on the rail until the train stops or the brakes come off. A locked wheel is held by the
+   rail's sliding friction instead of the shoe, steel on steel, which falls off as the contact heats at speed. */
+const SLIDE_ON = 2.0, SLIDE_BC = 45, SLIDE_OFF_BC = 25;   // m/s to start a slide; cylinder psi to lock / to roll again
+const slideMu = v => 0.065 + 0.055 * (1 - smooth(0, 25, v));
 function brakeLabel(h) { const z = brakeZone(h); if (z === 'SRV') return '−' + Math.round(6 + 20 * (h - 0.28) / 0.62) + ' psi'; return { REL: 'REL', RUN: 'RUN', LAP: 'LAP', EMG: 'EMERG' }[z]; }
 
 function physicsStep(dt, train) {
@@ -137,6 +142,8 @@ function physicsStep(dt, train) {
     Frail = clamp(TEcmd, -lim, lim);
     if (S.slipCtl) { Frail *= 0.92 + 0.05 * Math.sin(S.time * 11); GAME.event('slipCtl'); }
     S.slip = false; S.vw = S.v; S.mu = muD;
+  } else if (S.slide) {
+    S.slip = false; Frail = 0; S.vw = 0;   // drivers locked by the brakes: the cylinders can't turn them
   } else {
   if (!S.slip) {
     if (Math.abs(TEcmd) > Fadh) { S.slip = true; GAME.event('slip'); }
@@ -159,7 +166,7 @@ function physicsStep(dt, train) {
   const vm = Math.abs(S.v) / MPH;
   const shoe = 1.25 - 0.5 * smooth(0, 35, Math.abs(S.v));
   const disc = 1 - 0.3 * smooth(20, 90, Math.abs(S.v));   // disc brakes, held back at speed to what the rail will take
-  let motorBrake = 0;
+  let motorBrake = 0, slid = 0;
   let gradeLead = 0, limit = 99;
   for (let i = 0; i < V.length; i++) {
     const v = V[i];
@@ -180,7 +187,13 @@ function physicsStep(dt, train) {
     Fres += R * LBF;
     const isLoco = v.kind === 'loco' || v.kind === 'loco2';
     const bc = isLoco ? S.BCloco : v.brake.BC;
-    const fb = mass * v.brakeA * (bc / 64) * (v.disc ? disc : shoe);
+    if (!DSL) {
+      const emg = (isLoco ? lb.emerg : v.brake.emerg) || z === 'EMG';
+      if (!v.slide && emg && bc > SLIDE_BC && Math.abs(S.v) > SLIDE_ON) v.slide = true;
+      else if (v.slide && (bc < SLIDE_OFF_BC || Math.abs(S.v) < 0.05)) v.slide = false;
+    } else v.slide = false;
+    if (v.slide) slid++;
+    const fb = v.slide ? mass * 9.81 * slideMu(Math.abs(S.v)) : mass * v.brakeA * (bc / 64) * (v.disc ? disc : shoe);
     Fbrake += fb + (isLoco && DSL && !train.elec ? S.DBF : 0);
     if (v.motor) motorBrake += fb;
     for (const p of [v.fp[0], v.fp[1]]) limit = Math.min(limit, spec.hs ? hsLimit(p.tp, spec) : p.tp.e.limit);
@@ -194,6 +207,7 @@ function physicsStep(dt, train) {
     S.kWh += S.kW * dt / 3600;
   }
   S.limit = Math.min(limit, JOB.vmax()); S.grade = gradeLead;
+  S.slide = !!V[li].slide; S.slideN = slid;
   const Meff = M * 1.04;
   const Fdrive = Frail + Fgrade;
   let a;
@@ -208,7 +222,7 @@ function physicsStep(dt, train) {
   }
   S.v += a * dt;
   S.accel = a;
-  if (!S.slip) S.vw = S.v;
+  if (S.slide) S.vw = 0; else if (!S.slip) S.vw = S.v;
   S.theta -= S.vw * dt / LG.rD;
   S.M = M;
   return S.v * dt;
