@@ -285,6 +285,13 @@ function ambience(dt, inCab, v) {
   sndChirpT -= dt; if (sndChirpT < 0) { sndChirpT = 1.5 + Math.random() * (night ? 2 : 5); if (!inCab && !snow) sndChirp(night); }
 }
 
+/* playback rate of a prime-mover take at engine speed rpm: matched to the take's own speed
+   when there are takes either side, but with a single idle take only part of the way, so
+   eighth notch sounds like the same engine working harder rather than a sped-up tape */
+function dzRate(D, d, rpm) {
+  if (D.length === 1) return 1 + 0.6 * clamp((rpm - d.rpm) / 750, 0, 1);
+  return clamp(Math.max(rpm, 60) / d.rpm, 0.75, 1.3);
+}
 /* recorded prime mover: the takes either side of the engine speed cross-fade,
    each sped up or slowed to match it, so notching up runs smoothly through them */
 function dieselRec(on, inCab, units) {
@@ -296,7 +303,7 @@ function dieselRec(on, inCab, units) {
   const lvl = running ? (0.55 + 0.45 * S.load) * k * cab * Math.min(1, rpm / 250) : 0;
   D.forEach((d, i) => {
     const wt = i === lo ? Math.cos(w * Math.PI / 2) : i === hi ? Math.sin(w * Math.PI / 2) : 0;
-    d.bed.set(lvl * wt * (SND_GAIN.dz || 1), clamp(Math.max(rpm, 60) / d.rpm, 0.75, 1.3), 0.12);
+    d.bed.set(lvl * wt * (SND_GAIN.dz || 1), dzRate(D, d, rpm), 0.12);
   });
   duo(Vv.turbo, null, 0, running ? S.turbo * S.turbo * cab : 0, 0.7 + 0.6 * S.turbo, 0.3);
   duo(Vv.dyn, null, 0, on ? S.dbLoad * cab : 0, 0.8 + 0.3 * S.dbLoad, 0.4);
@@ -367,7 +374,7 @@ function remoteSound(R, dt, st, d, cam) {
     let lo = 0; while (lo < B.dz.length - 2 && rpm > B.dz[lo + 1].rpm) lo++;
     const hi = Math.min(B.dz.length - 1, lo + 1), w = hi === lo ? 0 : clamp((rpm - B.dz[lo].rpm) / (B.dz[hi].rpm - B.dz[lo].rpm), 0, 1);
     const lvl = st.rpm > 20 ? (0.55 + 0.45 * (st.ex || 0)) * units * (SND_GAIN.dz || 1) : 0;
-    B.dz.forEach((x, i) => { x.bed.set(lvl * (i === lo ? Math.cos(w * Math.PI / 2) : i === hi ? Math.sin(w * Math.PI / 2) : 0), clamp(rpm / x.rpm, 0.75, 1.3), 0.15); x.bed.tick(); });
+    B.dz.forEach((x, i) => { x.bed.set(lvl * (i === lo ? Math.cos(w * Math.PI / 2) : i === hi ? Math.sin(w * Math.PI / 2) : 0), dzRate(B.dz, x, rpm), 0.15); x.bed.tick(); });
   } else if (B.eng) {
     const E = B.eng, fire = rpm / 60 * 6;
     E.o1.frequency.setTargetAtTime(fire, now, 0.1); E.o2.frequency.setTargetAtTime(fire / 2, now, 0.1); E.f.frequency.setTargetAtTime(260 + 700 * rf + 400 * rf * st.ex, now, 0.1);

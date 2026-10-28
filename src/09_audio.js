@@ -183,7 +183,7 @@ function sndJoint(gain, delay = 0, pos = null, v = 10) {
   envTone(t, 0.07, 140, 0.45 * gain, AU.world, 'sine', 70);
 }
 function sndPump(phase) {
-  if (!AU.on) return; if (SND.has('pump')) { SND.shot('pump', AU.loco, { i: SND.bufs.pump.length > 1 ? phase % 2 : 0, gain: SND_GAIN.pump || 1, vary: 0.03 }); return; } const t = AU.ctx.currentTime + 0.005;
+  if (!AU.on) return; const k = phase % 2 ? 'pump_a' : 'pump_b'; if (SND.has(k)) { SND.shot(k, AU.loco, { gain: SND_GAIN.pump || 1, vary: 0.03 }); return; } const t = AU.ctx.currentTime + 0.005;
   if (phase % 2) envNoise(t, 0.22, 800, 1.2, 0.22, AU.loco, 'bandpass', AU.noise, 0.02);
   else { envNoise(t, 0.16, 300, 1, 0.3, AU.loco, 'lowpass', AU.noise, 0.01); envTone(t, 0.1, 90, 0.12, AU.loco); }
 }
