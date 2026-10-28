@@ -18,7 +18,7 @@ A 3D railway simulator that runs in the browser, phone or desktop. Drive a Lima-
 
 ## Multiplayer
 
-Open the menu, type your name and tap **Create room**, then send friends the link or the five-letter code. Everyone drives their own train on the same railroad: you see each other's trains with name tags, hear their whistles and bells, share the switches, chat, and can watch another player's train. Trains that run into each other stop, or derail if they hit hard.
+Open the menu, type your name and tap **Create room**, then send friends the link or the five-letter code. Everyone drives their own train on the same railroad: you see each other's trains with name tags, hear their whistles and bells, share the switches, chat, and can watch another player's train. Trains that run into each other buff up and bounce off; only a real wreck, above 25 mph, derails.
 
 Rooms connect through free public MQTT relay servers (HiveMQ and EMQX), so there's nothing to install and no account. Anyone who knows a room's code can see the trains in it.
 
@@ -40,13 +40,14 @@ Rooms connect through free public MQTT relay servers (HiveMQ and EMQX), so there
 - Adhesion and wheel slip, sand
 - Automatic air brake with brake-pipe propagation along the train, independent engine brake, main reservoir and compressor
 - Train resistance, grades, curve drag, turnout speed limits, derailments
+- Car work: AAR knuckle couplers with working knuckles, cut levers, angle cocks and air hoses. Cars couple only when a knuckle is open; with both closed they are shoved along with their momentum, skidding any handbrakes. Pull a pin standing to set cars out, or on the move to kick them
 - Synthesized sound: exhaust beats tied to the drivers; a different whistle for each engine (765's deep six-chime, 1225's brighter three-chime) with Doppler; a five-chime air horn; V12 prime mover, turbocharger and traction motors, louder with more units; bell, air pump, rail joints
 - Cameras: chase, cab, trackside, overhead, rear car
 - Time of day (morning, midday, golden hour, night) and weather (clear, overcast, snow)
 
 ## Controls
 
-On a phone, use the levers and buttons on screen. Tap a switch stand, the switch card's **Throw** button, or a switch on the map to throw it.
+On a phone, use the levers and buttons on screen. Tap a switch stand, the switch card's **Throw** button, or a switch on the map to throw it. Tap a coupler or its cut lever on the cars to open or close the knuckle, or to pull the pin between two cars.
 
 | Key | Action |
 | --- | --- |
@@ -68,4 +69,4 @@ The game is one file, `index.html`. The source lives in `src/`; run `./build.sh`
 
 ## Tests
 
-`node --test tests/*.test.js` (Node 18 or newer, no install) loads the simulation source headless and checks the boiler (starting tractive effort, slipping and sand, steaming under load, low water and the fusible plug, safety valves), the air brake (charging, service and emergency propagation, release, stopping distances), grades, and coupling (speed thresholds, momentum, turned cuts, set-outs, kicks and tie-downs). GitHub Actions runs the tests and `./build.sh` on every push and pull request, and fails if the committed `index.html` doesn't match a fresh build.
+`node --test tests/*.test.js` (Node 18 or newer, no install) loads the simulation source headless and checks the boiler (starting tractive effort, slipping and sand, steaming under load, low water and the fusible plug, safety valves), the air brake (charging, service and emergency propagation, release, stopping distances), grades, and car work (coupling speeds, knuckles that must be open to couple, shoving cars with momentum conserved, turned cuts, set-outs, kicks, splitting cuts and tie-downs). GitHub Actions runs the tests and `./build.sh` on every push and pull request, and fails if the committed `index.html` doesn't match a fresh build.

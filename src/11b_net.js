@@ -617,8 +617,14 @@ MP.contact = function (T) {
       let d = 1e9; for (let i = 0; i < rt.polyN - 1; i++) { const x = mpSegDist(end, rt.poly[i], rt.poly[i + 1]); if (x < d) d = x; }
       if (d > 1.25) continue;
       const theirs = rt.train.lead.fwd.dot(fwd) * rt.v, closing = sg * (S.v - theirs);
-      if (closing > 2.7) { GAME.derail(`Collided with ${p.st.nm}'s train at ${Math.round(closing / MPH)} mph. Back away before you try again.`, 'Collision'); return; }
-      if (closing > 0.02) { S.v = 0; S.vw = 0; toast(`Buffered up against ${p.st.nm}'s train.`, 'warn', 2600, 'mpbump'); }
+      if (closing > COUPLE_WRECK) { GAME.derail(`Collided with ${p.st.nm}'s train at ${Math.round(closing / MPH)} mph. Back away before you try again.`, 'Collision'); return; }
+      // their train is driven on their screen, so ours buffs off it: the draft gear soaks up most of the hit
+      if (closing > 0.02) {
+        S.v = theirs - sg * buffE(closing) * closing; S.vw = S.v;
+        if (closing > 0.3) sndClunk(clamp(closing / COUPLE_OK, 0.3, 1.5), 0);
+        if (closing > COUPLE_OK) JOB.note('couple', { mph: closing / MPH, shove: true });
+        toast(closing > COUPLE_HARD ? `Hit ${p.st.nm}'s train hard at ${Math.round(closing / MPH)} mph and bounced off.` : `Buffered up against ${p.st.nm}'s train.`, closing > COUPLE_HARD ? 'bad' : 'warn', 2600, 'mpbump');
+      }
     }
   }
 };

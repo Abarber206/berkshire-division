@@ -182,12 +182,8 @@ function buildBerkshire(key) {
     for (const z of [-1.42, 1.42]) { const sp = new THREE.Shape(); sp.moveTo(ax(0.58), 1.0); sp.lineTo(ax(0.06), 0.12); sp.lineTo(ax(0.62), 0.12); sp.closePath(); const g = new THREE.ExtrudeGeometry(sp, { depth: 0.06, bevelEnabled: false }); g.translate(0, 0, z - 0.03); gb.add('dark', g); }
   }
   for (const z of [-1.38, 1.38]) gb.box('dark', 0.9, 0.06, 0.45, ax(0.38), 0.95, z); // footboard ends
-  // coupler (drop), air hoses, cut lever
-  gb.box('dark', 0.55, 0.22, 0.26, ax(0.22), 0.875, 0); gb.box('dark', 0.16, 0.34, 0.36, ax(0.02), 0.875, 0);
-  gb.add('dark', new THREE.CylinderGeometry(0.03, 0.03, 0.6, 6), M(ax(0.32), 0.62, 0.42, 0.5, 0, 0.3));
-  gb.add('dark', new THREE.CylinderGeometry(0.03, 0.03, 0.6, 6), M(ax(0.32), 0.62, -0.42, -0.5, 0, 0.3));
-  gb.add('rod', new THREE.CylinderGeometry(0.015, 0.015, 1.6, 6), M(ax(0.48) + 0.035, 1.4, 0, Math.PI / 2, 0, 0));
-  for (const z of [-0.55, 0.55]) gb.box('dark', 0.06, 0.04, 0.04, ax(0.48) + 0.03, 1.4, z);
+  // knuckle coupler, cut lever along the pilot beam, and the brake pipe hose
+  const coupler = addCoupler(gb, body, { x: ax(0), out: 1, sx: -0.48, sb: 0.97, ly: 1.3, zh: 1.3, yp: 0.94, housing: true });
   /* ---- cylinders & saddle ---- */
   for (const s of [-1, 1]) {
     const z = s * LG.zC;
@@ -485,7 +481,7 @@ function buildBerkshire(key) {
   const hit = new THREE.Mesh(new THREE.BoxGeometry(17, 4.8, 3.2), RMAT.hit); hit.position.set(ax(8.6), 2.4, 0); body.add(hit);
   root.traverse(o => { if (o.isMesh) { o.castShadow = o.castShadow !== false && o.material !== RMAT.hit; o.receiveShadow = true; } });
   lens.castShadow = false; fire.castShadow = false; ash.castShadow = false;
-  return { root, body, parts, leadTruck, lens, fire, ash, beam, halo, spec, stackPos: new THREE.Vector3(ax(2.55), 4.8, 0), cockPos: [new THREE.Vector3(ax(3.6), 0.4, 1.2), new THREE.Vector3(ax(3.6), 0.4, -1.2)], safetyPos: new THREE.Vector3(ax(12.05), yB + 1.6, 0), whistlePos: new THREE.Vector3(ax(10.1), yB + 1.7, 0.42), pumpPos: new THREE.Vector3(ax(3.6), 3.2, -1.4), injPos: new THREE.Vector3(ax(14.0), 1.5, 1.45), cabEye: new THREE.Vector3(ax(15.25), 3.72, 1.36), headlightPos: new THREE.Vector3(ax(0.9), hlY, 0) };
+  return { root, body, parts, leadTruck, lens, couplers: [coupler, null], fire, ash, beam, halo, spec, stackPos: new THREE.Vector3(ax(2.55), 4.8, 0), cockPos: [new THREE.Vector3(ax(3.6), 0.4, 1.2), new THREE.Vector3(ax(3.6), 0.4, -1.2)], safetyPos: new THREE.Vector3(ax(12.05), yB + 1.6, 0), whistlePos: new THREE.Vector3(ax(10.1), yB + 1.7, 0.42), pumpPos: new THREE.Vector3(ax(3.6), 3.2, -1.4), injPos: new THREE.Vector3(ax(14.0), 1.5, 1.45), cabEye: new THREE.Vector3(ax(15.25), 3.72, 1.36), headlightPos: new THREE.Vector3(ax(0.9), hlY, 0) };
 }
 
 /* Paint finish for the steam engines: as delivered (graphite smokebox and firebox),
@@ -550,7 +546,8 @@ function buildTender(key) {
   const spec = LOCO_SPEC[key];
   const root = new THREE.Group();
   const gb = new GeoBin();
-  const Lt = 13.35, ref = Lt / 2, tx = a => ref - a;
+  // over the rear coupler; the trucks and the engine end are measured from the front, so the body stays centred on the trucks
+  const Lt = 13.65, ref = 6.675, tx = a => ref - a;
   const hw = 1.6;
   gb.box('dark', 12.6, 0.45, 2.9, tx(6.75), 1.25, 0);   // underframe / sill
   gb.box('black', 12.45, 2.5, 2 * hw, tx(6.85), 2.72, 0); // water tank
@@ -584,7 +581,8 @@ function buildTender(key) {
     // tank rivet seam
     for (const a of [4.0, 8.0]) gb.box('blackMatte', 0.03, 2.45, 0.008, tx(a), 2.72, s * (hw + 0.002));
   }
-  gb.box('dark', 0.35, 0.36, 2.9, tx(13.05), 1.12, 0); gb.box('dark', 0.55, 0.22, 0.26, tx(13.25), 0.875, 0);
+  gb.box('dark', 0.35, 0.36, 2.9, tx(13.05), 1.12, 0);   // rear end sill
+  const coupler = addCoupler(gb, root, { x: tx(Lt), out: -1, sx: tx(13.225) - tx(Lt), sb: 0.94, ly: 1.12, zh: 1.3, yp: 0.916, housing: true, hl: 0.34 });
   gb.box('dark', 0.44, 0.3, 1.2, tx(0.28), 1.05, 0);   // front drawbar pocket, meeting the engine's drawbar
   for (const a of [3.25, 10.1]) gb.box('dark', 0.6, 0.06, 2.0, tx(a), 1.0, 0);   // body bolsters on the trucks
   // lettering
@@ -593,8 +591,8 @@ function buildTender(key) {
   for (const s of [-1, 1]) gb.add('road' + key, new THREE.PlaneGeometry(10.4, 1.3), M(tx(6.9), 2.95, s * (hw + 0.009), 0, s > 0 ? 0 : Math.PI, 0));
   const statics = gb.build(RMAT);
   root.add(statics); root.add(bl);
-  root.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
-  return { root, len: Lt, trucks: [{ a: 3.25, type: 'six', R: 0.457 }, { a: 10.1, type: 'six', R: 0.457 }], frame: [3.25, 10.1], backup: bl, waterHatchA: 10.6 };
+  root.traverse(o => { if (o.isMesh && !o.userData.cpl) { o.castShadow = true; o.receiveShadow = true; } });
+  return { root, len: Lt, trucks: [{ a: 3.25, type: 'six', R: 0.457 }, { a: 10.1, type: 'six', R: 0.457 }], frame: [3.25, 10.1], backup: bl, waterHatchA: 10.6, couplers: [null, coupler] };
 }
 
 /* =================== CARS =================== */
@@ -643,7 +641,6 @@ function coachModel(spec, num, observation) {
       for (const d of [-0.27, 0.27]) gb.box('dark', 0.04, 0.82, 0.35, e * 11.25 + d, 0.82, s * (hw - 0.05));   // step stringers up to the sill
     }
     if (!(observation && e < 0)) { gb.box('diaphragm', 0.58, 2.55, 1.52, e * 12.03, 2.45, 0); gb.box('dark', 0.06, 2.6, 1.6, e * (L / 2 - 0.02), 2.45, 0); }
-    gb.box('dark', 0.6, 0.22, 0.26, e * (L / 2 - 0.3), 0.875, 0);
   }
   if (observation) {
     // open rear platform with brass railing and drumhead
@@ -656,9 +653,10 @@ function coachModel(spec, num, observation) {
     gb.add('drumhead', new THREE.CircleGeometry(0.42, 28), M(-12.575, 1.85, 0, 0, -Math.PI / 2, 0));
     gb.add('brass', new THREE.TorusGeometry(0.43, 0.025, 6, 28).rotateY(Math.PI / 2).translate(-12.56, 1.85, 0));
   }
+  const couplers = carCouplers(gb, root, L, -0.55, 0.955, 1.08);
   root.add(gb.build(RMAT));
-  root.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
-  return { root, len: L, trucks: [{ a: 3.5, type: 'six', R: 0.457 }, { a: 21.2, type: 'six', R: 0.457 }], frame: [3.5, 21.2], weight: 82 * STON, kind: 'coach', axles: 6, area: 120 };
+  root.traverse(o => { if (o.isMesh && !o.userData.cpl) { o.castShadow = true; o.receiveShadow = true; } });
+  return { root, len: L, trucks: [{ a: 3.5, type: 'six', R: 0.457 }, { a: 21.2, type: 'six', R: 0.457 }], frame: [3.5, 21.2], weight: 82 * STON, kind: 'coach', axles: 6, area: 120, couplers };
 }
 function freightModel(type, num, r) {
   const root = new THREE.Group(); const gb = new GeoBin();
@@ -724,12 +722,13 @@ function freightModel(type, num, r) {
   // underframe common
   gb.box('dark', L - 1.4, 0.35, 2.6, 0, 1.15, 0);
   const ta = type === 'caboose' ? 2.4 : 1.95;
-  for (const e of [-1, 1]) { gb.box('dark', 0.6, 0.22, 0.26, e * (L / 2 - 0.3), 0.875, 0); gb.box('dark', 0.3, 0.4, 2.9, e * (L / 2 - 0.66), 1.15, 0); gb.box('dark', 0.5, 0.2, 2.4, e * (L / 2 - ta), 0.9, 0); }
+  for (const e of [-1, 1]) { gb.box('dark', 0.3, 0.4, 2.9, e * (L / 2 - 0.66), 1.15, 0); gb.box('dark', 0.5, 0.2, 2.4, e * (L / 2 - ta), 0.9, 0); }
   gb.add('dark', new THREE.CylinderGeometry(0.17, 0.17, 0.5, 10).rotateZ(Math.PI / 2).translate(1.6, 0.9, 0.5));
+  const couplers = carCouplers(gb, root, L, -0.51, 0.95, 1.12);
   root.add(gb.build(RMAT));
-  root.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  root.traverse(o => { if (o.isMesh && !o.userData.cpl) { o.castShadow = true; o.receiveShadow = true; } });
   trucks = [{ a: ta, type: 'four', R: 0.419 }, { a: L - ta, type: 'four', R: 0.419 }];
-  return { root, len: L, trucks, frame: [ta, L - ta], weight, kind: type, axles: 4, area: 105 };
+  return { root, len: L, trucks, frame: [ta, L - ta], weight, kind: type, axles: 4, area: 105, couplers };
 }
 /* truck frame geometries for instancing */
 function truckGeos() {

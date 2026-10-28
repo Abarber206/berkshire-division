@@ -86,6 +86,8 @@ button:focus-visible,.lever:focus-visible{outline:2px solid var(--brass);outline
   display:flex;flex-direction:column;gap:6px;align-items:center;pointer-events:none;width:min(92vw,460px)}
 .toast{background:rgba(14,19,23,.9);border:1px solid var(--rule);border-left:3px solid var(--brass);padding:7px 12px;border-radius:4px;
   font-size:13px;animation:tin .25s ease-out;max-width:100%}
+#cplTip{position:absolute;z-index:9;pointer-events:none;background:rgba(14,19,23,.92);border:1px solid var(--rule);border-left:3px solid var(--brass);
+  padding:4px 8px;border-radius:4px;font-size:12px;color:var(--ink);white-space:nowrap}
 .toast.warn{border-left-color:var(--approach)}.toast.bad{border-left-color:var(--stop)}.toast.good{border-left-color:var(--clear)}
 @keyframes tin{from{opacity:0;transform:translateY(-6px)}}
 
@@ -520,6 +522,7 @@ details.keys kbd{color:var(--brass)}
     <div id="camName">Chase</div>
   </div>
   <div id="toast"></div>
+  <div id="cplTip" hidden></div>
   <div id="mpWatch" class="hud-box" hidden><span>Watching <b id="mpWatchName"></b></span><button class="btn" id="mpWatchBack">My train</button></div>
   <div id="mpPanel" class="hud-box" hidden>
     <div class="mpHead"><span>Room <b id="mpPanelCode"></b></span><button class="btn" id="mpShare2">Invite</button><button class="btn" id="mpPanelClose" aria-label="Close">Close</button></div>
@@ -3796,12 +3799,8 @@ function buildBerkshire(key) {
     for (const z of [-1.42, 1.42]) { const sp = new THREE.Shape(); sp.moveTo(ax(0.58), 1.0); sp.lineTo(ax(0.06), 0.12); sp.lineTo(ax(0.62), 0.12); sp.closePath(); const g = new THREE.ExtrudeGeometry(sp, { depth: 0.06, bevelEnabled: false }); g.translate(0, 0, z - 0.03); gb.add('dark', g); }
   }
   for (const z of [-1.38, 1.38]) gb.box('dark', 0.9, 0.06, 0.45, ax(0.38), 0.95, z); // footboard ends
-  // coupler (drop), air hoses, cut lever
-  gb.box('dark', 0.55, 0.22, 0.26, ax(0.22), 0.875, 0); gb.box('dark', 0.16, 0.34, 0.36, ax(0.02), 0.875, 0);
-  gb.add('dark', new THREE.CylinderGeometry(0.03, 0.03, 0.6, 6), M(ax(0.32), 0.62, 0.42, 0.5, 0, 0.3));
-  gb.add('dark', new THREE.CylinderGeometry(0.03, 0.03, 0.6, 6), M(ax(0.32), 0.62, -0.42, -0.5, 0, 0.3));
-  gb.add('rod', new THREE.CylinderGeometry(0.015, 0.015, 1.6, 6), M(ax(0.48) + 0.035, 1.4, 0, Math.PI / 2, 0, 0));
-  for (const z of [-0.55, 0.55]) gb.box('dark', 0.06, 0.04, 0.04, ax(0.48) + 0.03, 1.4, z);
+  // knuckle coupler, cut lever along the pilot beam, and the brake pipe hose
+  const coupler = addCoupler(gb, body, { x: ax(0), out: 1, sx: -0.48, sb: 0.97, ly: 1.3, zh: 1.3, yp: 0.94, housing: true });
   /* ---- cylinders & saddle ---- */
   for (const s of [-1, 1]) {
     const z = s * LG.zC;
@@ -4099,7 +4098,7 @@ function buildBerkshire(key) {
   const hit = new THREE.Mesh(new THREE.BoxGeometry(17, 4.8, 3.2), RMAT.hit); hit.position.set(ax(8.6), 2.4, 0); body.add(hit);
   root.traverse(o => { if (o.isMesh) { o.castShadow = o.castShadow !== false && o.material !== RMAT.hit; o.receiveShadow = true; } });
   lens.castShadow = false; fire.castShadow = false; ash.castShadow = false;
-  return { root, body, parts, leadTruck, lens, fire, ash, beam, halo, spec, stackPos: new THREE.Vector3(ax(2.55), 4.8, 0), cockPos: [new THREE.Vector3(ax(3.6), 0.4, 1.2), new THREE.Vector3(ax(3.6), 0.4, -1.2)], safetyPos: new THREE.Vector3(ax(12.05), yB + 1.6, 0), whistlePos: new THREE.Vector3(ax(10.1), yB + 1.7, 0.42), pumpPos: new THREE.Vector3(ax(3.6), 3.2, -1.4), injPos: new THREE.Vector3(ax(14.0), 1.5, 1.45), cabEye: new THREE.Vector3(ax(15.25), 3.72, 1.36), headlightPos: new THREE.Vector3(ax(0.9), hlY, 0) };
+  return { root, body, parts, leadTruck, lens, couplers: [coupler, null], fire, ash, beam, halo, spec, stackPos: new THREE.Vector3(ax(2.55), 4.8, 0), cockPos: [new THREE.Vector3(ax(3.6), 0.4, 1.2), new THREE.Vector3(ax(3.6), 0.4, -1.2)], safetyPos: new THREE.Vector3(ax(12.05), yB + 1.6, 0), whistlePos: new THREE.Vector3(ax(10.1), yB + 1.7, 0.42), pumpPos: new THREE.Vector3(ax(3.6), 3.2, -1.4), injPos: new THREE.Vector3(ax(14.0), 1.5, 1.45), cabEye: new THREE.Vector3(ax(15.25), 3.72, 1.36), headlightPos: new THREE.Vector3(ax(0.9), hlY, 0) };
 }
 
 /* Paint finish for the steam engines: as delivered (graphite smokebox and firebox),
@@ -4164,7 +4163,8 @@ function buildTender(key) {
   const spec = LOCO_SPEC[key];
   const root = new THREE.Group();
   const gb = new GeoBin();
-  const Lt = 13.35, ref = Lt / 2, tx = a => ref - a;
+  // over the rear coupler; the trucks and the engine end are measured from the front, so the body stays centred on the trucks
+  const Lt = 13.65, ref = 6.675, tx = a => ref - a;
   const hw = 1.6;
   gb.box('dark', 12.6, 0.45, 2.9, tx(6.75), 1.25, 0);   // underframe / sill
   gb.box('black', 12.45, 2.5, 2 * hw, tx(6.85), 2.72, 0); // water tank
@@ -4198,7 +4198,8 @@ function buildTender(key) {
     // tank rivet seam
     for (const a of [4.0, 8.0]) gb.box('blackMatte', 0.03, 2.45, 0.008, tx(a), 2.72, s * (hw + 0.002));
   }
-  gb.box('dark', 0.35, 0.36, 2.9, tx(13.05), 1.12, 0); gb.box('dark', 0.55, 0.22, 0.26, tx(13.25), 0.875, 0);
+  gb.box('dark', 0.35, 0.36, 2.9, tx(13.05), 1.12, 0);   // rear end sill
+  const coupler = addCoupler(gb, root, { x: tx(Lt), out: -1, sx: tx(13.225) - tx(Lt), sb: 0.94, ly: 1.12, zh: 1.3, yp: 0.916, housing: true, hl: 0.34 });
   gb.box('dark', 0.44, 0.3, 1.2, tx(0.28), 1.05, 0);   // front drawbar pocket, meeting the engine's drawbar
   for (const a of [3.25, 10.1]) gb.box('dark', 0.6, 0.06, 2.0, tx(a), 1.0, 0);   // body bolsters on the trucks
   // lettering
@@ -4207,8 +4208,8 @@ function buildTender(key) {
   for (const s of [-1, 1]) gb.add('road' + key, new THREE.PlaneGeometry(10.4, 1.3), M(tx(6.9), 2.95, s * (hw + 0.009), 0, s > 0 ? 0 : Math.PI, 0));
   const statics = gb.build(RMAT);
   root.add(statics); root.add(bl);
-  root.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
-  return { root, len: Lt, trucks: [{ a: 3.25, type: 'six', R: 0.457 }, { a: 10.1, type: 'six', R: 0.457 }], frame: [3.25, 10.1], backup: bl, waterHatchA: 10.6 };
+  root.traverse(o => { if (o.isMesh && !o.userData.cpl) { o.castShadow = true; o.receiveShadow = true; } });
+  return { root, len: Lt, trucks: [{ a: 3.25, type: 'six', R: 0.457 }, { a: 10.1, type: 'six', R: 0.457 }], frame: [3.25, 10.1], backup: bl, waterHatchA: 10.6, couplers: [null, coupler] };
 }
 
 /* =================== CARS =================== */
@@ -4257,7 +4258,6 @@ function coachModel(spec, num, observation) {
       for (const d of [-0.27, 0.27]) gb.box('dark', 0.04, 0.82, 0.35, e * 11.25 + d, 0.82, s * (hw - 0.05));   // step stringers up to the sill
     }
     if (!(observation && e < 0)) { gb.box('diaphragm', 0.58, 2.55, 1.52, e * 12.03, 2.45, 0); gb.box('dark', 0.06, 2.6, 1.6, e * (L / 2 - 0.02), 2.45, 0); }
-    gb.box('dark', 0.6, 0.22, 0.26, e * (L / 2 - 0.3), 0.875, 0);
   }
   if (observation) {
     // open rear platform with brass railing and drumhead
@@ -4270,9 +4270,10 @@ function coachModel(spec, num, observation) {
     gb.add('drumhead', new THREE.CircleGeometry(0.42, 28), M(-12.575, 1.85, 0, 0, -Math.PI / 2, 0));
     gb.add('brass', new THREE.TorusGeometry(0.43, 0.025, 6, 28).rotateY(Math.PI / 2).translate(-12.56, 1.85, 0));
   }
+  const couplers = carCouplers(gb, root, L, -0.55, 0.955, 1.08);
   root.add(gb.build(RMAT));
-  root.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
-  return { root, len: L, trucks: [{ a: 3.5, type: 'six', R: 0.457 }, { a: 21.2, type: 'six', R: 0.457 }], frame: [3.5, 21.2], weight: 82 * STON, kind: 'coach', axles: 6, area: 120 };
+  root.traverse(o => { if (o.isMesh && !o.userData.cpl) { o.castShadow = true; o.receiveShadow = true; } });
+  return { root, len: L, trucks: [{ a: 3.5, type: 'six', R: 0.457 }, { a: 21.2, type: 'six', R: 0.457 }], frame: [3.5, 21.2], weight: 82 * STON, kind: 'coach', axles: 6, area: 120, couplers };
 }
 function freightModel(type, num, r) {
   const root = new THREE.Group(); const gb = new GeoBin();
@@ -4338,12 +4339,13 @@ function freightModel(type, num, r) {
   // underframe common
   gb.box('dark', L - 1.4, 0.35, 2.6, 0, 1.15, 0);
   const ta = type === 'caboose' ? 2.4 : 1.95;
-  for (const e of [-1, 1]) { gb.box('dark', 0.6, 0.22, 0.26, e * (L / 2 - 0.3), 0.875, 0); gb.box('dark', 0.3, 0.4, 2.9, e * (L / 2 - 0.66), 1.15, 0); gb.box('dark', 0.5, 0.2, 2.4, e * (L / 2 - ta), 0.9, 0); }
+  for (const e of [-1, 1]) { gb.box('dark', 0.3, 0.4, 2.9, e * (L / 2 - 0.66), 1.15, 0); gb.box('dark', 0.5, 0.2, 2.4, e * (L / 2 - ta), 0.9, 0); }
   gb.add('dark', new THREE.CylinderGeometry(0.17, 0.17, 0.5, 10).rotateZ(Math.PI / 2).translate(1.6, 0.9, 0.5));
+  const couplers = carCouplers(gb, root, L, -0.51, 0.95, 1.12);
   root.add(gb.build(RMAT));
-  root.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  root.traverse(o => { if (o.isMesh && !o.userData.cpl) { o.castShadow = true; o.receiveShadow = true; } });
   trucks = [{ a: ta, type: 'four', R: 0.419 }, { a: L - ta, type: 'four', R: 0.419 }];
-  return { root, len: L, trucks, frame: [ta, L - ta], weight, kind: type, axles: 4, area: 105 };
+  return { root, len: L, trucks, frame: [ta, L - ta], weight, kind: type, axles: 4, area: 105, couplers };
 }
 /* truck frame geometries for instancing */
 function truckGeos() {
@@ -4500,13 +4502,13 @@ function buildDiesel(opts) {
   for (const a of [3.0, 19.3]) for (const s of [-1, 1]) box('dUnder', a, a + 0.45, 1.05, 1.18, s * 1.2, s * 1.48); // jacking pads
 
   /* ---- ends: pilot, plow, coupler, open step wells at the corners, yellow handrails ---- */
+  const couplers = [];
   for (const e of [0, 1]) {
     const A = e ? DG.len : 0, sg = e ? -1 : 1, at = d => A + sg * d;
     box('lBody', at(0.42), at(1.26), 0.72, 1.70, -PW, PW);
     gb.add('lPilot', new THREE.PlaneGeometry(2 * PW, 0.9), M(dx(at(0.41)), 1.18, 0, 0, e ? -Math.PI / 2 : Math.PI / 2, 0));
     for (const s of [-1, 1]) gb.add('dUnder', new THREE.BoxGeometry(1.42, 0.62, 0.05), M(dx(at(0.58)), 0.46, s * 0.62, 0, -s * sg * 0.42, 0).multiply(M(0, 0, 0, 0, Math.PI / 2, 0)));   // snow plow
-    box('dUnder', at(0.30), at(0.48), 0.8, 0.92, -0.12, 0.12);
-    box('dUnder', at(0.0), at(0.45), 0.77, 0.98, -0.13, 0.13); box('dUnder', at(0.0), at(0.12), 0.7, 1.05, -0.2, 0.2);
+    couplers.push(addCoupler(gb, body, { x: dx(A), out: e ? -1 : 1, sx: -0.42, sb: 0.72, ly: 1.4, zh: 0.95, yp: 0.86, housing: false }));
     box('dUnder', at(0.36), at(0.48), 1.58, 1.72, -PW - 0.03, PW + 0.03);   // anticlimber
     for (const z of [-0.95, -0.62, 0.62, 0.95]) gb.add('dUnder', new THREE.CylinderGeometry(0.035, 0.035, 0.5, 6), M(dx(at(0.4)), 0.98, z, 0.3 * sg, 0, 0));
     for (const z of [-0.74, 0.74]) box('dUnder', at(0.36), at(0.44), 1.02, 1.26, z - 0.11, z + 0.11); // MU receptacles
@@ -4749,11 +4751,11 @@ function buildDiesel(opts) {
     trucks.push(grp);
   }
   const hit = new THREE.Mesh(new THREE.BoxGeometry(22, 4.6, 3.2), RMAT.hit); hit.position.set(0, 2.4, 0); body.add(hit);
-  root.traverse(o => { if (o.isMesh && o.material !== RMAT.glassT && o.material !== RMAT.hit) { o.castShadow = true; o.receiveShadow = true; } });
+  root.traverse(o => { if (o.isMesh && o.material !== RMAT.glassT && o.material !== RMAT.hit && !o.userData.cpl) { o.castShadow = true; o.receiveShadow = true; } });
   beam.castShadow = false;
   if (!lead) { beam.visible = false; halo.visible = false; ditch.forEach(d => { d.lens.material.color.setScalar(0.12); d.halo.visible = false; }); }
   return {
-    root, body, trucks, wheels, lens: lenses[0], lenses, beam, halo, ditch, spec, skin, livery: L, number: num, diesel: true, lead, len: DG.len, frame: DG.trucks.slice(),
+    root, body, trucks, wheels, couplers, lens: lenses[0], lenses, beam, halo, ditch, spec, skin, livery: L, number: num, diesel: true, lead, len: DG.len, frame: DG.trucks.slice(),
     stackPos: new THREE.Vector3(dx(11.5), HOOD + 0.3, 0), hornPos: new THREE.Vector3(dx(6.0), DBH + 0.35, 0), enginePos: new THREE.Vector3(dx(12.5), 2.9, 0),
     cabEye: new THREE.Vector3(dx(3.8), 4.0, 0.8), headlightPos: new THREE.Vector3(dx(N0 - 0.05), hlY, 0), cabLightPos: new THREE.Vector3(dx(4.1), 4.25, 0),
   };
@@ -4766,6 +4768,267 @@ let _haloTex = null;
 function haloTex() {
   return _haloTex || (_haloTex = canvasTex(64, 64, g => { const gr = g.createRadialGradient(32, 32, 0, 32, 32, 32); gr.addColorStop(0, 'rgba(255,248,225,1)'); gr.addColorStop(0.25, 'rgba(255,236,190,0.55)'); gr.addColorStop(1, 'rgba(255,220,160,0)'); g.fillStyle = gr; g.fillRect(0, 0, 64, 64); }));
 }
+
+/* ============================================================================
+   Knuckle couplers: AAR Type E heads with a knuckle that swings on its pin,
+   the cut lever across the end sill, and the brake pipe's angle cock with its
+   air hose and glad hand. The castings are merged into the car body; the
+   knuckle, the cut lever and the two hose poses are separate meshes so they
+   can move, and are only drawn near the camera.
+   Coupler frame: +X out from the car, X = 0 on the line where two mated
+   couplers meet, Y up from rail top, Z across. The knuckle and the hose sit
+   on +Z, the left-hand side seen from off the end of the car, so two cars
+   meeting end to end interlock knuckle behind knuckle.
+   ========================================================================== */
+const CPL = { near: 90, geo: null, kits: {}, hover: null };
+const CPL_Y = 0.876;                 // 34-1/2 in centre line above the rail
+const CPL_PIN = [-0.12, 0.072];      // knuckle pin (x, z)
+const CPL_OPEN = -0.8;               // knuckle swing when thrown open (rad)
+const CPL_LIFT = 0.55;               // cut lever turned up to lift the lock (rad)
+
+/* a closed outline through pts with every corner rounded off by up to r */
+function roundShape(pts, r) {
+  const s = new THREE.Shape(), n = pts.length;
+  for (let i = 0; i < n; i++) {
+    const p = pts[i], a = pts[(i + n - 1) % n], b = pts[(i + 1) % n];
+    const la = Math.hypot(a[0] - p[0], a[1] - p[1]), lb = Math.hypot(b[0] - p[0], b[1] - p[1]);
+    const ra = Math.min(r, la * 0.45), rb = Math.min(r, lb * 0.45);
+    const p0 = [p[0] + (a[0] - p[0]) / la * ra, p[1] + (a[1] - p[1]) / la * ra], p1 = [p[0] + (b[0] - p[0]) / lb * rb, p[1] + (b[1] - p[1]) / lb * rb];
+    if (i === 0) s.moveTo(p0[0], p0[1]); else s.lineTo(p0[0], p0[1]);
+    s.quadraticCurveTo(p[0], p[1], p1[0], p1[1]);
+  }
+  s.closePath();
+  return s;
+}
+/* a casting with plan outline pts (x, z), h tall centred on y0, edges rounded by bev (the outline grows by bev) */
+function castPlan(pts, r, h, y0, bev = 0.008) {
+  const g = new THREE.ExtrudeGeometry(roundShape(pts, r), { depth: h - 2 * bev, bevelEnabled: true, bevelThickness: bev, bevelSize: bev, bevelSegments: 2, curveSegments: 4 });
+  g.rotateX(Math.PI / 2);   // shape (x, z) at depth d lands at (x, -d, z)
+  g.translate(0, y0 + h / 2 - bev, 0);
+  return g;
+}
+/* a casting with side profile pts (x, y), w wide centred on z0 */
+function castSide(pts, r, w, z0, bev = 0.008) {
+  const g = new THREE.ExtrudeGeometry(roundShape(pts, r), { depth: w - 2 * bev, bevelEnabled: true, bevelThickness: bev, bevelSize: bev, bevelSegments: 2, curveSegments: 4 });
+  g.translate(0, 0, z0 - w / 2 + bev);
+  return g;
+}
+/* a round bar or pipe from a to b */
+function barGeo(r, a, b, seg = 8) {
+  const A = new THREE.Vector3(...a), B = new THREE.Vector3(...b), g = new THREE.CylinderGeometry(r, r, A.distanceTo(B), seg);
+  g.applyMatrix4(new THREE.Matrix4().makeRotationFromQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), B.clone().sub(A).normalize())));
+  g.translate((A.x + B.x) / 2, (A.y + B.y) / 2, (A.z + B.z) / 2);
+  return g;
+}
+const tubeGeo = (pts, r, seg = 24, rs = 8) => new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts.map(p => new THREE.Vector3(...p))), seg, r, rs, false);
+
+function couplerMaterials() {
+  if (RMAT.hose) return;
+  RMAT.hose = new THREE.MeshStandardMaterial({ color: 0x121212, metalness: 0.0, roughness: 0.88 });
+  RMAT.cplHi = new THREE.MeshStandardMaterial({ color: 0x3a3226, metalness: 0.5, roughness: 0.5, emissive: 0xffb347, emissiveIntensity: 0.55 });
+}
+
+/* the parts every coupler shares: the head and guard arm, the knuckle, pin and lock lift */
+function couplerGeos() {
+  if (CPL.geo) return CPL.geo;
+  couplerMaterials();
+  const y = CPL_Y, [px, pz] = CPL_PIN, head = [];
+  // head with the guard arm reaching forward on the right; the mate's knuckle lies in the pocket inside it
+  head.push(castPlan([[-0.33, 0.07], [-0.25, 0.124], [-0.098, 0.124], [-0.092, 0.036], [-0.092, -0.126], [0.028, -0.13], [0.06, -0.142], [0.05, -0.168], [-0.12, -0.172], [-0.25, -0.142], [-0.33, -0.07]], 0.028, 0.29, y));
+  // neck tapering from the head down into the shank
+  head.push(castSide([[-0.41, -0.07], [-0.34, -0.14], [-0.27, -0.14], [-0.27, 0.14], [-0.34, 0.14], [-0.41, 0.07]], 0.03, 0.15, 0).translate(0, y, 0));
+  // pin lugs top and bottom, the knuckle pin, and the lock lift on top of the head
+  for (const s of [-1, 1]) {
+    head.push(new THREE.CylinderGeometry(0.046, 0.05, 0.04, 14).translate(px, y + s * 0.152, pz));
+    head.push(new THREE.CylinderGeometry(0.026, 0.026, 0.02, 10).translate(px, y + s * 0.18, pz));
+  }
+  head.push(castPlan([[-0.2, -0.035], [-0.13, -0.035], [-0.13, 0.02], [-0.2, 0.02]], 0.012, 0.05, y + 0.168, 0.006));
+  head.push(new THREE.CylinderGeometry(0.012, 0.012, 0.06, 8).rotateX(Math.PI / 2).translate(-0.165, y + 0.19, -0.008));
+  // cast ribs along the sides of the head
+  head.push(castPlan([[-0.31, -0.152], [-0.13, -0.18], [-0.13, -0.166], [-0.31, -0.14]], 0.006, 0.05, y, 0.004));
+  // knuckle, about its own pin: tail in the head, then the arm out to the hooked nose. Pulling face on the inside of the nose.
+  const kn = castPlan([[-0.166, 0.062], [-0.142, 0.106], [-0.09, 0.108], [0.048, 0.104], [0.07, 0.084], [0.072, -0.004], [0.058, -0.022], [0.024, -0.022], [0.014, -0.008], [0.014, 0.036], [-0.086, 0.04], [-0.134, 0.04], [-0.162, 0.048]]
+    .map(([x, z]) => [x - px, z - pz]), 0.02, 0.26, y, 0.005);
+  const knuckle = mergeGeos([kn, castPlan([[0.03, -0.022], [0.07, -0.004], [0.07, 0.07], [0.03, 0.07]].map(([x, z]) => [x - px, z - pz]), 0.012, 0.28, y, 0.005)]);
+  return (CPL.geo = { head, knuckle });
+}
+
+/* everything that depends on the end it is fitted to, cached by its dimensions:
+   sx end sill face (coupler frame x), sb bottom of the sill, ly cut lever height, zh how far out the lever handle reaches,
+   yp brake pipe height, housing whether to draw the draft gear pocket under the sill */
+function couplerKit(o) {
+  const key = [o.sx, o.sb, o.ly, o.zh, o.yp, !!o.housing, o.hl].join();
+  if (CPL.kits[key]) return CPL.kits[key];
+  const G = couplerGeos(), y = CPL_Y, sx = o.sx, dark = G.head.map(g => g.clone());
+  // shank back through the striker into the draft gear
+  dark.push(castSide([[sx - 0.16, -0.07], [-0.4, -0.07], [-0.4, 0.07], [sx - 0.16, 0.07]], 0.02, 0.15, 0).translate(0, y, 0));
+  // striker casting on the end sill: cheeks, a top bar up into the sill, and the carrier iron the shank rides on
+  const top = Math.max(y + 0.12, o.sb + 0.03);
+  for (const s of [-1, 1]) dark.push(castPlan([[sx - 0.01, s * 0.088], [sx + 0.07, s * 0.088], [sx + 0.07, s * 0.2], [sx - 0.01, s * 0.2]], 0.015, top - (y - 0.15), (top + y - 0.15) / 2, 0.006));
+  dark.push(castPlan([[sx - 0.01, -0.09], [sx + 0.07, -0.09], [sx + 0.07, 0.09], [sx - 0.01, 0.09]], 0.012, top - (y + 0.078), (top + y + 0.078) / 2, 0.006));
+  dark.push(castPlan([[sx - 0.01, -0.09], [sx + 0.075, -0.09], [sx + 0.075, 0.09], [sx - 0.01, 0.09]], 0.012, 0.072, y - 0.114, 0.006));
+  const hl = o.hl || 0.42, ht = o.sb + 0.03;
+  if (o.housing) dark.push(new THREE.BoxGeometry(hl, ht - (y - 0.12), 0.34).translate(sx - hl / 2, (ht + y - 0.12) / 2, 0));
+  // cut lever brackets: a strap off the sill face with an eye round the rod
+  const xr = sx + 0.04, ly = o.ly;
+  for (const z of [0.5, o.zh - 0.12]) {
+    dark.push(new THREE.BoxGeometry(0.05, 0.03, 0.026).translate(sx + 0.02, ly, z));
+    dark.push(new THREE.TorusGeometry(0.022, 0.008, 6, 12).translate(xr, ly, z));
+  }
+  // brake pipe from under the sill to the angle cock, the cock body, its elbow and handle
+  const zc = 0.32, yp = o.yp, xc = sx + 0.07;
+  dark.push(barGeo(0.021, [sx - 0.38, yp, zc], [xc, yp, zc]));
+  dark.push(new THREE.BoxGeometry(0.06, 0.026, 0.03).translate(sx - 0.2, yp + 0.01 + 0.013, zc));   // pipe clamp to the sill
+  dark.push(new THREE.CylinderGeometry(0.034, 0.034, 0.09, 10).rotateZ(Math.PI / 2).translate(xc - 0.01, yp, zc));
+  dark.push(barGeo(0.026, [xc + 0.03, yp, zc], [xc + 0.06, yp - 0.075, zc], 10));
+  dark.push(new THREE.BoxGeometry(0.13, 0.012, 0.026).translate(xc - 0.03, yp + 0.04, zc));
+  dark.push(new THREE.CylinderGeometry(0.008, 0.008, 0.04, 6).translate(xc - 0.01, yp + 0.02, zc));
+  // the cut lever, about its own rod: rod across the end, handle bent down at the side, crank over the lock lift
+  const lx = -0.165 - xr, lyk = y + 0.205 - ly;
+  const lever = mergeGeos([
+    tubeGeo([[0, 0, -0.03], [0, 0, o.zh - 0.1], [0.004, -0.03, o.zh - 0.02], [0.03, -0.12, o.zh + 0.035], [0.06, -0.2, o.zh + 0.06]], 0.0135, 28, 8),
+    new THREE.SphereGeometry(0.02, 10, 8).translate(0.062, -0.205, o.zh + 0.062),
+    tubeGeo([[0, 0, -0.03], [lx * 0.4, 0.035, -0.022], [lx * 0.85, lyk + 0.03, -0.012], [lx, lyk + 0.012, -0.008]], 0.012, 16, 8),
+    barGeo(0.006, [lx, lyk + 0.012, -0.008], [lx, lyk - 0.012, -0.008], 6),
+  ]);
+  // the air hose, hanging from the cock or coupled to the next car's at the centre line under the couplers
+  const H0 = [xc + 0.062, yp - 0.08, zc];
+  const hand = (axisDown) => {
+    const parts = [
+      new THREE.CylinderGeometry(0.026, 0.028, 0.03, 10),                                       // hose clamp
+      new THREE.CylinderGeometry(0.019, 0.022, 0.07, 10).translate(0, -0.05, 0),                  // glad hand body
+      castPlan([[-0.045, -0.034], [0.045, -0.034], [0.045, 0.034], [-0.045, 0.034]], 0.022, 0.018, -0.094, 0.004),   // gasket face
+      new THREE.BoxGeometry(0.03, 0.05, 0.014).translate(0.03, -0.06, 0.03),                     // locking lug
+    ];
+    const g = mergeGeos(parts);
+    if (!axisDown) g.rotateZ(Math.PI / 2);                                                        // lying along +x toward the mate
+    return g;
+  };
+  const clamp0 = new THREE.CylinderGeometry(0.026, 0.028, 0.035, 10).translate(...H0);
+  const hangEnd = [H0[0] + 0.05, 0.42, zc + 0.015];
+  const hang = mergeGeos([
+    tubeGeo([H0, [H0[0] + 0.02, H0[1] - 0.13, zc + 0.005], [H0[0] + 0.045, 0.56, zc + 0.012], hangEnd], 0.021),
+    clamp0, hand(true).translate(...hangEnd),
+  ]);
+  const mateEnd = [-0.105, 0.5, 0];
+  const mid = [(H0[0] + mateEnd[0]) / 2 + 0.03, 0.5, zc * 0.42];
+  const mate = mergeGeos([
+    tubeGeo([H0, [H0[0] + 0.04, H0[1] - 0.14, zc - 0.02], mid, [mateEnd[0] - 0.05, 0.495, 0.03], mateEnd], 0.021, 32),
+    clamp0.clone(), hand(false).translate(...mateEnd),
+  ]);
+  return (CPL.kits[key] = { dark: mergeGeos(dark), lever, hang, mate, xr });
+}
+
+/* Fit a coupler to one end of a model. gb gets the castings; the moving parts go on parent (the group gb is built into).
+   o.x is the coupler face in model coordinates and o.out is +1 at the model's front, -1 at its rear. */
+function addCoupler(gb, parent, o) {
+  const kit = couplerKit(o), G = CPL.geo;
+  const m = new THREE.Matrix4().makeTranslation(o.x, 0, 0);
+  if (o.out < 0) m.multiply(new THREE.Matrix4().makeRotationY(Math.PI));
+  gb.add(o.key || 'dark', kit.dark.clone(), m);
+  const grp = new THREE.Group(); grp.matrixAutoUpdate = false; grp.matrix.copy(m); parent.add(grp);
+  const kn = new THREE.Mesh(G.knuckle, RMAT.dark); kn.position.set(CPL_PIN[0], 0, CPL_PIN[1]);
+  const lever = new THREE.Mesh(kit.lever, RMAT.dark); lever.position.set(kit.xr, o.ly, 0);
+  const hang = new THREE.Mesh(kit.hang, RMAT.hose), mate = new THREE.Mesh(kit.mate, RMAT.hose); mate.visible = false;
+  for (const p of [kn, lever, hang, mate]) { p.receiveShadow = true; p.userData.cpl = true; grp.add(p); }
+  return { grp, kn, lever, hang, mate, ka: 0, la: 0, o };
+}
+/* both ends of a freight car or coach, whose faces are at +-L/2 */
+const carCouplers = (gb, root, L, sx, sb, ly) => [1, -1].map(out => addCoupler(gb, root, { x: out * L / 2, out, sx, sb, ly, zh: 1.3, yp: sb - 0.024, housing: true }));
+
+/* ---------------- every frame: knuckles, levers and hoses follow the cars ---------------- */
+function cplConsists() {
+  const list = [GAME.train, ...CARS.cuts];
+  if (MP.on) for (const p of MP.peers.values()) if (p.rt && p.rt.train) list.push(p.rt.train);
+  return list.filter(Boolean);
+}
+/* the coupler of the vehicle next to V[i] that meets V[i]'s coupler on side front (true) or back */
+function cplMate(V, i, front) {
+  const nb = V[front ? i - 1 : i + 1];
+  return nb && nb.cpl ? nb.cpl[front ? (nb.flip ? 0 : 1) : (nb.flip ? 1 : 0)] : null;
+}
+CPL.frame = function (dt) {
+  const cam = camera.position, a = Math.min(1, dt * 7);
+  for (const c of cplConsists()) {
+    const V = c.vehicles;
+    for (let i = 0; i < V.length; i++) {
+      const v = V[i]; if (!v.cpl) continue;
+      const near = !!v.pos && v.root.visible !== false && v.pos.distanceTo(cam) < CPL.near + v.len;
+      for (let k = 0; k < 2; k++) {
+        const e = v.cpl[k]; if (!e) continue;
+        if (e.grp.visible !== near) e.grp.visible = near;
+        const front = (k === 0) !== !!v.flip, mated = !!cplMate(V, i, front);
+        const s = v.kn ? v.kn[k] : 0;
+        const kt = !mated && s === KN_OPEN ? CPL_OPEN : 0, lt = s === KN_LIFTED ? CPL_LIFT : 0;
+        // out of sight they just take up their new positions; close by they swing over
+        if (!near) { e.ka = kt; e.la = lt; e.kn.rotation.y = kt; e.lever.rotation.z = lt; if (e.hang.visible === mated) { e.hang.visible = !mated; e.mate.visible = mated; } continue; }
+        e.ka += Math.abs(kt - e.ka) < 0.002 ? kt - e.ka : (kt - e.ka) * a;
+        e.la += Math.abs(lt - e.la) < 0.002 ? lt - e.la : (lt - e.la) * Math.min(1, dt * 10);
+        e.kn.rotation.y = e.ka; e.lever.rotation.z = e.la;
+        if (e.hang.visible === mated) { e.hang.visible = !mated; e.mate.visible = mated; }
+      }
+    }
+  }
+};
+
+/* ---------------- working a coupler by pointing at it ---------------- */
+const _cp = new THREE.Vector3();
+/* the coupler nearest screen point (x, y), within reach of the camera */
+CPL.at = function (x, y) {
+  if (!GAME.train) return null;
+  const W = innerWidth, H = innerHeight, cam = camera.position, reach = 34 * Math.max(1, devicePixelRatio > 1.5 && W < 900 ? 1.3 : 1);
+  let best = null, bd = reach * reach;
+  for (const c of [GAME.train, ...CARS.cuts]) {
+    const V = c.vehicles;
+    for (let i = 0; i < V.length; i++) {
+      const v = V[i]; if (!v.cpl) continue;
+      for (let k = 0; k < 2; k++) {
+        const e = v.cpl[k]; if (!e || !e.grp.visible) continue;
+        for (const p of [[-0.1, CPL_Y, 0.02], [e.lever.position.x + 0.06, e.o.ly - 0.2, e.o.zh + 0.06]]) {
+          _cp.set(...p).applyMatrix4(e.grp.matrixWorld);
+          if (_cp.distanceTo(cam) > 60) continue;
+          _cp.project(camera); if (_cp.z > 1 || _cp.z < -1) continue;
+          const d2 = ((_cp.x + 1) / 2 * W - x) ** 2 + ((1 - _cp.y) / 2 * H - y) ** 2;
+          if (d2 < bd) { bd = d2; best = { c, i, k, e }; }
+        }
+      }
+    }
+  }
+  if (!best) return null;
+  const { c, i, k } = best, v = c.vehicles[i], front = (k === 0) !== !!v.flip;
+  best.mated = !!cplMate(c.vehicles, i, front);
+  if (best.mated) best.j = front ? i : i + 1; else best.end = front ? 'front' : 'rear';
+  return best;
+};
+CPL.label = function (t) {
+  if (t.mated) return CARS.canCut(t.c, t.j) ? (Math.abs(velOf(t.c)) > 0.6 ? 'Pull the pin: kick the cars' : 'Pull the pin: uncouple here') : 'Drawbar: these stay together';
+  const s = t.c.vehicles[t.i].kn[t.k];
+  return s === KN_CLOSED ? 'Lift the pin: open the knuckle' : 'Close the knuckle';
+};
+CPL.act = function (t) {
+  if (t.mated) {
+    if (!CARS.canCut(t.c, t.j)) { toast('The engine and its tender (or units of a lashup) stay coupled.', '', 2600, 'nocut'); return; }
+    CARS.uncouple(t.j, t.c);
+  } else CARS.knuckle(t.c, t.end);
+};
+/* tap or click: work the coupler under the pointer. Returns true when one was there. */
+CPL.tap = function (x, y) {
+  const t = CPL.at(x, y); if (!t) return false;
+  CPL.act(t); CPL.point(x, y);
+  return true;
+};
+/* mouse hover: light the coupler up and say what a click will do */
+CPL.point = function (x, y) {
+  const t = x === null ? null : CPL.at(x, y), tip = $('cplTip');
+  const prev = CPL.hover;
+  if (prev && (!t || prev.e !== t.e)) { prev.e.kn.material = RMAT.dark; prev.e.lever.material = RMAT.dark; }
+  CPL.hover = t;
+  $('gl').style.cursor = t ? 'pointer' : '';
+  if (!t) { tip.hidden = true; return; }
+  t.e.kn.material = RMAT.cplHi; t.e.lever.material = RMAT.cplHi;
+  tip.textContent = CPL.label(t); tip.hidden = false;
+  tip.style.left = Math.min(innerWidth - tip.offsetWidth - 8, x + 14) + 'px'; tip.style.top = Math.max(8, y - 34) + 'px';
+};
 
 /* ============================================================================
    Train: consist, track-following, poses, wheel & rod animation
@@ -4923,8 +5186,8 @@ class Consist {
 
 /* a freight car or coach as a vehicle record */
 function carVehicle(m) {
-  return { kind: m.kind, model: m, root: m.root, len: m.len, frame: m.frame, trucks: m.trucks, mass: m.weight, axles: m.axles, area: m.area, brakeA: m.kind === 'coach' ? 0.95 : 0.5, markers: m.root.userData.markers,
-    brake: { AR: 90, BC: 0, BP: 90, emerg: false, released: true } };
+  return { kind: m.kind, model: m, root: m.root, len: m.len, frame: m.frame, trucks: m.trucks, mass: m.weight, axles: m.axles, area: m.area, brakeA: m.kind === 'coach' ? 0.95 : 0.5, markers: m.root.userData.markers, cpl: m.couplers,
+    brake: { AR: 90, BC: 0, BP: 90, emerg: false, released: true }, kn: [0, 0] };
 }
 
 class Train extends Consist {
@@ -4949,7 +5212,8 @@ class Train extends Consist {
         const wrap = new THREE.Group(); wrap.add(m.root);
         const reversed = n > 1 && u === n - 1; if (reversed) m.root.rotation.y = Math.PI;
         scene.add(wrap); m.trucks.forEach(t => scene.add(t));
-        this.vehicles.push({ kind: u === 0 ? 'loco' : 'loco2', model: m, root: wrap, len: m.len, frame: m.frame, trucks: [], mass: engMass, axles: 6, area: u === 0 ? 125 : 0, brakeA: 0.6, reversed });
+        this.vehicles.push({ kind: u === 0 ? 'loco' : 'loco2', model: m, root: wrap, len: m.len, frame: m.frame, trucks: [], mass: engMass, axles: 6, area: u === 0 ? 125 : 0, brakeA: 0.6, reversed,
+          cpl: reversed ? [m.couplers[1], m.couplers[0]] : m.couplers });
         this.units.push(m); m.vehicle = this.vehicles[this.vehicles.length - 1];
       }
       L = this.units[0];
@@ -4957,11 +5221,11 @@ class Train extends Consist {
     } else {
       L = buildBerkshire(locoKey);
       scene.add(L.root); scene.add(L.leadTruck);
-      this.vehicles.push({ kind: 'loco', model: L, root: L.root, len: LG.len, frame: [LG.aD[0], LG.aD[3]], trucks: [], mass: engMass, axles: 10, area: 125, brakeA: 0.55 });
+      this.vehicles.push({ kind: 'loco', model: L, root: L.root, len: LG.len, frame: [LG.aD[0], LG.aD[3]], trucks: [], mass: engMass, axles: 10, area: 125, brakeA: 0.55, cpl: L.couplers });
       const T = buildTender(locoKey);
       scene.add(T.root);
       this.tender = T;
-      this.vehicles.push({ kind: 'tender', model: T, root: T.root, len: T.len, frame: T.frame, trucks: T.trucks, mass: 0, axles: 6, area: 0, brakeA: 0.6 });
+      this.vehicles.push({ kind: 'tender', model: T, root: T.root, len: T.len, frame: T.frame, trucks: T.trucks, mass: 0, axles: 6, area: 0, brakeA: 0.6, cpl: T.couplers });
     }
     this.loco = L;
     // cars
@@ -4976,7 +5240,7 @@ class Train extends Consist {
     }
     // tender mass varies with water & coal
     this.tenderEmpty = 92000;
-    for (const v of this.vehicles) { v.brake = v.brake || { AR: 90, BC: 0, BP: 90, emerg: false, released: true }; this.track(v); }
+    for (const v of this.vehicles) { v.brake = v.brake || { AR: 90, BC: 0, BP: 90, emerg: false, released: true }; v.kn = v.kn || [0, 0]; this.track(v); }
     this.layout();
     this.buildInstances({ tg: truckGeos(), a6: plainAxle(0.457), a4: plainAxle(0.419) });
     // headlight. Another player's train (opts.remote) gets no real lights: adding lights
@@ -5041,8 +5305,9 @@ function dieselLiveryFor(opts, u) {
 }
 
 /* ============================================================================
-   Car work: cuts of cars standing on the yard and spur tracks, coupling on
-   contact, pulling the pin, kicking cars, tie-downs
+   Car work: cuts of cars standing on the yard and spur tracks, knuckle
+   couplers, coupling on contact, shoving, pulling the pin, kicking cars,
+   tie-downs
    ========================================================================== */
 const CARS = { cuts: [], geo: null, gen: 0, cutAt: 0, cutFrom: null };
 
@@ -5054,8 +5319,20 @@ const YARD_CUTS = [
   { line: 'Quarry Storage', end: 20, cars: ['hopper', 'hopper', 'gon', 'gon', 'hopper'] },
 ];
 const CAR_NAMES = { box: 'Box', hopper: 'Hopper', tank: 'Tank', gon: 'Gon', caboose: 'Caboose', coach: 'Coach', tender: 'Tender' };
-const COUPLE_OK = 4 * MPH, COUPLE_HARD = 8 * MPH, COUPLE_WRECK = 11 * MPH;
+/* closing speeds: clean, hard, damaging (lading and draft gear), and a wreck that derails the cars */
+const COUPLE_OK = 4 * MPH, COUPLE_HARD = 8 * MPH, COUPLE_DAMAGE = 11 * MPH, COUPLE_WRECK = 25 * MPH;
+/* a knuckle is closed (0), open (1), or has its lock lifted by the cut lever (2) while the faces are still
+   pressed together: it swings open once the cars part. Two closed knuckles only buff; one open one couples. */
+const KN_CLOSED = 0, KN_OPEN = 1, KN_LIFTED = 2;
 const isPower = v => v.kind === 'loco' || v.kind === 'loco2' || v.kind === 'tender';
+/* the vehicle at one end of consist c and which of its own couplers (0 at its front, 1 at its rear) faces out there */
+function endCoupler(c, end) {
+  const v = end === 'front' ? c.vehicles[0] : c.vehicles[c.vehicles.length - 1];
+  if (!v.kn) v.kn = [KN_CLOSED, KN_CLOSED];
+  return { v, k: (end === 'front') !== !!v.flip ? 0 : 1 };
+}
+const knOf = e => e.v.kn[e.k];
+function setKn(e, s) { if (e.v.kn[e.k] !== s) { e.v.kn[e.k] = s; CARS.gen++; } }
 
 class Cut extends Consist {
   constructor(scene, vehicles) {
@@ -5110,6 +5387,7 @@ CARS.setup = function () {
     const loc = line.locate(sF);
     c.place(new TrackPos(loc.edge, loc.s, 1));
     c.home = def.line;
+    for (const end of ['front', 'rear']) setKn(endCoupler(c, end), KN_OPEN);   // the crew left the end knuckles open
     CARS.cuts.push(c);
   }
 };
@@ -5178,6 +5456,7 @@ CARS.ahead = function (T, dir, range) {
 /* K keeps going with X's cars added at its kEnd; X's coupler xEnd is the one that met it */
 function absorb(K, kEnd, X, xEnd) {
   const flip = kEnd === xEnd;
+  setKn(endCoupler(K, kEnd), KN_CLOSED); setKn(endCoupler(X, xEnd), KN_CLOSED);
   const MK = consistMass(K), MX = consistMass(X);
   const v = (MK * velOf(K) + MX * velOf(X) * (flip ? -1 : 1)) / (MK + MX);
   const list = X.vehicles.slice();
@@ -5198,11 +5477,20 @@ function absorb(K, kEnd, X, xEnd) {
   CARS.gen++;
   return list.length;
 }
+/* Two consists meeting end on, with closing speed u > 0 measured along A's travel: the draft gear soaks up most
+   of a hard hit (restitution e), and below a walking pace they simply move off together. Returns the
+   speeds of A and B afterward, both along A's travel. */
+function buff(mA, uA, mB, uB, e) {
+  const k = (1 + e) * (uA - uB) / (mA + mB);
+  return [uA - k * mB, uB + k * mA];
+}
+const buffE = closing => closing < 1 ? 0 : 0.3 * smooth(1, 3, closing);
 /* consist A, moving toward its dir end, has just touched hit.c */
 CARS.contact = function (A, dir, hit) {
   const B = hit.c, T = GAME.train;
   const aEnd = dir > 0 ? 'front' : 'rear';
-  const vB = hit.end ? velOf(B) * (hit.end === aEnd ? -1 : 1) : 0;
+  const sB = hit.end === aEnd ? -1 : 1;   // B's velocity, seen along A's direction
+  const vB = hit.end ? velOf(B) * sB : 0;
   const closing = dir * (velOf(A) - vB);
   const mph = Math.round(closing / MPH);
   const ours = A === T || B === T;
@@ -5218,7 +5506,23 @@ CARS.contact = function (A, dir, hit) {
     return;
   }
   if (ours && closing > COUPLE_WRECK) {
-    GAME.derail(`Hit a cut of cars at ${mph} mph and buckled the couplers. Couple at a walking pace: 4 mph or less.`, 'Collision');
+    GAME.derail(`Hit a cut of cars at ${mph} mph: the couplers buckled and the cars climbed each other. Shove at a walking pace, 4 mph or less.`, 'Collision');
+    return;
+  }
+  const ka = endCoupler(A, aEnd), kb = endCoupler(B, hit.end);
+  const couple = knOf(ka) === KN_OPEN || knOf(kb) === KN_OPEN;
+  if (!couple) {
+    // both knuckles closed (or a lock still lifted against the other car): the cars buff and get shoved along
+    const [uA, uB] = buff(consistMass(A), dir * velOf(A), consistMass(B), dir * vB, buffE(closing));
+    setVel(A, dir * uA); setVel(B, dir * uB * sB);
+    if (closing > 0.15) sndClunk(gain, 0);
+    if (closing > COUPLE_OK) JOB.note('couple', { mph: closing / MPH, shove: true });
+    if (!ours) return;
+    const X = A === T ? B : A;
+    if (closing > COUPLE_DAMAGE) toast(`Slammed the cars at ${mph} mph. Nothing derailed, but that wrecks lading and draft gear.`, 'bad', 4200, 'slam');
+    else if (closing > COUPLE_HARD) toast(`Hit the cars hard at ${mph} mph and shoved them along. Ease in at 4 mph or less.`, 'bad', 3800, 'hardshove');
+    else if (CARS.cutFrom === X && performance.now() - CARS.cutAt < 6000) toast('Pin pulled, still shoving: the cars part as soon as you ease off or brake.', '', 3600, 'stillshove');
+    else if (closing > 0.3) toast('Both knuckles are closed, so the cars are only shoved. Tap a coupler to open its knuckle, then ease in to couple.', 'warn', 4800, 'shove');
     return;
   }
   sndCouple(gain);
@@ -5227,46 +5531,82 @@ CARS.contact = function (A, dir, hit) {
   const n = absorb(K, kEnd, X, xEnd);
   if (closing > COUPLE_OK) JOB.note('couple', { mph: closing / MPH });
   if (!ours) { toast(`A rolling cut coupled into the cars on ${K.home || 'the track'}${closing > COUPLE_HARD ? `, hard, at ${mph} mph` : ''}.`, closing > COUPLE_HARD ? 'warn' : '', 2600, 'cc'); return; }
-  const re = CARS.cutFrom === X && performance.now() - CARS.cutAt < 4000;
   const what = `${n} car${n > 1 ? 's' : ''}`;
-  if (re) toast(`Still shoving, so the cut coupled back on. Brake as you pull the pin and let the cars run.`, 'warn', 4200, 'recouple');
+  if (closing > COUPLE_DAMAGE) toast(`Slammed into ${what} at ${mph} mph. The knuckles held and they coupled, but that wrecks lading and draft gear.`, 'bad', 4800, 'slam');
   else if (closing > COUPLE_HARD) toast(`Hard coupling at ${mph} mph to ${what}. That rattles lading; 4 mph is the limit.`, 'bad', 4200, 'hard');
   else if (closing > COUPLE_OK) toast(`Coupled to ${what} at ${mph} mph: a bit hard. Ease in slower.`, 'warn', 3600, 'firm');
   else toast(`Coupled to ${what}. Hoses connected and handbrakes released: let the air pump up before you pull.`, 'good', 4600, 'coupled');
   if (CARS.onChange) CARS.onChange();
 };
 
+/* a lifted knuckle swings open once nothing is pressed against it */
+CARS.settle = function () {
+  let idx = null;
+  for (const c of [GAME.train, ...CARS.cuts]) {
+    if (!c || !c.vehicles.length) continue;
+    for (const end of ['front', 'rear']) {
+      const e = endCoupler(c, end);
+      if (knOf(e) !== KN_LIFTED) continue;
+      idx = idx || carIndex();
+      if (!carAhead(c, end === 'front' ? 1 : -1, 0.08, idx)) setKn(e, KN_OPEN);
+    }
+  }
+};
+
+/* the trainman works the coupler at one end of a consist: lifts the pin to open a closed knuckle, or
+   pushes an open one shut */
+CARS.knuckle = function (c, end) {
+  if (MP.on) { toast('Car work is not shared with the room yet, so couplers stay locked in multiplayer.', 'warn', 4000, 'mpcars'); return; }
+  const e = endCoupler(c, end), s = knOf(e);
+  setKn(e, s === KN_CLOSED ? KN_LIFTED : KN_CLOSED);
+  if (s === KN_CLOSED) CARS.settle();
+  const p = e.v.pos, g = p ? 1 / (1 + Math.pow(p.distanceTo(camera.position) / 30, 1.3)) : 1;
+  sndPin(0.6 * g, false);
+  const now = knOf(e);
+  toast(now === KN_OPEN ? 'Knuckle open: ease in at 4 mph or less to couple.' : now === KN_LIFTED ? 'Pin lifted. The knuckle swings open when the cars part.' : 'Knuckle closed: these cars will only be shoved, not coupled.', now === KN_OPEN ? 'good' : '', 3200, 'knuckle');
+  if (CARS.onChange) CARS.onChange();
+};
+
 /* ---------------- pulling the pin ---------------- */
-/* joint j sits between vehicles j-1 and j of the player's train */
+/* joint j sits between vehicles j-1 and j of a consist (the player's train unless c is given) */
 CARS.canCut = function (T, j) {
   const V = T.vehicles; if (j <= 0 || j >= V.length) return false;
   return !(isPower(V[j - 1]) && isPower(V[j]));
 };
-CARS.uncouple = function (j) {
-  const T = GAME.train;
+CARS.uncouple = function (j, c0) {
+  const T = c0 || GAME.train;
   if (MP.on) { toast('Car work is not shared with the room yet, so couplers stay locked in multiplayer.', 'warn', 4000, 'mpcars'); return; }
   if (!T || !CARS.canCut(T, j)) return;
   if (!CARS.geo) CARS.geo = { tg: truckGeos(), a6: plainAxle(0.457), a4: plainAxle(0.419) };
-  const V = T.vehicles, behind = j > T.li;
+  const ours = T === GAME.train, vT = velOf(T);
+  const V = T.vehicles, behind = ours ? j > T.li : true;
   const off = behind ? V.slice(j) : V.slice(0, j);
   T.vehicles = behind ? V.slice(0, j) : V.slice(j);
   for (const v of off) T.release(v);
   T.layout(); T.buildInstances();
   for (const im of T.inst) linearizeObject(im);
   const c = new Cut(scene, off);
-  c.v = S.v;
-  const kick = Math.abs(S.v) > 0.6;
-  if (kick) c.rolling = true;
+  c.v = vT; c.home = T.home;
+  // the cut lever lifts the lock on the car being cut off; its knuckle swings open as the cars part
+  setKn(endCoupler(c, behind ? 'front' : 'rear'), KN_LIFTED);
+  const kick = Math.abs(vT) > 0.6;
+  if (!ours) {
+    // splitting a standing or rolling cut: both halves keep their brakes as they were
+    c.rolling = T.rolling; c.vented = T.vented;
+    for (const v of off) v.hb = v.hb && !c.rolling;
+  } else if (kick) c.rolling = true;
   else {
     // angle cock closed on the engine side; the cut's hoses part and its brakes go into emergency
-    c.vented = true; c.rolling = Math.abs(S.v) > 0.005;
+    c.vented = true; c.rolling = Math.abs(vT) > 0.005;
     for (const v of off) { v.brake.BP = 0; v.brake.emerg = true; }
   }
   CARS.cuts.push(c); CARS.cutFrom = c; CARS.cutAt = performance.now(); CARS.gen++;
-  c.update(0); T.update(0, S.theta, S.reverser);
-  sndPin(1 / (1 + Math.pow(off[0].pos.distanceTo(camera.position) / 30, 1.3)), !kick);
+  c.update(0);
+  if (ours) T.update(0, S.theta, S.reverser); else T.update(0);
+  sndPin(1 / (1 + Math.pow(off[0].pos.distanceTo(camera.position) / 30, 1.3)), ours && !kick);
   const n = off.length, what = `${n} car${n > 1 ? 's' : ''}`;
-  if (kick) toast(`Pin pulled: ${what} rolling free at ${Math.round(Math.abs(S.v) / MPH)} mph. Brake to let them run.`, 'warn', 4200, 'kick');
+  if (!ours) toast(`Pin pulled: the cut is split, ${what} on the far side.`, 'good', 3200, 'split');
+  else if (kick) toast(`Pin pulled: ${what} rolling free at ${Math.round(Math.abs(vT) / MPH)} mph. Brake to let them run.`, 'warn', 4200, 'kick');
   else toast(`Cut off ${what}. Their air is dumped and the brakeman ties them down.`, 'good', 4000, 'setout');
   if (CARS.onChange) CARS.onChange();
 };
@@ -5291,7 +5631,10 @@ CARS.swapPlan = function (V, power, cars) {
 };
 
 /* ---------------- cars rolling on their own ---------------- */
+/* a tied-down car: a handbrake shoe holds about 4% of the car's weight, so an engine can skid one along */
+const HANDBRAKE = 0.04;
 CARS.step = function (h) {
+  CARS.settle();
   for (const c of CARS.cuts.slice()) {
     if (!c.rolling || !CARS.cuts.includes(c)) continue;
     for (const v of c.vehicles) for (const p of v.fp) p.tp.pose(p.F);
@@ -5305,7 +5648,7 @@ CARS.step = function (h) {
       Fg -= v.mass * 9.81 * f.y;
       const tons = v.mass / STON, k = Math.abs(v.fp[0].tp.e.curv(v.fp[0].tp.s));
       Fr += (1.3 * tons + 29 * v.axles + 0.045 * tons * vm + (i === 0 ? 0.0024 : 0.0005) * (v.area || 90) * vm * vm + 0.8 * tons * 1746.4 * k + 14 * tons * (1 - smooth(0.15, 2.0, av))) * LBF;
-      Fb += v.mass * v.brakeA * (b.BC / 64) * shoe + (v.hb ? v.mass * 9.81 * 0.1 : 0);
+      Fb += v.mass * v.brakeA * (b.BC / 64) * shoe + (v.hb ? v.mass * 9.81 * HANDBRAKE : 0);
     });
     let a;
     if (av < 0.03) {
@@ -6114,6 +6457,7 @@ function setupViewInput(canvas, camera) {
   const ptrs = new Map(); let pinch0 = 0, dist0 = 0, tapStart = null;
   canvas.addEventListener('pointerdown', e => { canvas.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY }); if (ptrs.size === 1) tapStart = { x: e.clientX, y: e.clientY, t: performance.now() }; if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinch0 = Math.hypot(a.x - b.x, a.y - b.y); dist0 = CAM.dist; tapStart = null; } });
   canvas.addEventListener('pointermove', e => {
+    if (!ptrs.size && e.pointerType === 'mouse') { CPL.point(e.clientX, e.clientY); return; }
     if (!ptrs.has(e.pointerId)) return;
     const p = ptrs.get(e.pointerId), dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
     if (tapStart && Math.hypot(e.clientX - tapStart.x, e.clientY - tapStart.y) > 8) tapStart = null;
@@ -6127,13 +6471,14 @@ function setupViewInput(canvas, camera) {
     if (tapStart && ptrs.size === 1 && performance.now() - tapStart.t < 400) handleTap(e.clientX, e.clientY, camera);
     ptrs.delete(e.pointerId); if (ptrs.size < 2) pinch0 = 0; tapStart = null;
   };
-  canvas.addEventListener('pointerup', up); canvas.addEventListener('pointercancel', e => { ptrs.delete(e.pointerId); tapStart = null; });
+  canvas.addEventListener('pointerup', up); canvas.addEventListener('pointerleave', () => CPL.point(null)); canvas.addEventListener('pointercancel', e => { ptrs.delete(e.pointerId); tapStart = null; });
   canvas.addEventListener('wheel', e => { e.preventDefault(); CAM.dist = clamp(CAM.dist * (1 + e.deltaY * 0.0012), 7, 140); }, { passive: false });
   document.addEventListener('gesturestart', e => e.preventDefault());
 }
 const _ray = new THREE.Raycaster();
 function handleTap(x, y, camera) {
   const v = new THREE.Vector2(x / innerWidth * 2 - 1, -(y / innerHeight) * 2 + 1);
+  if (CPL.tap(x, y)) return;
   _ray.setFromCamera(v, camera);
   const hits = _ray.intersectObjects(NET.switches.map(s => s.vis.hit), false);
   if (hits.length) { GAME.throwSwitch(hits[0].object.userData.sw); return; }
@@ -6420,8 +6765,8 @@ function carPanel() {
   const charging = cars.filter(v => v.brake.AR < 62).length;
   const moving = Math.abs(S.v) > 0.6;
   $('carHint').innerHTML = MP.on ? 'Car work is single player for now: couplers stay locked in a room.'
-    : !cars.length ? 'Back gently into a cut of cars to couple. They stand on Yard 3, Yard 4, the elevator track and quarry storage.'
-    : (moving ? '<b>Moving:</b> pulling a pin kicks the cars. Brake right after and they roll free.' : '<b>Stopped:</b> tap a coupler to cut cars off. They are set out and tied down where they stand.')
+    : !cars.length ? 'Back gently into a cut of cars to couple: one knuckle has to be open, or the cars are only shoved. Tap a coupler on the cars to open or close it.'
+    : (moving ? '<b>Moving:</b> pulling a pin kicks the cars. Brake right after and they roll free.' : '<b>Stopped:</b> tap a coupler here, or the cut lever on the cars themselves, to cut cars off. They are set out and tied down where they stand.')
       + (charging ? ` <b>${charging}</b> car${charging > 1 ? 's' : ''} still charging air (amber).` : '');
 }
 CARS.onChange = () => carPanel();
@@ -7085,8 +7430,14 @@ MP.contact = function (T) {
       let d = 1e9; for (let i = 0; i < rt.polyN - 1; i++) { const x = mpSegDist(end, rt.poly[i], rt.poly[i + 1]); if (x < d) d = x; }
       if (d > 1.25) continue;
       const theirs = rt.train.lead.fwd.dot(fwd) * rt.v, closing = sg * (S.v - theirs);
-      if (closing > 2.7) { GAME.derail(`Collided with ${p.st.nm}'s train at ${Math.round(closing / MPH)} mph. Back away before you try again.`, 'Collision'); return; }
-      if (closing > 0.02) { S.v = 0; S.vw = 0; toast(`Buffered up against ${p.st.nm}'s train.`, 'warn', 2600, 'mpbump'); }
+      if (closing > COUPLE_WRECK) { GAME.derail(`Collided with ${p.st.nm}'s train at ${Math.round(closing / MPH)} mph. Back away before you try again.`, 'Collision'); return; }
+      // their train is driven on their screen, so ours buffs off it: the draft gear soaks up most of the hit
+      if (closing > 0.02) {
+        S.v = theirs - sg * buffE(closing) * closing; S.vw = S.v;
+        if (closing > 0.3) sndClunk(clamp(closing / COUPLE_OK, 0.3, 1.5), 0);
+        if (closing > COUPLE_OK) JOB.note('couple', { mph: closing / MPH, shove: true });
+        toast(closing > COUPLE_HARD ? `Hit ${p.st.nm}'s train hard at ${Math.round(closing / MPH)} mph and bounced off.` : `Buffered up against ${p.st.nm}'s train.`, closing > COUPLE_HARD ? 'bad' : 'warn', 2600, 'mpbump');
+      }
     }
   }
 };
@@ -7408,8 +7759,11 @@ JOB.note = function (what, d = {}) {
   const R = JOB.run; if (!R || R.over) return;
   const now = S.time, once = (k, gap) => { if (R.ep[k] && now - R.ep[k] < gap) return false; R.ep[k] = now; return true; };
   if (what === 'couple') {
-    if (d.mph > COUPLE_HARD / MPH) JOB.dock('handling', 6, 'Hard coupling', `${Math.round(d.mph)} mph`, true);
-    else if (d.mph > COUPLE_OK / MPH) JOB.dock('handling', 3, 'Firm coupling', `${Math.round(d.mph)} mph`, true);
+    const how = d.shove ? 'shove' : 'coupling';
+    if (d.shove && !once('shove', 3)) return;
+    if (d.mph > COUPLE_DAMAGE / MPH) JOB.dock('handling', 12, 'Damaging impact', `${Math.round(d.mph)} mph`, true);
+    else if (d.mph > COUPLE_HARD / MPH) JOB.dock('handling', 6, 'Hard ' + how, `${Math.round(d.mph)} mph`, true);
+    else if (d.mph > COUPLE_OK / MPH) JOB.dock('handling', 3, 'Firm ' + how, `${Math.round(d.mph)} mph`, true);
   } else if (what === 'bumper' && once('bump', 4)) JOB.dock('handling', 3, 'Hit the bumping post', `${Math.round(d.mph)} mph`, true);
   else if (what === 'runThrough') JOB.dock('rules', 10, 'Ran through a switch', d.name, true);
   else if (what === 'turnout' && once('tov' + d.name, 20)) JOB.dock('rules', 5, 'Over turnout speed', `${d.name}, ${Math.round(d.mph)} in a ${d.limit}`, true);
@@ -8098,7 +8452,7 @@ GAME.intro = function () {
   else if (MP.on) setTimeout(() => toast(`Made up on ${GAME.spawnName}. The switches are shared with everyone in the room.`, '', 5600), 600);
   else if (WORLD.custom) setTimeout(() => toast(`On ${GAME.spawnName}. Every switch is lined straight: tap one or use Throw to change it.`, '', 5000), 600);
   else setTimeout(() => toast('Yard 2, Bellevue. The ladder is lined out to the main.', '', 5000), 600);
-  if (!MP.on && !JOB.run && CARS.cuts.length) setTimeout(() => toast('Cars are waiting on Yard 3, Yard 4, the elevator track and quarry storage. Back in gently to couple; Couplers (U) cuts them off.', '', 7000, 'carsIntro'), 11500);
+  if (!MP.on && !JOB.run && CARS.cuts.length) setTimeout(() => toast('Cars are waiting on Yard 3, Yard 4, the elevator track and quarry storage. Back in gently to couple; tap a coupler on the cars, or open Couplers (U), to work the knuckles and cut them off.', '', 7000, 'carsIntro'), 11500);
   if (GAME.train && GAME.train.diesel) setTimeout(() => toast((GAME.train.nUnits > 1 ? GAME.train.nUnits + ' units in multiple: they all answer the lead cab. ' : '') + 'Reverser to forward, engine brake off, then notch out the throttle.', '', 6500), 5200);
   else setTimeout(() => toast('Reverser forward, engine brake off, then ease the throttle open.', '', 6000), 5200);
 };
@@ -8315,6 +8669,7 @@ function renderStep(dt, T) {
   updateSwitchVisuals(dt); updateSignals();
   T.update(dt, S.theta, S.reverser);
   CARS.render();
+  CPL.frame(dt);
   MP.frame(dt);
   if (GAME.running && !S.paused && !S.derailed) MP.contact(T);
   // headlight & glows

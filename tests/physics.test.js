@@ -148,9 +148,11 @@ test('the independent brake alone holds a light engine on the grade', () => {
 });
 
 /* ------------------------------------------------------------ coupling */
-function cut(sim, n, kind = 'hopper') {
+/* a tied-down cut standing in the yard; its end knuckles are open unless closed is set */
+function cut(sim, n, kind = 'hopper', closed = false) {
   const X = h.stubConsist(Array.from({ length: n }, () => h.vehicle(kind, h.FREIGHT_CAR, 4, { brake: { AR: 0, BP: 0 } })));
   X.vehicles.forEach(v => { v.hb = true; });
+  if (!closed) { X.vehicles[0].kn[0] = sim.KN_OPEN; X.vehicles[n - 1].kn[1] = sim.KN_OPEN; }
   sim.CARS.cuts.push(X);
   return X;
 }
@@ -175,14 +177,123 @@ for (const [mph, kind, pattern] of [[3, 'good', /^Coupled to 4 cars\./], [6, 'wa
   });
 }
 
-test('hitting a cut above 11 mph is a collision, not a coupling', () => {
+test('slamming a cut at 12 mph still couples, with a damage warning and no derailment', () => {
   const sim = h.load(), T = h.train(sim, 0), S = sim.S;
   S.v = 12 * sim.MPH;
-  const X = cut(sim, 4);
-  sim.CARS.contact(T, 1, { c: X, end: 'rear', facing: true });
+  sim.CARS.contact(T, 1, { c: cut(sim, 4), end: 'rear', facing: true });
+  assert.deepEqual(sim.log.derails, []);
+  assert.equal(T.vehicles.length, 6);
+  assert.match(sim.log.toasts.at(-1).msg, /Slammed into 4 cars at 12 mph/);
+});
+
+test('only a real wreck, above 25 mph, derails', () => {
+  const sim = h.load(), T = h.train(sim, 0), S = sim.S;
+  S.v = 26 * sim.MPH;
+  sim.CARS.contact(T, 1, { c: cut(sim, 4), end: 'rear', facing: true });
   assert.equal(sim.log.derails.length, 1);
-  assert.match(sim.log.derails[0], /12 mph/);
+  assert.match(sim.log.derails[0], /26 mph/);
   assert.equal(T.vehicles.length, 2, 'cars stay uncoupled');
+});
+
+/* ------------------------------------------------------------ knuckles and shoving */
+test('two closed knuckles do not couple: a gentle shove moves the cars off together, momentum conserved', () => {
+  const sim = h.load(), T = h.train(sim, 0), S = sim.S;
+  S.v = 2 * sim.MPH;
+  const X = cut(sim, 4, 'hopper', true);
+  const mT = sim.consistMass(T), mX = sim.consistMass(X), p0 = mT * S.v;
+  sim.CARS.contact(T, 1, { c: X, end: 'rear', facing: true });
+  assert.equal(T.vehicles.length, 2, 'not coupled');
+  assert.equal(sim.CARS.cuts.length, 1);
+  assert.ok(X.rolling, 'the cut is set rolling');
+  assert.ok(Math.abs(X.v - S.v) < 1e-9, 'below a walking pace they move off together');
+  assert.ok(Math.abs(mT * S.v + mX * X.v - p0) < 1e-6 * p0, 'momentum is conserved');
+  assert.match(sim.log.toasts.at(-1).msg, /Both knuckles are closed/);
+});
+
+test('a hard shove bounces the cars ahead faster than the engine without making energy', () => {
+  const sim = h.load(), T = h.train(sim, 0), S = sim.S;
+  S.v = 7 * sim.MPH;
+  const X = cut(sim, 4, 'hopper', true);
+  const mT = sim.consistMass(T), mX = sim.consistMass(X), v0 = S.v;
+  sim.CARS.contact(T, 1, { c: X, end: 'rear', facing: true });
+  assert.ok(X.v > S.v && S.v > 0, 'cars run ahead of the still-moving engine');
+  assert.ok(Math.abs(mT * S.v + mX * X.v - mT * v0) < 1e-6 * mT * v0, 'momentum is conserved');
+  assert.ok(mT * S.v ** 2 + mX * X.v ** 2 < mT * v0 ** 2, 'the draft gear soaks up energy');
+  assert.deepEqual(sim.log.derails, []);
+});
+
+test('a cut hit from the other end is shoved the right way', () => {
+  const sim = h.load(), T = h.train(sim, 0), S = sim.S;
+  S.v = -2 * sim.MPH;
+  const X = cut(sim, 3, 'hopper', true);
+  sim.CARS.contact(T, -1, { c: X, end: 'rear', facing: true });   // backing, rear to rear: the cut runs off toward its own front
+  assert.ok(X.v > 0 && S.v < 0, `cut ${X.v}, train ${S.v}`);
+});
+
+test('backing into a tied-down cut with closed knuckles shoves it along the track and never couples or derails', () => {
+  const sim = h.load(), T = h.train(sim, 0), S = sim.S;
+  const X = cut(sim, 4, 'hopper', true);
+  Object.assign(S, { cocks: false, throttle: 0.8, reverser: 1, indH: 0, brakeH: 0.03, v: 3 * sim.MPH });
+  let xT = 0, xC = 0.5;
+  sim.CARS.limit = (k, d) => ({ d, hit: null });
+  X.move = d => { xC += d; return d; };
+  let touches = 0;
+  h.run(sim, T, 40, () => {
+    sim.CARS.step(1 / 30);
+    xT += S.v / 30;
+    if (xT >= xC) { xT = xC; touches++; sim.CARS.contact(T, 1, { c: X, end: 'rear', facing: true }); }
+    S.throttle = Math.abs(S.v) > 4 * sim.MPH ? 0 : 0.8;
+  });
+  assert.ok(touches > 10, 'engine stays against the cars');
+  between(xC - 0.5, 15, 400, 'the cut was shoved (m)');
+  assert.equal(T.vehicles.length, 2);
+  assert.deepEqual(sim.log.derails, []);
+});
+
+test('pulling the pin lifts the cut car\'s knuckle; it shoves while pressed and opens once clear', () => {
+  const sim = h.load(), T = h.train(sim, 5), S = sim.S;
+  sim.CARS.uncouple(4);
+  const c = sim.CARS.cuts[0], e = c.vehicles[0];
+  assert.equal(e.kn[0], sim.KN_LIFTED);
+  assert.equal(T.vehicles[3].kn[1], sim.KN_CLOSED, 'the train keeps its knuckle closed');
+  S.v = 1 * sim.MPH;
+  sim.CARS.contact(T, -1, { c, end: 'front', facing: true });
+  assert.equal(T.vehicles.length, 4, 'a lifted pin does not couple back while shoving');
+  // still touching: stays lifted; parted: swings open
+  sim.ctx.carIndex = () => new Map();
+  sim.ctx.carAhead = () => ({ d: 0 });
+  c.endTP = T.endTP = () => ({});
+  sim.CARS.settle();
+  assert.equal(e.kn[0], sim.KN_LIFTED);
+  sim.ctx.carAhead = () => null;
+  sim.CARS.settle();
+  assert.equal(e.kn[0], sim.KN_OPEN);
+  S.v = -1 * sim.MPH;
+  sim.CARS.contact(T, -1, { c, end: 'front', facing: true });
+  assert.equal(T.vehicles.length, 7, 'backing in again couples on the open knuckle');
+  assert.equal(e.kn[0], sim.KN_CLOSED);
+});
+
+test('working the coupler by hand opens a closed knuckle and closes an open one', () => {
+  const sim = h.load(), T = h.train(sim, 2);
+  sim.ctx.carAhead = () => null; sim.ctx.carIndex = () => new Map();
+  const v = T.vehicles[3];
+  sim.CARS.knuckle(T, 'rear');
+  assert.equal(v.kn[1], sim.KN_OPEN);
+  sim.CARS.knuckle(T, 'rear');
+  assert.equal(v.kn[1], sim.KN_CLOSED);
+});
+
+test('pulling a pin inside a standing cut splits it where it stands', () => {
+  const sim = h.load(); h.train(sim, 0);
+  const X = cut(sim, 5);
+  const [a, b, c, d, e] = X.vehicles;
+  sim.CARS.uncouple(2, X);
+  assert.deepEqual(X.vehicles, [a, b]);
+  const Y = sim.CARS.cuts.at(-1);
+  assert.deepEqual(Y.vehicles, [c, d, e]);
+  assert.ok(!Y.rolling && Y.vehicles.every(v => v.hb), 'the far half stays tied down');
+  assert.equal(c.kn[0], sim.KN_LIFTED);
 });
 
 test('backing onto a cut coupler-to-coupler turns its cars to face the train', () => {
@@ -231,6 +342,7 @@ test('pulling the pin on the move kicks the cut free, and it rolls to a stop and
   assert.match(sim.log.toasts.at(-1).msg, /rolling free at 6 mph/);
   sim.CARS.limit = (k, d) => ({ d, hit: null });   // open track ahead
   c.move = d => d;
+  sim.ctx.carAhead = () => null; sim.ctx.carIndex = () => new Map();   // nothing against the lifted knuckle
   let t = 0, dist = 0;
   for (; t < 600 && c.rolling; t += 1 / 30) { const v = c.v; sim.CARS.step(1 / 30); dist += v / 30; }
   assert.equal(c.v, 0);

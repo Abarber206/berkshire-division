@@ -79,6 +79,7 @@ function setupViewInput(canvas, camera) {
   const ptrs = new Map(); let pinch0 = 0, dist0 = 0, tapStart = null;
   canvas.addEventListener('pointerdown', e => { canvas.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY }); if (ptrs.size === 1) tapStart = { x: e.clientX, y: e.clientY, t: performance.now() }; if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinch0 = Math.hypot(a.x - b.x, a.y - b.y); dist0 = CAM.dist; tapStart = null; } });
   canvas.addEventListener('pointermove', e => {
+    if (!ptrs.size && e.pointerType === 'mouse') { CPL.point(e.clientX, e.clientY); return; }
     if (!ptrs.has(e.pointerId)) return;
     const p = ptrs.get(e.pointerId), dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
     if (tapStart && Math.hypot(e.clientX - tapStart.x, e.clientY - tapStart.y) > 8) tapStart = null;
@@ -92,13 +93,14 @@ function setupViewInput(canvas, camera) {
     if (tapStart && ptrs.size === 1 && performance.now() - tapStart.t < 400) handleTap(e.clientX, e.clientY, camera);
     ptrs.delete(e.pointerId); if (ptrs.size < 2) pinch0 = 0; tapStart = null;
   };
-  canvas.addEventListener('pointerup', up); canvas.addEventListener('pointercancel', e => { ptrs.delete(e.pointerId); tapStart = null; });
+  canvas.addEventListener('pointerup', up); canvas.addEventListener('pointerleave', () => CPL.point(null)); canvas.addEventListener('pointercancel', e => { ptrs.delete(e.pointerId); tapStart = null; });
   canvas.addEventListener('wheel', e => { e.preventDefault(); CAM.dist = clamp(CAM.dist * (1 + e.deltaY * 0.0012), 7, 140); }, { passive: false });
   document.addEventListener('gesturestart', e => e.preventDefault());
 }
 const _ray = new THREE.Raycaster();
 function handleTap(x, y, camera) {
   const v = new THREE.Vector2(x / innerWidth * 2 - 1, -(y / innerHeight) * 2 + 1);
+  if (CPL.tap(x, y)) return;
   _ray.setFromCamera(v, camera);
   const hits = _ray.intersectObjects(NET.switches.map(s => s.vis.hit), false);
   if (hits.length) { GAME.throwSwitch(hits[0].object.userData.sw); return; }
@@ -385,8 +387,8 @@ function carPanel() {
   const charging = cars.filter(v => v.brake.AR < 62).length;
   const moving = Math.abs(S.v) > 0.6;
   $('carHint').innerHTML = MP.on ? 'Car work is single player for now: couplers stay locked in a room.'
-    : !cars.length ? 'Back gently into a cut of cars to couple. They stand on Yard 3, Yard 4, the elevator track and quarry storage.'
-    : (moving ? '<b>Moving:</b> pulling a pin kicks the cars. Brake right after and they roll free.' : '<b>Stopped:</b> tap a coupler to cut cars off. They are set out and tied down where they stand.')
+    : !cars.length ? 'Back gently into a cut of cars to couple: one knuckle has to be open, or the cars are only shoved. Tap a coupler on the cars to open or close it.'
+    : (moving ? '<b>Moving:</b> pulling a pin kicks the cars. Brake right after and they roll free.' : '<b>Stopped:</b> tap a coupler here, or the cut lever on the cars themselves, to cut cars off. They are set out and tied down where they stand.')
       + (charging ? ` <b>${charging}</b> car${charging > 1 ? 's' : ''} still charging air (amber).` : '');
 }
 CARS.onChange = () => carPanel();
