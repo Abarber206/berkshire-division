@@ -77,8 +77,9 @@ function cycleCamera(to) {
 /* ---------------- pointer input on the 3D view ---------------- */
 function setupViewInput(canvas, camera) {
   const ptrs = new Map(); let pinch0 = 0, dist0 = 0, tapStart = null;
-  canvas.addEventListener('pointerdown', e => { canvas.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY }); if (ptrs.size === 1) tapStart = { x: e.clientX, y: e.clientY, t: performance.now() }; if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinch0 = Math.hypot(a.x - b.x, a.y - b.y); dist0 = CAM.dist; tapStart = null; } });
+  canvas.addEventListener('pointerdown', e => { if (PLACE.on) return; canvas.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY }); if (ptrs.size === 1) tapStart = { x: e.clientX, y: e.clientY, t: performance.now() }; if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinch0 = Math.hypot(a.x - b.x, a.y - b.y); dist0 = CAM.dist; tapStart = null; } });
   canvas.addEventListener('pointermove', e => {
+    if (PLACE.on) return;
     if (!ptrs.size && e.pointerType === 'mouse') { CPL.point(e.clientX, e.clientY); return; }
     if (!ptrs.has(e.pointerId)) return;
     const p = ptrs.get(e.pointerId), dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
@@ -90,11 +91,12 @@ function setupViewInput(canvas, camera) {
     else if (CAM.mode === 'drone') CAM.droneYaw -= dx * k;
   });
   const up = e => {
+    if (PLACE.on) { ptrs.delete(e.pointerId); tapStart = null; return; }
     if (tapStart && ptrs.size === 1 && performance.now() - tapStart.t < 400) handleTap(e.clientX, e.clientY, camera);
     ptrs.delete(e.pointerId); if (ptrs.size < 2) pinch0 = 0; tapStart = null;
   };
-  canvas.addEventListener('pointerup', up); canvas.addEventListener('pointerleave', () => CPL.point(null)); canvas.addEventListener('pointercancel', e => { ptrs.delete(e.pointerId); tapStart = null; });
-  canvas.addEventListener('wheel', e => { e.preventDefault(); CAM.dist = clamp(CAM.dist * (1 + e.deltaY * 0.0012), 7, 140); }, { passive: false });
+  canvas.addEventListener('pointerup', up); canvas.addEventListener('pointerleave', () => { if (!PLACE.on) CPL.point(null); }); canvas.addEventListener('pointercancel', e => { ptrs.delete(e.pointerId); tapStart = null; });
+  canvas.addEventListener('wheel', e => { if (PLACE.on) return; e.preventDefault(); CAM.dist = clamp(CAM.dist * (1 + e.deltaY * 0.0012), 7, 140); }, { passive: false });
   document.addEventListener('gesturestart', e => e.preventDefault());
 }
 const _ray = new THREE.Raycaster();
@@ -176,6 +178,7 @@ function setupButtons() {
   const keys = {};
   addEventListener('keydown', e => {
     if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+    if (PLACE.on) { PLACE.key(e); return; }
     if (e.repeat && !['KeyW', 'KeyS', 'KeyQ', 'KeyE', 'KeyZ', 'KeyC', 'KeyA', 'KeyD', 'ArrowUp', 'ArrowDown'].includes(e.code)) return;
     if ($('menu').hidden === false) return;
     keys[e.code] = true;
@@ -200,6 +203,7 @@ function setupButtons() {
       case 'KeyL': if (GAME.isDiesel()) break; GAME.manualFire('blower'); S.blower = S.blower > 0.3 ? 0 : 0.65; break;
       case 'KeyT': GAME.throwAhead(); break;
       case 'KeyU': carPanelToggle(); break;
+      case 'KeyG': PLACE.enter(); break;
       case 'KeyM': MAP.visible ? MAP.close() : MAP.open(); break;
       case 'KeyP': GAME.pause(!S.paused); break;
       case 'Digit1': cycleCamera('chase'); break; case 'Digit2': cycleCamera('cab'); break; case 'Digit3': cycleCamera('side'); break; case 'Digit4': cycleCamera('drone'); break; case 'Digit5': cycleCamera('rear'); break;

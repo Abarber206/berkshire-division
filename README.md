@@ -49,6 +49,8 @@ Rooms connect through free public MQTT relay servers (HiveMQ and EMQX), so there
 
 On a phone, use the levers and buttons on screen. Tap a switch stand, the switch card's **Throw** button, or a switch on the map to throw it. Tap a coupler or its cut lever on the cars to open or close the knuckle, or to pull the pin between two cars.
 
+**Placing engines and cars.** The track button in the top right (or **G**) stops the clock and frees the camera. Pick a car (box, hopper, tank, gon, caboose, coach) or an engine and it follows the pointer along the nearest track: green means it fits, brass means it will couple to the cars or train it touches (a coupler within 5 m slides up to meet them), amber means it will stand foul of a switch, and red means something is in the way or the track is too short. Click to set it down (on a phone, tap the track, then tap it again or press **Place**). Click any car to pick it up, or your engine to move the whole train; **Turn** (F) swaps its ends, **Remove** (Delete) takes a car away, and **Put back** (Esc) returns it. A car set across points lined the other way throws the switch for it. Placed cars are ordinary cuts: they couple, get shoved and hold switches like the yard cars. Placing is single player and off during a job.
+
 | Key | Action |
 | --- | --- |
 | W / S | Throttle open / close (diesel: notch up / down) |
@@ -62,6 +64,7 @@ On a phone, use the levers and buttons on screen. Tap a switch stand, the switch
 | I, F, L | Injector (diesel: engine start/stop), stoker, blower |
 | 1–5 | Cameras |
 | M / P | Map / pause |
+| G | Place engines and cars (then drag or arrows to pan, Q / E or right-drag to turn the view, scroll to zoom, 1–6 for a car, F turn, Delete remove, Esc put back or leave) |
 
 ## Building
 
@@ -69,4 +72,4 @@ The game is one file, `index.html`. The source lives in `src/`; run `./build.sh`
 
 ## Tests
 
-`node --test tests/*.test.js` (Node 18 or newer, no install) loads the simulation source headless and checks the boiler (starting tractive effort, slipping and sand, steaming under load, low water and the fusible plug, safety valves), the air brake (charging, service and emergency propagation, release, stopping distances), grades, and car work (coupling speeds, knuckles that must be open to couple, shoving cars with momentum conserved, turned cuts, set-outs, kicks, splitting cuts and tie-downs). GitHub Actions runs the tests and `./build.sh` on every push and pull request, and fails if the committed `index.html` doesn't match a fresh build.
+`node --test tests/*.test.js` (Node 18 or newer, no install) loads the simulation source headless and checks the boiler (starting tractive effort, slipping and sand, steaming under load, low water and the fusible plug, safety valves), the air brake (charging, service and emergency propagation, release, stopping distances), grades, and car work (coupling speeds, knuckles that must be open to couple, shoving cars with momentum conserved, turned cuts, set-outs, kicks, splitting cuts and tie-downs), and placing by hand (snapping to couple, overlaps, the end of the track, switches under a car, AI trains). GitHub Actions runs the tests and `./build.sh` on every push and pull request, and fails if the committed `index.html` doesn't match a fresh build.
