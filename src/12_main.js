@@ -2,7 +2,7 @@
    Game: boot, world loading, main loop, rules, HUD
    ========================================================================== */
 const GAME = {
-  settings: { loco: '765', consist: 'passenger', time: 'morning', weather: 'clear', fire: 'auto', units: 1, livery: 'ss', mix: false, finish: 'standard', custom: { body: 0x2c5f8a, roof: 0x24384a, accent: 0xf0f0ea, letter: 0xf0f0ea, rail: 0xf0f0ea }, number: 4401 },
+  settings: { loco: '765', consist: 'passenger', time: 'morning', weather: 'clear', fire: 'auto', units: 1, livery: 'ss', mix: false, finish: 'standard', job: '', custom: { body: 0x2c5f8a, roof: 0x24384a, accent: 0xf0f0ea, letter: 0xf0f0ea, rail: 0xf0f0ea }, number: 4401 },
   train: null, running: false, ready: false, stats: { runThrough: 0 },
   events: {}, stopped: 0, lastStation: null, filling: null,
 };
@@ -89,11 +89,12 @@ function resetState() {
 function makeTrain() {
   CARS.clear(GAME.train);
   if (GAME.train) GAME.train.dispose();
-  const t = new Train(scene, GAME.settings.loco, GAME.settings.consist, dieselOpts());
+  const t = new Train(scene, GAME.settings.loco, JOB.consist(), dieselOpts());
   GAME.train = t;
   if (WORLD.custom) { placeOnLayout(t); return; }
-  let line = ROUTE.lines['Yard 2'], sFront = line.len - 175;
+  let line = ROUTE.lines['Yard 2'], sFront = line.len - 175, o = 1;
   GAME.spawnName = 'Yard 2, Bellevue';
+  const job = JOB.wanted(), sp = job && JOB.spawn(job);
   if (MP.on) {
     // in a room the switches belong to everyone, so leave them alone and find an empty track
     const slot = MP.spawnSlot(t);
@@ -102,11 +103,13 @@ function makeTrain() {
   } else {
     const sw = name => NET.switches.find(s => s.name === name);
     for (const s of NET.switches) { s.state = 0; s.anim = 0; }
-    sw('Yard ladder E2').state = sw('Yard ladder E2').anim = 1;
-    sw('Bellevue East').state = sw('Bellevue East').anim = 1;
+    // a job says where its train is made up and how the switches are lined
+    for (const n of sp ? sp.lined : ['Yard ladder E2', 'Bellevue East']) sw(n).state = sw(n).anim = 1;
+    if (sp) { line = sp.line; sFront = sp.s; o = sp.o; GAME.spawnName = sp.name; }
   }
   const loc = line.locate(sFront);
-  t.place(new TrackPos(loc.edge, loc.s, 1));
+  t.place(new TrackPos(loc.edge, loc.s, o));
+  if (sp && sp.cabAt) JOB.alignCab(t, sp.cabAt);
   finishTrain(t);
 }
 /* custom layout: the start marker, slid forward until the whole train is on the rails */
@@ -162,10 +165,10 @@ function applyLiveriesLive() {
   const o = dieselOpts();
   t.units.forEach((m, u) => { const lv = dieselLiveryFor(o, u); applyLivery(m, lv, (o.number || lv.num) + u); });
 }
-const SAVE_KEYS = ['loco', 'consist', 'time', 'weather', 'fire', 'units', 'livery', 'mix', 'finish', 'custom', 'number'];
+const SAVE_KEYS = ['job', 'loco', 'consist', 'time', 'weather', 'fire', 'units', 'livery', 'mix', 'finish', 'custom', 'number'];
 function saveSettings() { try { const o = {}; for (const k of SAVE_KEYS) o[k] = GAME.settings[k]; localStorage.setItem('bd_settings', JSON.stringify(o)); } catch (e) {} }
 function loadSettings() { try { const o = JSON.parse(localStorage.getItem('bd_settings') || 'null'); if (o) for (const k of SAVE_KEYS) if (o[k] !== undefined) GAME.settings[k] = o[k]; } catch (e) {} if (!LOCO_SPEC[GAME.settings.loco]) GAME.settings.loco = '765'; if (!LIVERIES[GAME.settings.livery]) GAME.settings.livery = 'ss'; }
-GAME.needNewTrain = function () { const t = GAME.train, g = GAME.settings; return !t || MP.needSpawn || t.locoKey !== g.loco || t.consistKey !== g.consist || (t.diesel && t.nUnits !== (+g.units || 1)); };
+GAME.needNewTrain = function () { const t = GAME.train, g = GAME.settings, j = JOB.wanted(); return !t || MP.needSpawn || t.locoKey !== g.loco || t.consistKey !== JOB.consist() || (j ? j.id : '') !== JOB.activeId() || (t.diesel && t.nUnits !== (+g.units || 1)); };
 function buildWhistleIfReady() { if (!AU.on) return; buildWhistle(WHISTLES[LOCO_SPEC[GAME.settings.loco].whistle]); }
 
 /* ---------------- menu ---------------- */
@@ -203,11 +206,12 @@ function buildMenu() {
   };
   for (const id of ['cBody', 'cAccent', 'cLetter', 'cNum']) $(id).addEventListener('input', onCustom);
   refreshMenuGroups();
-  segButtons('optTrain', CONSISTS, 'consist', () => { startLabel(); saveSettings(); });
+  segButtons('optTrain', Object.fromEntries(Object.entries(CONSISTS).filter(([, c]) => !c.hidden)), 'consist', () => { startLabel(); saveSettings(); });
   segButtons('optTime', PRESETS, 'time', k => { if (GAME.ready) applyLook(k, GAME.settings.weather, renderer, scene); });
   segButtons('optWeather', WEATHER, 'weather', k => { if (GAME.ready) { applyLook(GAME.settings.time, k, renderer, scene); FX.snow.visible = SKY.snow; } });
   segButtons('optFire', { auto: { name: 'Fireman', sub: 'Stoker & water handled' }, hand: { name: 'Hand fired', sub: 'You run the boiler' } }, 'fire', k => { S.autoFire = k === 'auto'; GAME.refreshKeys(); saveSettings(); });
   specGrid();
+  jobSetup();
   $('btnStart').addEventListener('click', () => GAME.start());
   $('bigRetry').addEventListener('click', () => GAME.rerail());
   $('bigMenu').addEventListener('click', () => { $('bigMsg').hidden = true; GAME.pause(true); });
@@ -240,8 +244,11 @@ GAME.start = function () {
   if (wait > 0) { $('btnStart').disabled = true; $('btnStart').textContent = 'Joining…'; setTimeout(() => { $('btnStart').disabled = false; GAME.start(); }, wait); return; }
   audioInit(); buildWhistleIfReady();
   if (!GAME.running || GAME.needNewTrain()) {
-    makeTrain(); GAME.train.consistKey = GAME.settings.consist;
-    if (GAME.running) toast(`New train made up on ${WORLD.custom ? GAME.spawnName : 'Yard 2'}.`, 'good');
+    const job = JOB.wanted();
+    if (JOB.run) JOB.end();
+    makeTrain();
+    if (job) JOB.begin(job);
+    else if (GAME.running) toast(`New train made up on ${WORLD.custom ? GAME.spawnName : 'Yard 2'}.`, 'good');
     GAME.intro();
   }
   GAME.running = true; S.paused = false; S.autoFire = GAME.settings.fire === 'auto';
@@ -253,10 +260,11 @@ GAME.start = function () {
   try { navigator.wakeLock && navigator.wakeLock.request('screen').catch(() => {}); } catch (e) {}
 };
 GAME.intro = function () {
-  if (MP.on) setTimeout(() => toast(`Made up on ${GAME.spawnName}. The switches are shared with everyone in the room.`, '', 5600), 600);
+  if (JOB.run) JOB.intro();
+  else if (MP.on) setTimeout(() => toast(`Made up on ${GAME.spawnName}. The switches are shared with everyone in the room.`, '', 5600), 600);
   else if (WORLD.custom) setTimeout(() => toast(`On ${GAME.spawnName}. Every switch is lined straight: tap one or use Throw to change it.`, '', 5000), 600);
   else setTimeout(() => toast('Yard 2, Bellevue. The ladder is lined out to the main.', '', 5000), 600);
-  if (!MP.on && CARS.cuts.length) setTimeout(() => toast('Cars are waiting on Yard 3, Yard 4, the elevator track and quarry storage. Back in gently to couple; Couplers (U) cuts them off.', '', 7000, 'carsIntro'), 11500);
+  if (!MP.on && !JOB.run && CARS.cuts.length) setTimeout(() => toast('Cars are waiting on Yard 3, Yard 4, the elevator track and quarry storage. Back in gently to couple; Couplers (U) cuts them off.', '', 7000, 'carsIntro'), 11500);
   if (GAME.train && GAME.train.diesel) setTimeout(() => toast((GAME.train.nUnits > 1 ? GAME.train.nUnits + ' units in multiple: they all answer the lead cab. ' : '') + 'Reverser to forward, engine brake off, then notch out the throttle.', '', 6500), 5200);
   else setTimeout(() => toast('Reverser forward, engine brake off, then ease the throttle open.', '', 6000), 5200);
 };
@@ -264,7 +272,7 @@ GAME.pause = function (p) {
   S.paused = p;
   if (p) { $('menu').hidden = false; startLabel(); }
 };
-GAME.fail = function (title, body) { $('bigTitle').textContent = title; $('bigBody').textContent = body; $('bigMsg').hidden = false; S.throttle = 0; };
+GAME.fail = function (title, body) { S.throttle = 0; if (JOB.fail(title, body)) return; $('bigTitle').textContent = title; $('bigBody').textContent = body; $('bigMsg').hidden = false; };
 GAME.derail = function (why, title = 'Derailed') {
   if (S.derailed) return;
   S.derailed = true; S.v = 0; S.vw = 0; S.throttle = 0;
@@ -363,6 +371,7 @@ function updateHUD(dt) {
   if (gaugeT > 0.066) { gaugeT = 0; if ($('gaugeWrap').classList.contains('min')) { const m = $('gaugeMini'); const bp = Math.round(GAME.train.lead.brake.BP); const t = GAME.isDiesel() ? `<span><b>${S.notch ? 'N' + S.notch : 'IDLE'}</b></span><span>${S.DBF > 1000 ? 'DB' : 'TE'} <b>${Math.round((S.DBF > 1000 ? S.DBF * (GAME.train.nUnits || 1) : Math.abs(S.TE)) / LBF / 1000)}k</b></span><span>BP <b>${bp}</b></span>` : `<span><b>${Math.round(S.P)}</b> psi</span><span>glass <b>${Math.round(clamp((S.W + 0.1) / 1.2, 0, 1) * 100)}%</b></span><span>BP <b>${bp}</b></span>`; if (m.innerHTML !== t) m.innerHTML = t; } else drawGauges(); }
   if (mapT > 0.18) { mapT = 0; drawMinimap(); if (MAP.visible) MAP.draw(); }
   if (hudT < 0.1) return; hudT = 0;
+  JOB.hud();
   const mph = Math.abs(S.v) / MPH;
   $('speedNum').firstChild.textContent = Math.round(mph);
   const lb = $('limitBadge'); lb.textContent = S.limit; lb.classList.toggle('over', mph > S.limit + 2);
@@ -437,13 +446,13 @@ function simStep(dt, T) {
             const sw = node.sw; if (!sw) return;
             const div = from === sw.legs[1].edge || to === sw.legs[1].edge;
             if (div && mph > sw.divLimit * 1.75) GAME.derail(`Took the ${sw.name} turnout at ${Math.round(mph)} mph. The diverging route is good for ${sw.divLimit} mph.`);
-            else if (div && mph > sw.divLimit + 4) toast(`Over turnout speed at ${sw.name}: ${Math.round(mph)} mph (limit ${sw.divLimit}).`, 'warn', 3000, 'tov');
+            else if (div && mph > sw.divLimit + 4) { toast(`Over turnout speed at ${sw.name}: ${Math.round(mph)} mph (limit ${sw.divLimit}).`, 'warn', 3000, 'tov'); JOB.note('turnout', { name: sw.name, mph, limit: sw.divLimit }); }
           },
-          onRunThrough: sw => { GAME.stats.runThrough++; MP.noteThrow(sw); toast(`Ran through ${sw.name}. The points were forced over.`, 'bad', 3800, 'rt' + sw.id); },
+          onRunThrough: sw => { GAME.stats.runThrough++; MP.noteThrow(sw); JOB.note('runThrough', { name: sw.name }); toast(`Ran through ${sw.name}. The points were forced over.`, 'bad', 3800, 'rt' + sw.id); },
           onBlocked: () => {
             const mph2 = Math.abs(S.v) / MPH;
             if (mph2 > 7) GAME.derail(`Hit the bumping post at ${Math.round(mph2)} mph. Bumpers are rated for a gentle shove, about 5 mph.`, 'Collision');
-            else { if (mph2 > 1) sndClunk(1, 0); S.v = 0; S.vw = 0; toast('Stopped against the bumping post.', 'warn', 2500, 'bump'); }
+            else { if (mph2 > 1) { sndClunk(1, 0); JOB.note('bumper', { mph: mph2 }); } S.v = 0; S.vw = 0; toast('Stopped against the bumping post.', 'warn', 2500, 'bump'); }
           },
         });
         S.odo += Math.abs(moved);
@@ -454,13 +463,14 @@ function simStep(dt, T) {
     const lead = T.lead.leadPt.tp, k = Math.abs(lead.e.curv(lead.s));
     const lat = S.v * S.v * k;
     if (lat > 2.7) GAME.derail(`Overturned on the curve at ${Math.round(Math.abs(S.v) / MPH)} mph.`);
-    else if (lat > 1.75) toast('Too fast for this curve!', 'warn', 2000, 'curve');
+    else if (lat > 1.75) { toast('Too fast for this curve!', 'warn', 2000, 'curve'); JOB.note('curve', { mph: Math.abs(S.v) / MPH }); }
     // filling at water column / coal chute
     if (GAME.filling) {
       if (!nearbyService()) GAME.filling = null;
       else if (GAME.filling === 'water') { S.water = Math.min(83280, S.water + 240 * dt); if (S.water >= 83279) { GAME.filling = null; toast('Tender full: 22,000 gallons.', 'good'); } }
       else { S.coal = Math.min(19958, S.coal + 300 * dt); if (S.coal >= 19957) { GAME.filling = null; toast('Coal bunker full: 22 tons.', 'good'); } }
     }
+    JOB.tick(dt);
     // station stop detection
     if (Math.abs(S.v) < 0.05) { stopT += dt; if (stopT > 1.2) stationStop(T); } else stopT = 0;
     // start-up slack
@@ -522,6 +532,7 @@ function renderStep(dt, T) {
 }
 
 function stationStop(T) {
+  if (JOB.run && !JOB.run.over) return;   // a job calls its own stops
   const cab = T.worldOf(new THREE.Vector3(T.loco.cabEye.x, 0, 0));
   for (const st of ROUTE.stations) {
     const d = cab.distanceTo(st.p); if (d > 120) continue;

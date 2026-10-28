@@ -5,6 +5,8 @@ const CONSISTS = {
   passenger: { name: 'Passenger', sub: '8 heavyweights · 660 tons', build: () => { const a = []; for (let i = 0; i < 7; i++) a.push(['coach', 0]); a.push(['coach', 1]); return a; } },
   freight: { name: 'Manifest freight', sub: '36 cars · 2,700 tons', build: (r) => { const a = []; const t = ['box', 'box', 'hopper', 'hopper', 'tank', 'gon', 'box', 'hopper']; for (let i = 0; i < 35; i++) a.push([t[(r() * t.length) | 0], 0]); a.push(['caboose', 0]); return a; } },
   light: { name: 'Light engine', sub: 'Pick up cars in the yard', build: () => [] },
+  // made up for the BD-2 time freight job; not offered in the menu
+  timefreight: { name: 'Time freight', sub: '18 cars · 1,400 tons', hidden: true, build: () => ['box', 'box', 'tank', 'box', 'hopper', 'box', 'gon', 'box', 'box', 'tank', 'tank', 'box', 'hopper', 'hopper', 'box', 'gon', 'box', 'box', 'caboose'].map(t => [t, 0]) },
 };
 
 /* A string of coupled vehicles following the track: the player's train, or a cut of cars standing in

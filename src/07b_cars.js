@@ -161,6 +161,7 @@ CARS.contact = function (A, dir, hit) {
   const gain = hear ? clamp(closing / COUPLE_OK, 0.25, 1.6) / (1 + Math.pow(hear.distanceTo(camera.position) / 30, 1.3)) : 0;
   if (!hit.facing) {
     // the side of cars standing foul of the route
+    if (ours) JOB.note('foul');
     if (ours && closing > 2.2) { GAME.derail(`Sideswiped cars standing foul of the switch at ${mph} mph. Leave cars clear of the points before you line a route past them.`, 'Collision'); return; }
     sndClunk(gain, 0);
     for (const c of [A, B]) setVel(c, 0);
@@ -175,6 +176,7 @@ CARS.contact = function (A, dir, hit) {
   const K = B === T ? B : A, X = K === A ? B : A;
   const kEnd = K === A ? aEnd : hit.end, xEnd = K === A ? hit.end : aEnd;
   const n = absorb(K, kEnd, X, xEnd);
+  if (closing > COUPLE_OK) JOB.note('couple', { mph: closing / MPH });
   if (!ours) { toast(`A rolling cut coupled into the cars on ${K.home || 'the track'}${closing > COUPLE_HARD ? `, hard, at ${mph} mph` : ''}.`, closing > COUPLE_HARD ? 'warn' : '', 2600, 'cc'); return; }
   const re = CARS.cutFrom === X && performance.now() - CARS.cutAt < 4000;
   const what = `${n} car${n > 1 ? 's' : ''}`;
