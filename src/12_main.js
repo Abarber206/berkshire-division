@@ -59,7 +59,7 @@ async function loadWorld() {
   prog(0.86, 'Planting woodlots…'); await frame();
   buildTrees(scene); finalizeScenery(scene);
   prog(0.92, 'Lighting the fire…'); await frame();
-  buildSky(scene, renderer); buildFX(scene);
+  buildSky(scene, renderer); buildFX(scene); buildSparks(scene);
   for (const st of ROUTE.stations) { st.edge.pose(st.s, FR); st.p = FR.p.clone(); }
   for (const w of ROUTE.water) { w.edge.pose(w.s, FR); w.p = FR.p.clone(); }
   if (ROUTE.coal) { const c = ROUTE.coal; c.edge.pose(c.s, FR); c.p = FR.p.clone(); }
@@ -80,7 +80,7 @@ async function loadWorld() {
 
 function resetState() {
   Object.assign(S, { throttle: 0, reverser: 0, brakeH: 0.12, indH: 0.6, sander: false, cocks: true, bell: false, light: SKY.night ? 2 : 1, injector: false, blower: 0.35, stoker: 0.45, whistle: 0,
-    v: 0, vw: 0, slip: false, theta: 0, odo: 0, P: 238, Psc: 0, W: 0.62, fire: 0.55, coal: 19958, water: 83280, sand: 1800, MR: 140, ER: 90, pumping: false,
+    v: 0, vw: 0, slip: false, slide: false, slideN: 0, theta: 0, odo: 0, P: 238, Psc: 0, W: 0.62, fire: 0.55, coal: 19958, water: 83280, sand: 1800, MR: 140, ER: 90, pumping: false,
     safety: false, lowWater: false, priming: false, dead: false, derailed: false, paused: false });
   S.autoFire = GAME.settings.fire === 'auto';
   Object.assign(S, { notch: 0, dyn: 0, dbLoad: 0, DBF: 0, rpm: 300, engineRun: true, crank: 0, load: 0, fuel: 18927, turbo: 0.15, ditch: true, ditchFlash: 0, slipCtl: false, amps: 0 });
@@ -622,6 +622,7 @@ function renderStep(dt, T) {
   const pb = $('btnWhistle').querySelector('.pull i'), pw = Math.round(S.whistle * 100) + '%'; if (pb.style.width !== pw) pb.style.width = pw;
   T.cabLight.intensity = night ? 0.6 : 0;
   // camera
+  slideFeel(dt, T);
   if (PLACE.on) PLACE.camera(camera, dt); else updateCamera(camera, MP.view() || T, dt);
   if (CAM.shakeHit) { camera.position.x += (Math.random() - 0.5) * CAM.shakeHit; camera.position.y += (Math.random() - 0.5) * CAM.shakeHit; CAM.shakeHit = Math.max(0, CAM.shakeHit - dt * 1.5); }
   if (!GAME.running) { // attract mode orbit while the menu is up
@@ -639,6 +640,7 @@ function renderStep(dt, T) {
   effectsAndSound(dt, T);
   MP.post(dt);
   updateFX(dt, camera);
+  updateSparks(dt, T, camera);
   if (GAME.running) updateHUD(dt);
   renderer.render(scene, camera);
 }

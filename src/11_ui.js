@@ -12,17 +12,18 @@ function updateCamera(cam, train, dt) {
   if (CAM.mode === 'cab') {
     cam.near = 0.05;
     const eye = L.cabEye.clone().applyMatrix4(body.matrixWorld);
-    const sp = Math.abs(S.v);
-    CAM.shake += dt * (7 + sp * 0.6);
-    const jit = Math.min(1, sp / 25) * 0.012;
-    eye.y += Math.sin(CAM.shake * 1.7) * jit + Math.sin(CAM.shake * 3.1) * jit * 0.5;
+    // the ride: a slow bob and a gentle rock on the springs, a little livelier with speed but never a buzz
+    const ride = Math.min(1, Math.abs(S.v) / 20) * (0.6 + 0.4 * Math.min(1, Math.abs(S.v) / 35));
+    CAM.shake += dt; const t = CAM.shake * Math.PI * 2;
+    eye.y += ride * 0.006 * (Math.sin(t * 1.1) * 0.65 + Math.sin(t * 1.9 + 1) * 0.35);
     cam.position.copy(eye);
     _cq.setFromRotationMatrix(_cm.extractRotation(body.matrixWorld));
-    _ce.set(CAM.cabPitch + Math.sin(CAM.shake * 0.9) * jit * 0.4, -Math.PI / 2 + CAM.cabYaw, 0, 'YXZ');
+    _ce.set(CAM.cabPitch + ride * 0.0012 * Math.sin(t * 0.8 + 2), -Math.PI / 2 + CAM.cabYaw, ride * 0.003 * Math.sin(t * 0.55), 'YXZ');
     cam.quaternion.copy(_cq).multiply(new THREE.Quaternion().setFromEuler(_ce));
+    slideCam(cam, train, true);
     fov = 62;
     if (cam.aspect < 1) fov = Math.min(80, fov * 1.25);
-  } else fov = outsideCamera(cam, train, dt);
+  } else { fov = outsideCamera(cam, train, dt); if (train === GAME.train) slideCam(cam, train, false); }
   CAM.fov += (fov - CAM.fov) * (CAM.fovCut ? 1 : Math.min(1, dt * 4)); CAM.fovCut = false;
   cam.fov = CAM.fov; cam.updateProjectionMatrix();
 }

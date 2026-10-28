@@ -221,11 +221,15 @@ function soundMix(dt, T, fx, tv) {
   // flange squeal on curves, brake shoe squeal at low speed
   const lp0 = T.lead.leadPt.tp, kk = Math.abs(lp0.e.curv(lp0.s));
   const gw = 1 / (1 + Math.pow(cp.distanceTo(T.lead.pos) / 30, 1.3));
-  const fl = kk > 1 / 320 && v > 1.5 ? Math.min(1, v / 8) * clamp((kk - 1 / 320) * 900, 0.3, 1) : 0;
+  let fl = kk > 1 / 320 && v > 1.5 ? Math.min(1, v / 8) * clamp((kk - 1 / 320) * 900, 0.3, 1) : 0;
+  if (near.slide && v > 0.3) fl = Math.max(fl, 0.8 * Math.min(1, v / 4));
   duo(Vv.flange, AU.flange, 0.05 * fl * gw, 0.5 * fl, clamp(0.85 + v / 60, 0.85, 1.25), 0.25);
   const bcAvg = T.vehicles.reduce((a, x) => a + x.brake.BC, 0) / T.vehicles.length;
-  const sq = bcAvg > 15 && v > 0.3 && v < 9 ? clamp((bcAvg - 15) / 30, 0.3, 1) * (v < 3 ? v / 3 : 1) : 0;
-  duo(Vv.squeal, AU.bsq, sq ? 0.035 * gw : 0, 0.35 * sq, clamp(1.15 - v / 40, 0.9, 1.15), 0.15);
+  let sq = bcAvg > 15 && v > 0.3 && v < 9 ? clamp((bcAvg - 15) / 30, 0.3, 1) * (v < 3 ? v / 3 : 1) : 0;
+  // locked wheels skidding: a hard screech from the rail, loudest from the nearest sliding wheels, plus their scream on the flange
+  const sk = near.slide && v > 0.3 ? Math.min(1, v / 4) : 0;
+  sq = Math.max(sq, sk * 1.6);
+  duo(Vv.squeal, AU.bsq, sq ? 0.035 * Math.min(1, sq) * gw : 0, 0.35 * sq, clamp(1.15 - v / 40, 0.9, 1.15) * (sk ? 0.92 + 0.08 * Math.sin(now * 7) : 1), sk ? 0.08 : 0.15);
   // whistle or horn
   whistleMix(T, tv, inCab);
   // rail joints under nearby trucks

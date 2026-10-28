@@ -141,6 +141,8 @@ class Consist {
     for (let i = 1; i < order.length; i++) order[i].tp.advance(actual, fctx);
     if (left !== 0 && ctx.onBlocked) ctx.onBlocked(left);
     this.dist += actual;
+    // locked wheels slide along without turning
+    for (const v of this.vehicles) if (v.slide) v.roll = (v.roll || 0) - actual * (v.flip ? -1 : 1);
     return actual;
   }
   update(dt, theta = 0, rev = 0) {
@@ -184,9 +186,9 @@ class Consist {
       } else if (v.kind === 'loco') {
         const lf = v.leadPt.F;
         const lt = this.loco.leadTruck; lt.matrixAutoUpdate = false; frameMatrix(lf, lt.matrix); if (D) lt.matrix.premultiply(D); lt.matrixWorldNeedsUpdate = true;
-        this.loco.parts.lead.rotation.z = -this.dist / (this.loco.rL || LG.rL);
-        this.loco.parts.trail[0].rotation.z = -this.dist / LG.rT1;
-        this.loco.parts.trail[1].rotation.z = -this.dist / LG.rT2;
+        this.loco.parts.lead.rotation.z = -roll / (this.loco.rL || LG.rL);
+        this.loco.parts.trail[0].rotation.z = -roll / LG.rT1;
+        this.loco.parts.trail[1].rotation.z = -roll / LG.rT2;
         animateBerkshire(this.loco, theta, rev);
       }
     }
@@ -215,7 +217,7 @@ class Consist {
     });
   }
   /* hand vehicles over to another consist without a jump in their wheel rotation */
-  release(v) { v.roll = this.dist * (v.flip ? -1 : 1) + (v.roll || 0); }
+  release(v) { v.slide = false; v.roll = this.dist * (v.flip ? -1 : 1) + (v.roll || 0); }
   adopt(v) { v.roll -= this.dist * (v.flip ? -1 : 1); }
   setVisible(on) {
     for (const x of this.vehicles) x.root.visible = on;

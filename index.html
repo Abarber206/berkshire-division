@@ -7197,6 +7197,8 @@ class Consist {
     for (let i = 1; i < order.length; i++) order[i].tp.advance(actual, fctx);
     if (left !== 0 && ctx.onBlocked) ctx.onBlocked(left);
     this.dist += actual;
+    // locked wheels slide along without turning
+    for (const v of this.vehicles) if (v.slide) v.roll = (v.roll || 0) - actual * (v.flip ? -1 : 1);
     return actual;
   }
   update(dt, theta = 0, rev = 0) {
@@ -7240,9 +7242,9 @@ class Consist {
       } else if (v.kind === 'loco') {
         const lf = v.leadPt.F;
         const lt = this.loco.leadTruck; lt.matrixAutoUpdate = false; frameMatrix(lf, lt.matrix); if (D) lt.matrix.premultiply(D); lt.matrixWorldNeedsUpdate = true;
-        this.loco.parts.lead.rotation.z = -this.dist / (this.loco.rL || LG.rL);
-        this.loco.parts.trail[0].rotation.z = -this.dist / LG.rT1;
-        this.loco.parts.trail[1].rotation.z = -this.dist / LG.rT2;
+        this.loco.parts.lead.rotation.z = -roll / (this.loco.rL || LG.rL);
+        this.loco.parts.trail[0].rotation.z = -roll / LG.rT1;
+        this.loco.parts.trail[1].rotation.z = -roll / LG.rT2;
         animateBerkshire(this.loco, theta, rev);
       }
     }
@@ -7271,7 +7273,7 @@ class Consist {
     });
   }
   /* hand vehicles over to another consist without a jump in their wheel rotation */
-  release(v) { v.roll = this.dist * (v.flip ? -1 : 1) + (v.roll || 0); }
+  release(v) { v.slide = false; v.roll = this.dist * (v.flip ? -1 : 1) + (v.roll || 0); }
   adopt(v) { v.roll -= this.dist * (v.flip ? -1 : 1); }
   setVisible(on) {
     for (const x of this.vehicles) x.root.visible = on;
@@ -8000,7 +8002,7 @@ PLACE.lineOf = function (tp) {
 const S = {
   throttle: 0, reverser: 0, brakeH: 0.12, indH: 0.6,
   sander: false, cocks: true, bell: false, light: 1, injector: false, blower: 0.35, stoker: 0.45, whistle: 0, autoFire: true,
-  v: 0, vw: 0, slip: false, theta: 0, odo: 0,
+  v: 0, vw: 0, slip: false, slide: false, slideN: 0, theta: 0, odo: 0,
   P: 238, Psc: 0, W: 0.62, fire: 0.55, coal: 19958, water: 83280, sand: 1800,
   MR: 140, ER: 90, pumping: false, bailoff: false,
   safety: false, lowWater: false, priming: false,
@@ -8015,6 +8017,11 @@ const DRIVER_C = Math.PI * 2 * LG.rD, VCYL = Math.PI / 4 * 0.635 * 0.635 * 0.864
 function brakeZone(h) {
   if (h < 0.06) return 'REL'; if (h < 0.18) return 'RUN'; if (h < 0.28) return 'LAP'; if (h < 0.9) return 'SRV'; return 'EMG';
 }
+/* Wheels sliding. A steam-era train has no wheel slide protection: an emergency application at speed locks the
+   wheels and they skid on the rail until the train stops or the brakes come off. A locked wheel is held by the
+   rail's sliding friction instead of the shoe, steel on steel, which falls off as the contact heats at speed. */
+const SLIDE_ON = 2.0, SLIDE_BC = 45, SLIDE_OFF_BC = 25;   // m/s to start a slide; cylinder psi to lock / to roll again
+const slideMu = v => 0.065 + 0.055 * (1 - smooth(0, 25, v));
 function brakeLabel(h) { const z = brakeZone(h); if (z === 'SRV') return '−' + Math.round(6 + 20 * (h - 0.28) / 0.62) + ' psi'; return { REL: 'REL', RUN: 'RUN', LAP: 'LAP', EMG: 'EMERG' }[z]; }
 
 function physicsStep(dt, train) {
@@ -8133,6 +8140,8 @@ function physicsStep(dt, train) {
     Frail = clamp(TEcmd, -lim, lim);
     if (S.slipCtl) { Frail *= 0.92 + 0.05 * Math.sin(S.time * 11); GAME.event('slipCtl'); }
     S.slip = false; S.vw = S.v; S.mu = muD;
+  } else if (S.slide) {
+    S.slip = false; Frail = 0; S.vw = 0;   // drivers locked by the brakes: the cylinders can't turn them
   } else {
   if (!S.slip) {
     if (Math.abs(TEcmd) > Fadh) { S.slip = true; GAME.event('slip'); }
@@ -8155,7 +8164,7 @@ function physicsStep(dt, train) {
   const vm = Math.abs(S.v) / MPH;
   const shoe = 1.25 - 0.5 * smooth(0, 35, Math.abs(S.v));
   const disc = 1 - 0.3 * smooth(20, 90, Math.abs(S.v));   // disc brakes, held back at speed to what the rail will take
-  let motorBrake = 0;
+  let motorBrake = 0, slid = 0;
   let gradeLead = 0, limit = 99;
   for (let i = 0; i < V.length; i++) {
     const v = V[i];
@@ -8176,7 +8185,13 @@ function physicsStep(dt, train) {
     Fres += R * LBF;
     const isLoco = v.kind === 'loco' || v.kind === 'loco2';
     const bc = isLoco ? S.BCloco : v.brake.BC;
-    const fb = mass * v.brakeA * (bc / 64) * (v.disc ? disc : shoe);
+    if (!DSL) {
+      const emg = (isLoco ? lb.emerg : v.brake.emerg) || z === 'EMG';
+      if (!v.slide && emg && bc > SLIDE_BC && Math.abs(S.v) > SLIDE_ON) v.slide = true;
+      else if (v.slide && (bc < SLIDE_OFF_BC || Math.abs(S.v) < 0.05)) v.slide = false;
+    } else v.slide = false;
+    if (v.slide) slid++;
+    const fb = v.slide ? mass * 9.81 * slideMu(Math.abs(S.v)) : mass * v.brakeA * (bc / 64) * (v.disc ? disc : shoe);
     Fbrake += fb + (isLoco && DSL && !train.elec ? S.DBF : 0);
     if (v.motor) motorBrake += fb;
     for (const p of [v.fp[0], v.fp[1]]) limit = Math.min(limit, spec.hs ? hsLimit(p.tp, spec) : p.tp.e.limit);
@@ -8190,6 +8205,7 @@ function physicsStep(dt, train) {
     S.kWh += S.kW * dt / 3600;
   }
   S.limit = Math.min(limit, JOB.vmax()); S.grade = gradeLead;
+  S.slide = !!V[li].slide; S.slideN = slid;
   const Meff = M * 1.04;
   const Fdrive = Frail + Fgrade;
   let a;
@@ -8204,7 +8220,7 @@ function physicsStep(dt, train) {
   }
   S.v += a * dt;
   S.accel = a;
-  if (!S.slip) S.vw = S.v;
+  if (S.slide) S.vw = 0; else if (!S.slip) S.vw = S.v;
   S.theta -= S.vw * dt / LG.rD;
   S.M = M;
   return S.v * dt;
@@ -8789,11 +8805,15 @@ function soundMix(dt, T, fx, tv) {
   // flange squeal on curves, brake shoe squeal at low speed
   const lp0 = T.lead.leadPt.tp, kk = Math.abs(lp0.e.curv(lp0.s));
   const gw = 1 / (1 + Math.pow(cp.distanceTo(T.lead.pos) / 30, 1.3));
-  const fl = kk > 1 / 320 && v > 1.5 ? Math.min(1, v / 8) * clamp((kk - 1 / 320) * 900, 0.3, 1) : 0;
+  let fl = kk > 1 / 320 && v > 1.5 ? Math.min(1, v / 8) * clamp((kk - 1 / 320) * 900, 0.3, 1) : 0;
+  if (near.slide && v > 0.3) fl = Math.max(fl, 0.8 * Math.min(1, v / 4));
   duo(Vv.flange, AU.flange, 0.05 * fl * gw, 0.5 * fl, clamp(0.85 + v / 60, 0.85, 1.25), 0.25);
   const bcAvg = T.vehicles.reduce((a, x) => a + x.brake.BC, 0) / T.vehicles.length;
-  const sq = bcAvg > 15 && v > 0.3 && v < 9 ? clamp((bcAvg - 15) / 30, 0.3, 1) * (v < 3 ? v / 3 : 1) : 0;
-  duo(Vv.squeal, AU.bsq, sq ? 0.035 * gw : 0, 0.35 * sq, clamp(1.15 - v / 40, 0.9, 1.15), 0.15);
+  let sq = bcAvg > 15 && v > 0.3 && v < 9 ? clamp((bcAvg - 15) / 30, 0.3, 1) * (v < 3 ? v / 3 : 1) : 0;
+  // locked wheels skidding: a hard screech from the rail, loudest from the nearest sliding wheels, plus their scream on the flange
+  const sk = near.slide && v > 0.3 ? Math.min(1, v / 4) : 0;
+  sq = Math.max(sq, sk * 1.6);
+  duo(Vv.squeal, AU.bsq, sq ? 0.035 * Math.min(1, sq) * gw : 0, 0.35 * sq, clamp(1.15 - v / 40, 0.9, 1.15) * (sk ? 0.92 + 0.08 * Math.sin(now * 7) : 1), sk ? 0.08 : 0.15);
   // whistle or horn
   whistleMix(T, tv, inCab);
   // rail joints under nearby trucks
@@ -9192,6 +9212,169 @@ function updateFX(dt, cam) {
 }
 
 /* ============================================================================
+   Emergency stops you can feel: sparks where locked wheels skid on the rail,
+   the slack running in car by car, and the lurch and judder in the cab.
+   Physics (which wheels are locked, how hard they hold) is in 08_physics.js.
+   ========================================================================== */
+const SLIDE = { surge: 0, surgeV: 0, judder: 0, shakeT: 0, kick: 0, wasEmg: false, wasSlide: false, settle: 0 };
+const SPK = { N: 2600, G: 64, next: 0 };
+const _sp = new THREE.Vector3(), _sq = new THREE.Vector3(), _sm = new THREE.Matrix4(), _sn = new THREE.Matrix4();
+
+function buildSparks(scene) {
+  const N = SPK.N, G = SPK.G;
+  Object.assign(SPK, { p: new Float32Array(N * 3), v: new Float32Array(N * 3), age: new Float32Array(N).fill(1e9), life: new Float32Array(N), floor: new Float32Array(N) });
+  // flying sparks: short additive streaks from where the spark is back along its path
+  const lg = new THREE.BufferGeometry();
+  lg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(N * 6), 3));
+  lg.setAttribute('color', new THREE.BufferAttribute(new Float32Array(N * 6), 3));
+  SPK.lines = new THREE.LineSegments(lg, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, toneMapped: false }));
+  // a white-hot glow at each skidding wheel's contact with the rail
+  const gg = new THREE.BufferGeometry();
+  gg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(G * 3), 3));
+  gg.setAttribute('color', new THREE.BufferAttribute(new Float32Array(G * 3), 3));
+  const tex = canvasTex(32, 32, (c) => { const gr = c.createRadialGradient(16, 16, 0, 16, 16, 16); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.25, 'rgba(255,255,255,0.6)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); c.fillStyle = gr; c.fillRect(0, 0, 32, 32); }, { srgb: false });
+  SPK.glow = new THREE.Points(gg, new THREE.PointsMaterial({ size: 0.42, map: tex, vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, toneMapped: false }));
+  for (const o of [SPK.lines, SPK.glow]) { o.frustumCulled = false; o.renderOrder = 6; o.visible = false; scene.add(o); }
+}
+
+/* every wheel of a sliding vehicle where it meets the rail, nearest the camera first, out to 150 m */
+function slideContacts(T, cp, out) {
+  out.length = 0;
+  for (const v of T.vehicles) {
+    if (!v.slide || !v.pos || v.pos.distanceTo(cp) > 150) continue;
+    if (v.kind === 'loco' && !T.diesel) {
+      for (const a of [LG.aL, ...LG.aD, ...LG.aT]) for (const z of [-RAIL_OFF, RAIL_OFF]) out.push(_sp.set(ax(a), 0.02, z * 1.1).applyMatrix4(v.root.matrix).clone());
+      continue;
+    }
+    for (let k = 0; k < v.trucks.length; k++) {
+      const t = v.trucks[k], sp = t.sp || 1.676;
+      frameMatrix(v.tp[k].F, _sm); if (v.flip) _sm.multiply(_sn.makeRotationY(Math.PI));
+      for (const x of t.type === 'four' ? [-0.865, 0.865] : [-sp, 0, sp]) for (const z of [-RAIL_OFF, RAIL_OFF]) out.push(_sp.set(x, 0.02, z * 1.1).applyMatrix4(_sm).clone());
+    }
+  }
+  out.sort((a, b) => a.distanceToSquared(cp) - b.distanceToSquared(cp));
+  return out;
+}
+
+function sparkEmit(p, fwd, side, speed) {
+  const i = SPK.next; SPK.next = (SPK.next + 1) % SPK.N;
+  const j = i * 3, f = speed * (0.15 + Math.random() * 0.45), out = Math.random() * 1.6, up = 0.4 + Math.random() * 2.6;
+  SPK.p[j] = p.x + (Math.random() - 0.5) * 0.12; SPK.p[j + 1] = p.y; SPK.p[j + 2] = p.z + (Math.random() - 0.5) * 0.12;
+  SPK.v[j] = fwd.x * f + side.x * out * Math.sign(Math.random() - 0.3) + (Math.random() - 0.5) * 0.8;
+  SPK.v[j + 1] = up;
+  SPK.v[j + 2] = fwd.z * f + side.z * out * Math.sign(Math.random() - 0.3) + (Math.random() - 0.5) * 0.8;
+  SPK.age[i] = 0; SPK.life[i] = 0.25 + Math.random() * 0.45; SPK.floor[i] = p.y - 0.2;
+}
+
+const _contacts = [];
+function updateSparks(dt, T, cam) {
+  if (!SPK.lines) return;
+  const run = GAME.running && !S.paused && !S.derailed, v = Math.abs(S.v);
+  const live = run && S.slideN > 0 && v > 0.4 && !T.diesel;
+  const C = live ? slideContacts(T, cam.position, _contacts) : (_contacts.length = 0, _contacts);
+  if (live && dt > 0) {
+    const fwd = _sq.copy(T.lead.fwd).multiplyScalar(Math.sign(S.v)), side = new THREE.Vector3(-fwd.z, 0, fwd.x);
+    // more and livelier sparks the faster the wheels skid; the nearest wheels get the most
+    const rate = 150 * Math.min(1, v / 8) * (0.6 + 0.4 * Math.min(1, v / 25));
+    for (let k = 0; k < C.length; k++) {
+      const w = rate / (1 + (C[k].distanceTo(cam.position) / 30) ** 2) * dt;
+      let n = Math.floor(w + Math.random()); while (n-- > 0) sparkEmit(C[k], fwd, side, v);
+    }
+  }
+  const lp = SPK.lines.geometry.attributes.position.array, lc = SPK.lines.geometry.attributes.color.array;
+  let any = false;
+  const drag = Math.exp(-dt * 2.2);
+  for (let i = 0; i < SPK.N; i++) {
+    const j = i * 3, o = i * 6;
+    if (SPK.age[i] > SPK.life[i]) { if (lc[o] || lc[o + 3]) lc.fill(0, o, o + 6); continue; }
+    any = true;
+    SPK.v[j] *= drag; SPK.v[j + 2] *= drag; SPK.v[j + 1] = SPK.v[j + 1] * drag - 9.81 * dt;
+    SPK.p[j] += SPK.v[j] * dt; SPK.p[j + 1] += SPK.v[j + 1] * dt; SPK.p[j + 2] += SPK.v[j + 2] * dt;
+    if (SPK.p[j + 1] < SPK.floor[i]) { SPK.p[j + 1] = SPK.floor[i]; SPK.v[j + 1] *= -0.3; SPK.v[j] *= 0.5; SPK.v[j + 2] *= 0.5; }
+    SPK.age[i] += dt;
+    // white-yellow when struck, cooling through orange to a dull red
+    const t = SPK.age[i] / SPK.life[i], h = 1 - t, b = 1.6 * h;
+    const r = b, g = b * (0.35 + 0.6 * h * h), bl = b * 0.45 * h * h * h;
+    const tl = Math.min(0.06, 0.6 / (Math.hypot(SPK.v[j], SPK.v[j + 1], SPK.v[j + 2]) + 1e-3));
+    lp[o] = SPK.p[j]; lp[o + 1] = SPK.p[j + 1]; lp[o + 2] = SPK.p[j + 2];
+    lp[o + 3] = SPK.p[j] - SPK.v[j] * tl; lp[o + 4] = SPK.p[j + 1] - SPK.v[j + 1] * tl; lp[o + 5] = SPK.p[j + 2] - SPK.v[j + 2] * tl;
+    lc[o] = r; lc[o + 1] = g; lc[o + 2] = bl; lc[o + 3] = r * 0.25; lc[o + 4] = g * 0.15; lc[o + 5] = 0;
+  }
+  SPK.lines.visible = any;
+  if (any) { SPK.lines.geometry.attributes.position.needsUpdate = true; SPK.lines.geometry.attributes.color.needsUpdate = true; }
+  // contact glow, flickering with the skid
+  const gp = SPK.glow.geometry.attributes.position.array, gc = SPK.glow.geometry.attributes.color.array, n = Math.min(SPK.G, C.length);
+  const heat = Math.min(1, v / 6);
+  for (let k = 0; k < SPK.G; k++) {
+    if (k < n) { gp[k * 3] = C[k].x; gp[k * 3 + 1] = C[k].y; gp[k * 3 + 2] = C[k].z; const f = heat * (0.55 + 0.45 * Math.random()); gc[k * 3] = f; gc[k * 3 + 1] = f * 0.62; gc[k * 3 + 2] = f * 0.25; }
+    else { gc[k * 3] = gc[k * 3 + 1] = gc[k * 3 + 2] = 0; }
+  }
+  SPK.glow.visible = n > 0;
+  if (n) { SPK.glow.geometry.attributes.position.needsUpdate = true; SPK.glow.geometry.attributes.color.needsUpdate = true; }
+}
+
+/* The feel of it. The engine's surge is a spring the deceleration leans on: an emergency application throws you
+   forward, then each car's slack running in behind bangs into the engine in turn, and when the train finally
+   stops the slack runs back out and rocks it. Skidding drivers judder through the whole cab. */
+function slideFeel(dt, T) {
+  if (!dt) return;
+  const v = Math.abs(S.v), run = GAME.running && !S.paused && !S.derailed;
+  const z = brakeZone(S.brakeH), emg = run && z === 'EMG';
+  const dir = Math.sign(S.v) || SLIDE.lastDir || 1; if (S.v) SLIDE.lastDir = Math.sign(S.v);
+  if (emg && !SLIDE.wasEmg && v > 1) {
+    SLIDE.surgeV += 0.05 * dir * Math.min(1, v / 15);
+    if (AU.on && SND.has('dump')) SND.shot('dump', AU.world, { gain: (SND_GAIN.dump || 1) * (CAM.mode === 'cab' ? 1 : 0.5) });
+  }
+  SLIDE.wasEmg = emg;
+  // slack running in: each car bangs as its brakes take hold, front to rear as the emergency travels down the pipe
+  const cp = camera.position;
+  let i = 0;
+  for (const x of T.vehicles) {
+    const on = !!x.slide;
+    if (on && !x.slideSeen && run && v > 1) {
+      const hard = Math.min(1, v / 20), dist = x.pos ? x.pos.distanceTo(cp) : 50;
+      if (AU.on) sndClunk((0.45 + 0.6 * hard) / (1 + (dist / 25) ** 1.3), Math.random() * 0.04);
+      // the engine feels the cars close behind it the most
+      const k = Math.abs(i - T.li);
+      if (k > 0 && k < 10) SLIDE.surgeV += 0.22 * hard * dir / (1 + 0.45 * k);
+    }
+    x.slideSeen = on; i++;
+  }
+  // brought to a stand: the slack runs back out, the train rocks and settles
+  const sliding = S.slideN > 0;
+  if (SLIDE.wasSlide && !sliding && v < 0.1 && run) {
+    SLIDE.surgeV -= 0.09 * dir; SLIDE.settle = 1.2;
+    if (AU.on) { let k = 0; for (let j = T.vehicles.length - 1; j >= 0; j--) { const x = T.vehicles[j]; if (!x.pos) continue; const d = x.pos.distanceTo(cp); if (d < 120) sndClunk(0.45 / (1 + (d / 25) ** 1.3), (k++) * 0.09); } }
+  }
+  if (sliding && !SLIDE.wasSlide && run && v > 2) toast('Wheels locked: sliding!', 'warn', 2500, 'slide');
+  SLIDE.wasSlide = sliding;
+  // forward lean from the deceleration (only steam trains skid; everything feels the brakes), under-damped
+  const target = clamp(-(S.accel || 0), -2, 2) * 0.035;
+  SLIDE.surgeV += (90 * (target - SLIDE.surge) - 7 * SLIDE.surgeV) * dt;
+  SLIDE.surge = clamp(SLIDE.surge + SLIDE.surgeV * dt, -0.2, 0.2);
+  // skidding judder: strongest at speed, fading out as the train slows
+  const jt = S.slide && run ? 0.4 + 0.6 * Math.min(1, v / 20) : 0;
+  SLIDE.judder += (jt - SLIDE.judder) * Math.min(1, dt * 6);
+  SLIDE.shakeT += dt;
+  SLIDE.settle = Math.max(0, SLIDE.settle - dt);
+}
+
+/* camera offset: the surge and full judder in the cab, a touch of judder for the outside cameras that ride along */
+function slideCam(cam, T, inCab) {
+  const k = inCab ? 1 : (CAM.riding() ? 0.35 : 0), sg = inCab ? SLIDE.surge : 0;
+  if (!k || (!SLIDE.judder && Math.abs(sg) < 1e-4)) return;
+  const t = SLIDE.shakeT, j = SLIDE.judder * k;
+  const f = T.lead.fwd;
+  cam.position.addScaledVector(f, sg);
+  cam.position.y += j * (Math.sin(t * 83) * 0.006 + Math.sin(t * 131 + 1) * 0.004);
+  cam.position.x += j * Math.sin(t * 97 + 2) * 0.004; cam.position.z += j * Math.sin(t * 89 + 3) * 0.004;
+  // nod with the surge (head goes the way the train was going), and the judder in the view
+  _sq.set(0, 0, -1).applyQuaternion(cam.quaternion);
+  const nod = sg * 0.5 * (f.x * _sq.x + f.z * _sq.z), ang = j * Math.sin(t * 71) * 0.0025 + nod;
+  cam.rotateX(-ang); cam.rotateZ(j * Math.sin(t * 59 + 1.3) * 0.002);
+}
+
+/* ============================================================================
    Cameras, input, control stand, gauges, minimap, track map, toasts
    ========================================================================== */
 const CAM = { mode: 'chase', modes: ['chase', 'cab', 'side', 'drone', 'rear', 'cine'], names: { chase: 'Chase', cab: 'Cab', side: 'Trackside', drone: 'Overhead', rear: 'Rear car', cine: 'Cinematic' },
@@ -9205,17 +9388,18 @@ function updateCamera(cam, train, dt) {
   if (CAM.mode === 'cab') {
     cam.near = 0.05;
     const eye = L.cabEye.clone().applyMatrix4(body.matrixWorld);
-    const sp = Math.abs(S.v);
-    CAM.shake += dt * (7 + sp * 0.6);
-    const jit = Math.min(1, sp / 25) * 0.012;
-    eye.y += Math.sin(CAM.shake * 1.7) * jit + Math.sin(CAM.shake * 3.1) * jit * 0.5;
+    // the ride: a slow bob and a gentle rock on the springs, a little livelier with speed but never a buzz
+    const ride = Math.min(1, Math.abs(S.v) / 20) * (0.6 + 0.4 * Math.min(1, Math.abs(S.v) / 35));
+    CAM.shake += dt; const t = CAM.shake * Math.PI * 2;
+    eye.y += ride * 0.006 * (Math.sin(t * 1.1) * 0.65 + Math.sin(t * 1.9 + 1) * 0.35);
     cam.position.copy(eye);
     _cq.setFromRotationMatrix(_cm.extractRotation(body.matrixWorld));
-    _ce.set(CAM.cabPitch + Math.sin(CAM.shake * 0.9) * jit * 0.4, -Math.PI / 2 + CAM.cabYaw, 0, 'YXZ');
+    _ce.set(CAM.cabPitch + ride * 0.0012 * Math.sin(t * 0.8 + 2), -Math.PI / 2 + CAM.cabYaw, ride * 0.003 * Math.sin(t * 0.55), 'YXZ');
     cam.quaternion.copy(_cq).multiply(new THREE.Quaternion().setFromEuler(_ce));
+    slideCam(cam, train, true);
     fov = 62;
     if (cam.aspect < 1) fov = Math.min(80, fov * 1.25);
-  } else fov = outsideCamera(cam, train, dt);
+  } else { fov = outsideCamera(cam, train, dt); if (train === GAME.train) slideCam(cam, train, false); }
   CAM.fov += (fov - CAM.fov) * (CAM.fovCut ? 1 : Math.min(1, dt * 4)); CAM.fovCut = false;
   cam.fov = CAM.fov; cam.updateProjectionMatrix();
 }
@@ -12452,7 +12636,7 @@ async function loadWorld() {
   prog(0.86, 'Planting woodlots…'); await frame();
   buildTrees(scene); finalizeScenery(scene);
   prog(0.92, 'Lighting the fire…'); await frame();
-  buildSky(scene, renderer); buildFX(scene);
+  buildSky(scene, renderer); buildFX(scene); buildSparks(scene);
   for (const st of ROUTE.stations) { st.edge.pose(st.s, FR); st.p = FR.p.clone(); }
   for (const w of ROUTE.water) { w.edge.pose(w.s, FR); w.p = FR.p.clone(); }
   if (ROUTE.coal) { const c = ROUTE.coal; c.edge.pose(c.s, FR); c.p = FR.p.clone(); }
@@ -12473,7 +12657,7 @@ async function loadWorld() {
 
 function resetState() {
   Object.assign(S, { throttle: 0, reverser: 0, brakeH: 0.12, indH: 0.6, sander: false, cocks: true, bell: false, light: SKY.night ? 2 : 1, injector: false, blower: 0.35, stoker: 0.45, whistle: 0,
-    v: 0, vw: 0, slip: false, theta: 0, odo: 0, P: 238, Psc: 0, W: 0.62, fire: 0.55, coal: 19958, water: 83280, sand: 1800, MR: 140, ER: 90, pumping: false,
+    v: 0, vw: 0, slip: false, slide: false, slideN: 0, theta: 0, odo: 0, P: 238, Psc: 0, W: 0.62, fire: 0.55, coal: 19958, water: 83280, sand: 1800, MR: 140, ER: 90, pumping: false,
     safety: false, lowWater: false, priming: false, dead: false, derailed: false, paused: false });
   S.autoFire = GAME.settings.fire === 'auto';
   Object.assign(S, { notch: 0, dyn: 0, dbLoad: 0, DBF: 0, rpm: 300, engineRun: true, crank: 0, load: 0, fuel: 18927, turbo: 0.15, ditch: true, ditchFlash: 0, slipCtl: false, amps: 0 });
@@ -13015,6 +13199,7 @@ function renderStep(dt, T) {
   const pb = $('btnWhistle').querySelector('.pull i'), pw = Math.round(S.whistle * 100) + '%'; if (pb.style.width !== pw) pb.style.width = pw;
   T.cabLight.intensity = night ? 0.6 : 0;
   // camera
+  slideFeel(dt, T);
   if (PLACE.on) PLACE.camera(camera, dt); else updateCamera(camera, MP.view() || T, dt);
   if (CAM.shakeHit) { camera.position.x += (Math.random() - 0.5) * CAM.shakeHit; camera.position.y += (Math.random() - 0.5) * CAM.shakeHit; CAM.shakeHit = Math.max(0, CAM.shakeHit - dt * 1.5); }
   if (!GAME.running) { // attract mode orbit while the menu is up
@@ -13032,6 +13217,7 @@ function renderStep(dt, T) {
   effectsAndSound(dt, T);
   MP.post(dt);
   updateFX(dt, camera);
+  updateSparks(dt, T, camera);
   if (GAME.running) updateHUD(dt);
   renderer.render(scene, camera);
 }

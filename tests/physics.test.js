@@ -388,3 +388,45 @@ test('shoving cars with nothing behind, the engine\'s front coupler is the joint
   assert.equal(light.a0, 50, 'a light engine keeps its rear coupler where it was');
   assert.equal(light.a1, 22);
 });
+
+/* ---------------------------------------------------------- sliding */
+test('an emergency at speed locks a steam train\'s wheels: the drivers stop turning and every car skids', () => {
+  const sim = h.load(), T = h.train(sim, 20), S = sim.S;
+  S.indH = 0; S.v = 50 * sim.MPH;
+  h.run(sim, T, 3);
+  assert.ok(!S.slide && S.vw > 20, 'rolling normally before the application');
+  S.brakeH = 1;
+  h.run(sim, T, 4);
+  assert.ok(S.slide, 'the engine should be sliding');
+  assert.equal(S.slideN, T.vehicles.length, 'every vehicle should be sliding');
+  const theta = S.theta;
+  h.run(sim, T, 1);
+  assert.equal(S.vw, 0); assert.equal(S.theta, theta, 'drivers, rods and valve gear hold still');
+  assert.ok(S.v > 5, 'the train is still moving on locked wheels');
+  h.run(sim, T, 120, () => S.v <= 0);
+  assert.equal(S.v, 0);
+  assert.ok(!S.slide && S.slideN === 0, 'stopped, nothing left sliding');
+});
+
+test('a full service application and a slow emergency do not lock the wheels', () => {
+  for (const [mph, brakeH] of [[50, 0.89], [3, 1]]) {
+    const sim = h.load(), T = h.train(sim, 20), S = sim.S;
+    S.indH = 0; S.v = mph * sim.MPH;
+    h.run(sim, T, 3);
+    S.brakeH = brakeH;
+    let slid = false;
+    h.run(sim, T, 120, () => { slid = slid || S.slideN > 0; return S.v <= 0; });
+    assert.ok(!slid, `${mph} mph at brake ${brakeH} should not slide`);
+  }
+});
+
+test('releasing the brakes mid-slide lets the wheels roll again', () => {
+  const sim = h.load(), T = h.train(sim, 5), S = sim.S;
+  S.indH = 0; S.v = 60 * sim.MPH;
+  h.run(sim, T, 2);
+  S.brakeH = 1; h.run(sim, T, 4);
+  assert.ok(S.slide);
+  S.brakeH = 0; h.run(sim, T, 30, () => !S.slide && S.slideN === 0);
+  assert.ok(!S.slide && S.v > 0, 'rolling again while still moving');
+  assert.equal(S.vw, S.v);
+});
