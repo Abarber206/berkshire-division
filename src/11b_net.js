@@ -365,7 +365,7 @@ MP.worldReady = function () {
   MP.ready = true;
   MP.edges = new Map(NET.edges.map(e => [e.id, e]));
   MP.ui();
-  if (MP.autoJoin) MP.join(MP.autoJoin);
+  if (MP.autoJoin && !WORLD.custom) MP.join(MP.autoJoin);
 };
 MP.create = function () {
   let c = ''; for (let i = 0; i < 5; i++) c += MP_CODE[(Math.random() * MP_CODE.length) | 0];

@@ -83,6 +83,7 @@ function makeMaterials() {
 const INNER = { x0: -6000, x1: 6000, n0: -2000, n1: 7000, step: 20 };
 function riverX(N) { const A = n => 170 * Math.sin(n / 700) + 70 * Math.sin(n / 230 + 1); return -1203 + A(N) - A(2402); }
 function naturalH(X, N) {
+  if (WORLD.custom) return layoutH(X, N);
   let h = 6.5 * Noise.fbm(X / 1600 + 3.1, N / 1600 - 1.7, 4) + 2.2 * Noise.fbm(X / 320, N / 320, 3);
   // Kenton Hill (track crest at +13.5)
   h += 15.5 * Math.exp(-(((X - 1900) / 1150) ** 2 + ((N - 2400) / 820) ** 2));
@@ -93,11 +94,19 @@ function naturalH(X, N) {
   return h;
 }
 function riverDist(X, N) {
+  if (WORLD.custom) return 1e9;
   let d = 1e9;
   if (N > 2402 - 40) d = Math.abs(X - riverX(N));
   else if (N > WORLD.lake.N) { const t = (N - WORLD.lake.N) / (2402 - WORLD.lake.N); const x = lerp(WORLD.lake.X, riverX(2402), smooth(0, 1, t)); d = Math.abs(X - x); }
   const dl = Math.hypot(X - WORLD.lake.X, N - WORLD.lake.N) - WORLD.lake.r;
   return Math.min(d, Math.max(dl + 22, 0));
+}
+/* custom layouts sit in open, gently rolling farm country with hills only at the horizon */
+function layoutH(X, N) {
+  let h = 3.4 * Noise.fbm(X / 1700 + 3.1, N / 1700 - 1.7, 4) + 1.3 * Noise.fbm(X / 330, N / 330, 3);
+  const er = Math.hypot(X / 8200, (N - 2500) / 6400);
+  h += 70 * smooth(1.0, 1.6, er) * (0.55 + 0.45 * Noise.fbm(X / 2600 - 5, N / 2600, 3));
+  return h;
 }
 function heightRaw(X, N) {
   let h = naturalH(X, N);
