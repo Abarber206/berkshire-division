@@ -9,8 +9,8 @@ const path = require('path');
 const vm = require('vm');
 
 const SRC = path.join(__dirname, '..', 'src');
-const FILES = ['01_util.js', '06_models.js', '07_train.js', '07b_cars.js', '08_physics.js'];
-const EXPORTS = ['S', 'ENV', 'GAME', 'CARS', 'LOCO_SPEC', 'Consist', 'Cut', 'physicsStep', 'brakeZone', 'brakeLabel', 'consistMass',
+const FILES = ['01_util.js', '06_models.js', '07_train.js', '07b_cars.js', '08_physics.js', '11d_jobs.js'];
+const EXPORTS = ['S', 'ENV', 'GAME', 'CARS', 'JOB', 'LOCO_SPEC', 'Consist', 'Cut', 'physicsStep', 'brakeZone', 'brakeLabel', 'consistMass',
   'COUPLE_OK', 'COUPLE_HARD', 'COUPLE_WRECK', 'MPH', 'LBF', 'STON', 'PSI'];
 
 /* just enough three.js: real Vector3 math, everything else accepts any call and returns itself */
