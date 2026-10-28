@@ -366,7 +366,7 @@ MP.worldReady = function () {
   MP.ready = true;
   MP.edges = new Map(NET.edges.map(e => [e.id, e]));
   MP.ui();
-  MP.ly = WORLD.custom ? layoutHash(PLAY_LAYOUT) : '';
+  MP.ly = WORLD.custom ? layoutHash(PLAY_LAYOUT) : WORLD.mtn ? 'route:laurel' : '';
   if (MP.autoJoin) MP.join(MP.autoJoin);
 };
 MP.create = function () {
@@ -591,11 +591,11 @@ MP.spawnSlot = function (T) {
     }
     return true;
   };
-  for (const [name, off] of MP_SPAWNS) {
+  for (const [name, off] of (WORLD.mtn ? MTN_SPAWNS : MP_SPAWNS)) {
     const line = ROUTE.lines[name]; if (!line) continue;
     const sF = off < 0 ? line.len + off : off;
     if (!line.loop && sF - T.length < 5) continue;
-    if (clear(line, sF)) return { line, s: sF, name: MP_SPAWN_NAMES[name] || name };
+    if (clear(line, sF)) return { line, s: sF, name: (WORLD.mtn ? MTN_SPAWN_NAMES : MP_SPAWN_NAMES)[name] || name };
   }
   // every usual place is taken: anywhere on either main
   for (const name of ['Main', 'Main 2']) {

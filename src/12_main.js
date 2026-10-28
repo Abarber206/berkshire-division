@@ -50,16 +50,21 @@ async function loadWorld() {
   buildFarTerrain(scene); if (!WORLD.custom) buildWater(scene);
   prog(0.52, WORLD.custom ? `Laying ${fmtMi(ROUTE.mainLen)} of track on ${PLAY_LAYOUT.name || 'your layout'}…` : `Laying ${(ROUTE.mainLen / MILE).toFixed(1)} miles of jointed rail…`); await frame();
   buildTrack(scene); buildTrackHash();
-  prog(0.68, 'Raising depots, towers and the river bridge…'); await frame();
+  prog(0.68, WORLD.mtn ? 'Boring Summit tunnel and raising the Bear Run trestle…' : 'Raising depots, towers and the river bridge…'); await frame();
   if (WORLD.custom) { buildStations(); buildSignals(scene); }
+  else if (WORLD.mtn) { buildStations(); buildBridge(scene); mtBuildViaduct(scene); mtBuildTunnels(scene); buildSignals(scene); buildSigns(); }
   else { buildStations(); buildBridge(scene); buildRoads(scene); buildSignals(scene); buildSigns(); }
   prog(0.78, 'Stringing the pole line…'); await frame();
   if (WORLD.custom) { SCN.farms = []; buildTowns(scene); }
+  else if (WORLD.mtn) { SCN.farms = []; buildTowns(scene); buildPoleLine(scene); }
   else { buildFarms(); buildTowns(scene); buildPoleLine(scene); }
-  prog(0.82, 'Planting corn and fencing pastures…'); await frame();
-  buildCorn(scene); buildPastureLife(scene);
-  prog(0.86, 'Planting woodlots…'); await frame();
-  buildTrees(scene); finalizeScenery(scene);
+  if (!WORLD.mtn) {
+    prog(0.82, 'Planting corn and fencing pastures…'); await frame();
+    buildCorn(scene); buildPastureLife(scene);
+  }
+  prog(0.86, WORLD.mtn ? 'Growing the forest…' : 'Planting woodlots…'); await frame();
+  if (WORLD.mtn) mtBuildForest(scene); else buildTrees(scene);
+  finalizeScenery(scene);
   prog(0.92, 'Lighting the fire…'); await frame();
   buildSky(scene, renderer); buildFX(scene); buildSparks(scene);
   for (const st of ROUTE.stations) { st.edge.pose(st.s, FR); st.p = FR.p.clone(); }
@@ -95,8 +100,8 @@ function makeTrain() {
   const t = new Train(scene, GAME.settings.loco, JOB.consist(), dieselOpts());
   GAME.train = t;
   if (WORLD.custom) { placeOnLayout(t); return; }
-  let line = ROUTE.lines['Yard 2'], sFront = line.len - 175, o = 1;
-  GAME.spawnName = 'Yard 2, Bellevue';
+  let line = ROUTE.startLine, sFront = line.len - 175, o = 1;
+  GAME.spawnName = WORLD.mtn ? 'Riverton 2, Riverton Yard' : 'Yard 2, Bellevue';
   const job = JOB.wanted(), sp = job && JOB.spawn(job);
   if (MP.on) {
     // in a room the switches belong to everyone, so leave them alone and find an empty track
@@ -107,7 +112,7 @@ function makeTrain() {
     const sw = name => NET.switches.find(s => s.name === name);
     for (const s of NET.switches) { s.state = 0; s.anim = 0; }
     // a job says where its train is made up and how the switches are lined
-    for (const n of sp ? sp.lined : ['Yard ladder E2', 'Bellevue East']) sw(n).state = sw(n).anim = 1;
+    for (const n of sp ? sp.lined : WORLD.mtn ? ['Riverton ladder E2', 'Riverton East'] : ['Yard ladder E2', 'Bellevue East']) sw(n).state = sw(n).anim = 1;
     if (sp) { line = sp.line; sFront = sp.s; o = sp.o; GAME.spawnName = sp.name; }
   }
   const loc = line.locate(sFront);
@@ -341,7 +346,7 @@ GAME.start = function () {
     if (JOB.run) JOB.end();
     makeTrain();
     if (job) JOB.begin(job);
-    else if (GAME.running) toast(`New train made up on ${WORLD.custom ? GAME.spawnName : 'Yard 2'}.`, 'good');
+    else if (GAME.running) toast(`New train made up on ${WORLD.custom || WORLD.mtn ? GAME.spawnName : 'Yard 2'}.`, 'good');
     GAME.intro();
   }
   GAME.running = true; S.paused = false; S.autoFire = GAME.settings.fire === 'auto';
@@ -356,6 +361,7 @@ GAME.intro = function () {
   if (JOB.run) JOB.intro();
   else if (MP.on) setTimeout(() => toast(`Made up on ${GAME.spawnName}. The switches are shared with everyone in the room.`, '', 5600), 600);
   else if (WORLD.custom) setTimeout(() => toast(`On ${GAME.spawnName}. Every switch is lined straight: tap one or use Throw to change it.`, '', 5000), 600);
+  else if (WORLD.mtn) setTimeout(() => toast('Riverton Yard, at the foot of Laurel Mountain. The ladder is lined out to the main; the climb starts past Hollins and runs 1.9 per cent to Summit.', '', 6500), 600);
   else setTimeout(() => toast('Yard 2, Bellevue. The ladder is lined out to the main.', '', 5000), 600);
   if (!MP.on && !JOB.run && CARS.cuts.length) setTimeout(() => toast('Cars are waiting on Yard 3, Yard 4, the elevator track and quarry storage. Back in gently to couple; tap a coupler on the cars, or open Couplers (U), to work the knuckles and cut them off.', '', 7000, 'carsIntro'), 11500);
   if (GAME.train && GAME.train.elec) setTimeout(() => toast('Brake off, reverser forward, then notch the power controller. The set stays together: it cannot pick up cars.', '', 6500), 5200);

@@ -111,16 +111,13 @@ function mtPrepare() {
   }
   MT.dV = dV;
   // the valley floor: river elevations spread out by a wide Gaussian (and a still wider one beyond it)
-  const fl = G(250), fw = 1400, fh = new Map();
-  for (const r of MT.rivers) for (let i = 0; i < r.pts.length; i += 10) { const p = r.pts[i], k = Math.floor(p.X / 2000) + ',' + Math.floor(p.N / 2000); let a = fh.get(k); if (!a) fh.set(k, a = []); a.push(p); }
-  let ySum = 0, yN = 0; for (const r of MT.rivers) for (const p of r.pts) { ySum += p.y; yN++; }
-  const yMean = ySum / yN;
+  const fl = G(250), fw = 1400, smp = [];
+  for (const r of MT.rivers) for (let i = 0; i < r.pts.length; i += 10) smp.push(r.pts[i]);
   for (let j = 0; j < fl.nn; j++) for (let i = 0; i < fl.nx; i++) {
-    const X = INNER.x0 + i * fl.step, N = INNER.n0 + j * fl.step, ci = Math.floor(X / 2000), cj = Math.floor(N / 2000);
+    const X = INNER.x0 + i * fl.step, N = INNER.n0 + j * fl.step;
     let sw = 0, sy = 0, sw2 = 0, sy2 = 0;
-    for (let b = cj - 3; b <= cj + 3; b++) for (let a = ci - 3; a <= ci + 3; a++) { const l = fh.get(a + ',' + b); if (!l) continue; for (const p of l) { const d2 = (p.X - X) ** 2 + (p.N - N) ** 2, w = Math.exp(-d2 / (2 * fw * fw)), w2 = Math.exp(-d2 / (2 * 4200 * 4200)); sw += w; sy += w * p.y; sw2 += w2; sy2 += w2 * p.y; } }
-    const far = sw2 > 1e-6 ? sy2 / sw2 : yMean;
-    fl.a[j * fl.nx + i] = (sy + far * 0.02) / (sw + 0.02);
+    for (const p of smp) { const d2 = (p.X - X) ** 2 + (p.N - N) ** 2, w2 = Math.exp(-d2 / (2 * 4200 * 4200)); sw2 += w2; sy2 += w2 * p.y; if (d2 < 25e6) { const w = Math.exp(-d2 / (2 * fw * fw)); sw += w; sy += w * p.y; } }
+    fl.a[j * fl.nx + i] = (sy + (sy2 / sw2) * 0.02) / (sw + 0.02);
   }
   MT.fl = fl;
   // the railroad's correction: how far the drainage-shaped land is from the grade the track was laid on,
@@ -133,9 +130,10 @@ function mtPrepare() {
   }
   for (let j = 0; j < C.nn; j++) for (let i = 0; i < C.nx; i++) {
     const X = INNER.x0 + i * 50, N = INNER.n0 + j * 50, ci = Math.floor(X / 500), cj = Math.floor(N / 500);
-    let sw = 0, sr = 0;
-    for (let b = cj - 2; b <= cj + 2; b++) for (let a = ci - 2; a <= ci + 2; a++) { const l = ch.get(a + ',' + b); if (!l) continue; for (let q = 0; q < l.length; q += 3) { const d2 = (l[q] - X) ** 2 + (l[q + 1] - N) ** 2; if (d2 > 9 * cw * cw) continue; const w = Math.exp(-d2 / (2 * cw * cw)); sw += w; sr += w * l[q + 2]; } }
-    C.a[j * C.nx + i] = sr / (sw + 0.04);
+    let sw = 0, sr = 0, dm = 1e18;
+    for (let b = cj - 2; b <= cj + 2; b++) for (let a = ci - 2; a <= ci + 2; a++) { const l = ch.get(a + ',' + b); if (!l) continue; for (let q = 0; q < l.length; q += 3) { const d2 = (l[q] - X) ** 2 + (l[q + 1] - N) ** 2; if (d2 < dm) dm = d2; if (d2 > 9 * cw * cw) continue; const w = Math.exp(-d2 / (2 * cw * cw)); sw += w; sr += w * l[q + 2]; } }
+    // the nearest track's own correction, eased out over the half kilometre beyond it
+    C.a[j * C.nx + i] = sw > 0 ? sr / sw * (1 - smooth(120, 640, Math.sqrt(dm))) : 0;
   }
   MT.C = C;
   WORLD.riverPts = [];
@@ -166,6 +164,7 @@ function mtValley(X, N) {
 }
 /* the nearest bit of water: its bed height, how far, and which river; null beyond 250 m */
 function mtWaterNear(X, N) {
+  if (mtField(MT.dV, X, N) > 420) return null;   // the coarse distance field rules out most of the map at once
   const ci = Math.floor(X / 100), cj = Math.floor(N / 100); let best = null, bd = 250;
   for (let b = cj - 3; b <= cj + 3; b++) for (let a = ci - 3; a <= ci + 3; a++) {
     const l = MT.rh.get(a + ',' + b); if (!l) continue;

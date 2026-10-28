@@ -65,7 +65,7 @@ const stationNamed = n => ROUTE.stations.find(s => s.name === n);
 JOB.load = function () { try { JOB.best = JSON.parse(localStorage.getItem('bd_jobs') || '{}') || {}; } catch (e) { JOB.best = {}; } };
 JOB.save = function () { try { localStorage.setItem('bd_jobs', JSON.stringify(JOB.best)); } catch (e) {} };
 /* jobs are written for the built-in railroad, single player */
-JOB.available = () => !MP.on && !PLAY_LAYOUT && !LOCO_SPEC[GAME.settings.loco].set;
+JOB.available = () => !MP.on && !PLAY_LAYOUT && !WORLD.mtn && !LOCO_SPEC[GAME.settings.loco].set;
 JOB.def = id => JOBS.find(j => j.id === id) || null;
 JOB.wanted = () => JOB.available() ? JOB.def(GAME.settings.job) : null;
 JOB.activeId = () => JOB.run && !JOB.run.over ? JOB.run.def.id : '';

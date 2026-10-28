@@ -191,3 +191,6 @@ function buildMountainRoute() {
   ROUTE.sidings = sid; ROUTE.yards = yards; ROUTE.loops = [loopW, loopE];
   return { main, at: F };
 }
+/* where a new train is made up in a multiplayer room on the mountain (negative = from the end of the track) */
+const MTN_SPAWNS = [['Riverton 2', -175], ['Riverton 3', -140], ['Riverton 4', -112], ['Riverton 1', -200], ['Ashby 2', -150], ['Hollins Siding', -320], ['Pine Flats Siding', -320], ['Main', 5200], ['Main', 52000]];
+const MTN_SPAWN_NAMES = { 'Riverton 1': 'Riverton 1, Riverton Yard', 'Riverton 2': 'Riverton 2, Riverton Yard', 'Riverton 3': 'Riverton 3, Riverton Yard', 'Riverton 4': 'Riverton 4, Riverton Yard', 'Ashby 2': 'Ashby 2, Ashby', 'Hollins Siding': 'the Hollins siding', 'Pine Flats Siding': 'the Pine Flats siding', 'Main': 'the main line' };

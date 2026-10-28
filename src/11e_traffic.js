@@ -474,7 +474,7 @@ AI.gone = function (a, T, memo) {
 };
 
 /* ---------------- the traffic on the railroad ---------------- */
-AI.enabled = () => !MP.on && !WORLD.custom && GAME.settings.traffic !== 'off';
+AI.enabled = () => !MP.on && !WORLD.custom && !WORLD.mtn && GAME.settings.traffic !== 'off';
 AI.clear = function () {
   for (const a of AI.trains) a.dispose();
   AI.trains = []; IX.clear();
