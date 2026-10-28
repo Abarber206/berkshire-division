@@ -49,14 +49,16 @@ class Consist {
   buildInstances(geo) {
     for (const im of this.inst) this.scene.remove(im);
     this.geo = geo || this.geo;
-    let nSix = 0, nFour = 0;
-    for (const v of this.vehicles) for (const t of v.trucks) { if (t.type === 'six') nSix++; else nFour++; }
+    let nSix = 0, nFour = 0, nBuck = 0;
+    for (const v of this.vehicles) for (const t of v.trucks) { if (t.type === 'six') nSix++; else if (t.type === 'buck') nBuck++; else nFour++; }
     const { tg, a6, a4 } = this.geo;
     this.tSix = nSix ? new THREE.InstancedMesh(tg.six, RMAT.dark, nSix) : null;
+    this.tBuck = nBuck ? new THREE.InstancedMesh(tg.buck, RMAT.dark, nBuck) : null;
+    nSix += nBuck;   // both kinds ride on the same 36 in axles
     this.tFour = nFour ? new THREE.InstancedMesh(tg.four, RMAT.dark, nFour) : null;
     this.ax6 = nSix ? [new THREE.InstancedMesh(a6.black, RMAT.black, nSix * 3), new THREE.InstancedMesh(a6.tire, RMAT.tire, nSix * 3)] : null;
     this.ax4 = nFour ? [new THREE.InstancedMesh(a4.black, RMAT.black, nFour * 2), new THREE.InstancedMesh(a4.tire, RMAT.tire, nFour * 2)] : null;
-    this.inst = [this.tSix, this.tFour, ...(this.ax6 || []), ...(this.ax4 || [])].filter(Boolean);
+    this.inst = [this.tSix, this.tBuck, this.tFour, ...(this.ax6 || []), ...(this.ax4 || [])].filter(Boolean);
     for (const im of this.inst) { im.frustumCulled = false; im.castShadow = true; im.receiveShadow = true; this.scene.add(im); }
     this.hidden = false;
   }
@@ -100,7 +102,7 @@ class Consist {
   }
   update(dt, theta = 0, rev = 0) {
     for (const p of this.pts) p.tp.pose(p.F);
-    let i6 = 0, i4 = 0, a6 = 0, a4 = 0;
+    let i6 = 0, i4 = 0, iB = 0, a6 = 0, a4 = 0;
     for (const v of this.vehicles) {
       const A = v.fp[0].F, B = v.fp[1].F;
       _v1.addVectors(A.p, B.p).multiplyScalar(0.5);
@@ -119,9 +121,10 @@ class Consist {
         const t = v.trucks[k], Fp = v.tp[k].F;
         frameMatrix(Fp, _tm);
         if (v.flip) _tm.multiply(_m4.makeRotationY(Math.PI));
-        if (t.type === 'six') {
-          this.tSix.setMatrixAt(i6++, _tm);
-          for (const x of [-1.676, 0, 1.676]) { _m4.copy(_tm).multiply(new THREE.Matrix4().makeTranslation(x, t.R, 0)).multiply(new THREE.Matrix4().makeRotationZ(wAng6)); this.ax6[0].setMatrixAt(a6, _m4); this.ax6[1].setMatrixAt(a6, _m4); a6++; }
+        if (t.type === 'six' || t.type === 'buck') {
+          if (t.type === 'six') this.tSix.setMatrixAt(i6++, _tm); else this.tBuck.setMatrixAt(iB++, _tm);
+          const sp = t.sp || 1.676;
+          for (const x of [-sp, 0, sp]) { _m4.copy(_tm).multiply(new THREE.Matrix4().makeTranslation(x, t.R, 0)).multiply(new THREE.Matrix4().makeRotationZ(wAng6)); this.ax6[0].setMatrixAt(a6, _m4); this.ax6[1].setMatrixAt(a6, _m4); a6++; }
         } else {
           this.tFour.setMatrixAt(i4++, _tm);
           for (const x of [-0.865, 0.865]) { _m4.copy(_tm).multiply(new THREE.Matrix4().makeTranslation(x, t.R, 0)).multiply(new THREE.Matrix4().makeRotationZ(wAng4)); this.ax4[0].setMatrixAt(a4, _m4); this.ax4[1].setMatrixAt(a4, _m4); a4++; }
@@ -135,7 +138,7 @@ class Consist {
       } else if (v.kind === 'loco') {
         const lf = v.leadPt.F;
         const lt = this.loco.leadTruck; lt.matrixAutoUpdate = false; frameMatrix(lf, lt.matrix); lt.matrixWorldNeedsUpdate = true;
-        this.loco.parts.lead.rotation.z = -this.dist / LG.rL;
+        this.loco.parts.lead.rotation.z = -this.dist / (this.loco.rL || LG.rL);
         this.loco.parts.trail[0].rotation.z = -this.dist / LG.rT1;
         this.loco.parts.trail[1].rotation.z = -this.dist / LG.rT2;
         animateBerkshire(this.loco, theta, rev);
@@ -219,7 +222,7 @@ class Train extends Consist {
       this.head.castShadow = false;
       scene.add(this.head); scene.add(this.head.target);
       this.fireLight = new THREE.PointLight(0xff7a2a, 0, 7, 2);
-      L.body.add(this.fireLight); this.fireLight.position.set(ax(15.0), 2.55, 0.1);
+      L.body.add(this.fireLight); this.fireLight.position.set(CABDIM.bh - 0.3, CABDIM.fl + 0.5, 0.1);
       this.cabLight = new THREE.PointLight(0xffd09a, 0, 5, 2); L.body.add(this.cabLight); if (L.cabLightPos) this.cabLight.position.copy(L.cabLightPos); else this.cabLight.position.set(ax(15.8), 4.1, 0);
     } else { this.head = null; this.fireLight = null; this.cabLight = null; }
     this.markerMats = [];
