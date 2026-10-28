@@ -499,7 +499,7 @@ function nearbyService() {
 }
 
 /* ---------------- main loop ---------------- */
-let chuffQ = 0, pumpT = 0, bellT = 0, idleT = 0, chirpT = 2, prevV = 0, stopT = 0;
+let chuffQ = 0, pumpT = 0, bellT = 0, idleT = 0, prevV = 0, stopT = 0;
 function loop() {
   requestAnimationFrame(loop);
   let dt = Math.min(clock.getDelta(), 0.05);
@@ -683,58 +683,12 @@ function dieselFX(dt, T, tv) {
   return { src, working: S.load > 0.05 };
 }
 function effectsAndSound(dt, T) {
-  const L = T.loco, DSL = T.diesel;
+  const DSL = T.diesel;
   const tv = new THREE.Vector3().copy(T.lead.fwd).multiplyScalar(S.v);
   const fx = DSL ? dieselFX(dt, T, tv) : steamFX(dt, T, tv);
-  const working = fx.working;
   if (S.bell) { bellT += dt; if (bellT > (DSL ? 1.05 : 0.86)) { bellT = 0; sndBell(DSL); } } else bellT = 0.8;
   if (!AU.on) return;
-  // mix
-  const cp = camera.position, dLoco = cp.distanceTo(fx.src), inCab = CAM.mode === 'cab';
-  const gL = inCab ? 0.85 : 1 / (1 + Math.pow(dLoco / 26, 1.25));
-  setG(AU.loco, gL, 0.08); AU.locoLP.frequency.setTargetAtTime(inCab ? 7000 : clamp(16000 / (1 + dLoco / 80), 1200, 16000), AU.ctx.currentTime, 0.1);
-  setG(AU.blower.g, DSL ? 0 : S.blower * 0.22); setG(AU.safety.g, !DSL && S.safety ? 0.5 : 0, 0.15); setG(AU.injector.g, !DSL && S.injector ? 0.1 : 0, 0.2);
-  setG(AU.cocks.g, !DSL && S.cocks && Math.abs(S.v) < 0.5 && S.throttle > 0.02 ? 0.25 * S.throttle : 0);
-  setG(AU.roar.g, 0.32 * Math.min(1, Math.abs(S.v) / 22));
-  setG(AU.drift.g, !DSL && !working && Math.abs(S.v) > 1 ? 0.08 * Math.min(1, Math.abs(S.v) / 12) : 0);
-  setG(AU.wind.g, inCab ? 0.32 * Math.min(1, (Math.abs(S.v) / 30) ** 2) + 0.02 : 0.03);
-  setG(AU.firedoor.g, !DSL && inCab ? 0.14 * S.fire : 0);
-  updateDieselAudio(DSL, inCab, T.nUnits || 1);
-  const b0 = T.lead.brake;
-  setG(AU.bpExhaust.g, b0.dBP < -0.3 ? Math.min(0.5, -b0.dBP * 0.06) : 0, 0.05);
-  const lead = T.lead.leadPt.tp, kk = Math.abs(lead.e.curv(lead.s));
-  const gw = 1 / (1 + Math.pow(cp.distanceTo(T.lead.pos) / 30, 1.3));
-  setG(AU.flange.g, kk > 1 / 320 && Math.abs(S.v) > 1.5 ? 0.05 * Math.min(1, Math.abs(S.v) / 8) * gw : 0, 0.2);
-  const bcAvg = T.vehicles.reduce((a, v) => a + v.brake.BC, 0) / T.vehicles.length;
-  setG(AU.bsq.g, bcAvg > 15 && Math.abs(S.v) > 0.3 && Math.abs(S.v) < 9 ? 0.035 * gw : 0, 0.15);
-  // whistle / horn with doppler
-  if (AU.whistle) {
-    const src = T.worldOf(DSL ? L.hornPos : L.whistlePos);
-    const toCam = new THREE.Vector3().subVectors(cp, src); const dist = toCam.length(); toCam.normalize();
-    const vr = inCab ? 0 : tv.dot(toCam);
-    const dop = 343 / (343 - clamp(vr, -60, 60));
-    const pull = S.whistle;
-    const gwh = (inCab ? 0.55 : 1 / (1 + Math.pow(dist / 90, 1.1))) * Math.pow(pull, DSL ? 0.5 : 0.8) * 0.95;
-    setG(AU.whistle.out, gwh, AU.whistle.attack);
-    const bend = 1 - AU.whistle.quill * (1 - pull);
-    for (const v of AU.whistle.voices) { const f = v.f * bend * dop; v.o1.frequency.setTargetAtTime(f, AU.ctx.currentTime, 0.04); v.o2.frequency.setTargetAtTime(f * v.ratio2, AU.ctx.currentTime, 0.04); }
-    AU.whistle.lp.frequency.setTargetAtTime(inCab ? 3200 : clamp(11000 / (1 + dist / 160), 1800, 7000), AU.ctx.currentTime, 0.1);
-  }
-  // rail joints for nearby trucks
-  if (Math.abs(S.v) > 0.6) {
-    const mem = GAME.jointMem;
-    for (const v of T.vehicles) {
-      const dv = v.pos.distanceTo(cp); if (dv > 110 && !(inCab && v.kind === 'loco')) continue;
-      const g = Math.min(1, Math.abs(S.v) / 7) / (1 + Math.pow((inCab ? Math.max(4, dv) : dv) / 13, 1.4));
-      const pts = (v.kind === 'loco' || v.kind === 'loco2') ? (DSL ? [[v.fp[0], 3, DG.axle], [v.fp[1], 3, DG.axle]] : [[v.leadPt, 1, 0], [v.fp[0], 4, 1.855]]) : v.tp.map((p, i) => [p, v.trucks[i].type === 'four' ? 2 : 3, v.trucks[i].sp || (v.trucks[i].type === 'four' ? 1.73 : 1.676)]);
-      for (const [p, axles, sp] of pts) {
-        const j = Math.floor(p.tp.s / 11.89), key = p, prev = mem.get(key);
-        if (prev && prev.e === p.tp.e && prev.j !== j) { for (let a = 0; a < axles; a++) sndJoint(g * (a === 0 ? 1 : 0.8), a * sp / Math.abs(S.v)); }
-        mem.set(key, { e: p.tp.e, j });
-      }
-    }
-  }
-  chirpT -= dt; if (chirpT < 0) { chirpT = 1.5 + Math.random() * (SKY.night ? 2 : 5); if (!inCab && !SKY.snow) sndChirp(SKY.night); }
+  soundMix(dt, T, fx, tv);
 }
 
 GAME.snapshot = function () {

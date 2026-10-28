@@ -1,0 +1,279 @@
+[
+ {
+  "name": "dz",
+  "kind": "bed",
+  "src": "aporee_40970_46758.wav",
+  "start": 1,
+  "end": 64,
+  "db": -18,
+  "hp": 25
+ },
+ {
+  "name": "chuff",
+  "kind": "slice",
+  "src": "aporee_53147_60730.mp3",
+  "start": 17.9,
+  "end": 26.2,
+  "hp": 60,
+  "gap": 0.55,
+  "rise": 2.0,
+  "len": 0.9,
+  "max": 12,
+  "db": -14
+ },
+ {
+  "name": "wh_deep6",
+  "kind": "loop",
+  "src": "aporee_53885_85003.wav",
+  "start": 92.6,
+  "end": 96.6,
+  "len": 1.6,
+  "db": -14,
+  "hp": 120
+ },
+ {
+  "name": "wh_deep6_on",
+  "kind": "shot",
+  "src": "aporee_53885_85003.wav",
+  "start": 91.9,
+  "end": 93.2,
+  "db": -14,
+  "hp": 120
+ },
+ {
+  "name": "safety",
+  "kind": "bed",
+  "src": "aporee_59111_67834.mp3",
+  "start": 852.2,
+  "end": 860.0,
+  "db": -16
+ },
+ {
+  "name": "blower",
+  "kind": "bed",
+  "src": "aporee_59111_67834.mp3",
+  "start": 20,
+  "end": 140,
+  "db": -20
+ },
+ {
+  "name": "pump_a",
+  "kind": "cuts",
+  "src": "aporee_59111_67834.mp3",
+  "start": 0,
+  "at": [
+   [
+    349.85999999999996,
+    350.32
+   ],
+   [
+    359.32,
+    359.78000000000003
+   ],
+   [
+    369.82,
+    370.28000000000003
+   ],
+   [
+    379.53999999999996,
+    380.0
+   ],
+   [
+    389.21999999999997,
+    389.68
+   ],
+   [
+    398.94,
+    399.40000000000003
+   ],
+   [
+    448.41999999999996,
+    448.88
+   ],
+   [
+    478.46,
+    478.92
+   ],
+   [
+    498.88,
+    499.34000000000003
+   ],
+   [
+    517.5,
+    517.9599999999999
+   ]
+  ],
+  "db": -16
+ },
+ {
+  "name": "pump_b",
+  "kind": "cuts",
+  "src": "aporee_59111_67834.mp3",
+  "start": 0,
+  "at": [
+   [
+    350.41999999999996,
+    350.96
+   ],
+   [
+    360.53999999999996,
+    361.08
+   ],
+   [
+    370.44,
+    370.98
+   ],
+   [
+    380.06,
+    380.6
+   ],
+   [
+    390.14,
+    390.68
+   ],
+   [
+    399.44,
+    399.98
+   ],
+   [
+    449.34,
+    449.88
+   ],
+   [
+    479.08,
+    479.62
+   ],
+   [
+    499.44,
+    499.98
+   ],
+   [
+    518.1800000000001,
+    518.72
+   ]
+  ],
+  "db": -16
+ },
+ {
+  "name": "wind",
+  "kind": "bed",
+  "src": "aporee_51400_58655.wav",
+  "start": 2,
+  "end": 80,
+  "db": -22
+ },
+ {
+  "name": "birds",
+  "kind": "bed",
+  "src": "aporee_43758_49812.wav",
+  "start": 1,
+  "end": 180,
+  "db": -24
+ },
+ {
+  "name": "night",
+  "kind": "bed",
+  "src": "aporee_51356_58608.mp3",
+  "start": 1,
+  "end": 100,
+  "db": -26
+ },
+ {
+  "name": "roll",
+  "kind": "bed",
+  "src": "aporee_45607_51790.wav",
+  "start": 50,
+  "end": 115,
+  "db": -18,
+  "lp": 1800
+ },
+ {
+  "name": "flange",
+  "kind": "bed",
+  "src": "aporee_45607_51790.wav",
+  "start": 138,
+  "end": 152,
+  "db": -20,
+  "hp": 2500
+ },
+ {
+  "name": "joint",
+  "kind": "slice",
+  "src": "aporee_53147_60730.mp3",
+  "start": 46.8,
+  "end": 80,
+  "hp": 200,
+  "gap": 0.12,
+  "rise": 2.0,
+  "len": 0.26,
+  "max": 20,
+  "cut": false,
+  "db": -14
+ },
+ {
+  "name": "wh_bright3",
+  "kind": "loop",
+  "src": "aporee_51506_58768.wav",
+  "start": 57.8,
+  "end": 58.7,
+  "len": 0.5,
+  "db": -14,
+  "hp": 400
+ },
+ {
+  "name": "wh_bright3_on",
+  "kind": "shot",
+  "src": "aporee_51506_58768.wav",
+  "start": 57.6,
+  "end": 58.4,
+  "db": -14,
+  "hp": 400
+ },
+ {
+  "name": "wh_k5",
+  "kind": "loop",
+  "src": "commons_AirChime_K5LA.ogg",
+  "start": 7.9,
+  "end": 11.2,
+  "len": 1.6,
+  "db": -14,
+  "hp": 120
+ },
+ {
+  "name": "wh_k5_on",
+  "kind": "shot",
+  "src": "commons_AirChime_K5LA.ogg",
+  "start": 7.05,
+  "end": 8.4,
+  "db": -14,
+  "hp": 120
+ },
+ {
+  "name": "cocks",
+  "kind": "bed",
+  "src": "aporee_59111_67834.mp3",
+  "start": 852.3,
+  "end": 859.8,
+  "db": -18,
+  "hp": 1200
+ },
+ {
+  "name": "bpx",
+  "kind": "bed",
+  "src": "aporee_59111_67834.mp3",
+  "start": 852.3,
+  "end": 859.8,
+  "db": -20,
+  "hp": 700,
+  "lp": 5000
+ },
+ {
+  "name": "injector",
+  "kind": "bed",
+  "src": "aporee_59111_67834.mp3",
+  "start": 150,
+  "end": 250,
+  "db": -22,
+  "hp": 2200
+ }
+]
