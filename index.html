@@ -1612,6 +1612,42 @@ function makeTextures() {
   }, { repeat: true });
 }
 
+/* Distance bands (metres) for detail that has a near and a far version, or that stops being drawn:
+   [fade in from, fully in, start fading out, gone]. Far ends that depend on the fog are set each frame. */
+const LOD = {
+  treeNear: { value: new THREE.Vector4(-2, -1, 560, 720) },
+  treeFar: { value: new THREE.Vector4(560, 720, 4500, 7000) },
+  bush: { value: new THREE.Vector4(-2, -1, 340, 420) },
+  grass: { value: new THREE.Vector4(-2, -1, 185, 230) },
+  flowers: { value: new THREE.Vector4(-2, -1, 245, 300) },
+  tieNear: { value: new THREE.Vector4(-2, -1, 78, 100) },
+  tieFar: { value: new THREE.Vector4(78, 100, 330, 450) },
+};
+/* Screen-door fade by distance from the camera. Each instance fades as a whole; the near version of a
+   pair uses the mirrored dither pattern so near and far fill exactly the pixels the other leaves.
+   Distance comes from the view-space position: three r128 only feeds cameraPosition to some materials. */
+function fadeByDistance(mat, band, mirror = false) {
+  const prev = mat.onBeforeCompile, key = mat.customProgramCacheKey();
+  mat.onBeforeCompile = (sh, r) => {
+    prev.call(mat, sh, r);
+    sh.uniforms.uFade = band; sh.uniforms.uFadeMirror = { value: mirror ? 1 : 0 };
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying float vFadeD;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\n#ifdef USE_INSTANCING\n vFadeD = length((modelViewMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz);\n#else\n vFadeD = length((modelViewMatrix * vec4(transformed, 1.0)).xyz);\n#endif');
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform vec4 uFade; uniform float uFadeMirror; varying float vFadeD;')
+      .replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>
+        {
+          float keep = smoothstep(uFade.x, uFade.y, vFadeD) * (1.0 - smoothstep(uFade.z, uFade.w, vFadeD));
+          float dn = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+          if (uFadeMirror > 0.5) dn = 1.0 - dn;
+          if (dn >= keep) discard;
+        }`);
+  };
+  mat.customProgramCacheKey = () => key + '|fade';
+  return mat;
+}
+/* fog-matched draw distance: where exponential-squared fog has all but swallowed the scene */
+function fogFar(cap) { return Math.min(cap, 1.9 / Math.max(1e-6, scene.fog ? scene.fog.density : 0)); }
+
 function makeMaterials() {
   makeTextures();
   MAT.ground = new THREE.MeshLambertMaterial({ vertexColors: true, map: TEX.ground });
@@ -1634,9 +1670,14 @@ function makeMaterials() {
   MAT.ballast = new THREE.MeshLambertMaterial({ vertexColors: true, map: TEX.ballast });
   MAT.ballast.onBeforeCompile = sh => {
     sh.uniforms.uSnow = WORLD.snowU;
-    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying float vUp;').replace('#include <beginnormal_vertex>', '#include <beginnormal_vertex>\nvUp = normal.y;');
-    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform float uSnow; varying float vUp;')
-      .replace('#include <color_fragment>', '#include <color_fragment>\n diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.86,0.89,0.93), uSnow * smoothstep(0.55,0.85,vUp) * (0.85 + 0.15*diffuseColor.g));');
+    sh.uniforms.uTieFade = LOD.tieFar;
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying float vUp; varying float vCamD;').replace('#include <beginnormal_vertex>', '#include <beginnormal_vertex>\nvUp = normal.y;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvCamD = length((modelViewMatrix * vec4(transformed, 1.0)).xyz);');
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform float uSnow; uniform vec4 uTieFade; varying float vUp; varying float vCamD;')
+      .replace('#include <color_fragment>', '#include <color_fragment>\n' +
+        // past the distance where the ties dissolve, the crown takes on their average colour so the track keeps its look
+        ' diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.085,0.062,0.045), 0.5 * (1.0 - smoothstep(1.15, 1.4, abs(vUv.x * 1.4))) * smoothstep(uTieFade.z, uTieFade.w, vCamD));\n' +
+        ' diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.86,0.89,0.93), uSnow * smoothstep(0.55,0.85,vUp) * (0.85 + 0.15*diffuseColor.g));');
   };
   MAT.rail = new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0.85, roughness: 0.42 });
   MAT.tie = new THREE.MeshLambertMaterial({ vertexColors: true, map: TEX.wood });
@@ -1661,6 +1702,12 @@ function makeMaterials() {
   MAT.lampAmber = new THREE.MeshBasicMaterial({ color: 0xffb340 });
   MAT.lampOff = new THREE.MeshLambertMaterial({ color: 0x1d2222 });
   MAT.tree = new THREE.MeshLambertMaterial({ vertexColors: true });
+  // level-of-detail pairs dissolve into each other instead of popping (see fadeByDistance)
+  MAT.treeNear = fadeByDistance(MAT.tree.clone(), LOD.treeNear, true);
+  MAT.treeFar = fadeByDistance(MAT.tree.clone(), LOD.treeFar);
+  MAT.bush = fadeByDistance(MAT.tree.clone(), LOD.bush, true);
+  MAT.tieNear = MAT.tie.clone(); MAT.tieNear.onBeforeCompile = MAT.tie.onBeforeCompile; fadeByDistance(MAT.tieNear, LOD.tieNear, true);
+  MAT.tieFar = MAT.tie.clone(); MAT.tieFar.onBeforeCompile = MAT.tie.onBeforeCompile; fadeByDistance(MAT.tieFar, LOD.tieFar);
   MAT.hit = new THREE.MeshBasicMaterial({ visible: false });
   MAT.switchBody = new THREE.MeshLambertMaterial({ vertexColors: true });
   MAT.switchLens = new THREE.MeshBasicMaterial({ vertexColors: true });
@@ -1763,10 +1810,10 @@ const CROPS = [
   { c: [0.62, 0.55, 0.31], p: 0.21, n: 'corn' },      // standing corn, drying
   { c: [0.50, 0.35, 0.19], p: 0.16, n: 'soy' },       // soybeans turned
   { c: [0.74, 0.64, 0.40], p: 0.09, n: 'stubble' },   // wheat stubble
-  { c: [0.27, 0.20, 0.15], p: 0.14, n: 'plowed' },    // fall plowing
+  { c: [0.35, 0.27, 0.19], p: 0.14, n: 'plowed' },    // fall plowing
   { c: [0.36, 0.53, 0.23], p: 0.16, n: 'pasture' },
   { c: [0.27, 0.50, 0.17], p: 0.16, n: 'wheat' },     // winter wheat coming up green
-  { c: [0.27, 0.30, 0.17], p: 0.08, n: 'woods' },
+  { c: [0.34, 0.34, 0.20], p: 0.08, n: 'woods' },
 ];
 function fieldAt(X, N) {
   const fx = (X + 40000) / FIELD.w, fn = (N + 40000) / FIELD.h, i = Math.floor(fx), j = Math.floor(fn);
@@ -1801,11 +1848,12 @@ function makeFieldTexture() {
     let r = Noise.hash(fi, fj), acc = 0, t = CROPS[0];
     for (const c of CROPS) { acc += c.p; if (r <= acc) { t = c; break; } }
     const k = (j * w + i) * 4;
-    data[k] = CROP_IDS[t.n] * 36; data[k + 1] = Noise.hash(fi * 3 + 7, fj * 5 + 2) < 0.5 ? 0 : 255; data[k + 2] = (Noise.hash(fi * 7 + 3, fj * 5 + 1) * 255) | 0; data[k + 3] = 255;
+    data[k] = CROP_IDS[t.n] * 36; data[k + 1] = Noise.hash(fi * 3 + 7, fj * 5 + 2) < 0.5 ? 0 : 255; data[k + 2] = (Noise.hash(fi * 7 + 3, fj * 5 + 1) * 255) | 0; data[k + 3] = 0;   // alpha: woodlot planted
   }
   const tex = new THREE.DataTexture(data, w, h, THREE.RGBAFormat);
   tex.magFilter = THREE.NearestFilter; tex.minFilter = THREE.NearestFilter; tex.generateMipmaps = false; tex.needsUpdate = true;
-  return { tex, i0, j0, w, h };
+  const plant = (fi, fj) => { const i = fi - i0, j = fj - j0; if (i >= 0 && j >= 0 && i < w && j < h) { data[(j * w + i) * 4 + 3] = 255; tex.needsUpdate = true; } };
+  return { tex, i0, j0, w, h, plant };
 }
 const CROP_GLSL = `
   {
@@ -1819,10 +1867,12 @@ const CROP_GLSL = `
     if (type < 0.5)      { crop = vec3(0.60, 0.53, 0.31); rowSp = 0.76; rowAmp = 0.35; }
     else if (type < 1.5) { crop = vec3(0.50, 0.36, 0.20); rowSp = 0.38; rowAmp = 0.32; }
     else if (type < 2.5) { crop = vec3(0.74, 0.64, 0.40); rowSp = 0.19; rowAmp = 0.25; }
-    else if (type < 3.5) { crop = vec3(0.29, 0.21, 0.15); rowSp = 0.36; rowAmp = 0.5; }
+    else if (type < 3.5) { crop = vec3(0.35, 0.27, 0.19); rowSp = 0.36; rowAmp = 0.5; }
     else if (type < 4.5) { crop = vec3(0.36, 0.53, 0.23); }
     else if (type < 5.5) { crop = vec3(0.27, 0.50, 0.17); rowSp = 0.19; rowAmp = 0.5; }
-    else { crop = (fl.x < 0.18 || fl.x > 0.82 || fl.y < 0.2 || fl.y > 0.78) ? vec3(0.40, 0.50, 0.24) : vec3(0.30, 0.27, 0.17); }
+    // woods: leaf litter only where a woodlot was actually planted (alpha set by buildTrees); otherwise rough meadow
+    else if (fd.a > 0.5) { crop = (fl.x < 0.18 || fl.x > 0.82 || fl.y < 0.2 || fl.y > 0.78) ? vec3(0.40, 0.50, 0.24) : vec3(0.34, 0.34, 0.20); }
+    else { crop = vec3(0.40, 0.50, 0.24); }
     crop *= 0.88 + 0.24 * fd.b;
     if (rowSp > 0.0) {
       float across = fd.g > 0.5 ? vWPos.x : vWPos.z;
@@ -2101,7 +2151,7 @@ function buildTrack(scene) {
         const ties = [];
         for (let s = Math.ceil(c0 / 0.495) * 0.495 + 0.2; s < c1; s += 0.495) { if (e.isBridge(s) || inRanges(s, e.noTie)) continue; ties.push(s); }
         if (!ties.length) continue;
-        const hi = new THREE.InstancedMesh(tieGeoBase.clone(), MAT.tie, ties.length);
+        const hi = new THREE.InstancedMesh(tieGeoBase.clone(), MAT.tieNear, ties.length);
         const r = rng(e.id * 977 + pi * 31 + ci);
         const pts = [];
         ties.forEach((s, i) => {
@@ -2112,7 +2162,7 @@ function buildTrack(scene) {
           const v = 0.62 + r() * 0.5; _tc.setRGB(0.42 * v, 0.36 * v, 0.29 * v); if (r() < 0.06) _tc.setRGB(0.36, 0.25, 0.17);
           hi.setColorAt(i, _tc);
         });
-        const lo = new THREE.InstancedMesh(tieGeoLo.clone(), MAT.tie, ties.length);
+        const lo = new THREE.InstancedMesh(tieGeoLo.clone(), MAT.tieFar, ties.length);
         lo.instanceMatrix.copy(hi.instanceMatrix); lo.instanceColor = hi.instanceColor;
         const sp = new THREE.Sphere().setFromPoints(pts); sp.radius += 3;
         hi.geometry.boundingSphere = sp; lo.geometry.boundingSphere = sp.clone();
@@ -2250,17 +2300,26 @@ function buildBumpers(scene) {
 /* distance culling of fine track detail */
 function updateTrackLOD(cam) {
   const cp = cam.position;
+  const tn = LOD.tieNear.value, tf = LOD.tieFar.value;
   for (const p of WORLD.pieces) {
     const d = p.userData.sphere.center.distanceTo(cp) - p.userData.sphere.radius;
-    if (d > 430) { for (const c of p.userData.ties) c.hi.visible = c.lo.visible = false; continue; }
-    for (const c of p.userData.ties) { const dc = c.sp.center.distanceTo(cp) - c.sp.radius; c.hi.visible = dc < 95; c.lo.visible = dc >= 95 && dc < 400; }
+    if (d > tf.w) { for (const c of p.userData.ties) c.hi.visible = c.lo.visible = false; continue; }
+    // a chunk is drawn while any of it is inside its band; the shader dissolves it across the band edges
+    for (const c of p.userData.ties) { const dc = c.sp.center.distanceTo(cp); c.hi.visible = dc - c.sp.radius < tn.w; c.lo.visible = dc + c.sp.radius > tf.x && dc - c.sp.radius < tf.w; }
   }
   for (const sw of NET.switches) { const d = sw.vis.standPos.distanceTo(cp); sw.vis.tgt.visible = d < 900; sw.vis.points[0].visible = sw.vis.points[1].visible = d < 700; sw.vis.stat.visible = d < 1400; }
   for (const g of WORLD.poleGroups || []) g.forEach(m => m.visible = m.userData.c.distanceTo(cp) - m.userData.r < 1800);
-  for (const b of WORLD.binGroups || []) b.visible = b.userData.c.distanceTo(cp) - b.userData.r < 3400;
-  for (const sg of SCN.signals) { const d = Math.hypot(sg.X - cp.x, -sg.N - cp.z); for (const h of sg.heads) h.visible = d < 3500; }
+  // buildings and signals stay until the fog has hidden them, so they never blink out in clear air
+  const far = fogFar(6500);
+  for (const b of WORLD.binGroups || []) b.visible = b.userData.c.distanceTo(cp) - b.userData.r < Math.max(3400, far);
+  for (const sg of SCN.signals) { const d = Math.hypot(sg.X - cp.x, -sg.N - cp.z); for (const h of sg.heads) h.visible = d < Math.max(3500, far); }
   for (const t of WORLD.tiles) { const d = t.c.distanceTo(cp) - t.r; const near = d < 2300; t.hi.visible = near; t.lo.visible = !near; }
-  for (const t of WORLD.treeTiles || []) { const d = t.c.distanceTo(cp) - t.r; const near = d < 650; t.hi.forEach(m => m.visible = near); t.lo.forEach(m => m.visible = !near && d < 5200); }
+  const tN = LOD.treeNear.value, tF = LOD.treeFar.value;
+  tF.w = fogFar(7000); tF.z = tF.w * 0.65;
+  for (const t of WORLD.treeTiles || []) {
+    const dc = t.c.distanceTo(cp), near = dc - t.r < tN.w, farOn = dc + t.r > tF.x && dc - t.r < tF.w;
+    t.hi.forEach(m => m.visible = near); t.lo.forEach(m => m.visible = farOn);
+  }
 }
 
 /* ============================================================================
@@ -3025,19 +3084,25 @@ function buildTrees(scene) {
     return true;
   };
   const autumn = (r) => { const x = r(); if (x < 0.55) return [0.28 + r() * 0.1, 0.42 + r() * 0.12, 0.17 + r() * 0.06]; if (x < 0.8) return [0.72 + r() * 0.15, 0.55 + r() * 0.15, 0.16]; if (x < 0.93) return [0.7 + r() * 0.1, 0.27 + r() * 0.1, 0.12]; return [0.55, 0.4, 0.2]; };
-  const r = rng(2024);
+  const r = rng(2024), rw = rng(4202);
   // woodlots
   for (let i = Math.floor((INNER.x0 + 40000) / FIELD.w); i <= Math.floor((INNER.x1 + 40000) / FIELD.w); i++)
     for (let j = Math.floor((INNER.n0 + 40000) / FIELD.h); j <= Math.floor((INNER.n1 + 40000) / FIELD.h); j++) {
       const X0 = i * FIELD.w - 40000, N0 = j * FIELD.h - 40000;
       const f = fieldAt(X0 + 1, N0 + 1);
       if (f.t.n === 'woods') {
-        for (let x = 0.18; x < 0.82; x += 19 / FIELD.w) for (let y = 0.2; y < 0.78; y += 19 / FIELD.h) {
-          const X = X0 + (x + (r() - 0.5) * 0.03) * FIELD.w, N = N0 + (y + (r() - 0.5) * 0.05) * FIELD.h;
+        let spots = 0, planted = 0;
+        const r = rw;   // own stream, so woodlot changes don't reshuffle the fence rows and windbreaks
+        for (let x = 0.18; x < 0.82; x += 14 / FIELD.w) for (let y = 0.2; y < 0.78; y += 14 / FIELD.h) {
+          const X = X0 + (x + (r() - 0.5) * 0.025) * FIELD.w, N = N0 + (y + (r() - 0.5) * 0.04) * FIELD.h;
+          spots++;
           if (!ok(X, N, 0)) continue;
+          planted++;
           if (r() < 0.22) put(X, N, 'dec', -(0.9 + r() * 0.5), [0.16 + r() * 0.05, 0.27 + r() * 0.06, 0.15]);
           else put(X, N, 'dec', 0.85 + r() * 0.6, autumn(r));
         }
+        // the ground shader lays leaf litter only under woodlots that really stand; a cleared one stays meadow
+        if (planted > spots * 0.4) WORLD.fieldTex.plant(i, j);
       }
       // fence-row trees along some field edges
       if (Noise.hash(i * 3 + 1, j * 7 + 2) < 0.22) {
@@ -3064,7 +3129,7 @@ function buildTrees(scene) {
     const tt = { hi: [], lo: [], c: null, r: 0 }; const allPts = [];
     for (const type of ['dec', 'decLo']) {
       const list = t[type.replace('Lo', '')]; if (!list.length) continue;
-      const im = new THREE.InstancedMesh(G[type].clone(), MAT.tree, list.length);
+      const im = new THREE.InstancedMesh(G[type].clone(), type.endsWith('Lo') ? MAT.treeFar : MAT.treeNear, list.length);
       const pts = [];
       list.forEach((q, i) => {
         const [X, N, s0, c] = q; const y = groundAt(X, N) - 0.3; const s = Math.abs(s0), col = s0 < 0;
@@ -3194,6 +3259,7 @@ function detailTextures() {
   for (const k of ['grass', 'goldenrod', 'aster']) {
     const m = new THREE.MeshLambertMaterial({ map: TEX[k], alphaTest: 0.5 });
     m.onBeforeCompile = sway; m.customProgramCacheKey = () => 'sway';
+    fadeByDistance(m, k === 'grass' ? LOD.grass : LOD.flowers, true);
     SMAT['g_' + k] = m; DET.grassMats.push(m);
   }
 }
@@ -3523,7 +3589,7 @@ function genGrass(piece, scene) {
   const grp = new THREE.Group();
   for (const k in L) {
     const list = L[k]; if (!list.length) continue;
-    const mat = k === 'bush' ? MAT.tree : SMAT['g_' + k];
+    const mat = k === 'bush' ? MAT.bush : SMAT['g_' + k];
     const im = new THREE.InstancedMesh(G[k].clone(), mat, list.length);
     list.forEach((q, i) => { _m4.compose(_v1.set(q[0], q[1], -q[2]), _q.setFromEuler(_e.set(0, q[3], 0)), _v2.set(q[4], q[4] * (k === 'grass' ? 0.8 + (i % 5) * 0.12 : 1), q[4])); im.setMatrixAt(i, _m4); _tc.setRGB(q[5][0], q[5][1], q[5][2]).convertSRGBToLinear(); im.setColorAt(i, _tc); });
     im.geometry.boundingSphere = U.sphere.clone();
@@ -5762,9 +5828,9 @@ function setG(node, v, tc = 0.06) { if (AU.on) node.gain.setTargetAtTime(v, AU.c
    ========================================================================== */
 const SKY = {};
 const PRESETS = {
-  morning: { name: 'Morning', sub: 'Low sun, long shadows', elev: 13, az: 118, top: 0x5f93d6, hor: 0xe9d3b4, sun: 0xffdcae, sunI: 2.7, hemiS: 0xb9cde8, hemiG: 0x4f4836, hemiI: 0.55, fog: 0xd9cfbe, fogD: 0.00017, exp: 1.0, night: false },
+  morning: { name: 'Morning', sub: 'Low sun, long shadows', elev: 13, az: 118, top: 0x5f93d6, hor: 0xe9d3b4, sun: 0xffdcae, sunI: 2.7, hemiS: 0xb9cde8, hemiG: 0x4f4836, hemiI: 0.8, fog: 0xd9cfbe, fogD: 0.00017, exp: 1.0, night: false },
   noon: { name: 'Midday', sub: 'High sun, clear air', elev: 56, az: 170, top: 0x3e7dcf, hor: 0xbcd4ea, sun: 0xfff4e4, sunI: 2.6, hemiS: 0xc4d8f0, hemiG: 0x5d5845, hemiI: 0.6, fog: 0xc6d5e2, fogD: 0.00013, exp: 0.95, night: false },
-  golden: { name: 'Golden hour', sub: 'Sun on the drivers', elev: 6.5, az: 252, top: 0x4c6ea6, hor: 0xf3ae6e, sun: 0xffad63, sunI: 2.3, hemiS: 0x9fb2d6, hemiG: 0x584430, hemiI: 0.6, fog: 0xe2b58e, fogD: 0.0002, exp: 1.05, night: false },
+  golden: { name: 'Golden hour', sub: 'Sun on the drivers', elev: 6.5, az: 252, top: 0x4c6ea6, hor: 0xf3ae6e, sun: 0xffad63, sunI: 2.3, hemiS: 0x9fb2d6, hemiG: 0x584430, hemiI: 0.8, fog: 0xe2b58e, fogD: 0.0002, exp: 1.05, night: false },
   night: { name: 'Night', sub: 'Headlight & firebox', elev: 28, az: 210, top: 0x03070f, hor: 0x162236, sun: 0x8ea6d6, sunI: 0.22, hemiS: 0x304060, hemiG: 0x141210, hemiI: 0.16, fog: 0x0a0f18, fogD: 0.00036, exp: 1.25, night: true },
 };
 const WEATHER = {

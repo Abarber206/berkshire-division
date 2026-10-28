@@ -3,9 +3,9 @@
    ========================================================================== */
 const SKY = {};
 const PRESETS = {
-  morning: { name: 'Morning', sub: 'Low sun, long shadows', elev: 13, az: 118, top: 0x5f93d6, hor: 0xe9d3b4, sun: 0xffdcae, sunI: 2.7, hemiS: 0xb9cde8, hemiG: 0x4f4836, hemiI: 0.55, fog: 0xd9cfbe, fogD: 0.00017, exp: 1.0, night: false },
+  morning: { name: 'Morning', sub: 'Low sun, long shadows', elev: 13, az: 118, top: 0x5f93d6, hor: 0xe9d3b4, sun: 0xffdcae, sunI: 2.7, hemiS: 0xb9cde8, hemiG: 0x4f4836, hemiI: 0.8, fog: 0xd9cfbe, fogD: 0.00017, exp: 1.0, night: false },
   noon: { name: 'Midday', sub: 'High sun, clear air', elev: 56, az: 170, top: 0x3e7dcf, hor: 0xbcd4ea, sun: 0xfff4e4, sunI: 2.6, hemiS: 0xc4d8f0, hemiG: 0x5d5845, hemiI: 0.6, fog: 0xc6d5e2, fogD: 0.00013, exp: 0.95, night: false },
-  golden: { name: 'Golden hour', sub: 'Sun on the drivers', elev: 6.5, az: 252, top: 0x4c6ea6, hor: 0xf3ae6e, sun: 0xffad63, sunI: 2.3, hemiS: 0x9fb2d6, hemiG: 0x584430, hemiI: 0.6, fog: 0xe2b58e, fogD: 0.0002, exp: 1.05, night: false },
+  golden: { name: 'Golden hour', sub: 'Sun on the drivers', elev: 6.5, az: 252, top: 0x4c6ea6, hor: 0xf3ae6e, sun: 0xffad63, sunI: 2.3, hemiS: 0x9fb2d6, hemiG: 0x584430, hemiI: 0.8, fog: 0xe2b58e, fogD: 0.0002, exp: 1.05, night: false },
   night: { name: 'Night', sub: 'Headlight & firebox', elev: 28, az: 210, top: 0x03070f, hor: 0x162236, sun: 0x8ea6d6, sunI: 0.22, hemiS: 0x304060, hemiG: 0x141210, hemiI: 0.16, fog: 0x0a0f18, fogD: 0.00036, exp: 1.25, night: true },
 };
 const WEATHER = {
