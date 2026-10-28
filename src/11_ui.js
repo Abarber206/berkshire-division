@@ -294,6 +294,7 @@ function drawNet(g, W, H, cx, cn, sc, opt) {
     T.vehicles.forEach((v, i) => { const x = tx(v.pos.x), y = ty(-v.pos.z); i ? g.lineTo(x, y) : g.moveTo(x, y); }); g.stroke();
     const p = T.lead.pos; g.fillStyle = '#ffffff'; g.beginPath(); g.arc(tx(p.x), ty(-p.z), 3.5 * opt.w, 0, TAU); g.fill();
   }
+  JOB.drawMap(g, tx, ty, opt);
   MP.drawMap(g, tx, ty, opt);
   return { tx, ty };
 }
@@ -371,7 +372,7 @@ function carPanel() {
     let h = '';
     V.forEach((v, i) => {
       if (i > 0) h += CARS.canCut(T, i) && !MP.on ? `<button class="cj" type="button" data-j="${i}" aria-label="Pull the pin between ${carName(T, V[i - 1])} ${i} and ${carName(T, v)} ${i + 1}">${KNUCKLE}</button>` : '<span class="cjx"></span>';
-      h += `<div class="cv ${isPower(v) ? 'pw' : v.kind}"><b>${carName(T, v)}</b></div>`;
+      h += `<div class="cv ${isPower(v) ? 'pw' : v.kind}${v.job ? ' wb' : ''}">${v.job ? `<i title="Waybilled to ${v.job.to}">${v.job.tag}</i>` : ''}<b>${carName(T, v)}</b></div>`;
     });
     strip.innerHTML = h;
     const pw = strip.querySelector('.pw'); if (pw) strip.scrollLeft = pw.offsetLeft - strip.clientWidth / 2 + pw.offsetWidth;

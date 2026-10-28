@@ -444,6 +444,7 @@ MP.ui = function () {
   $('btnPlayers').hidden = !MP.on;
   $('mpCount').textContent = n;
   $('mpPanelCode').textContent = MP.code;
+  if (MP.jobOn !== MP.on) { MP.jobOn = MP.on; jobMenu(); }
 };
 MP.say = function (msg, warn) { const s = $('mpStatus'); s.textContent = msg; if (warn) s.style.color = 'var(--approach)'; setTimeout(() => { s.style.color = ''; MP.ui(); }, 3500); };
 MP.talk = function (text) {
