@@ -193,14 +193,14 @@ function mpOpts(st) {
 function mpLocoLabel(st) {
   if (st && st.other) return 'On another railroad';
   if (!st || st.e < 0) return 'In the menu';
-  const loco = st.lk === 'diesel' ? (st.lv === 'custom' ? 'Custom' : LIVERIES[st.lv].init) + ' diesel' + (st.u > 1 ? ' ×' + st.u : '') : (st.lk === '765' ? 'NKP 765' : 'PM 1225');
-  return loco + ' · ' + CONSISTS[st.ck].name;
+  const loco = HSR[st.lk] ? HSR[st.lk].name : st.lk === 'diesel' ? (st.lv === 'custom' ? 'Custom' : LIVERIES[st.lv].init) + ' diesel' + (st.u > 1 ? ' ×' + st.u : '') : (st.lk === '765' ? 'NKP 765' : 'PM 1225');
+  return HSR[st.lk] ? loco : loco + ' · ' + CONSISTS[st.ck].name;
 }
 function mpJoints(T, mem, speed, cp) {
   for (const v of T.vehicles) {
     const dv = v.pos.distanceTo(cp); if (dv > 110) continue;
     const g = Math.min(1, Math.abs(speed) / 7) / (1 + Math.pow(dv / 13, 1.4));
-    const pts = (v.kind === 'loco' || v.kind === 'loco2') ? (T.diesel ? [[v.fp[0], 3, DG.axle], [v.fp[1], 3, DG.axle]] : [[v.leadPt, 1, 0], [v.fp[0], 4, 1.855]]) : v.tp.map((p, i) => [p, v.trucks[i].type === 'four' ? 2 : 3, v.trucks[i].sp || (v.trucks[i].type === 'four' ? 1.73 : 1.676)]);
+    const pts = (v.kind === 'loco' || v.kind === 'loco2') ? (T.diesel ? [[v.fp[0], v.emu ? 2 : 3, v.emu ? v.model.wb : DG.axle], [v.fp[1], v.emu ? 2 : 3, v.emu ? v.model.wb : DG.axle]] : [[v.leadPt, 1, 0], [v.fp[0], 4, 1.855]]) : v.tp.map((p, i) => [p, v.trucks[i].type === 'four' ? 2 : 3, v.trucks[i].sp || (v.trucks[i].type === 'four' ? 1.73 : 1.676)]);
     for (const [p, axles, sp] of pts) {
       const j = Math.floor(p.tp.s / 11.89), prev = mem.get(p);
       if (prev && prev.e === p.tp.e && prev.j !== j) for (let a = 0; a < axles; a++) sndJoint(g * (a === 0 ? 1 : 0.8), a * sp / Math.max(0.5, Math.abs(speed)));
@@ -223,7 +223,7 @@ class RemoteTrain {
   }
   repaint(st) {
     const p = `${st.lv}|${st.mx}|${st.cu}|${st.no}`; if (p === this.paint) return; this.paint = p;
-    if (!this.train.diesel) return;
+    if (!this.train.diesel || this.train.elec) return;
     const o = mpOpts(st);
     this.train.units.forEach((m, u) => { const lv = dieselLiveryFor(o, u); applyLivery(m, lv, (o.number || lv.num) + u); });
   }
@@ -274,7 +274,9 @@ class RemoteTrain {
     }
     // exhaust
     if (d < 1500) {
-      if (T.diesel) {
+      if (T.elec) {
+        // electric: nothing out of a stack
+      } else if (T.diesel) {
         this.idleT += dt;
         if (this.idleT > 0.09 && st.rpm > 60) {
           this.idleT = 0;
@@ -299,7 +301,7 @@ class RemoteTrain {
     }
     // sound
     if (!AU.on) return;
-    if (!this.bus) this.bus = makeRemoteBus(T.diesel);
+    if (!this.bus) this.bus = makeRemoteBus(T.diesel && !T.elec);
     const t = AU.ctx.currentTime, gL = d > 1000 ? 0 : 1 / (1 + Math.pow(d / 26, 1.25));
     setG(this.bus.g, gL, 0.1); this.bus.lp.frequency.setTargetAtTime(clamp(16000 / (1 + d / 80), 900, 16000), t, 0.1);
     setG(this.bus.roar, 0.3 * Math.min(1, Math.abs(this.v) / 22), 0.2);
@@ -503,7 +505,7 @@ MP.state = function () {
       lk: T.locoKey, ck: T.consistKey, u: T.nUnits || 1, lv: g.livery, mx: g.mix ? 1 : 0, cu: g.livery === 'custom' ? [g.custom.body, g.custom.accent, g.custom.letter] : 0, no: g.livery === 'custom' ? (+g.number || 0) : 0,
       e: f.e.id, s: +f.s.toFixed(2), o: f.o, v: +S.v.toFixed(2), rv: +S.reverser.toFixed(2), wh: +S.whistle.toFixed(2), bl: S.bell ? 1 : 0, hl: S.light, dl: S.ditch ? 1 : 0,
       ex: T.diesel ? +S.load.toFixed(2) : (S.Psc > 6 && S.cut > 0 && S.throttle > 0.02 ? +clamp((S.Psc / 245) * (0.35 + S.cut * 1.25), 0, 1.3).toFixed(2) : 0),
-      rpm: T.diesel && S.engineRun ? Math.round(S.rpm) : 0, dr: S.derailed ? 1 : 0,
+      rpm: T.diesel && !T.elec && S.engineRun ? Math.round(S.rpm) : 0, dr: S.derailed ? 1 : 0,
     });
   }
   st.sw = NET.switches.map((sw, i) => MP.swv[i] * 2 + sw.state);

@@ -133,7 +133,7 @@ class Consist {
       if ((v.kind === 'loco' || v.kind === 'loco2') && this.diesel) {
         const U = v.model;
         U.trucks.forEach((tg, k) => { tg.matrixAutoUpdate = false; frameMatrix(v.fp[k].F, tg.matrix); if (v.reversed) tg.matrix.multiply(_m4.makeRotationY(Math.PI)); tg.matrixWorldNeedsUpdate = true; });
-        const wa = (v.reversed ? 1 : -1) * this.dist / DG.rW; for (const w of U.wheels) w.rotation.z = wa;
+        const wa = (v.reversed ? 1 : -1) * this.dist / (U.rW || DG.rW); for (const w of U.wheels) w.rotation.z = wa;
         v.root.updateMatrixWorld(true);
       } else if (v.kind === 'loco') {
         const lf = v.leadPt.F;
@@ -173,7 +173,18 @@ class Train extends Consist {
     this.diesel = !!spec.diesel;
     const engMass = spec.weight * 0.4536; // engine only (lb → kg)
     let L;
-    if (this.diesel) {
+    if (spec.set) {
+      // a fixed high-speed trainset: every car belongs to the train, and the cab car at each end has the controls
+      this.elec = true;
+      this.units = buildTrainset(spec.set); this.nUnits = 1;
+      this.units.forEach((m, i) => {
+        const wrap = new THREE.Group(); wrap.add(m.root); if (m.reversed) m.root.rotation.y = Math.PI;
+        scene.add(wrap); m.trucks.forEach(t => scene.add(t));
+        const v = setVehicle(m, i); v.root = wrap; this.vehicles.push(v); m.vehicle = v;
+      });
+      L = this.units[0];
+      this.tender = null;
+    } else if (this.diesel) {
       // a lashup of one to three units; the last unit runs backward so there is a cab at each end
       const n = clamp(opts.units || 1, 1, 3);
       this.units = []; this.nUnits = n;
@@ -200,7 +211,7 @@ class Train extends Consist {
     }
     this.loco = L;
     // cars
-    const list = CONSISTS[consistKey].build(r);
+    const list = spec.set ? [] : CONSISTS[consistKey].build(r);
     let n = 0;
     for (const [type, flag] of list) {
       const num = type === 'coach' ? 3010 + (n++) * 7 : 10000 + ((r() * 89999) | 0);
@@ -236,6 +247,7 @@ class Train extends Consist {
   }
   update(dt, theta = 0, rev = 0) {
     super.update(dt, theta, rev);
+    if (this.elec) animateTrainset(this, dt);
     // headlight follows the lamp
     const L = this.loco;
     L.root.updateMatrixWorld(true);
