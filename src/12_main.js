@@ -590,6 +590,7 @@ function renderStep(dt, T) {
   T.update(dt, S.theta, S.reverser);
   CARS.render();
   CPL.frame(dt);
+  CAB.frame(dt, T);
   AI.render(dt);
   MP.frame(dt);
   if (GAME.running && !S.paused && !S.derailed) MP.contact(T);

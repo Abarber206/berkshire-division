@@ -63,6 +63,7 @@ On a phone, use the levers and buttons on screen. Tap a switch stand, the switch
 | B, X, K, H | Bell, sand, cylinder cocks (diesel: ditch lights), headlight |
 | I, F, L | Injector (diesel: engine start/stop), stoker, blower |
 | 1–6, V | Cameras (6 cinematic; tap the scene or press 6 again for the next shot). Press a camera's number again to reset it |
+| N | In the cab, swing the view between the road ahead and the controls. Drag or click any lever, valve or switch in the cab to work it; hover or tap a gauge to read it |
 | ← / →, − / = | Turn and zoom the camera (or drag, scroll, pinch, two-finger twist) |
 | M / P | Map / pause |
 | G | Place engines and cars (then drag or arrows to pan, Q / E or right-drag to turn the view, scroll to zoom, 1–6 for a car, F turn, Delete remove, Esc put back or leave) |
