@@ -163,7 +163,7 @@ class Train extends Consist {
     super(scene);
     this.locoKey = locoKey; this.consistKey = consistKey;
     this.driverDist = 0;
-    const r = rng(1944);
+    const r = rng(opts.seed || 1944);   // car numbers: AI trains bring their own seed
     // locomotive
     const spec = LOCO_SPEC[locoKey];
     ROAD_SHORT = spec.short;

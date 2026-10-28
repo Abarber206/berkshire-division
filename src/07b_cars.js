@@ -91,7 +91,7 @@ CARS.setup = function () {
 function carIndex() {
   const idx = new Map();
   const add = (e, s, it) => { let l = idx.get(e); if (!l) idx.set(e, l = []); it.s = s; l.push(it); };
-  for (const c of [GAME.train, ...CARS.cuts]) {
+  for (const c of [GAME.train, ...CARS.cuts, ...AI.trains.map(a => a.train)]) {
     if (!c) continue;
     const f = c.endTP('front'), r = c.endTP('rear');
     add(f.e, f.s, { c, end: 'front', out: f.o });
@@ -128,7 +128,7 @@ function carFrom(t, dir, range, idx, skip) {
 }
 /* how far consist c may move by d before it touches something */
 CARS.limit = function (c, d) {
-  if (!CARS.cuts.length) return { d, hit: null };
+  if (!CARS.cuts.length && !AI.trains.length) return { d, hit: null };
   const idx = carIndex();
   const hit = carAhead(c, Math.sign(d), Math.abs(d) + 0.05, idx);
   if (!hit || hit.d >= Math.abs(d)) return { d, hit: null };
@@ -136,13 +136,13 @@ CARS.limit = function (c, d) {
 };
 /* open track from tp along dir before the nearest cut of cars (skip: the consist standing at tp) */
 CARS.clearance = function (tp, dir, range, skip) {
-  if (!CARS.cuts.length) return Infinity;
+  if (!CARS.cuts.length && !AI.trains.length) return Infinity;
   const hit = carFrom(tp, dir, range, carIndex(), skip);
   return hit ? hit.d : Infinity;
 };
 /* for the HUD: the cut ahead of the train in the direction of travel */
 CARS.ahead = function (T, dir, range) {
-  if (!CARS.cuts.length) return null;
+  if (!CARS.cuts.length && !AI.trains.length) return null;
   return carAhead(T, dir, range, carIndex());
 };
 
@@ -181,6 +181,7 @@ function buff(mA, uA, mB, uB, e) {
 const buffE = closing => closing < 1 ? 0 : 0.3 * smooth(1, 3, closing);
 /* consist A, moving toward its dir end, has just touched hit.c */
 CARS.contact = function (A, dir, hit) {
+  if (A.ai || hit.c.ai) { AI.contact(A, dir, hit); return; }
   const B = hit.c, T = GAME.train;
   const aEnd = dir > 0 ? 'front' : 'rear';
   const sB = hit.end === aEnd ? -1 : 1;   // B's velocity, seen along A's direction

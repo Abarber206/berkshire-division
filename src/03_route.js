@@ -6,6 +6,16 @@
 const NET = new Network();
 const ROUTE = { lines: {}, stations: [], water: [], signals: [], crossings: [], mileposts: [], bumpers: [], features: {} };
 
+/* the same path moved sideways by off metres (+ left), as builder points */
+function offsetPts(pts, off) {
+  const out = [];
+  for (let i = 0; i < pts.length; i++) {
+    const p = pts[i], X = p.X - Math.sin(p.h) * off, N = p.N + Math.cos(p.h) * off;
+    out.push({ X, N, h: p.h, k: p.k / (1 - p.k * off), s: i ? out[i - 1].s + Math.hypot(X - out[i - 1].X, N - out[i - 1].N) : 0 });
+  }
+  return out;
+}
+
 /* A Line is a continuous builder path that gets cut into edges at nodes. */
 class Line {
   constructor(name, pts, opt = {}) {
@@ -63,7 +73,7 @@ class Line {
     for (const sg of segs) {
       const pts = this.slice(sg.s0, sg.s1);
       const bridges = (opt.bridges || []).map(b => [b[0] - sg.s0, b[1] - sg.s0]).filter(b => b[1] > 0 && b[0] < sg.s1 - sg.s0);
-      const e = NET.edge(pts, { kind: opt.kind, name: this.name, limit: opt.limit, bridges });
+      const e = NET.edge(pts, { kind: opt.kind, name: this.name, limit: opt.limit, cant: opt.cant, bridges });
       e.line = this; e.lineS0 = sg.s0;
       e.setProfile((s, X, N) => profile(sg.s0 + s, X, N));
       NET.attach(e, 0, sg.na); NET.attach(e, 1, sg.nb);
@@ -126,9 +136,25 @@ function buildRoute() {
   main.opt.bridges = [[sBridge - 72, sBridge + 72]];
   ROUTE.bridge = { s: sBridge, half: 64 };
 
+  /* ---------- the second main track ----------
+     Track 2 runs 4.5 m inside track 1 (the original main) all the way round. Right-hand running: track 1
+     carries eastward (+s) trains and track 2 westward ones. to2 / to1 carry a distance from one to the other. */
+  const DT = 4.5;
+  const p2 = offsetPts(main.pts, DT);
+  const main2 = new Line('Main 2', p2, { kind: 'main', loop: true, limit: 70 });
+  const remap = (A, B, L) => s => {
+    s = ((s % L) + L) % L;
+    let lo = 0, hi = A.length - 1; while (hi - lo > 1) { const m = (lo + hi) >> 1; if (A[m] <= s) lo = m; else hi = m; }
+    return B[lo] + (B[hi] - B[lo]) * (s - A[lo]) / ((A[hi] - A[lo]) || 1);
+  };
+  const S1 = main.pts.map(p => p.s), S2 = p2.map(p => p.s);
+  const to2 = remap(S1, S2, main.len), to1 = remap(S2, S1, main2.len);
+  main2.opt.bridges = [[to2(sBridge - 72), to2(sBridge + 72)]];
+  ROUTE.main2 = main2; ROUTE.to2 = to2; ROUTE.to1 = to1; ROUTE.spacing = DT;
+
   /* helper: a diverging line from a main node */
-  const div = (name, s, off, R, straightLen, back = true, opt = {}) => {
-    const p = main.poseAt(s);
+  const div = (name, s, off, R, straightLen, back = true, opt = {}, from = main) => {
+    const p = from.poseAt(s);
     const b = new PathBuilder(p.X, p.N, p.h);
     const j = b.jog(off, R);
     b.straight(straightLen);
@@ -169,11 +195,11 @@ function buildRoute() {
   const eng = new Line('Engine Track', be.pts, { kind: 'yard', limit: 10, startNode: nEN });
   ROUTE.features.engine = eng;
 
-  /* ---------- Fostoria passing siding (north side) + elevator spur ---------- */
+  /* ---------- Fostoria passing siding (north side, off track 2) + elevator spur ---------- */
   const sF1 = 3150, FL = 2650, RS = 235;
-  const nF1 = main.cut(sF1), nF2 = main.cut(sF1 + FL);
+  const nF1 = main2.cut(to2(sF1)), nF2 = main2.cut(to2(sF1 + FL));
   const jS = jogLen(4.5, RS);
-  const fos = div('Fostoria Siding', sF1, 4.5, RS, FL - 2 * jS, true, { kind: 'siding', limit: 30, startNode: nF1, endNode: nF2 });
+  const fos = div('Fostoria Siding', to2(sF1), 4.5, RS, FL - 2 * jS, true, { kind: 'siding', limit: 30, startNode: nF1, endNode: nF2 }, main2);
   const fosProf = projMain(sF1 + FL / 2);
   const sFE = 1350;
   const nFE = fos.line.cut(sFE);
@@ -212,8 +238,24 @@ function buildRoute() {
   const stub = new Line('Quarry Storage', bst.pts, { kind: 'yard', limit: 10, startNode: nQS });
   const brProj = (X, N) => { const p0 = branch.poseAt(sBrStraight); return sBrStraight + (N - p0.N); };
 
+  /* ---------- crossovers between the main tracks ----------
+     At each place, A takes an eastward train from track 1 over to track 2 and B, just beyond, brings a
+     train back. Both are on tangent track, where a distance on one main maps straight across to the other. */
+  const XR = 235, xl = jogLen(DT, XR), xos = [];
+  const crossover = (name, s, up) => {
+    const from = up ? main : main2, to = up ? main2 : main, s0 = up ? s : to2(s);
+    const p = from.poseAt(s0), b = new PathBuilder(p.X, p.N, p.h); b.jog(up ? DT : -DT, XR);
+    const nA = from.cut(s0), nB = to.cut(up ? to2(s + xl) : s + xl);
+    xos.push({ line: new Line(name, b.pts, { kind: 'main', limit: 30, cant: false, startNode: nA, endNode: nB }), from, to, nA, nB, prof: projMain(s + xl / 2) });
+  };
+  for (const [place, s] of [['Bellevue', 2150], ['Fostoria', 6100], ['Kenton', 11650], ['Delphos', 17000]]) {
+    crossover(place + ' crossover A', s, true); crossover(place + ' crossover B', s + 150, false);
+  }
+
   /* ---------- build edges ---------- */
   main.build(s => mainY(s));
+  main2.build(s => mainY(to1(s)));
+  for (const x of xos) x.line.build((s, X, N) => mainY(x.prof(X, N)));
   yards.forEach(l => l.build((s, X, N) => mainY(yardProf(X, N))));
   eng.build((s, X, N) => mainY(yardProf(X, N)));
   fos.line.build((s, X, N) => mainY(fosProf(X, N)));
@@ -240,8 +282,8 @@ function buildRoute() {
     SW('Yard ladder E' + (k + 1), yards[k].endNode, yards[k - 1], yards[k], false, ['Yard ' + k, 'Yard ' + (k + 1)]);
   }
   SW('Engine Terminal', nEN, y4, eng, true, ['Yard 4', 'Engine track']);
-  SW('Fostoria West', nF1, main, fos.line, true, ['Main', 'Siding']);
-  SW('Fostoria East', nF2, main, fos.line, false, ['Main', 'Siding']);
+  SW('Fostoria West', nF1, main2, fos.line, true, ['Main', 'Siding']);
+  SW('Fostoria East', nF2, main2, fos.line, false, ['Main', 'Siding']);
   SW('Elevator', nFE, fos.line, spur, true, ['Siding', 'Elevator']);
   SW('Kenton East', nK1, main, ken.line, true, ['Main', 'Siding']);
   SW('Kenton West', nK2, main, ken.line, false, ['Main', 'Siding']);
@@ -249,35 +291,41 @@ function buildRoute() {
   SW('Quarry South', nQ1, branch, run, true, ['Branch', 'Runaround']);
   SW('Quarry North', nQ2, branch, run, false, ['Branch', 'Runaround']);
   SW('Storage', nQS, run, stub, true, ['Runaround', 'Storage']);
+  // the two switches of a crossover are thrown together
+  for (const x of xos) {
+    const a = SW(x.line.name, x.nA, x.from, x.line, true, [x.from === main ? 'Track 1' : 'Track 2', 'Crossover']);
+    const b = SW(x.line.name, x.nB, x.to, x.line, false, [x.to === main ? 'Track 1' : 'Track 2', 'Crossover']);
+    a.mate = b; b.mate = a;
+  }
   // turnout speed by radius
-  for (const sw of NET.switches) { const dk = sw.legs[1].edge.kind; sw.divLimit = (dk === 'siding' || dk === 'branch') ? 30 : 15; }
+  for (const sw of NET.switches) { const dk = sw.legs[1].edge.kind; sw.divLimit = (dk === 'siding' || dk === 'branch' || dk === 'main') ? 30 : 15; }
 
   /* ---------- dead ends ---------- */
   for (const nd of NET.nodes) if (nd.att.length === 1) ROUTE.bumpers.push(nd);
 
   /* ---------- stations, water, signals ---------- */
-  const st = (name, line, s, side, kind) => { const loc = line.locate(s); ROUTE.stations.push({ name, line, sLine: s, edge: loc.edge, s: loc.s, side, kind }); };
-  st('Bellevue', main, sW1 + 620, -1, 'depot');
+  // a depot on the inside of the loop stands beyond track 2 (across: the extra distance out)
+  const st = (name, line, s, side, kind, across = 0) => { const loc = line.locate(s); ROUTE.stations.push({ name, line, sLine: s, edge: loc.edge, s: loc.s, side, kind, across }); };
+  st('Bellevue', main, sW1 + 620, -1, 'depot', DT);
   st('Fostoria', main, sF1 + 1250, 1, 'depot');
-  st('Kenton', main, sK1 + 700, -1, 'depot');
-  st('Delphos', main, sBR + 1500, -1, 'small');
+  st('Kenton', main, sK1 + 700, -1, 'depot', DT);
+  st('Delphos', main, sBR + 1500, -1, 'small', DT);
   st('Quarry', branch, branch.len - 40, 1, 'quarry');
   const wc = (line, s, side, kind) => { const loc = line.locate(s); ROUTE.water.push({ line, sLine: s, edge: loc.edge, s: loc.s, side, kind }); };
   wc(main, sF1 + 1450, 1, 'column');
-  wc(main, sK1 + 940, -1, 'column');
+  wc(main2, to2(sK1 + 940), -1, 'column');
   wc(eng, 150, 1, 'tower');
   ROUTE.coal = { line: eng, sLine: 235, edge: eng.locate(235).edge, s: eng.locate(235).s };
-  // signals protecting facing-point main switches
-  const sig = (sw, line, sNode, dir) => ROUTE.signals.push({ sw, line, sLine: sNode - dir * 160, dir });
-  sig(NET.switches[0], main, sW1, 1); sig(NET.switches[1], main, sW1 + YL, -1);
-  const fsw = NET.switches.find(s => s.name === 'Fostoria West'), fsw2 = NET.switches.find(s => s.name === 'Fostoria East');
-  sig(fsw, main, sF1, 1); sig(fsw2, main, sF1 + FL, -1);
-  const k1 = NET.switches.find(s => s.name === 'Kenton East'), k2 = NET.switches.find(s => s.name === 'Kenton West');
-  sig(k1, main, sK1, 1); sig(k2, main, sK1 + KL, -1);
-  sig(NET.switches.find(s => s.name === 'Quarry Jct'), main, sBR, 1);
+  /* Signals. Track 1 is signalled for eastward running and track 2 for westward, as double track was in
+     the 1940s: a home signal on the approach to each place with switches on that track, automatic block
+     signals between. Dwarfs govern moves off the sidings, Yard 1 and the quarry branch onto the main. */
+  const sig = (line, sLine, dir, kind = 'mast') => ROUTE.signals.push({ line, sLine, dir, kind });
+  for (const s of [340, 3500, 5940, 8700, 11490, 14000, 16678, 19500]) sig(main, s, 1);
+  for (const s of [2460, 6410, 9000, 11960, 14600, 17310, 20100]) sig(main2, to2(s), -1);
+  for (const [ln, at, dir] of [[fos.line, 110, -1], [fos.line, -110, 1], [ken.line, 110, -1], [ken.line, -110, 1], [yards[0], 78, -1], [yards[0], -78, 1], [branch, 150, -1]]) sig(ln, at < 0 ? ln.len + at : at, dir, 'dwarf');
   // mileposts
   for (let m = 1; m * MILE < main.len; m++) ROUTE.mileposts.push({ line: main, sLine: m * MILE, num: 101 + m });
-  ROUTE.main = main; ROUTE.branch = branch;
+  ROUTE.main = main; ROUTE.branch = branch; ROUTE.crossovers = xos.map(x => x.line);
   ROUTE.startLine = yards[1]; // train starts on Yard 2
   ROUTE.startS = 260;
 }

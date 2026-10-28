@@ -2,7 +2,7 @@
    Game: boot, world loading, main loop, rules, HUD
    ========================================================================== */
 const GAME = {
-  settings: { loco: '765', consist: 'passenger', time: 'morning', weather: 'clear', fire: 'auto', units: 1, livery: 'ss', mix: false, finish: 'standard', job: '', custom: { body: 0x2c5f8a, roof: 0x24384a, accent: 0xf0f0ea, letter: 0xf0f0ea, rail: 0xf0f0ea }, number: 4401 },
+  settings: { traffic: 'on', loco: '765', consist: 'passenger', time: 'morning', weather: 'clear', fire: 'auto', units: 1, livery: 'ss', mix: false, finish: 'standard', job: '', custom: { body: 0x2c5f8a, roof: 0x24384a, accent: 0xf0f0ea, letter: 0xf0f0ea, rail: 0xf0f0ea }, number: 4401 },
   train: null, running: false, ready: false, stats: { runThrough: 0 },
   events: {}, stopped: 0, lastStation: null, filling: null,
 };
@@ -142,6 +142,7 @@ function layoutFit(tp, need) {
 function finishTrain(t) {
   prepareTrain(t);
   CARS.setup();
+  AI.setup();
   if (!t.diesel) applySteamFinish(GAME.settings.finish);
   resetState();
   S.limit = Math.min(...t.pts.map(p => p.tp.e.limit));
@@ -237,7 +238,7 @@ function applyLiveriesLive() {
   const o = dieselOpts();
   t.units.forEach((m, u) => { const lv = dieselLiveryFor(o, u); applyLivery(m, lv, (o.number || lv.num) + u); });
 }
-const SAVE_KEYS = ['job', 'loco', 'consist', 'time', 'weather', 'fire', 'units', 'livery', 'mix', 'finish', 'custom', 'number'];
+const SAVE_KEYS = ['job', 'traffic', 'loco', 'consist', 'time', 'weather', 'fire', 'units', 'livery', 'mix', 'finish', 'custom', 'number'];
 function saveSettings() { try { const o = {}; for (const k of SAVE_KEYS) o[k] = GAME.settings[k]; localStorage.setItem('bd_settings', JSON.stringify(o)); } catch (e) {} }
 function loadSettings() { try { const o = JSON.parse(localStorage.getItem('bd_settings') || 'null'); if (o) for (const k of SAVE_KEYS) if (o[k] !== undefined) GAME.settings[k] = o[k]; } catch (e) {} if (!LOCO_SPEC[GAME.settings.loco]) GAME.settings.loco = '765'; if (!LIVERIES[GAME.settings.livery]) GAME.settings.livery = 'ss'; }
 GAME.needNewTrain = function () { const t = GAME.train, g = GAME.settings, j = JOB.wanted(); return !t || MP.needSpawn || t.locoKey !== g.loco || t.consistKey !== JOB.consist() || (j ? j.id : '') !== JOB.activeId() || (t.diesel && t.nUnits !== (+g.units || 1)); };
@@ -282,6 +283,7 @@ function buildMenu() {
   segButtons('optTime', PRESETS, 'time', k => { if (GAME.ready) applyLook(k, GAME.settings.weather, renderer, scene); });
   segButtons('optWeather', WEATHER, 'weather', k => { if (GAME.ready) { applyLook(GAME.settings.time, k, renderer, scene); FX.snow.visible = SKY.snow; } });
   segButtons('optFire', { auto: { name: 'Fireman', sub: 'Stoker & water handled' }, hand: { name: 'Hand fired', sub: 'You run the boiler' } }, 'fire', k => { S.autoFire = k === 'auto'; GAME.refreshKeys(); saveSettings(); });
+  segButtons('optTraffic', { on: { name: 'Timetable', sub: 'No. 5, No. 12 and freights on the road' }, off: { name: 'Clear road', sub: 'Just you and the signals' } }, 'traffic', () => { if (GAME.ready && GAME.train) AI.setup(); saveSettings(); });
   specGrid();
   jobSetup();
   $('btnStart').addEventListener('click', () => GAME.start());
@@ -390,11 +392,18 @@ GAME.refreshKeys = function () {
 };
 GAME.occupied = sw => GAME.train.fouls(sw);
 GAME.throwSwitch = function (sw) {
-  if (GAME.occupied(sw)) { toast(`${sw.name} is occupied by your train. Clear it before throwing.`, 'bad', 3200, 'occ'); return; }
-  if (CARS.occupied(sw)) { toast(`Cars are standing over ${sw.name}. Pull them clear before throwing.`, 'bad', 3200, 'occ'); return; }
-  const who = MP.occupant(sw);
-  if (who) { toast(`${who}'s train is on ${sw.name}. Wait until it clears.`, 'bad', 3200, 'occ'); return; }
-  sw.state = 1 - sw.state; sndThrow(); MP.noteThrow(sw);
+  // both switches of a crossover go over together, so both have to be clear
+  for (const s of swPair(sw)) {
+    if (GAME.occupied(s)) { toast(`${sw.name} is occupied by your train. Clear it before throwing.`, 'bad', 3200, 'occ'); return; }
+    if (CARS.occupied(s)) { toast(`Cars are standing over ${sw.name}. Pull them clear before throwing.`, 'bad', 3200, 'occ'); return; }
+    const who = MP.occupant(s);
+    if (who) { toast(`${who}'s train is on ${sw.name}. Wait until it clears.`, 'bad', 3200, 'occ'); return; }
+  }
+  const ai = AI.holding(sw);
+  if (ai) { toast(ai + ' Wait until it has gone by.', 'bad', 3200, 'occ'); return; }
+  const to = 1 - sw.state;
+  for (const s of swPair(sw)) { s.state = to; MP.noteThrow(s); }
+  sndThrow();
   toast(`${sw.name} lined for ${sw.lined}.`, sw.state ? 'warn' : 'good', 2600);
   if (MAP.visible) MAP.draw();
 };
@@ -460,8 +469,8 @@ function updateHUD(dt) {
   // signal
   const sl = $('sigLine');
   if (sc.signal && sc.signal.d < 3200) {
-    const rev = sc.signal.sg.sg.sw.state === 1;
-    sl.innerHTML = `<span class="aspect"><i style="background:${rev ? 'var(--stop)' : 'var(--clear)'}"></i><i style="background:${rev ? 'var(--clear)' : 'var(--stop)'}"></i></span> Signal ${fmtMi(sc.signal.d)}: <b style="color:var(--ink)">${rev ? 'Diverging Clear' : 'Clear'}</b>`;
+    const a = sc.signal.sg.aspect || 'Stop', L = ASPECT_LAMPS[a], css = { lampG: 'var(--clear)', lampR: 'var(--stop)', lampY: 'var(--approach)', lampL: '#dfe6ff' };
+    sl.innerHTML = `<span class="aspect"><i style="background:${css[L[0]]}"></i><i style="background:${css[L[1]]}"></i></span> Signal ${fmtMi(sc.signal.d)}: <b style="color:${a === 'Stop' ? 'var(--stop)' : 'var(--ink)'}">${a}</b>${a === 'Stop' && sc.signal.sg.why ? ` · ${sc.signal.sg.why}` : ''}`;
   } else sl.innerHTML = '';
   // stop / water / coal
   const stl = $('stopLine');
@@ -469,6 +478,7 @@ function updateHUD(dt) {
   const cars = CARS.ahead(GAME.train, dir, 500);
   if (cars) $('swMiniTxt').textContent += ` · cars ${fmtFt(cars.d)}`;
   if (act) stl.innerHTML = `<b>${act.label}</b> <button class="btn" id="btnService" style="padding:5px 8px;font-size:10px">${act.btn}</button>`;
+  else if (cars && cars.c.ai) stl.innerHTML = `<span style="color:var(--approach)">${cars.c.ai.name} ahead in <b>${fmtFt(cars.d)}</b></span>`;
   else if (cars) stl.innerHTML = cars.facing ? `Coupling in <b>${fmtFt(cars.d)}</b>${cars.d < 60 ? ` · ${Math.round(Math.abs(S.v) / MPH * 10) / 10} mph` : ''}` : `<span style="color:var(--stop)">Cars foul of the route in <b style="color:var(--stop)">${fmtFt(cars.d)}</b></span>`;
   else if (sc.end && sc.end.d < 400) stl.innerHTML = `<span style="color:var(--stop)">End of track in <b style="color:var(--stop)">${fmtMi(sc.end.d)}</b></span>`;
   else if (sc.station && sc.station.d < 6000) stl.innerHTML = `Next: <b>${sc.station.st.name}</b> ${fmtMi(Math.max(0, sc.station.d))}`;
@@ -495,10 +505,11 @@ function loop() {
   let dt = Math.min(clock.getDelta(), 0.05);
   const T = GAME.train; if (!T) return;
   const active = GAME.running && !S.paused && !S.derailed;
-  if (active) simStep(dt, T);
+  if (active) simStep(dt, T); else stepSwitches(dt);
   renderStep(dt, T);
 }
 function simStep(dt, T) {
+  stepSwitches(dt);
   {
     const n = Math.max(1, Math.ceil(dt / (1 / 120))), h = dt / n;
     for (let i = 0; i < n; i++) {
@@ -538,6 +549,7 @@ function simStep(dt, T) {
       else { S.coal = Math.min(19958, S.coal + 300 * dt); if (S.coal >= 19957) { GAME.filling = null; toast('Coal bunker full: 22 tons.', 'good'); } }
     }
     JOB.tick(dt);
+    AI.tick(dt);
     // station stop detection
     if (Math.abs(S.v) < 0.05) { stopT += dt; if (stopT > 1.2) stationStop(T); } else stopT = 0;
     // start-up slack
@@ -550,10 +562,11 @@ function simStep(dt, T) {
 }
 function renderStep(dt, T) {
   // visuals
-  updateSwitchVisuals(dt); updateSignals();
+  updateSwitchVisuals(); updateSignals(dt);
   T.update(dt, S.theta, S.reverser);
   CARS.render();
   CPL.frame(dt);
+  AI.render(dt);
   MP.frame(dt);
   if (GAME.running && !S.paused && !S.derailed) MP.contact(T);
   // headlight & glows
@@ -740,7 +753,7 @@ GAME.restore = function (d) {
     applyLook(GAME.settings.time, GAME.settings.weather, renderer, scene);
     cycleCamera(d.cam);
     GAME.running = true; $('menu').hidden = true; $('hud').hidden = false;
-    const keyOf = { optLoco: 'loco', optTrain: 'consist', optTime: 'time', optWeather: 'weather', optFire: 'fire', optLivery: 'livery', optUnits: 'units', optFinish: 'finish' };
+    const keyOf = { optLoco: 'loco', optTrain: 'consist', optTime: 'time', optWeather: 'weather', optFire: 'fire', optTraffic: 'traffic', optLivery: 'livery', optUnits: 'units', optFinish: 'finish' };
     for (const k in keyOf) [...$(k).children].forEach(c => c.setAttribute('aria-pressed', String(c.id === k + '_' + GAME.settings[keyOf[k]])));
     [...$('optMix').children].forEach(c => c.setAttribute('aria-pressed', String(c.id === 'optMix_' + (GAME.settings.mix ? 'mixed' : 'matched'))));
     refreshMenuGroups(); specGrid();
