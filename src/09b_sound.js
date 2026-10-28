@@ -398,7 +398,7 @@ function remoteSound(R, dt, st, d, cam) {
   if (R.wh) {
     const W = R.wh, ws = T.worldOf(T.diesel ? L.hornPos : L.whistlePos, R.wp);
     const toCam = _snA.subVectors(cam, ws), dist = toCam.length(); toCam.normalize();
-    const riding = CAM.mode !== 'side' && !MP.watching && GAME.train;
+    const riding = CAM.riding() && !MP.watching && GAME.train;
     const vl = riding ? _snB.copy(GAME.train.lead.fwd).multiplyScalar(S.v).dot(toCam) : 0;
     const dop = C_AIR / (C_AIR - clamp(R.tv.dot(toCam) - vl, -60, 60));
     setG(W.out, (1 / (1 + Math.pow(dist / 90, 1.1))) * Math.pow(st.wh, T.diesel ? 0.5 : 0.8) * 0.95, W.attack);

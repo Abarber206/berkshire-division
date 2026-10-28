@@ -42,7 +42,7 @@ Rooms connect through free public MQTT relay servers (HiveMQ and EMQX), so there
 - Train resistance, grades, curve drag, turnout speed limits, derailments
 - Car work: AAR knuckle couplers with working knuckles, cut levers, angle cocks and air hoses. Cars couple only when a knuckle is open; with both closed they are shoved along with their momentum, skidding any handbrakes. Pull a pin standing to set cars out, or on the move to kick them
 - Synthesized sound: exhaust beats tied to the drivers; a different whistle for each engine (765's deep six-chime, 1225's brighter three-chime) with Doppler; a five-chime air horn; V12 prime mover, turbocharger and traction motors, louder with more units; bell, air pump, rail joints
-- Cameras: chase, cab, trackside, overhead, rear car
+- Cameras: chase, cab, trackside, overhead, rear car, and a cinematic camera that cuts between trackside, rail-level, long-lens, tracking, running-gear, helicopter and drone-flyby shots. Outside views ease where you point them, glide from one to the next, and keep out of the ground, buildings, trees, poles and trains
 - Time of day (morning, midday, golden hour, night) and weather (clear, overcast, snow)
 
 ## Controls
@@ -62,7 +62,8 @@ On a phone, use the levers and buttons on screen. Tap a switch stand, the switch
 | T | Throw the next switch ahead |
 | B, X, K, H | Bell, sand, cylinder cocks (diesel: ditch lights), headlight |
 | I, F, L | Injector (diesel: engine start/stop), stoker, blower |
-| 1–5 | Cameras |
+| 1–6, V | Cameras (6 cinematic; tap the scene or press 6 again for the next shot). Press a camera's number again to reset it |
+| ← / →, − / = | Turn and zoom the camera (or drag, scroll, pinch, two-finger twist) |
 | M / P | Map / pause |
 | G | Place engines and cars (then drag or arrows to pan, Q / E or right-drag to turn the view, scroll to zoom, 1–6 for a car, F turn, Delete remove, Esc put back or leave) |
 

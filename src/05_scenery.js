@@ -2,7 +2,7 @@
    Scenery: buildings, bridge, roads & crossings, pole line, signals, trees
    ========================================================================== */
 const SMAT = {};
-const SCN = { bins: new Map(), keepout: [], foot: [], signals: [], winMats: [], lamps: [], crossings: [] };
+const SCN = { bins: new Map(), keepout: [], foot: [], solids: new Map(), signals: [], winMats: [], lamps: [], crossings: [] };
 function sceneryMaterials() {
   const brick = canvasTex(256, 256, (g, w, h) => {
     g.fillStyle = '#6d5b52'; g.fillRect(0, 0, w, h); const r = rng(5);
@@ -126,6 +126,8 @@ function trackGap(X, N, skip) {
   return d;
 }
 function keep(X, N, r) { SCN.keepout.push([X, N, r]); }
+/* upright solids the camera keeps out of (tree canopies, poles): world x, z, radius, bottom, top, in 40 m cells */
+function solid(x, z, r, y0, y1) { const k = Math.floor(x / 40) + ',' + Math.floor(z / 40); let l = SCN.solids.get(k); if (!l) SCN.solids.set(k, l = []); l.push([x, z, r, y0, y1]); }
 const kept = (X, N, pad = 0) => { for (const k of SCN.keepout) if ((X - k[0]) ** 2 + (N - k[1]) ** 2 < (k[2] + pad) ** 2) return true; return false; };
 /* frame on a line at distance sLine with lateral offset: returns {X,N,y,yaw} */
 function linePlace(line, sLine, lat = 0) {
@@ -625,6 +627,7 @@ function buildPoleLine(scene) {
     const y = groundAt(pl.X, pl.N) - 0.3;
     const p = new THREE.Vector3(pl.X, y, -pl.N);
     const cur = { p, yaw: pl.yaw };
+    solid(p.x, p.z, 0.35, y, y + 9.3);
     group.push(cur);
     if (prev) {
       for (const [wy, wz] of wireY) {
@@ -879,6 +882,7 @@ function buildTrees(scene) {
         const [X, N, s0, c] = q; const y = groundAt(X, N) - 0.3; const s = Math.abs(s0), col = s0 < 0;
         _m4.compose(_v1.set(X, y, -N), _q.setFromEuler(_e.set(0, (X * 13.1 + N) % TAU, 0)), col ? _v2.set(s * 0.55, s * 1.45, s * 0.55) : _v2.set(s, s * (0.9 + ((X * 7 + N * 3) % 1) * 0.2), s));
         im.setMatrixAt(i, _m4); im.setColorAt(i, _tc.setRGB(c[0], c[1], c[2])); pts.push(new THREE.Vector3(X, y, -N));
+        if (type === 'dec') { if (col) solid(X, -N, 1.95 * s, y + 4.3 * s, y + 14.1 * s); else solid(X, -N, 3.7 * s, y + 2.4 * s, y + 9.9 * s); }
       });
       const sph = new THREE.Sphere().setFromPoints(pts); sph.radius += 12; im.geometry.boundingSphere = sph;
       im.castShadow = false; im.receiveShadow = false;
