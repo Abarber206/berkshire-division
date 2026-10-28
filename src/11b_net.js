@@ -259,8 +259,8 @@ class RemoteTrain {
   fx(dt, st, cam) {
     if (!this.placed || !this.visible) return;
     const T = this.train, L = T.loco, night = SKY.night;
-    const head = T.vehicles[0].pos, d = head.distanceTo(cam);
-    this.tv.copy(T.vehicles[0].fwd).multiplyScalar(this.v);
+    const head = T.lead.pos, d = head.distanceTo(cam);
+    this.tv.copy(T.lead.fwd).multiplyScalar(this.v);
     // lamps
     const hl = st.hl;
     L.beam.material.opacity = hl === 0 ? 0 : (night ? (hl === 2 ? 0.075 : 0.035) : (SKY.weather !== 'clear' ? 0.02 : 0));
@@ -314,7 +314,7 @@ class RemoteTrain {
       const W = this.wh, src = T.worldOf(T.diesel ? L.hornPos : L.whistlePos, this.wp);
       const toCam = _mpA.subVectors(cam, src), dist = toCam.length(); toCam.normalize();
       const riding = CAM.mode !== 'side' && !MP.watching && GAME.train;
-      const vl = riding ? _mpB.copy(GAME.train.vehicles[0].fwd).multiplyScalar(S.v).dot(toCam) : 0;
+      const vl = riding ? _mpB.copy(GAME.train.lead.fwd).multiplyScalar(S.v).dot(toCam) : 0;
       const dop = 343 / (343 - clamp(this.tv.dot(toCam) - vl, -60, 60));
       setG(W.out, (1 / (1 + Math.pow(dist / 90, 1.1))) * Math.pow(st.wh, T.diesel ? 0.5 : 0.8) * 0.95, W.attack);
       const bend = 1 - W.quill * (1 - st.wh);
@@ -352,7 +352,7 @@ MP.init = function () {
   $('mpJoin').addEventListener('click', () => { const c = codeIn.value.toUpperCase().replace(/[^A-Z0-9]/g, ''); if (c.length < 4) { MP.say('Type the room code your friend sent you.', true); codeIn.focus(); return; } MP.join(c); });
   $('mpLeave').addEventListener('click', () => MP.leave());
   for (const id2 of ['mpShare', 'mpShare2']) $(id2).addEventListener('click', () => MP.share());
-  $('btnPlayers').addEventListener('click', () => { const p = $('mpPanel'); p.hidden = !p.hidden; if (!p.hidden) MP.panel(); });
+  $('btnPlayers').addEventListener('click', () => { const p = $('mpPanel'); p.hidden = !p.hidden; if (!p.hidden) { MP.panel(); carPanelToggle(false); } });
   $('mpPanelClose').addEventListener('click', () => { $('mpPanel').hidden = true; });
   $('mpWatchBack').addEventListener('click', () => MP.unwatch());
   const send = () => { const t = mpText($('mpChatIn').value, 80); if (!t) return; $('mpChatIn').value = ''; MP.talk(t); };
@@ -594,14 +594,14 @@ MP.post = function (dt) {
 MP.contact = function (T) {
   if (!MP.on || !MP.spawned || !T) return;
   const front = _mpA, rear = _mpB; mpEnds(T, front, rear);
-  const fwd = T.vehicles[0].fwd;
+  const fwd = T.lead.fwd;
   for (const p of MP.peers.values()) {
     const rt = p.rt; if (!rt || !rt.placed || !rt.polyN) continue;
     if (front.distanceTo(rt.poly[0]) > T.length + rt.train.length + 60) continue;
     for (const [end, sg] of [[front, 1], [rear, -1]]) {
       let d = 1e9; for (let i = 0; i < rt.polyN - 1; i++) { const x = mpSegDist(end, rt.poly[i], rt.poly[i + 1]); if (x < d) d = x; }
       if (d > 1.25) continue;
-      const theirs = rt.train.vehicles[0].fwd.dot(fwd) * rt.v, closing = sg * (S.v - theirs);
+      const theirs = rt.train.lead.fwd.dot(fwd) * rt.v, closing = sg * (S.v - theirs);
       if (closing > 2.7) { GAME.derail(`Collided with ${p.st.nm}'s train at ${Math.round(closing / MPH)} mph. Back away before you try again.`, 'Collision'); return; }
       if (closing > 0.02) { S.v = 0; S.vw = 0; toast(`Buffered up against ${p.st.nm}'s train.`, 'warn', 2600, 'mpbump'); }
     }
@@ -644,7 +644,7 @@ MP.tags = function () {
 };
 MP.panel = function () {
   const box = $('mpList'); if (!box) return;
-  const T = GAME.train, me = T && MP.spawned ? T.vehicles[0].pos : null;
+  const T = GAME.train, me = T && MP.spawned ? T.lead.pos : null;
   box.textContent = '';
   const row = (color, name, sub, right, peerId) => {
     const r = document.createElement('div'); r.className = 'mpP';
@@ -661,7 +661,7 @@ MP.panel = function () {
     const st = p.st;
     let right = st.e >= 0 ? Math.round(Math.abs(st.v) / MPH) + ' mph' : '';
     if (st.dr) right = 'Derailed'; else if (st.pz && st.e >= 0) right = 'In the menu';
-    if (me && p.rt && p.rt.placed) right += ' · ' + fmtMi(me.distanceTo(p.rt.train.vehicles[0].pos));
+    if (me && p.rt && p.rt.placed) right += ' · ' + fmtMi(me.distanceTo(p.rt.train.lead.pos));
     row(p.color, st.nm, mpLocoLabel(st), right, p.id);
   }
 };
@@ -672,7 +672,7 @@ MP.drawMap = function (g, tx, ty, opt) {
     const T = rt.train;
     g.strokeStyle = p.color; g.lineWidth = 4 * opt.w; g.beginPath();
     T.vehicles.forEach((v, i) => { const x = tx(v.pos.x), y = ty(-v.pos.z); i ? g.lineTo(x, y) : g.moveTo(x, y); }); g.stroke();
-    const q = T.vehicles[0].pos, x = tx(q.x), y = ty(-q.z);
+    const q = T.lead.pos, x = tx(q.x), y = ty(-q.z);
     g.fillStyle = '#ffffff'; g.beginPath(); g.arc(x, y, 3 * opt.w, 0, TAU); g.fill();
     if (opt.labels) { g.font = `700 ${opt.fs}px "IBM Plex Sans Condensed", sans-serif`; g.textAlign = 'left'; g.lineWidth = 3; g.strokeStyle = 'rgba(0,0,0,0.75)'; g.strokeText(p.st.nm, x + 7, y - 7); g.fillStyle = p.color; g.fillText(p.st.nm, x + 7, y - 7); }
   }

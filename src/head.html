@@ -223,7 +223,7 @@ details.keys kbd{color:var(--brass)}
   #routeBox{min-width:0;max-width:250px;padding:4px 8px;gap:2px}
   #sigLine{display:none}
   #stopLine{font-size:10px}
-  #stopLine:not(:has(button)){display:none}
+  #stopLine:not(:has(button)):not(.cars){display:none}
   #swText{font-size:11px;line-height:1.2}
   #swText .sub{font-size:10px}
   #swLamp{width:9px;height:9px}
@@ -293,6 +293,33 @@ details.keys kbd{color:var(--brass)}
   #mpPanel{top:calc(env(safe-area-inset-top,0px) + 42px);right:calc(env(safe-area-inset-right,0px) + 6px);max-height:calc(100vh - 50px);width:min(320px,52vw)}
   #mpWatch{top:calc(env(safe-area-inset-top,0px) + 44px)}
   #btnPlayers{padding:0 6px}
+}
+/* ---------- couplers ---------- */
+#carPanel{position:absolute;z-index:7;right:calc(env(safe-area-inset-right,0px) + 10px);top:calc(env(safe-area-inset-top,0px) + 54px);
+  width:min(420px,calc(100vw - 20px));padding:10px;display:flex;flex-direction:column;gap:8px}
+#toast{z-index:8}
+#btnCars.on{border-color:var(--brass)}#btnCars.on svg{stroke:var(--brass)}
+#carSum{font-size:12px;color:var(--ink-dim)}
+#carSum b{color:var(--ink);font-weight:600}
+#carStrip{display:flex;align-items:stretch;overflow-x:auto;overflow-y:hidden;padding:4px 2px 8px;scrollbar-width:thin;-webkit-overflow-scrolling:touch}
+.cv{flex:none;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;min-width:38px;height:44px;padding:0 3px 3px;border-radius:3px;
+  background:#3b4247;border:1px solid rgba(255,255,255,.08);font-size:9px;letter-spacing:.4px;text-transform:uppercase;color:var(--ink-dim);position:relative}
+.cv b{font-family:var(--f-num);font-size:10px;font-weight:600;color:var(--ink);letter-spacing:0}
+.cv.box{background:#5a3125}.cv.hopper{background:#262a2d}.cv.tank{background:#2f3436}.cv.gon{background:#4c2d22}.cv.caboose{background:#7a2a1e}.cv.coach{background:#2c3d2a}
+.cv.pw{background:#15191c;border-color:var(--brass);color:var(--brass)}
+.cv.air:after{content:'';position:absolute;top:4px;right:4px;width:6px;height:6px;border-radius:50%;background:var(--approach)}
+.cj{flex:none;width:30px;margin:0 -1px;align-self:center;height:36px;border-radius:5px;border:1px dashed rgba(255,255,255,.22);background:transparent;
+  display:flex;align-items:center;justify-content:center;padding:0;touch-action:manipulation}
+.cj svg{width:16px;height:16px;stroke:var(--ink);fill:none;stroke-width:1.8}
+.cj:hover,.cj:focus-visible{border-style:solid;border-color:var(--brass);background:rgba(207,166,81,.12)}
+.cj:active{background:rgba(207,166,81,.3)}
+.cjx{flex:none;width:6px;align-self:center;height:4px;background:#59636a}
+#carHint b{color:var(--ink);font-weight:600}
+@media (max-height:500px) and (orientation:landscape){
+  /* clear of the lever column so the train can still be worked with the panel open */
+  #carPanel{top:calc(env(safe-area-inset-top,0px) + 42px);right:calc(env(safe-area-inset-right,0px) + 206px);width:min(420px,calc(100vw - 236px));gap:6px;padding:8px}
+  .cv{height:38px;min-width:34px}.cj{height:32px;width:28px}
+  #carHint{font-size:10.5px}
 }
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 
@@ -396,6 +423,7 @@ details.keys kbd{color:var(--brass)}
   <div id="tr">
     <div class="btns">
       <button class="icon-btn" id="btnPlayers" hidden aria-label="Players in the room"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"/><path d="M3 19c0-3.3 2.7-6 6-6s6 2.7 6 6"/><circle cx="17" cy="9" r="2.5"/><path d="M15.6 13.3c2.9.3 5.4 2.6 5.4 5.7"/></svg><span id="mpCount">1</span></button>
+      <button class="icon-btn" id="btnCars" aria-label="Couplers: cut cars off the train"><svg viewBox="0 0 24 24"><rect x="2" y="7" width="7" height="8" rx="1"/><rect x="15" y="7" width="7" height="8" rx="1"/><path d="M9 11h2.2M12.8 11H15"/><circle cx="6" cy="17.5" r="1.3"/><circle cx="18" cy="17.5" r="1.3"/></svg></button>
       <button class="icon-btn" id="btnCam" aria-label="Change camera"><svg viewBox="0 0 24 24"><path d="M3 8h4l2-3h6l2 3h4v11H3z"/><circle cx="12" cy="13" r="3.5"/></svg></button>
       <button class="icon-btn" id="btnMap" aria-label="Open track map"><svg viewBox="0 0 24 24"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/></svg></button>
       <button class="icon-btn" id="btnCine" aria-label="Hide controls"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 15h18"/></svg></button>
@@ -412,6 +440,12 @@ details.keys kbd{color:var(--brass)}
     <div id="mpLog" aria-live="polite"></div>
     <div class="mpRow"><input id="mpChatIn" class="mpIn" maxlength="80" placeholder="Message the room" autocomplete="off" spellcheck="false" aria-label="Message the room"><button class="btn" id="mpSend">Send</button></div>
     <div id="mpQuick"><button data-q="👋">👋</button><button data-q="Highball!">Highball!</button><button data-q="Clear ahead">Clear ahead</button><button data-q="Hold up!">Hold up!</button><button data-q="Meet me at Fostoria">Meet at Fostoria</button></div>
+  </div>
+  <div id="carPanel" class="hud-box" hidden>
+    <div class="mpHead"><span>Couplers</span><button class="btn" id="carClose" aria-label="Close">Close</button></div>
+    <div id="carSum"></div>
+    <div id="carStrip"></div>
+    <div id="carHint" class="mpStatus"></div>
   </div>
   <div id="stand">
     <div id="gaugeWrap" class="hud-box" role="button" tabindex="0" aria-label="Gauges, tap to shrink or expand"><canvas id="gauges" width="680" height="232"></canvas><div id="gaugeMini"></div></div>
@@ -501,7 +535,7 @@ details.keys kbd{color:var(--brass)}
     <div class="brandmark">
       <div class="eyebrow">Lima Super Power · 2-8-4</div>
       <h1>Berkshire<br>Division</h1>
-      <p class="lede">Run a Lima-built Berkshire or a modern AC diesel over 13 miles of jointed rail: two long tangents across Ohio farm country, a grade over Kenton Hill, a through-truss river bridge, a working yard and a quarry branch. Every switch on the railroad can be thrown.</p>
+      <p class="lede">Run a Lima-built Berkshire or a modern AC diesel over 13 miles of jointed rail: two long tangents across Ohio farm country, a grade over Kenton Hill, a through-truss river bridge, a working yard and a quarry branch. Every switch on the railroad can be thrown, and cars standing in the yard and on the spurs can be picked up and set out.</p>
       <div class="specs" id="specGrid"></div>
       <p class="help" id="helpText">Fire up, set the <b>reverser</b> forward, release the <b>train brake</b> to RUN, then ease the <b>throttle</b> open. Heavy throttle on a wet rail will slip the drivers. Check the switch card before every turnout: diverging routes are 30 mph.</p>
     </div>
@@ -543,6 +577,7 @@ details.keys kbd{color:var(--brass)}
         <kbd>Z / C</kbd><span>Engine brake release / apply</span>
         <kbd>Space</kbd><span>Whistle (hold)</span>
         <kbd>T</kbd><span>Throw next switch ahead</span>
+        <kbd>U</kbd><span>Couplers: cut cars off</span>
         <kbd>B X K H</kbd><span>Bell · Sand · Cocks · Headlight</span>
         <kbd>I F L</kbd><span>Injector · Stoker · Blower</span>
         <kbd>1–5</kbd><span>Cameras · <kbd>M</kbd> map · <kbd>P</kbd> pause</span>

@@ -6,7 +6,7 @@ const CAM = { mode: 'chase', modes: ['chase', 'cab', 'side', 'drone', 'rear'], n
 const _cq = new THREE.Quaternion(), _cm = new THREE.Matrix4(), _ce = new THREE.Euler();
 function updateCamera(cam, train, dt) {
   const L = train.loco, body = L.root;
-  const fwd = train.vehicles[0].fwd, pos = train.vehicles[0].pos;
+  const fwd = train.lead.fwd, pos = train.lead.pos;
   const hdg = Math.atan2(fwd.x, fwd.z);
   cam.near = 0.3; let fov = 52;
   if (CAM.mode === 'chase' || CAM.mode === 'drone') {
@@ -161,6 +161,9 @@ function setupButtons() {
   $('gaugeWrap').addEventListener('click', () => { const g = $('gaugeWrap'); g.classList.toggle('min'); try { localStorage.setItem('bd_gmin', g.classList.contains('min') ? '1' : ''); } catch (e) {} });
   try { if (localStorage.getItem('bd_gmin')) $('gaugeWrap').classList.add('min'); } catch (e) {}
   $('btnCam').addEventListener('click', () => cycleCamera());
+  $('btnCars').addEventListener('click', () => carPanelToggle());
+  $('carClose').addEventListener('click', () => carPanelToggle(false));
+  $('carStrip').addEventListener('click', e => { const b = e.target.closest('.cj'); if (b) CARS.uncouple(+b.dataset.j); });
   $('btnMap').addEventListener('click', () => MAP.open());
   $('minimap').addEventListener('click', () => MAP.open());
   $('btnCine').addEventListener('click', () => { $('hud').classList.add('cine'); });
@@ -194,6 +197,7 @@ function setupButtons() {
       case 'KeyF': if (GAME.isDiesel()) break; GAME.manualFire('stoker'); S.stoker = clamp(S.stoker + 0.25, 0, 1.0001) > 1 ? 0 : S.stoker + 0.25; break;
       case 'KeyL': if (GAME.isDiesel()) break; GAME.manualFire('blower'); S.blower = S.blower > 0.3 ? 0 : 0.65; break;
       case 'KeyT': GAME.throwAhead(); break;
+      case 'KeyU': carPanelToggle(); break;
       case 'KeyM': MAP.visible ? MAP.close() : MAP.open(); break;
       case 'KeyP': GAME.pause(!S.paused); break;
       case 'Digit1': cycleCamera('chase'); break; case 'Digit2': cycleCamera('cab'); break; case 'Digit3': cycleCamera('side'); break; case 'Digit4': cycleCamera('drone'); break; case 'Digit5': cycleCamera('rear'); break;
@@ -221,13 +225,14 @@ function drawGauges() {
     for (const [v, col] of hands) { const a = a0 + (a1 - a0) * clamp(v, 0, max) / max; g.strokeStyle = col; g.lineWidth = r * 0.055; g.lineCap = 'round'; g.beginPath(); g.moveTo(x - Math.cos(a) * r * 0.15, y - Math.sin(a) * r * 0.15); g.lineTo(x + Math.cos(a) * r * 0.82, y + Math.sin(a) * r * 0.82); g.stroke(); }
     g.fillStyle = '#222'; g.beginPath(); g.arc(x, y, r * 0.07, 0, TAU); g.fill();
   };
-  const b = GAME.train ? GAME.train.vehicles : null;
-  const lastBP = b ? b[b.length - 1].brake.BP : 90;
+  const T = GAME.train, b = T ? T.vehicles : null;
+  // the end car farthest from the engine, which may be ahead of it when shoving
+  const lastBP = b ? (T.li > b.length - 1 - T.li ? b[0] : b[b.length - 1]).brake.BP : 90;
   if (GAME.isDiesel()) { drawDieselGauges(g, dial, b, lastBP); return; }
   dial(108, 112, 96, 300, 'BOILER PSI', [[S.P, '#151515']], [245, 300], 50, 10);
   g.font = '600 18px "IBM Plex Mono", monospace'; g.fillStyle = S.safety ? '#ee4b3d' : '#cfa651'; g.textAlign = 'center'; g.fillText(S.safety ? 'POPPING' : 'CHEST ' + Math.round(S.Psc), 108, 224);
   dial(296, 86, 70, 160, 'MR · EQ', [[S.MR, '#c0281e'], [S.ER, '#151515']], null, 40, 10);
-  dial(458, 86, 70, 160, 'BP · BC', [[b ? b[0].brake.BP : 90, '#151515'], [S.BCloco || 0, '#c0281e']], null, 40, 10);
+  dial(458, 86, 70, 160, 'BP · BC', [[b ? GAME.train.lead.brake.BP : 90, '#151515'], [S.BCloco || 0, '#c0281e']], null, 40, 10);
   g.font = '600 17px "IBM Plex Mono", monospace'; g.fillStyle = '#8d9aa2'; g.textAlign = 'center';
   g.fillText('CUT ' + Math.round(S.cut * 100) + '%', 296, 186); g.fillText('REAR ' + Math.round(lastBP), 458, 186);
   g.fillStyle = S.slip ? '#ee4b3d' : '#8d9aa2'; g.fillText(S.slip ? 'SLIPPING' : 'TE ' + Math.round(Math.abs(S.TE) / LBF / 1000) + 'k lb', 296, 212);
@@ -279,12 +284,15 @@ function drawNet(g, W, H, cx, cn, sc, opt) {
     g.beginPath(); g.arc(x, y, opt.sr, 0, TAU); g.fill(); g.stroke();
     if (opt.swLabels) { g.fillStyle = '#dfe4e6'; g.font = `500 ${opt.fs * 0.85}px "IBM Plex Sans Condensed", sans-serif`; g.textAlign = 'left'; g.fillText(sw.name + ' → ' + sw.lined, x + opt.sr + 4, y + 4); }
   }
+  // cuts of cars standing or rolling
+  g.strokeStyle = '#b5895a'; g.lineWidth = 3.4 * opt.w;
+  for (const c of CARS.cuts) { if (!c.vehicles[0].pos) continue; g.beginPath(); c.vehicles.forEach((v, i) => { const x = tx(v.pos.x), y = ty(-v.pos.z); i ? g.lineTo(x, y) : g.moveTo(x, y); }); g.stroke(); }
   // train
   const T = GAME.train;
   if (T) {
     g.strokeStyle = '#ffe08a'; g.lineWidth = 4 * opt.w; g.beginPath();
     T.vehicles.forEach((v, i) => { const x = tx(v.pos.x), y = ty(-v.pos.z); i ? g.lineTo(x, y) : g.moveTo(x, y); }); g.stroke();
-    const p = T.vehicles[0].pos; g.fillStyle = '#ffffff'; g.beginPath(); g.arc(tx(p.x), ty(-p.z), 3.5 * opt.w, 0, TAU); g.fill();
+    const p = T.lead.pos; g.fillStyle = '#ffffff'; g.beginPath(); g.arc(tx(p.x), ty(-p.z), 3.5 * opt.w, 0, TAU); g.fill();
   }
   MP.drawMap(g, tx, ty, opt);
   return { tx, ty };
@@ -292,13 +300,13 @@ function drawNet(g, W, H, cx, cn, sc, opt) {
 function drawMinimap() {
   const c = $('minimap'), g = c.getContext('2d'), W = c.width, H = c.height;
   g.fillStyle = 'rgba(10,14,17,0.92)'; g.fillRect(0, 0, W, H);
-  const p = GAME.train.vehicles[0].pos;
+  const p = GAME.train.lead.pos;
   drawNet(g, W, H, p.x, -p.z, 0.11, { w: 1.6, sr: 5, labels: true, fs: 15, river: !WORLD.custom });
   g.fillStyle = '#8d9aa2'; g.font = '600 14px "IBM Plex Sans Condensed", sans-serif'; g.textAlign = 'right'; g.fillText('MAP', W - 10, H - 10);
 }
 MAP.open = function () {
   MAP.visible = true; $('mapView').hidden = false;
-  const p = GAME.train ? GAME.train.vehicles[0].pos : { x: 0, z: -2400 };
+  const p = GAME.train ? GAME.train.lead.pos : { x: 0, z: -2400 };
   MAP.cx = 0; MAP.cn = 2700; MAP.scale = Math.min(innerWidth / 11000, innerHeight / 7600);
   if (WORLD.custom) { // frame the whole layout
     let x0 = Infinity, x1 = -Infinity, n0 = Infinity, n1 = -Infinity;
@@ -340,6 +348,48 @@ function setupMap() {
   $('mapClose').addEventListener('click', () => MAP.close());
 }
 
+/* ---------------- couplers panel ---------------- */
+const KNUCKLE = '<svg viewBox="0 0 24 24"><path d="M2 12h6.5M15.5 12H22"/><path d="M8.5 8.5v7M15.5 8.5v7"/><path d="M12 3v3.5M12 17.5V21"/></svg>';
+const carPanelState = { key: '', t: 0 };
+function carPanelToggle(open) {
+  const p = $('carPanel'); open = open === undefined ? p.hidden : open;
+  p.hidden = !open;
+  $('btnCars').classList.toggle('on', open);
+  if (open) { $('mpPanel').hidden = true; carPanelState.key = ''; carPanel(); }
+}
+function carName(T, v) {
+  if (v.kind === 'loco') return T.diesel ? 'Lead' : T.locoKey;
+  if (v.kind === 'loco2') return 'Unit';
+  return CAR_NAMES[v.kind] || v.kind;
+}
+function carPanel() {
+  const T = GAME.train; if (!T || $('carPanel').hidden) return;
+  const V = T.vehicles, strip = $('carStrip');
+  const key = CARS.gen + ':' + V.length;
+  if (key !== carPanelState.key) {
+    carPanelState.key = key;
+    let h = '';
+    V.forEach((v, i) => {
+      if (i > 0) h += CARS.canCut(T, i) && !MP.on ? `<button class="cj" type="button" data-j="${i}" aria-label="Pull the pin between ${carName(T, V[i - 1])} ${i} and ${carName(T, v)} ${i + 1}">${KNUCKLE}</button>` : '<span class="cjx"></span>';
+      h += `<div class="cv ${isPower(v) ? 'pw' : v.kind}"><b>${carName(T, v)}</b></div>`;
+    });
+    strip.innerHTML = h;
+    const pw = strip.querySelector('.pw'); if (pw) strip.scrollLeft = pw.offsetLeft - strip.clientWidth / 2 + pw.offsetWidth;
+  }
+  // amber dot: a car whose brakes have not charged yet
+  [...strip.querySelectorAll('.cv')].forEach((el, i) => { const v = V[i]; el.classList.toggle('air', !!v && !isPower(v) && v.brake.AR < 62); });
+  const cars = V.filter(v => !isPower(v)), ahead = V.slice(0, T.li).filter(v => !isPower(v)).length;
+  const tons = Math.round(consistMass(T) / STON).toLocaleString();
+  $('carSum').innerHTML = `<b>${cars.length ? cars.length + ' car' + (cars.length > 1 ? 's' : '') : 'Light engine'}</b>${ahead ? ` · ${ahead} ahead of the engine` : ''} · ${tons} tons · front on the left`;
+  const charging = cars.filter(v => v.brake.AR < 62).length;
+  const moving = Math.abs(S.v) > 0.6;
+  $('carHint').innerHTML = MP.on ? 'Car work is single player for now: couplers stay locked in a room.'
+    : !cars.length ? 'Back gently into a cut of cars to couple. They stand on Yard 3, Yard 4, the elevator track and quarry storage.'
+    : (moving ? '<b>Moving:</b> pulling a pin kicks the cars. Brake right after and they roll free.' : '<b>Stopped:</b> tap a coupler to cut cars off. They are set out and tied down where they stand.')
+      + (charging ? ` <b>${charging}</b> car${charging > 1 ? 's' : ''} still charging air (amber).` : '');
+}
+CARS.onChange = () => carPanel();
+
 /* ---------------- toasts ---------------- */
 const TOASTS = [];
 function toast(msg, kind = '', ms = 3600, key) {
@@ -358,7 +408,7 @@ function drawDieselGauges(g, dial, b, lastBP) {
   g.font = '600 18px "IBM Plex Mono", monospace'; g.textAlign = 'center';
   g.fillStyle = S.slipCtl ? '#ee4b3d' : '#cfa651'; g.fillText(S.slipCtl ? 'WHEEL SLIP' : (S.notch ? 'N' + S.notch : (S.dyn > 0.06 ? 'DYN BRAKE' : 'IDLE')) + ' · ' + Math.round(S.rpm) + ' rpm', 108, 224);
   dial(296, 86, 70, 160, 'MR · EQ', [[S.MR, '#c0281e'], [S.ER, '#151515']], null, 40, 10);
-  dial(458, 86, 70, 160, 'BP · BC', [[b ? b[0].brake.BP : 90, '#151515'], [S.BCloco || 0, '#c0281e']], null, 40, 10);
+  dial(458, 86, 70, 160, 'BP · BC', [[b ? GAME.train.lead.brake.BP : 90, '#151515'], [S.BCloco || 0, '#c0281e']], null, 40, 10);
   g.font = '600 17px "IBM Plex Mono", monospace'; g.fillStyle = '#8d9aa2';
   g.fillText('LOAD ' + Math.round(S.amps) + ' A', 296, 186); g.fillText('REAR ' + Math.round(lastBP), 458, 186);
   g.fillText('TURBO ' + Math.round(S.turbo * 100) + '%', 296, 212);

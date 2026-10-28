@@ -231,7 +231,7 @@ details.keys kbd{color:var(--brass)}
   #routeBox{min-width:0;max-width:250px;padding:4px 8px;gap:2px}
   #sigLine{display:none}
   #stopLine{font-size:10px}
-  #stopLine:not(:has(button)){display:none}
+  #stopLine:not(:has(button)):not(.cars){display:none}
   #swText{font-size:11px;line-height:1.2}
   #swText .sub{font-size:10px}
   #swLamp{width:9px;height:9px}
@@ -301,6 +301,33 @@ details.keys kbd{color:var(--brass)}
   #mpPanel{top:calc(env(safe-area-inset-top,0px) + 42px);right:calc(env(safe-area-inset-right,0px) + 6px);max-height:calc(100vh - 50px);width:min(320px,52vw)}
   #mpWatch{top:calc(env(safe-area-inset-top,0px) + 44px)}
   #btnPlayers{padding:0 6px}
+}
+/* ---------- couplers ---------- */
+#carPanel{position:absolute;z-index:7;right:calc(env(safe-area-inset-right,0px) + 10px);top:calc(env(safe-area-inset-top,0px) + 54px);
+  width:min(420px,calc(100vw - 20px));padding:10px;display:flex;flex-direction:column;gap:8px}
+#toast{z-index:8}
+#btnCars.on{border-color:var(--brass)}#btnCars.on svg{stroke:var(--brass)}
+#carSum{font-size:12px;color:var(--ink-dim)}
+#carSum b{color:var(--ink);font-weight:600}
+#carStrip{display:flex;align-items:stretch;overflow-x:auto;overflow-y:hidden;padding:4px 2px 8px;scrollbar-width:thin;-webkit-overflow-scrolling:touch}
+.cv{flex:none;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;min-width:38px;height:44px;padding:0 3px 3px;border-radius:3px;
+  background:#3b4247;border:1px solid rgba(255,255,255,.08);font-size:9px;letter-spacing:.4px;text-transform:uppercase;color:var(--ink-dim);position:relative}
+.cv b{font-family:var(--f-num);font-size:10px;font-weight:600;color:var(--ink);letter-spacing:0}
+.cv.box{background:#5a3125}.cv.hopper{background:#262a2d}.cv.tank{background:#2f3436}.cv.gon{background:#4c2d22}.cv.caboose{background:#7a2a1e}.cv.coach{background:#2c3d2a}
+.cv.pw{background:#15191c;border-color:var(--brass);color:var(--brass)}
+.cv.air:after{content:'';position:absolute;top:4px;right:4px;width:6px;height:6px;border-radius:50%;background:var(--approach)}
+.cj{flex:none;width:30px;margin:0 -1px;align-self:center;height:36px;border-radius:5px;border:1px dashed rgba(255,255,255,.22);background:transparent;
+  display:flex;align-items:center;justify-content:center;padding:0;touch-action:manipulation}
+.cj svg{width:16px;height:16px;stroke:var(--ink);fill:none;stroke-width:1.8}
+.cj:hover,.cj:focus-visible{border-style:solid;border-color:var(--brass);background:rgba(207,166,81,.12)}
+.cj:active{background:rgba(207,166,81,.3)}
+.cjx{flex:none;width:6px;align-self:center;height:4px;background:#59636a}
+#carHint b{color:var(--ink);font-weight:600}
+@media (max-height:500px) and (orientation:landscape){
+  /* clear of the lever column so the train can still be worked with the panel open */
+  #carPanel{top:calc(env(safe-area-inset-top,0px) + 42px);right:calc(env(safe-area-inset-right,0px) + 206px);width:min(420px,calc(100vw - 236px));gap:6px;padding:8px}
+  .cv{height:38px;min-width:34px}.cj{height:32px;width:28px}
+  #carHint{font-size:10.5px}
 }
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 
@@ -407,6 +434,7 @@ details.keys kbd{color:var(--brass)}
   <div id="tr">
     <div class="btns">
       <button class="icon-btn" id="btnPlayers" hidden aria-label="Players in the room"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"/><path d="M3 19c0-3.3 2.7-6 6-6s6 2.7 6 6"/><circle cx="17" cy="9" r="2.5"/><path d="M15.6 13.3c2.9.3 5.4 2.6 5.4 5.7"/></svg><span id="mpCount">1</span></button>
+      <button class="icon-btn" id="btnCars" aria-label="Couplers: cut cars off the train"><svg viewBox="0 0 24 24"><rect x="2" y="7" width="7" height="8" rx="1"/><rect x="15" y="7" width="7" height="8" rx="1"/><path d="M9 11h2.2M12.8 11H15"/><circle cx="6" cy="17.5" r="1.3"/><circle cx="18" cy="17.5" r="1.3"/></svg></button>
       <button class="icon-btn" id="btnCam" aria-label="Change camera"><svg viewBox="0 0 24 24"><path d="M3 8h4l2-3h6l2 3h4v11H3z"/><circle cx="12" cy="13" r="3.5"/></svg></button>
       <button class="icon-btn" id="btnMap" aria-label="Open track map"><svg viewBox="0 0 24 24"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/></svg></button>
       <button class="icon-btn" id="btnCine" aria-label="Hide controls"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 15h18"/></svg></button>
@@ -423,6 +451,12 @@ details.keys kbd{color:var(--brass)}
     <div id="mpLog" aria-live="polite"></div>
     <div class="mpRow"><input id="mpChatIn" class="mpIn" maxlength="80" placeholder="Message the room" autocomplete="off" spellcheck="false" aria-label="Message the room"><button class="btn" id="mpSend">Send</button></div>
     <div id="mpQuick"><button data-q="👋">👋</button><button data-q="Highball!">Highball!</button><button data-q="Clear ahead">Clear ahead</button><button data-q="Hold up!">Hold up!</button><button data-q="Meet me at Fostoria">Meet at Fostoria</button></div>
+  </div>
+  <div id="carPanel" class="hud-box" hidden>
+    <div class="mpHead"><span>Couplers</span><button class="btn" id="carClose" aria-label="Close">Close</button></div>
+    <div id="carSum"></div>
+    <div id="carStrip"></div>
+    <div id="carHint" class="mpStatus"></div>
   </div>
   <div id="stand">
     <div id="gaugeWrap" class="hud-box" role="button" tabindex="0" aria-label="Gauges, tap to shrink or expand"><canvas id="gauges" width="680" height="232"></canvas><div id="gaugeMini"></div></div>
@@ -512,7 +546,7 @@ details.keys kbd{color:var(--brass)}
     <div class="brandmark">
       <div class="eyebrow">Lima Super Power · 2-8-4</div>
       <h1>Berkshire<br>Division</h1>
-      <p class="lede">Run a Lima-built Berkshire or a modern AC diesel over 13 miles of jointed rail: two long tangents across Ohio farm country, a grade over Kenton Hill, a through-truss river bridge, a working yard and a quarry branch. Every switch on the railroad can be thrown.</p>
+      <p class="lede">Run a Lima-built Berkshire or a modern AC diesel over 13 miles of jointed rail: two long tangents across Ohio farm country, a grade over Kenton Hill, a through-truss river bridge, a working yard and a quarry branch. Every switch on the railroad can be thrown, and cars standing in the yard and on the spurs can be picked up and set out.</p>
       <div class="specs" id="specGrid"></div>
       <p class="help" id="helpText">Fire up, set the <b>reverser</b> forward, release the <b>train brake</b> to RUN, then ease the <b>throttle</b> open. Heavy throttle on a wet rail will slip the drivers. Check the switch card before every turnout: diverging routes are 30 mph.</p>
     </div>
@@ -554,6 +588,7 @@ details.keys kbd{color:var(--brass)}
         <kbd>Z / C</kbd><span>Engine brake release / apply</span>
         <kbd>Space</kbd><span>Whistle (hold)</span>
         <kbd>T</kbd><span>Throw next switch ahead</span>
+        <kbd>U</kbd><span>Couplers: cut cars off</span>
         <kbd>B X K H</kbd><span>Bell · Sand · Cocks · Headlight</span>
         <kbd>I F L</kbd><span>Injector · Stoker · Blower</span>
         <kbd>1–5</kbd><span>Cameras · <kbd>M</kbd> map · <kbd>P</kbd> pause</span>
@@ -4580,15 +4615,146 @@ function haloTex() {
 const CONSISTS = {
   passenger: { name: 'Passenger', sub: '8 heavyweights · 660 tons', build: () => { const a = []; for (let i = 0; i < 7; i++) a.push(['coach', 0]); a.push(['coach', 1]); return a; } },
   freight: { name: 'Manifest freight', sub: '36 cars · 2,700 tons', build: (r) => { const a = []; const t = ['box', 'box', 'hopper', 'hopper', 'tank', 'gon', 'box', 'hopper']; for (let i = 0; i < 35; i++) a.push([t[(r() * t.length) | 0], 0]); a.push(['caboose', 0]); return a; } },
-  light: { name: 'Light engine', sub: 'Locomotive only', build: () => [] },
+  light: { name: 'Light engine', sub: 'Pick up cars in the yard', build: () => [] },
 };
 
-class Train {
+/* A string of coupled vehicles following the track: the player's train, or a cut of cars standing in
+   a yard. Vehicles can move between consists when they are coupled or cut off, so everything that
+   depends on the order (offsets, tracked points, instanced trucks) is rebuilt by layout(). */
+class Consist {
+  constructor(scene) { this.scene = scene; this.vehicles = []; this.dist = 0; this.li = 0; this.pts = []; this.length = 0; this.inst = []; }
+  get last() { return this.vehicles[this.vehicles.length - 1]; }
+  get first() { return this.vehicles[0]; }
+  /* the lead locomotive (front of a cut of cars) */
+  get lead() { return this.vehicles[this.li]; }
+  /* tracked points for a vehicle: its two body pivots, its trucks, and the steam engine's lead truck */
+  track(v) {
+    const pt = loc => ({ loc, a: 0, tp: null, F: newFrame(), v });
+    v.fp = v.frame.map(pt);
+    v.tp = v.trucks.map(t => pt(t.a));
+    if (v.kind === 'loco' && !this.diesel) v.leadPt = pt(LG.aL); else if (v.kind === 'loco') v.leadPt = v.fp[0];
+    v.ptsAll = [...v.fp, ...v.tp]; if (v.leadPt && !v.ptsAll.includes(v.leadPt)) v.ptsAll.push(v.leadPt);
+  }
+  /* offsets from the front coupler, front to back. A vehicle with flip set stands turned in this consist. */
+  layout() {
+    let a = 0;
+    this.pts = [];
+    this.li = 0;
+    this.vehicles.forEach((v, i) => {
+      v.a0 = a;
+      for (const p of v.ptsAll) { p.a = a + (v.flip ? v.len - p.loc : p.loc); this.pts.push(p); }
+      if (v.kind === 'loco') this.li = i;
+      a += v.len;
+    });
+    this.length = a;
+    this.pts.sort((p, q) => p.a - q.a);
+  }
+  /* instanced truck frames and axles for every car in the consist */
+  buildInstances(geo) {
+    for (const im of this.inst) this.scene.remove(im);
+    this.geo = geo || this.geo;
+    let nSix = 0, nFour = 0;
+    for (const v of this.vehicles) for (const t of v.trucks) { if (t.type === 'six') nSix++; else nFour++; }
+    const { tg, a6, a4 } = this.geo;
+    this.tSix = nSix ? new THREE.InstancedMesh(tg.six, RMAT.dark, nSix) : null;
+    this.tFour = nFour ? new THREE.InstancedMesh(tg.four, RMAT.dark, nFour) : null;
+    this.ax6 = nSix ? [new THREE.InstancedMesh(a6.black, RMAT.black, nSix * 3), new THREE.InstancedMesh(a6.tire, RMAT.tire, nSix * 3)] : null;
+    this.ax4 = nFour ? [new THREE.InstancedMesh(a4.black, RMAT.black, nFour * 2), new THREE.InstancedMesh(a4.tire, RMAT.tire, nFour * 2)] : null;
+    this.inst = [this.tSix, this.tFour, ...(this.ax6 || []), ...(this.ax4 || [])].filter(Boolean);
+    for (const im of this.inst) { im.frustumCulled = false; im.castShadow = true; im.receiveShadow = true; this.scene.add(im); }
+    this.hidden = false;
+  }
+  /* place with the front coupler at tp (o = facing direction) */
+  place(tp) {
+    for (const p of this.pts) { p.tp = tp.clone(); if (p.a) p.tp.advance(-p.a, null); }
+    this.update(0);
+  }
+  frontTP() { return this.pts[0].tp; }
+  rearTP() { return this.pts[this.pts.length - 1].tp; }
+  /* the coupler face at one end ('front' or 'rear'), as a track position */
+  endTP(end) {
+    if (end === 'front') { const p = this.pts[0], t = p.tp.clone(); t.advance(p.a, null); return t; }
+    const p = this.pts[this.pts.length - 1], t = p.tp.clone(); t.advance(-(this.length - p.a), null); return t;
+  }
+  /* move the whole consist by d metres; returns actually moved distance and node events */
+  move(d, ctx) {
+    if (d === 0) return 0;
+    const order = d > 0 ? this.pts : [...this.pts].reverse();
+    const lead = order[0];
+    const lctx = { commit: true, onRunThrough: ctx.onRunThrough, onNode: ctx.onNode };
+    const left = lead.tp.advance(d, lctx);
+    const actual = d - left;
+    const fctx = { commit: true, onRunThrough: ctx.onRunThrough };
+    for (let i = 1; i < order.length; i++) order[i].tp.advance(actual, fctx);
+    if (left !== 0 && ctx.onBlocked) ctx.onBlocked(left);
+    this.dist += actual;
+    return actual;
+  }
+  update(dt, theta = 0, rev = 0) {
+    for (const p of this.pts) p.tp.pose(p.F);
+    let i6 = 0, i4 = 0, a6 = 0, a4 = 0;
+    for (const v of this.vehicles) {
+      const A = v.fp[0].F, B = v.fp[1].F;
+      _v1.addVectors(A.p, B.p).multiplyScalar(0.5);
+      _v2.subVectors(A.p, B.p).normalize();
+      _v3.addVectors(A.u, B.u).normalize();
+      const r = new THREE.Vector3().crossVectors(_v2, _v3).normalize();
+      const u = new THREE.Vector3().crossVectors(r, _v2).normalize();
+      v.root.matrixAutoUpdate = false;
+      v.root.matrix.makeBasis(_v2, u, r).setPosition(_v1);
+      v.root.matrixWorldNeedsUpdate = true;
+      v.pos = v.pos || new THREE.Vector3(); v.pos.copy(_v1);
+      v.fwd = v.fwd || new THREE.Vector3(); v.fwd.copy(_v2);
+      // wheels keep turning the same way when a car changes hands or ends
+      const roll = this.dist * (v.flip ? -1 : 1) + (v.roll || 0), wAng6 = -roll / 0.457, wAng4 = -roll / 0.419;
+      for (let k = 0; k < v.trucks.length; k++) {
+        const t = v.trucks[k], Fp = v.tp[k].F;
+        frameMatrix(Fp, _tm);
+        if (v.flip) _tm.multiply(_m4.makeRotationY(Math.PI));
+        if (t.type === 'six') {
+          this.tSix.setMatrixAt(i6++, _tm);
+          for (const x of [-1.676, 0, 1.676]) { _m4.copy(_tm).multiply(new THREE.Matrix4().makeTranslation(x, t.R, 0)).multiply(new THREE.Matrix4().makeRotationZ(wAng6)); this.ax6[0].setMatrixAt(a6, _m4); this.ax6[1].setMatrixAt(a6, _m4); a6++; }
+        } else {
+          this.tFour.setMatrixAt(i4++, _tm);
+          for (const x of [-0.865, 0.865]) { _m4.copy(_tm).multiply(new THREE.Matrix4().makeTranslation(x, t.R, 0)).multiply(new THREE.Matrix4().makeRotationZ(wAng4)); this.ax4[0].setMatrixAt(a4, _m4); this.ax4[1].setMatrixAt(a4, _m4); a4++; }
+        }
+      }
+      if ((v.kind === 'loco' || v.kind === 'loco2') && this.diesel) {
+        const U = v.model;
+        U.trucks.forEach((tg, k) => { tg.matrixAutoUpdate = false; frameMatrix(v.fp[k].F, tg.matrix); if (v.reversed) tg.matrix.multiply(_m4.makeRotationY(Math.PI)); tg.matrixWorldNeedsUpdate = true; });
+        const wa = (v.reversed ? 1 : -1) * this.dist / DG.rW; for (const w of U.wheels) w.rotation.z = wa;
+        v.root.updateMatrixWorld(true);
+      } else if (v.kind === 'loco') {
+        const lf = v.leadPt.F;
+        const lt = this.loco.leadTruck; lt.matrixAutoUpdate = false; frameMatrix(lf, lt.matrix); lt.matrixWorldNeedsUpdate = true;
+        this.loco.parts.lead.rotation.z = -this.dist / LG.rL;
+        this.loco.parts.trail[0].rotation.z = -this.dist / LG.rT1;
+        this.loco.parts.trail[1].rotation.z = -this.dist / LG.rT2;
+        animateBerkshire(this.loco, theta, rev);
+      }
+    }
+    for (const im of this.inst) im.instanceMatrix.needsUpdate = true;
+  }
+  /* hand vehicles over to another consist without a jump in their wheel rotation */
+  release(v) { v.roll = this.dist * (v.flip ? -1 : 1) + (v.roll || 0); }
+  adopt(v) { v.roll -= this.dist * (v.flip ? -1 : 1); }
+  setVisible(on) {
+    for (const x of this.vehicles) x.root.visible = on;
+    for (const im of this.inst) im.visible = on;
+  }
+}
+
+/* a freight car or coach as a vehicle record */
+function carVehicle(m) {
+  return { kind: m.kind, model: m, root: m.root, len: m.len, frame: m.frame, trucks: m.trucks, mass: m.weight, axles: m.axles, area: m.area, brakeA: m.kind === 'coach' ? 0.95 : 0.5, markers: m.root.userData.markers,
+    brake: { AR: 90, BC: 0, BP: 90, emerg: false, released: true } };
+}
+
+class Train extends Consist {
   constructor(scene, locoKey, consistKey, opts = {}) {
-    this.scene = scene;
+    super(scene);
     this.locoKey = locoKey; this.consistKey = consistKey;
-    this.vehicles = [];
-    this.dist = 0; this.driverDist = 0;
+    this.driverDist = 0;
     const r = rng(1944);
     // locomotive
     const spec = LOCO_SPEC[locoKey];
@@ -4627,34 +4793,13 @@ class Train {
     for (const [type, flag] of list) {
       const m = type === 'coach' ? coachModel(spec, 3010 + (n++) * 7, !!flag) : freightModel(type, 10000 + ((r() * 89999) | 0), r);
       scene.add(m.root);
-      this.vehicles.push({ kind: m.kind, model: m, root: m.root, len: m.len, frame: m.frame, trucks: m.trucks, mass: m.weight, axles: m.axles, area: m.area, brakeA: m.kind === 'coach' ? 0.95 : 0.5, markers: m.root.userData.markers });
+      this.vehicles.push(carVehicle(m));
     }
     // tender mass varies with water & coal
     this.tenderEmpty = 92000;
-    // offsets
-    let a = 0;
-    for (const v of this.vehicles) { v.a0 = a; a += v.len; v.brake = { AR: 90, BC: 0, BP: 90, emerg: false, released: true }; }
-    this.length = a;
-    // instanced truck frames & axles
-    const tg = truckGeos();
-    let nSix = 0, nFour = 0;
-    for (const v of this.vehicles) for (const t of v.trucks) { if (t.type === 'six') nSix++; else nFour++; }
-    this.tSix = nSix ? new THREE.InstancedMesh(tg.six, RMAT.dark, nSix) : null;
-    this.tFour = nFour ? new THREE.InstancedMesh(tg.four, RMAT.dark, nFour) : null;
-    const a6 = plainAxle(0.457), a4 = plainAxle(0.419);
-    this.ax6 = nSix ? [new THREE.InstancedMesh(a6.black, RMAT.black, nSix * 3), new THREE.InstancedMesh(a6.tire, RMAT.tire, nSix * 3)] : null;
-    this.ax4 = nFour ? [new THREE.InstancedMesh(a4.black, RMAT.black, nFour * 2), new THREE.InstancedMesh(a4.tire, RMAT.tire, nFour * 2)] : null;
-    for (const im of [this.tSix, this.tFour, ...(this.ax6 || []), ...(this.ax4 || [])]) if (im) { im.frustumCulled = false; im.castShadow = true; im.receiveShadow = true; scene.add(im); }
-    // tracked points
-    this.pts = [];
-    const addPt = (a) => { const p = { a, tp: null }; this.pts.push(p); return p; };
-    for (const v of this.vehicles) {
-      v.fp = v.frame.map(f => addPt(v.a0 + f));
-      v.tp = v.trucks.map(t => addPt(v.a0 + t.a));
-      if (v.kind === 'loco') { v.leadPt = this.diesel ? v.fp[0] : addPt(v.a0 + LG.aL); }
-    }
-    this.pts.sort((p, q) => p.a - q.a);
-    this.frames = this.pts.map(() => newFrame());
+    for (const v of this.vehicles) { v.brake = v.brake || { AR: 90, BC: 0, BP: 90, emerg: false, released: true }; this.track(v); }
+    this.layout();
+    this.buildInstances({ tg: truckGeos(), a6: plainAxle(0.457), a4: plainAxle(0.419) });
     // headlight. Another player's train (opts.remote) gets no real lights: adding lights
     // to the scene would recompile every shader, and its lamp glow is drawn without them.
     this.remote = !!opts.remote;
@@ -4669,70 +4814,8 @@ class Train {
     this.markerMats = [];
     for (const v of this.vehicles) if (v.markers) for (const p of v.markers) { const m = new THREE.Mesh(new THREE.CircleGeometry(0.07, 12), new THREE.MeshBasicMaterial({ color: 0xff2a1e })); m.position.copy(p); m.rotation.y = -Math.PI / 2; v.root.add(m); this.markerMats.push(m); }
   }
-  get last() { return this.vehicles[this.vehicles.length - 1]; }
-  /* place train with its front coupler at tp (o = facing direction) */
-  place(tp) {
-    for (const p of this.pts) { p.tp = tp.clone(); if (p.a) p.tp.advance(-p.a, null); }
-    this.update(0);
-  }
-  frontTP() { return this.pts[0].tp; }
-  rearTP() { return this.pts[this.pts.length - 1].tp; }
-  /* move the whole train by d metres; returns actually moved distance and node events */
-  move(d, ctx) {
-    if (d === 0) return 0;
-    const order = d > 0 ? this.pts : [...this.pts].reverse();
-    const lead = order[0];
-    const lctx = { commit: true, onRunThrough: ctx.onRunThrough, onNode: ctx.onNode };
-    const left = lead.tp.advance(d, lctx);
-    const actual = d - left;
-    const fctx = { commit: true, onRunThrough: ctx.onRunThrough };
-    for (let i = 1; i < order.length; i++) order[i].tp.advance(actual, fctx);
-    if (left !== 0 && ctx.onBlocked) ctx.onBlocked(left);
-    return actual;
-  }
   update(dt, theta = 0, rev = 0) {
-    const F = this.frames;
-    this.pts.forEach((p, i) => { p.tp.pose(F[i]); p.F = F[i]; });
-    let i6 = 0, i4 = 0, a6 = 0, a4 = 0;
-    const wAng6 = -this.dist / 0.457, wAng4 = -this.dist / 0.419;
-    for (const v of this.vehicles) {
-      const A = v.fp[0].F, B = v.fp[1].F;
-      _v1.addVectors(A.p, B.p).multiplyScalar(0.5);
-      _v2.subVectors(A.p, B.p).normalize();
-      _v3.addVectors(A.u, B.u).normalize();
-      const r = new THREE.Vector3().crossVectors(_v2, _v3).normalize();
-      const u = new THREE.Vector3().crossVectors(r, _v2).normalize();
-      v.root.matrixAutoUpdate = false;
-      v.root.matrix.makeBasis(_v2, u, r).setPosition(_v1);
-      v.root.matrixWorldNeedsUpdate = true;
-      v.pos = v.pos || new THREE.Vector3(); v.pos.copy(_v1);
-      v.fwd = v.fwd || new THREE.Vector3(); v.fwd.copy(_v2);
-      for (let k = 0; k < v.trucks.length; k++) {
-        const t = v.trucks[k], Fp = v.tp[k].F;
-        frameMatrix(Fp, _tm);
-        if (t.type === 'six') {
-          this.tSix.setMatrixAt(i6++, _tm);
-          for (const x of [-1.676, 0, 1.676]) { _m4.copy(_tm).multiply(new THREE.Matrix4().makeTranslation(x, t.R, 0)).multiply(new THREE.Matrix4().makeRotationZ(wAng6)); this.ax6[0].setMatrixAt(a6, _m4); this.ax6[1].setMatrixAt(a6, _m4); a6++; }
-        } else {
-          this.tFour.setMatrixAt(i4++, _tm);
-          for (const x of [-0.865, 0.865]) { _m4.copy(_tm).multiply(new THREE.Matrix4().makeTranslation(x, t.R, 0)).multiply(new THREE.Matrix4().makeRotationZ(wAng4)); this.ax4[0].setMatrixAt(a4, _m4); this.ax4[1].setMatrixAt(a4, _m4); a4++; }
-        }
-      }
-      if ((v.kind === 'loco' || v.kind === 'loco2') && this.diesel) {
-        const U = v.model;
-        U.trucks.forEach((tg, k) => { tg.matrixAutoUpdate = false; frameMatrix(v.fp[k].F, tg.matrix); if (v.reversed) tg.matrix.multiply(_m4.makeRotationY(Math.PI)); tg.matrixWorldNeedsUpdate = true; });
-        const wa = (v.reversed ? 1 : -1) * this.dist / DG.rW; for (const w of U.wheels) w.rotation.z = wa;
-        v.root.updateMatrixWorld(true);
-      } else if (v.kind === 'loco') {
-        const lf = v.leadPt.F;
-        const lt = this.loco.leadTruck; lt.matrixAutoUpdate = false; frameMatrix(lf, lt.matrix); lt.matrixWorldNeedsUpdate = true;
-        this.loco.parts.lead.rotation.z = -this.dist / LG.rL;
-        this.loco.parts.trail[0].rotation.z = -this.dist / LG.rT1;
-        this.loco.parts.trail[1].rotation.z = -this.dist / LG.rT2;
-        animateBerkshire(this.loco, theta, rev);
-      }
-    }
-    for (const im of [this.tSix, this.tFour, ...(this.ax6 || []), ...(this.ax4 || [])]) if (im) im.instanceMatrix.needsUpdate = true;
+    super.update(dt, theta, rev);
     // headlight follows the lamp
     const L = this.loco;
     L.root.updateMatrixWorld(true);
@@ -4746,20 +4829,19 @@ class Train {
   dispose() {
     for (const v of this.vehicles) { this.scene.remove(v.root); }
     if (this.diesel) this.units.forEach(m => m.trucks.forEach(t => this.scene.remove(t))); else this.scene.remove(this.loco.leadTruck);
-    for (const im of [this.tSix, this.tFour, ...(this.ax6 || []), ...(this.ax4 || [])]) if (im) this.scene.remove(im);
+    for (const im of this.inst) this.scene.remove(im);
     if (this.head) { this.scene.remove(this.head); this.scene.remove(this.head.target); }
   }
   /* free GPU memory for a train that is going away for good (another player's) */
   disposeDeep() {
     this.dispose();
-    const seen = new Set(), roots = [...this.vehicles.map(v => v.root), this.tSix, this.tFour, ...(this.ax6 || []), ...(this.ax4 || [])];
+    const seen = new Set(), roots = [...this.vehicles.map(v => v.root), ...this.inst];
     if (this.diesel) this.units.forEach(m => roots.push(...m.trucks)); else roots.push(this.loco.leadTruck);
     for (const r of roots) if (r) r.traverse(o => { if (o.geometry && !seen.has(o.geometry)) { seen.add(o.geometry); o.geometry.dispose(); } });
     if (this.diesel) for (const m of this.units) for (const k in m.skin) { const mt = m.skin[k]; if (mt.map) mt.map.dispose(); mt.dispose(); }
   }
   setVisible(v) {
-    for (const x of this.vehicles) x.root.visible = v;
-    for (const im of [this.tSix, this.tFour, ...(this.ax6 || []), ...(this.ax4 || [])]) if (im) im.visible = v;
+    super.setVisible(v);
     if (this.diesel) this.units.forEach(m => m.trucks.forEach(t => { t.visible = v; })); else this.loco.leadTruck.visible = v;
   }
 }
@@ -4772,6 +4854,297 @@ function dieselLiveryFor(opts, u) {
   if (key === 'custom') return Object.assign({}, LIVERIES.custom, opts.custom || {});
   return LIVERIES[key];
 }
+
+/* ============================================================================
+   Car work: cuts of cars standing on the yard and spur tracks, coupling on
+   contact, pulling the pin, kicking cars, tie-downs
+   ========================================================================== */
+const CARS = { cuts: [], geo: null, gen: 0, cutAt: 0, cutFrom: null };
+
+/* cars spotted around the railroad when a new train is made up (single player) */
+const YARD_CUTS = [
+  { line: 'Yard 3', at: 0.62, cars: ['box', 'box', 'tank', 'box', 'hopper', 'hopper', 'box', 'gon', 'box', 'tank'] },
+  { line: 'Yard 4', at: 0.78, cars: ['hopper', 'hopper', 'hopper', 'hopper', 'hopper', 'hopper'] },
+  { line: 'Elevator Track', end: 24, cars: ['box', 'box', 'box', 'box'] },     // grain moved in boxcars in the 1940s
+  { line: 'Quarry Storage', end: 20, cars: ['hopper', 'hopper', 'gon', 'gon', 'hopper'] },
+];
+const CAR_NAMES = { box: 'Box', hopper: 'Hopper', tank: 'Tank', gon: 'Gon', caboose: 'Caboose', coach: 'Coach', tender: 'Tender' };
+const COUPLE_OK = 4 * MPH, COUPLE_HARD = 8 * MPH, COUPLE_WRECK = 11 * MPH;
+const isPower = v => v.kind === 'loco' || v.kind === 'loco2' || v.kind === 'tender';
+
+class Cut extends Consist {
+  constructor(scene, vehicles) {
+    super(scene);
+    this.v = 0; this.rolling = false; this.stopT = 0; this.vented = false;
+    this.vehicles = vehicles;
+    for (const v of vehicles) if (!v.ptsAll) this.track(v);
+    this.layout();
+    this.buildInstances(CARS.geo);
+    for (const im of this.inst) linearizeObject(im);
+  }
+  dispose() { for (const v of this.vehicles) this.scene.remove(v.root); for (const im of this.inst) this.scene.remove(im); }
+}
+
+function consistMass(c) {
+  let m = 0;
+  for (const v of c.vehicles) m += v.kind === 'tender' ? c.tenderEmpty + S.water + S.coal : v.mass;
+  return m;
+}
+const velOf = c => c === GAME.train ? S.v : c.v;
+function setVel(c, v) { if (c === GAME.train) { S.v = v; S.vw = v; } else { c.v = v; c.rolling = Math.abs(v) > 0.005 || c.rolling; } }
+function freeVehicle(v) {
+  const seen = new Set();
+  v.root.traverse(o => { if (o.geometry && !seen.has(o.geometry)) { seen.add(o.geometry); o.geometry.dispose(); } });
+}
+
+/* ---------------- making up the yard ---------------- */
+CARS.clear = function (oldTrain) {
+  for (const c of CARS.cuts) { c.dispose(); c.vehicles.forEach(freeVehicle); }
+  if (oldTrain) for (const v of oldTrain.vehicles) if (v.yard) freeVehicle(v);
+  CARS.cuts = []; CARS.gen++;
+};
+CARS.setup = function () {
+  if (MP.on || WORLD.custom) return;
+  if (!CARS.geo) { CARS.geo = { tg: truckGeos(), a6: plainAxle(0.457), a4: plainAxle(0.419) }; }
+  const r = rng(1959);
+  let num = 21000;
+  for (const def of YARD_CUTS) {
+    const line = ROUTE.lines[def.line]; if (!line) continue;
+    const vehicles = def.cars.map(type => {
+      const m = freightModel(type, num += 7 + ((r() * 40) | 0), r);
+      scene.add(m.root); linearizeObject(m.root);
+      const v = carVehicle(m); v.yard = true; v.hb = true;
+      v.brake = { AR: 0, BC: 0, BP: 0, emerg: false, released: true };   // bled off and tied down
+      return v;
+    });
+    const c = new Cut(scene, vehicles);
+    const sF = def.end !== undefined ? line.len - def.end : line.len * def.at;
+    const sR = sF - c.length;
+    const foul = line.cuts.some(k => k.s > sR - 45 && k.s < sF + 45) || sR < 10;
+    if (foul) console.warn('cut on', def.line, 'fouls a switch');
+    const loc = line.locate(sF);
+    c.place(new TrackPos(loc.edge, loc.s, 1));
+    c.home = def.line;
+    CARS.cuts.push(c);
+  }
+};
+
+/* ---------------- what is on the track ahead ---------------- */
+/* every coupler face and tracked point of every consist, by edge */
+function carIndex() {
+  const idx = new Map();
+  const add = (e, s, it) => { let l = idx.get(e); if (!l) idx.set(e, l = []); it.s = s; l.push(it); };
+  for (const c of [GAME.train, ...CARS.cuts]) {
+    if (!c) continue;
+    const f = c.endTP('front'), r = c.endTP('rear');
+    add(f.e, f.s, { c, end: 'front', out: f.o });
+    add(r.e, r.s, { c, end: 'rear', out: -r.o });
+    for (const p of c.pts) add(p.tp.e, p.tp.s, { c, end: null });
+  }
+  return idx;
+}
+/* nearest other consist beyond c's front (dir +1) or rear (dir -1) coupler, within range metres */
+function carAhead(c, dir, range, idx) {
+  const t = c.endTP(dir > 0 ? 'front' : 'rear');
+  let e = t.e, s = t.s, o = t.o * dir, acc = 0, best = null;
+  for (let g = 0; g < 40 && !best; g++) {
+    const items = idx.get(e);
+    if (items) for (const it of items) {
+      if (it.c === c) continue;
+      const ds = (it.s - s) * o;
+      if (ds < -0.03) continue;
+      const d = acc + Math.max(0, ds);
+      if (d <= range && (!best || d < best.d)) best = { d, it, o };
+    }
+    if (best) break;
+    acc += o > 0 ? e.len - s : s;
+    if (acc > range) break;
+    const end = o > 0 ? 1 : 0, node = end ? e.b : e.a;
+    const nx = node ? node.next(e, end, null) : null;
+    if (!nx) break;
+    e = nx.edge; o = nx.end === 0 ? 1 : -1; s = nx.end === 0 ? 0 : e.len;
+  }
+  if (!best) return null;
+  const it = best.it;
+  return { d: best.d, c: it.c, end: it.end, facing: !!it.end && it.out === -best.o };
+}
+/* how far consist c may move by d before it touches something */
+CARS.limit = function (c, d) {
+  if (!CARS.cuts.length) return { d, hit: null };
+  const idx = carIndex();
+  const hit = carAhead(c, Math.sign(d), Math.abs(d) + 0.05, idx);
+  if (!hit || hit.d >= Math.abs(d)) return { d, hit: null };
+  return { d: Math.sign(d) * hit.d, hit };
+};
+/* for the HUD: the cut ahead of the train in the direction of travel */
+CARS.ahead = function (T, dir, range) {
+  if (!CARS.cuts.length) return null;
+  return carAhead(T, dir, range, carIndex());
+};
+
+/* ---------------- coupling ---------------- */
+/* K keeps going with X's cars added at its kEnd; X's coupler xEnd is the one that met it */
+function absorb(K, kEnd, X, xEnd) {
+  const flip = kEnd === xEnd;
+  const MK = consistMass(K), MX = consistMass(X);
+  const v = (MK * velOf(K) + MX * velOf(X) * (flip ? -1 : 1)) / (MK + MX);
+  const list = X.vehicles.slice();
+  for (const u of list) X.release(u);
+  if (flip) {
+    list.reverse();
+    for (const u of list) { u.flip = !u.flip; for (const p of u.ptsAll) p.tp.o = -p.tp.o; }
+  }
+  for (const u of list) { K.adopt(u); if (K === GAME.train) u.hb = false; }
+  K.vehicles = kEnd === 'rear' ? K.vehicles.concat(list) : list.concat(K.vehicles);
+  for (const im of X.inst) X.scene.remove(im);
+  CARS.cuts = CARS.cuts.filter(c => c !== X);
+  K.layout(); K.buildInstances();
+  for (const im of K.inst) linearizeObject(im);
+  if (K !== GAME.train) { K.vented = K.vented || X.vented; K.stopT = 0; K.home = X.home || K.home; }
+  setVel(K, v);
+  K.update(0);
+  CARS.gen++;
+  return list.length;
+}
+/* consist A, moving toward its dir end, has just touched hit.c */
+CARS.contact = function (A, dir, hit) {
+  const B = hit.c, T = GAME.train;
+  const aEnd = dir > 0 ? 'front' : 'rear';
+  const vB = hit.end ? velOf(B) * (hit.end === aEnd ? -1 : 1) : 0;
+  const closing = dir * (velOf(A) - vB);
+  const mph = Math.round(closing / MPH);
+  const ours = A === T || B === T;
+  const hear = (A === T ? B : A).vehicles[0].pos;
+  const gain = hear ? clamp(closing / COUPLE_OK, 0.25, 1.6) / (1 + Math.pow(hear.distanceTo(camera.position) / 30, 1.3)) : 0;
+  if (!hit.facing) {
+    // the side of cars standing foul of the route
+    if (ours && closing > 2.2) { GAME.derail(`Sideswiped cars standing foul of the switch at ${mph} mph. Leave cars clear of the points before you line a route past them.`, 'Collision'); return; }
+    sndClunk(gain, 0);
+    for (const c of [A, B]) setVel(c, 0);
+    if (ours) toast('Stopped against cars standing foul of the route.', 'bad', 3000, 'foul');
+    return;
+  }
+  if (ours && closing > COUPLE_WRECK) {
+    GAME.derail(`Hit a cut of cars at ${mph} mph and buckled the couplers. Couple at a walking pace: 4 mph or less.`, 'Collision');
+    return;
+  }
+  sndCouple(gain);
+  const K = B === T ? B : A, X = K === A ? B : A;
+  const kEnd = K === A ? aEnd : hit.end, xEnd = K === A ? hit.end : aEnd;
+  const n = absorb(K, kEnd, X, xEnd);
+  if (!ours) { toast(`A rolling cut coupled into the cars on ${K.home || 'the track'}${closing > COUPLE_HARD ? `, hard, at ${mph} mph` : ''}.`, closing > COUPLE_HARD ? 'warn' : '', 2600, 'cc'); return; }
+  const re = CARS.cutFrom === X && performance.now() - CARS.cutAt < 4000;
+  const what = `${n} car${n > 1 ? 's' : ''}`;
+  if (re) toast(`Still shoving, so the cut coupled back on. Brake as you pull the pin and let the cars run.`, 'warn', 4200, 'recouple');
+  else if (closing > COUPLE_HARD) toast(`Hard coupling at ${mph} mph to ${what}. That rattles lading; 4 mph is the limit.`, 'bad', 4200, 'hard');
+  else if (closing > COUPLE_OK) toast(`Coupled to ${what} at ${mph} mph: a bit hard. Ease in slower.`, 'warn', 3600, 'firm');
+  else toast(`Coupled to ${what}. Hoses connected and handbrakes released: let the air pump up before you pull.`, 'good', 4600, 'coupled');
+  if (CARS.onChange) CARS.onChange();
+};
+
+/* ---------------- pulling the pin ---------------- */
+/* joint j sits between vehicles j-1 and j of the player's train */
+CARS.canCut = function (T, j) {
+  const V = T.vehicles; if (j <= 0 || j >= V.length) return false;
+  return !(isPower(V[j - 1]) && isPower(V[j]));
+};
+CARS.uncouple = function (j) {
+  const T = GAME.train;
+  if (MP.on) { toast('Car work is not shared with the room yet, so couplers stay locked in multiplayer.', 'warn', 4000, 'mpcars'); return; }
+  if (!T || !CARS.canCut(T, j)) return;
+  if (!CARS.geo) CARS.geo = { tg: truckGeos(), a6: plainAxle(0.457), a4: plainAxle(0.419) };
+  const V = T.vehicles, behind = j > T.li;
+  const off = behind ? V.slice(j) : V.slice(0, j);
+  T.vehicles = behind ? V.slice(0, j) : V.slice(j);
+  for (const v of off) T.release(v);
+  T.layout(); T.buildInstances();
+  for (const im of T.inst) linearizeObject(im);
+  const c = new Cut(scene, off);
+  c.v = S.v;
+  const kick = Math.abs(S.v) > 0.6;
+  if (kick) c.rolling = true;
+  else {
+    // angle cock closed on the engine side; the cut's hoses part and its brakes go into emergency
+    c.vented = true; c.rolling = Math.abs(S.v) > 0.005;
+    for (const v of off) { v.brake.BP = 0; v.brake.emerg = true; }
+  }
+  CARS.cuts.push(c); CARS.cutFrom = c; CARS.cutAt = performance.now(); CARS.gen++;
+  c.update(0); T.update(0, S.theta, S.reverser);
+  sndPin(1 / (1 + Math.pow(off[0].pos.distanceTo(camera.position) / 30, 1.3)), !kick);
+  const n = off.length, what = `${n} car${n > 1 ? 's' : ''}`;
+  if (kick) toast(`Pin pulled: ${what} rolling free at ${Math.round(Math.abs(S.v) / MPH)} mph. Brake to let them run.`, 'warn', 4200, 'kick');
+  else toast(`Cut off ${what}. Their air is dumped and the brakeman ties them down.`, 'good', 4000, 'setout');
+  if (CARS.onChange) CARS.onChange();
+};
+
+/* ---------------- cars rolling on their own ---------------- */
+CARS.step = function (h) {
+  for (const c of CARS.cuts.slice()) {
+    if (!c.rolling || !CARS.cuts.includes(c)) continue;
+    for (const v of c.vehicles) for (const p of v.fp) p.tp.pose(p.F);
+    let M = 0, Fg = 0, Fr = 0, Fb = 0;
+    const av = Math.abs(c.v), vm = av / MPH, shoe = 1.25 - 0.5 * smooth(0, 35, av);
+    c.vehicles.forEach((v, i) => {
+      const b = v.brake;
+      if (c.vented) b.BC = Math.min(70, b.BC + 40 * h);
+      M += v.mass;
+      const f = _v1.addVectors(v.fp[0].F.f, v.fp[1].F.f).multiplyScalar(0.5);
+      Fg -= v.mass * 9.81 * f.y;
+      const tons = v.mass / STON, k = Math.abs(v.fp[0].tp.e.curv(v.fp[0].tp.s));
+      Fr += (1.3 * tons + 29 * v.axles + 0.045 * tons * vm + (i === 0 ? 0.0024 : 0.0005) * (v.area || 90) * vm * vm + 0.8 * tons * 1746.4 * k + 14 * tons * (1 - smooth(0.15, 2.0, av))) * LBF;
+      Fb += v.mass * v.brakeA * (b.BC / 64) * shoe + (v.hb ? v.mass * 9.81 * 0.1 : 0);
+    });
+    let a;
+    if (av < 0.03) {
+      if (Math.abs(Fg) <= Fr + Fb) { c.v = 0; a = 0; } else a = (Fg - Math.sign(Fg) * (Fr + Fb)) / M;
+    } else {
+      a = (Fg - Math.sign(c.v) * (Fr + Fb)) / M;
+      if (Math.sign(c.v + a * h) !== Math.sign(c.v) && Math.abs(Fg) < Fr + Fb) a = -c.v / h;
+    }
+    c.v += a * h;
+    if (c.v === 0) {
+      // at rest: the brakeman ties a handbrake down on every car
+      c.stopT += h;
+      if (c.stopT > 2.5) { c.rolling = false; c.stopT = 0; for (const v of c.vehicles) v.hb = true; }
+      continue;
+    }
+    c.stopT = 0;
+    const d = c.v * h;
+    const lim = CARS.limit(c, d);
+    c.move(lim.d, {
+      onRunThrough: sw => { MP.noteThrow(sw); toast(`A rolling cut ran through ${sw.name} and forced the points over.`, 'bad', 3800, 'crt' + sw.id); },
+      onBlocked: () => {
+        const mph = Math.abs(c.v) / MPH;
+        const p = c.vehicles[0].pos, g = p ? 1 / (1 + Math.pow(p.distanceTo(camera.position) / 30, 1.3)) : 0;
+        sndClunk(clamp(mph / 4, 0.3, 1.4) * g, 0);
+        if (mph > 6) toast(`A cut of cars hit the bumping post at ${Math.round(mph)} mph.`, 'bad', 3200, 'cbump');
+        c.v = 0;
+      },
+    });
+    c.dirty = true;
+    if (lim.hit) CARS.contact(c, Math.sign(d), lim.hit);
+  }
+};
+CARS.render = function () {
+  const cam = camera.position;
+  CARS.visT = (CARS.visT || 0) + 1;
+  for (const c of CARS.cuts) {
+    if (CARS.visT % 20 === 0 || c.dirty) {
+      const far = c.vehicles[0].pos && c.vehicles[0].pos.distanceTo(cam) > 2800 + c.length;
+      if (far !== !!c.hidden) { c.hidden = far; c.setVisible(!far); }
+    }
+    if (c.dirty && !c.hidden) { c.update(0); c.dirty = false; }
+  }
+};
+
+/* switch points with cars standing over them */
+CARS.occupied = function (sw) {
+  for (const c of CARS.cuts) for (const p of c.pts) for (const att of sw.node.att) {
+    if (p.tp.e !== att.edge) continue;
+    const d = att.end === 0 ? p.tp.s : att.edge.len - p.tp.s; if (d < 38) return true;
+  }
+  return false;
+};
 
 /* ============================================================================
    Steam locomotive, boiler, air brake and train dynamics
@@ -4849,13 +5222,17 @@ function physicsStep(dt, train) {
   if (z === 'REL') { erT = 90; erRate = 5; } else if (z === 'RUN') { erT = 90; erRate = 2.2; } else if (z === 'LAP') { erT = S.ER; } else if (z === 'SRV') { erT = 90 - (6 + 20 * (S.brakeH - 0.28) / 0.62); erRate = 1.6; } else { erT = 0; erRate = 40; }
   const prevER = S.ER;
   if (erT > S.ER) S.ER = Math.min(erT, S.ER + erRate * dt * (S.MR > S.ER + 5 ? 1 : 0.2)); else S.ER = Math.max(erT, S.ER - erRate * dt);
-  // brake pipe propagation front to rear
-  let prev = S.ER, chargeFlow = 0;
-  for (let i = 0; i < V.length; i++) {
-    const b = V[i].brake, tau = i === 0 ? 0.35 : 0.22;
-    const nb = b.BP + (prev - b.BP) * Math.min(1, dt / tau);
-    b.dBP = (nb - b.BP) / dt; if (nb > b.BP) chargeFlow += nb - b.BP;
-    b.BP = nb; prev = b.BP;
+  // brake pipe propagation outward from the engine, both ways when cars are coupled ahead of it
+  let chargeFlow = 0;
+  const li = train.li;
+  for (const step of [1, -1]) {
+    let prev = step > 0 ? S.ER : V[li].brake.BP;
+    for (let i = step > 0 ? li : li - 1; i >= 0 && i < V.length; i += step) {
+      const b = V[i].brake, tau = i === li ? 0.35 : 0.22;
+      const nb = b.BP + (prev - b.BP) * Math.min(1, dt / tau);
+      b.dBP = (nb - b.BP) / dt; if (nb > b.BP) chargeFlow += nb - b.BP;
+      b.BP = nb; prev = b.BP;
+    }
   }
   if (z === 'EMG') for (const v of V) v.brake.BP = Math.max(0, v.brake.BP - 60 * dt);
   // compressor
@@ -4886,7 +5263,7 @@ function physicsStep(dt, train) {
     }
   }
   // locomotive: independent brake + automatic (bail-off releases the automatic)
-  const lb = V[0].brake;
+  const lb = V[li].brake;
   const ind = clamp((S.indH - 0.1) / 0.9, 0, 1) * 45;
   const autoLoco = S.bailoff ? 0 : lb.BC;
   S.BCloco = Math.max(ind, autoLoco);
@@ -4934,7 +5311,7 @@ function physicsStep(dt, train) {
     M += mass;
     const f = v.fp[0].F && v.fp[1].F ? _v1.addVectors(v.fp[0].F.f, v.fp[1].F.f).multiplyScalar(0.5) : _v1.set(1, 0, 0);
     Fgrade -= mass * 9.81 * f.y;
-    if (i === 0) gradeLead = f.y;
+    if (i === li) gradeLead = f.y;
     const tons = mass / STON;
     const k = Math.abs(v.fp[0].tp.e.curv(v.fp[0].tp.s));
     let R = 1.3 * tons + 29 * v.axles + (v.kind === 'coach' ? 0.03 : 0.045) * tons * vm + (i === 0 ? 0.0024 * 125 : 0.0005 * (v.area || 90)) * vm * vm;
@@ -5227,6 +5604,10 @@ function makeRemoteBus(diesel) {
   return { g, lp, roar, eng, kill: () => { try { g.disconnect(); lp.disconnect(); nodes.forEach(n => n.stop()); } catch (e) {} } };
 }
 function sndClunk(gain, delay) { if (!AU.on || gain < 0.01) return; const t = AU.ctx.currentTime + 0.01 + delay; envNoise(t, 0.16, 650, 3, 0.6 * gain, AU.world, 'bandpass', AU.noise, 0.003); envTone(t, 0.12, 75, 0.5 * gain, AU.world, 'sine', 45); }
+/* knuckles closing: a sharp crack, then the slack running in */
+function sndCouple(gain) { if (!AU.on || gain < 0.01) return; const t = AU.ctx.currentTime + 0.01; envNoise(t, 0.08, 2100, 7, 0.45 * gain, AU.world, 'bandpass', AU.white, 0.001); envNoise(t, 0.3, 560, 3, 0.75 * gain, AU.world, 'bandpass', AU.noise, 0.002); envTone(t, 0.2, 68, 0.6 * gain, AU.world, 'sine', 40); envNoise(t + 0.16, 0.2, 700, 3, 0.3 * gain, AU.world, 'bandpass', AU.noise, 0.003); }
+/* cut lever lifting the pin; with dump, the hoses part and the brake pipe vents */
+function sndPin(gain, dump) { if (!AU.on || gain < 0.01) return; const t = AU.ctx.currentTime + 0.01; envNoise(t, 0.1, 1600, 6, 0.3 * gain, AU.world, 'bandpass', AU.white, 0.002); envNoise(t + 0.14, 0.08, 2400, 8, 0.2 * gain, AU.world, 'bandpass', AU.white, 0.002); if (dump) envNoise(t + 0.3, 1.6, 3200, 0.8, 0.35 * gain, AU.world, 'bandpass', AU.white, 0.02); }
 function sndThrow() { if (!AU.on) return; const t = AU.ctx.currentTime + 0.01; envNoise(t, 0.18, 900, 4, 0.25, AU.world, 'bandpass', AU.white, 0.003); envNoise(t + 0.25, 0.12, 1400, 5, 0.2, AU.world, 'bandpass', AU.white, 0.002); }
 function sndChirp(night) {
   if (!AU.on) return; const t = AU.ctx.currentTime + 0.01;
@@ -5453,7 +5834,7 @@ const CAM = { mode: 'chase', modes: ['chase', 'cab', 'side', 'drone', 'rear'], n
 const _cq = new THREE.Quaternion(), _cm = new THREE.Matrix4(), _ce = new THREE.Euler();
 function updateCamera(cam, train, dt) {
   const L = train.loco, body = L.root;
-  const fwd = train.vehicles[0].fwd, pos = train.vehicles[0].pos;
+  const fwd = train.lead.fwd, pos = train.lead.pos;
   const hdg = Math.atan2(fwd.x, fwd.z);
   cam.near = 0.3; let fov = 52;
   if (CAM.mode === 'chase' || CAM.mode === 'drone') {
@@ -5608,6 +5989,9 @@ function setupButtons() {
   $('gaugeWrap').addEventListener('click', () => { const g = $('gaugeWrap'); g.classList.toggle('min'); try { localStorage.setItem('bd_gmin', g.classList.contains('min') ? '1' : ''); } catch (e) {} });
   try { if (localStorage.getItem('bd_gmin')) $('gaugeWrap').classList.add('min'); } catch (e) {}
   $('btnCam').addEventListener('click', () => cycleCamera());
+  $('btnCars').addEventListener('click', () => carPanelToggle());
+  $('carClose').addEventListener('click', () => carPanelToggle(false));
+  $('carStrip').addEventListener('click', e => { const b = e.target.closest('.cj'); if (b) CARS.uncouple(+b.dataset.j); });
   $('btnMap').addEventListener('click', () => MAP.open());
   $('minimap').addEventListener('click', () => MAP.open());
   $('btnCine').addEventListener('click', () => { $('hud').classList.add('cine'); });
@@ -5641,6 +6025,7 @@ function setupButtons() {
       case 'KeyF': if (GAME.isDiesel()) break; GAME.manualFire('stoker'); S.stoker = clamp(S.stoker + 0.25, 0, 1.0001) > 1 ? 0 : S.stoker + 0.25; break;
       case 'KeyL': if (GAME.isDiesel()) break; GAME.manualFire('blower'); S.blower = S.blower > 0.3 ? 0 : 0.65; break;
       case 'KeyT': GAME.throwAhead(); break;
+      case 'KeyU': carPanelToggle(); break;
       case 'KeyM': MAP.visible ? MAP.close() : MAP.open(); break;
       case 'KeyP': GAME.pause(!S.paused); break;
       case 'Digit1': cycleCamera('chase'); break; case 'Digit2': cycleCamera('cab'); break; case 'Digit3': cycleCamera('side'); break; case 'Digit4': cycleCamera('drone'); break; case 'Digit5': cycleCamera('rear'); break;
@@ -5668,13 +6053,14 @@ function drawGauges() {
     for (const [v, col] of hands) { const a = a0 + (a1 - a0) * clamp(v, 0, max) / max; g.strokeStyle = col; g.lineWidth = r * 0.055; g.lineCap = 'round'; g.beginPath(); g.moveTo(x - Math.cos(a) * r * 0.15, y - Math.sin(a) * r * 0.15); g.lineTo(x + Math.cos(a) * r * 0.82, y + Math.sin(a) * r * 0.82); g.stroke(); }
     g.fillStyle = '#222'; g.beginPath(); g.arc(x, y, r * 0.07, 0, TAU); g.fill();
   };
-  const b = GAME.train ? GAME.train.vehicles : null;
-  const lastBP = b ? b[b.length - 1].brake.BP : 90;
+  const T = GAME.train, b = T ? T.vehicles : null;
+  // the end car farthest from the engine, which may be ahead of it when shoving
+  const lastBP = b ? (T.li > b.length - 1 - T.li ? b[0] : b[b.length - 1]).brake.BP : 90;
   if (GAME.isDiesel()) { drawDieselGauges(g, dial, b, lastBP); return; }
   dial(108, 112, 96, 300, 'BOILER PSI', [[S.P, '#151515']], [245, 300], 50, 10);
   g.font = '600 18px "IBM Plex Mono", monospace'; g.fillStyle = S.safety ? '#ee4b3d' : '#cfa651'; g.textAlign = 'center'; g.fillText(S.safety ? 'POPPING' : 'CHEST ' + Math.round(S.Psc), 108, 224);
   dial(296, 86, 70, 160, 'MR · EQ', [[S.MR, '#c0281e'], [S.ER, '#151515']], null, 40, 10);
-  dial(458, 86, 70, 160, 'BP · BC', [[b ? b[0].brake.BP : 90, '#151515'], [S.BCloco || 0, '#c0281e']], null, 40, 10);
+  dial(458, 86, 70, 160, 'BP · BC', [[b ? GAME.train.lead.brake.BP : 90, '#151515'], [S.BCloco || 0, '#c0281e']], null, 40, 10);
   g.font = '600 17px "IBM Plex Mono", monospace'; g.fillStyle = '#8d9aa2'; g.textAlign = 'center';
   g.fillText('CUT ' + Math.round(S.cut * 100) + '%', 296, 186); g.fillText('REAR ' + Math.round(lastBP), 458, 186);
   g.fillStyle = S.slip ? '#ee4b3d' : '#8d9aa2'; g.fillText(S.slip ? 'SLIPPING' : 'TE ' + Math.round(Math.abs(S.TE) / LBF / 1000) + 'k lb', 296, 212);
@@ -5726,12 +6112,15 @@ function drawNet(g, W, H, cx, cn, sc, opt) {
     g.beginPath(); g.arc(x, y, opt.sr, 0, TAU); g.fill(); g.stroke();
     if (opt.swLabels) { g.fillStyle = '#dfe4e6'; g.font = `500 ${opt.fs * 0.85}px "IBM Plex Sans Condensed", sans-serif`; g.textAlign = 'left'; g.fillText(sw.name + ' → ' + sw.lined, x + opt.sr + 4, y + 4); }
   }
+  // cuts of cars standing or rolling
+  g.strokeStyle = '#b5895a'; g.lineWidth = 3.4 * opt.w;
+  for (const c of CARS.cuts) { if (!c.vehicles[0].pos) continue; g.beginPath(); c.vehicles.forEach((v, i) => { const x = tx(v.pos.x), y = ty(-v.pos.z); i ? g.lineTo(x, y) : g.moveTo(x, y); }); g.stroke(); }
   // train
   const T = GAME.train;
   if (T) {
     g.strokeStyle = '#ffe08a'; g.lineWidth = 4 * opt.w; g.beginPath();
     T.vehicles.forEach((v, i) => { const x = tx(v.pos.x), y = ty(-v.pos.z); i ? g.lineTo(x, y) : g.moveTo(x, y); }); g.stroke();
-    const p = T.vehicles[0].pos; g.fillStyle = '#ffffff'; g.beginPath(); g.arc(tx(p.x), ty(-p.z), 3.5 * opt.w, 0, TAU); g.fill();
+    const p = T.lead.pos; g.fillStyle = '#ffffff'; g.beginPath(); g.arc(tx(p.x), ty(-p.z), 3.5 * opt.w, 0, TAU); g.fill();
   }
   MP.drawMap(g, tx, ty, opt);
   return { tx, ty };
@@ -5739,13 +6128,13 @@ function drawNet(g, W, H, cx, cn, sc, opt) {
 function drawMinimap() {
   const c = $('minimap'), g = c.getContext('2d'), W = c.width, H = c.height;
   g.fillStyle = 'rgba(10,14,17,0.92)'; g.fillRect(0, 0, W, H);
-  const p = GAME.train.vehicles[0].pos;
+  const p = GAME.train.lead.pos;
   drawNet(g, W, H, p.x, -p.z, 0.11, { w: 1.6, sr: 5, labels: true, fs: 15, river: !WORLD.custom });
   g.fillStyle = '#8d9aa2'; g.font = '600 14px "IBM Plex Sans Condensed", sans-serif'; g.textAlign = 'right'; g.fillText('MAP', W - 10, H - 10);
 }
 MAP.open = function () {
   MAP.visible = true; $('mapView').hidden = false;
-  const p = GAME.train ? GAME.train.vehicles[0].pos : { x: 0, z: -2400 };
+  const p = GAME.train ? GAME.train.lead.pos : { x: 0, z: -2400 };
   MAP.cx = 0; MAP.cn = 2700; MAP.scale = Math.min(innerWidth / 11000, innerHeight / 7600);
   if (WORLD.custom) { // frame the whole layout
     let x0 = Infinity, x1 = -Infinity, n0 = Infinity, n1 = -Infinity;
@@ -5787,6 +6176,48 @@ function setupMap() {
   $('mapClose').addEventListener('click', () => MAP.close());
 }
 
+/* ---------------- couplers panel ---------------- */
+const KNUCKLE = '<svg viewBox="0 0 24 24"><path d="M2 12h6.5M15.5 12H22"/><path d="M8.5 8.5v7M15.5 8.5v7"/><path d="M12 3v3.5M12 17.5V21"/></svg>';
+const carPanelState = { key: '', t: 0 };
+function carPanelToggle(open) {
+  const p = $('carPanel'); open = open === undefined ? p.hidden : open;
+  p.hidden = !open;
+  $('btnCars').classList.toggle('on', open);
+  if (open) { $('mpPanel').hidden = true; carPanelState.key = ''; carPanel(); }
+}
+function carName(T, v) {
+  if (v.kind === 'loco') return T.diesel ? 'Lead' : T.locoKey;
+  if (v.kind === 'loco2') return 'Unit';
+  return CAR_NAMES[v.kind] || v.kind;
+}
+function carPanel() {
+  const T = GAME.train; if (!T || $('carPanel').hidden) return;
+  const V = T.vehicles, strip = $('carStrip');
+  const key = CARS.gen + ':' + V.length;
+  if (key !== carPanelState.key) {
+    carPanelState.key = key;
+    let h = '';
+    V.forEach((v, i) => {
+      if (i > 0) h += CARS.canCut(T, i) && !MP.on ? `<button class="cj" type="button" data-j="${i}" aria-label="Pull the pin between ${carName(T, V[i - 1])} ${i} and ${carName(T, v)} ${i + 1}">${KNUCKLE}</button>` : '<span class="cjx"></span>';
+      h += `<div class="cv ${isPower(v) ? 'pw' : v.kind}"><b>${carName(T, v)}</b></div>`;
+    });
+    strip.innerHTML = h;
+    const pw = strip.querySelector('.pw'); if (pw) strip.scrollLeft = pw.offsetLeft - strip.clientWidth / 2 + pw.offsetWidth;
+  }
+  // amber dot: a car whose brakes have not charged yet
+  [...strip.querySelectorAll('.cv')].forEach((el, i) => { const v = V[i]; el.classList.toggle('air', !!v && !isPower(v) && v.brake.AR < 62); });
+  const cars = V.filter(v => !isPower(v)), ahead = V.slice(0, T.li).filter(v => !isPower(v)).length;
+  const tons = Math.round(consistMass(T) / STON).toLocaleString();
+  $('carSum').innerHTML = `<b>${cars.length ? cars.length + ' car' + (cars.length > 1 ? 's' : '') : 'Light engine'}</b>${ahead ? ` · ${ahead} ahead of the engine` : ''} · ${tons} tons · front on the left`;
+  const charging = cars.filter(v => v.brake.AR < 62).length;
+  const moving = Math.abs(S.v) > 0.6;
+  $('carHint').innerHTML = MP.on ? 'Car work is single player for now: couplers stay locked in a room.'
+    : !cars.length ? 'Back gently into a cut of cars to couple. They stand on Yard 3, Yard 4, the elevator track and quarry storage.'
+    : (moving ? '<b>Moving:</b> pulling a pin kicks the cars. Brake right after and they roll free.' : '<b>Stopped:</b> tap a coupler to cut cars off. They are set out and tied down where they stand.')
+      + (charging ? ` <b>${charging}</b> car${charging > 1 ? 's' : ''} still charging air (amber).` : '');
+}
+CARS.onChange = () => carPanel();
+
 /* ---------------- toasts ---------------- */
 const TOASTS = [];
 function toast(msg, kind = '', ms = 3600, key) {
@@ -5805,7 +6236,7 @@ function drawDieselGauges(g, dial, b, lastBP) {
   g.font = '600 18px "IBM Plex Mono", monospace'; g.textAlign = 'center';
   g.fillStyle = S.slipCtl ? '#ee4b3d' : '#cfa651'; g.fillText(S.slipCtl ? 'WHEEL SLIP' : (S.notch ? 'N' + S.notch : (S.dyn > 0.06 ? 'DYN BRAKE' : 'IDLE')) + ' · ' + Math.round(S.rpm) + ' rpm', 108, 224);
   dial(296, 86, 70, 160, 'MR · EQ', [[S.MR, '#c0281e'], [S.ER, '#151515']], null, 40, 10);
-  dial(458, 86, 70, 160, 'BP · BC', [[b ? b[0].brake.BP : 90, '#151515'], [S.BCloco || 0, '#c0281e']], null, 40, 10);
+  dial(458, 86, 70, 160, 'BP · BC', [[b ? GAME.train.lead.brake.BP : 90, '#151515'], [S.BCloco || 0, '#c0281e']], null, 40, 10);
   g.font = '600 17px "IBM Plex Mono", monospace'; g.fillStyle = '#8d9aa2';
   g.fillText('LOAD ' + Math.round(S.amps) + ' A', 296, 186); g.fillText('REAR ' + Math.round(lastBP), 458, 186);
   g.fillText('TURBO ' + Math.round(S.turbo * 100) + '%', 296, 212);
@@ -6088,8 +6519,8 @@ class RemoteTrain {
   fx(dt, st, cam) {
     if (!this.placed || !this.visible) return;
     const T = this.train, L = T.loco, night = SKY.night;
-    const head = T.vehicles[0].pos, d = head.distanceTo(cam);
-    this.tv.copy(T.vehicles[0].fwd).multiplyScalar(this.v);
+    const head = T.lead.pos, d = head.distanceTo(cam);
+    this.tv.copy(T.lead.fwd).multiplyScalar(this.v);
     // lamps
     const hl = st.hl;
     L.beam.material.opacity = hl === 0 ? 0 : (night ? (hl === 2 ? 0.075 : 0.035) : (SKY.weather !== 'clear' ? 0.02 : 0));
@@ -6143,7 +6574,7 @@ class RemoteTrain {
       const W = this.wh, src = T.worldOf(T.diesel ? L.hornPos : L.whistlePos, this.wp);
       const toCam = _mpA.subVectors(cam, src), dist = toCam.length(); toCam.normalize();
       const riding = CAM.mode !== 'side' && !MP.watching && GAME.train;
-      const vl = riding ? _mpB.copy(GAME.train.vehicles[0].fwd).multiplyScalar(S.v).dot(toCam) : 0;
+      const vl = riding ? _mpB.copy(GAME.train.lead.fwd).multiplyScalar(S.v).dot(toCam) : 0;
       const dop = 343 / (343 - clamp(this.tv.dot(toCam) - vl, -60, 60));
       setG(W.out, (1 / (1 + Math.pow(dist / 90, 1.1))) * Math.pow(st.wh, T.diesel ? 0.5 : 0.8) * 0.95, W.attack);
       const bend = 1 - W.quill * (1 - st.wh);
@@ -6181,7 +6612,7 @@ MP.init = function () {
   $('mpJoin').addEventListener('click', () => { const c = codeIn.value.toUpperCase().replace(/[^A-Z0-9]/g, ''); if (c.length < 4) { MP.say('Type the room code your friend sent you.', true); codeIn.focus(); return; } MP.join(c); });
   $('mpLeave').addEventListener('click', () => MP.leave());
   for (const id2 of ['mpShare', 'mpShare2']) $(id2).addEventListener('click', () => MP.share());
-  $('btnPlayers').addEventListener('click', () => { const p = $('mpPanel'); p.hidden = !p.hidden; if (!p.hidden) MP.panel(); });
+  $('btnPlayers').addEventListener('click', () => { const p = $('mpPanel'); p.hidden = !p.hidden; if (!p.hidden) { MP.panel(); carPanelToggle(false); } });
   $('mpPanelClose').addEventListener('click', () => { $('mpPanel').hidden = true; });
   $('mpWatchBack').addEventListener('click', () => MP.unwatch());
   const send = () => { const t = mpText($('mpChatIn').value, 80); if (!t) return; $('mpChatIn').value = ''; MP.talk(t); };
@@ -6423,14 +6854,14 @@ MP.post = function (dt) {
 MP.contact = function (T) {
   if (!MP.on || !MP.spawned || !T) return;
   const front = _mpA, rear = _mpB; mpEnds(T, front, rear);
-  const fwd = T.vehicles[0].fwd;
+  const fwd = T.lead.fwd;
   for (const p of MP.peers.values()) {
     const rt = p.rt; if (!rt || !rt.placed || !rt.polyN) continue;
     if (front.distanceTo(rt.poly[0]) > T.length + rt.train.length + 60) continue;
     for (const [end, sg] of [[front, 1], [rear, -1]]) {
       let d = 1e9; for (let i = 0; i < rt.polyN - 1; i++) { const x = mpSegDist(end, rt.poly[i], rt.poly[i + 1]); if (x < d) d = x; }
       if (d > 1.25) continue;
-      const theirs = rt.train.vehicles[0].fwd.dot(fwd) * rt.v, closing = sg * (S.v - theirs);
+      const theirs = rt.train.lead.fwd.dot(fwd) * rt.v, closing = sg * (S.v - theirs);
       if (closing > 2.7) { GAME.derail(`Collided with ${p.st.nm}'s train at ${Math.round(closing / MPH)} mph. Back away before you try again.`, 'Collision'); return; }
       if (closing > 0.02) { S.v = 0; S.vw = 0; toast(`Buffered up against ${p.st.nm}'s train.`, 'warn', 2600, 'mpbump'); }
     }
@@ -6473,7 +6904,7 @@ MP.tags = function () {
 };
 MP.panel = function () {
   const box = $('mpList'); if (!box) return;
-  const T = GAME.train, me = T && MP.spawned ? T.vehicles[0].pos : null;
+  const T = GAME.train, me = T && MP.spawned ? T.lead.pos : null;
   box.textContent = '';
   const row = (color, name, sub, right, peerId) => {
     const r = document.createElement('div'); r.className = 'mpP';
@@ -6490,7 +6921,7 @@ MP.panel = function () {
     const st = p.st;
     let right = st.e >= 0 ? Math.round(Math.abs(st.v) / MPH) + ' mph' : '';
     if (st.dr) right = 'Derailed'; else if (st.pz && st.e >= 0) right = 'In the menu';
-    if (me && p.rt && p.rt.placed) right += ' · ' + fmtMi(me.distanceTo(p.rt.train.vehicles[0].pos));
+    if (me && p.rt && p.rt.placed) right += ' · ' + fmtMi(me.distanceTo(p.rt.train.lead.pos));
     row(p.color, st.nm, mpLocoLabel(st), right, p.id);
   }
 };
@@ -6501,7 +6932,7 @@ MP.drawMap = function (g, tx, ty, opt) {
     const T = rt.train;
     g.strokeStyle = p.color; g.lineWidth = 4 * opt.w; g.beginPath();
     T.vehicles.forEach((v, i) => { const x = tx(v.pos.x), y = ty(-v.pos.z); i ? g.lineTo(x, y) : g.moveTo(x, y); }); g.stroke();
-    const q = T.vehicles[0].pos, x = tx(q.x), y = ty(-q.z);
+    const q = T.lead.pos, x = tx(q.x), y = ty(-q.z);
     g.fillStyle = '#ffffff'; g.beginPath(); g.arc(x, y, 3 * opt.w, 0, TAU); g.fill();
     if (opt.labels) { g.font = `700 ${opt.fs}px "IBM Plex Sans Condensed", sans-serif`; g.textAlign = 'left'; g.lineWidth = 3; g.strokeStyle = 'rgba(0,0,0,0.75)'; g.strokeText(p.st.nm, x + 7, y - 7); g.fillStyle = p.color; g.fillText(p.st.nm, x + 7, y - 7); }
   }
@@ -6704,6 +7135,7 @@ function resetState() {
   if (LOCO_SPEC[GAME.settings.loco].diesel) { S.cocks = false; S.light = SKY.night ? 2 : 2; }
 }
 function makeTrain() {
+  CARS.clear(GAME.train);
   if (GAME.train) GAME.train.dispose();
   const t = new Train(scene, GAME.settings.loco, GAME.settings.consist, dieselOpts());
   GAME.train = t;
@@ -6754,6 +7186,7 @@ function layoutFit(tp, need) {
 }
 function finishTrain(t) {
   prepareTrain(t);
+  CARS.setup();
   if (!t.diesel) applySteamFinish(GAME.settings.finish);
   resetState();
   S.limit = Math.min(...t.pts.map(p => p.tp.e.limit));
@@ -6765,7 +7198,7 @@ function finishTrain(t) {
 function prepareTrain(t) {
   for (const v of t.vehicles) linearizeObject(v.root);
   if (t.diesel) t.units.forEach(m => m.trucks.forEach(linearizeObject)); else linearizeObject(t.loco.leadTruck);
-  for (const im of [t.tSix, t.tFour, ...(t.ax6 || []), ...(t.ax4 || [])]) if (im) linearizeObject(im);
+  for (const im of t.inst) linearizeObject(im);
   for (const v of t.vehicles) v.brake = { AR: 90, BC: 0, BP: 90, emerg: false, released: true };
 }
 function dieselOpts() {
@@ -6871,6 +7304,7 @@ GAME.intro = function () {
   if (MP.on) setTimeout(() => toast(`Made up on ${GAME.spawnName}. The switches are shared with everyone in the room.`, '', 5600), 600);
   else if (WORLD.custom) setTimeout(() => toast(`On ${GAME.spawnName}. Every switch is lined straight: tap one or use Throw to change it.`, '', 5000), 600);
   else setTimeout(() => toast('Yard 2, Bellevue. The ladder is lined out to the main.', '', 5000), 600);
+  if (!MP.on && CARS.cuts.length) setTimeout(() => toast('Cars are waiting on Yard 3, Yard 4, the elevator track and quarry storage. Back in gently to couple; Couplers (U) cuts them off.', '', 7000, 'carsIntro'), 11500);
   if (GAME.train && GAME.train.diesel) setTimeout(() => toast((GAME.train.nUnits > 1 ? GAME.train.nUnits + ' units in multiple: they all answer the lead cab. ' : '') + 'Reverser to forward, engine brake off, then notch out the throttle.', '', 6500), 5200);
   else setTimeout(() => toast('Reverser forward, engine brake off, then ease the throttle open.', '', 6000), 5200);
 };
@@ -6930,6 +7364,7 @@ GAME.occupied = function (sw) {
 };
 GAME.throwSwitch = function (sw) {
   if (GAME.occupied(sw)) { toast(`${sw.name} is occupied by your train. Clear it before throwing.`, 'bad', 3200, 'occ'); return; }
+  if (CARS.occupied(sw)) { toast(`Cars are standing over ${sw.name}. Pull them clear before throwing.`, 'bad', 3200, 'occ'); return; }
   const who = MP.occupant(sw);
   if (who) { toast(`${who}'s train is on ${sw.name}. Wait until it clears.`, 'bad', 3200, 'occ'); return; }
   sw.state = 1 - sw.state; sndThrow(); MP.noteThrow(sw);
@@ -6973,7 +7408,7 @@ let hudT = 0, mapT = 0, gaugeT = 0;
 function updateHUD(dt) {
   hudT += dt; mapT += dt; gaugeT += dt;
   updateLevers();
-  if (gaugeT > 0.066) { gaugeT = 0; if ($('gaugeWrap').classList.contains('min')) { const m = $('gaugeMini'); const bp = Math.round(GAME.train.vehicles[0].brake.BP); const t = GAME.isDiesel() ? `<span><b>${S.notch ? 'N' + S.notch : 'IDLE'}</b></span><span>${S.DBF > 1000 ? 'DB' : 'TE'} <b>${Math.round((S.DBF > 1000 ? S.DBF * (GAME.train.nUnits || 1) : Math.abs(S.TE)) / LBF / 1000)}k</b></span><span>BP <b>${bp}</b></span>` : `<span><b>${Math.round(S.P)}</b> psi</span><span>glass <b>${Math.round(clamp((S.W + 0.1) / 1.2, 0, 1) * 100)}%</b></span><span>BP <b>${bp}</b></span>`; if (m.innerHTML !== t) m.innerHTML = t; } else drawGauges(); }
+  if (gaugeT > 0.066) { gaugeT = 0; if ($('gaugeWrap').classList.contains('min')) { const m = $('gaugeMini'); const bp = Math.round(GAME.train.lead.brake.BP); const t = GAME.isDiesel() ? `<span><b>${S.notch ? 'N' + S.notch : 'IDLE'}</b></span><span>${S.DBF > 1000 ? 'DB' : 'TE'} <b>${Math.round((S.DBF > 1000 ? S.DBF * (GAME.train.nUnits || 1) : Math.abs(S.TE)) / LBF / 1000)}k</b></span><span>BP <b>${bp}</b></span>` : `<span><b>${Math.round(S.P)}</b> psi</span><span>glass <b>${Math.round(clamp((S.W + 0.1) / 1.2, 0, 1) * 100)}%</b></span><span>BP <b>${bp}</b></span>`; if (m.innerHTML !== t) m.innerHTML = t; } else drawGauges(); }
   if (mapT > 0.18) { mapT = 0; drawMinimap(); if (MAP.visible) MAP.draw(); }
   if (hudT < 0.1) return; hudT = 0;
   const mph = Math.abs(S.v) / MPH;
@@ -7003,12 +7438,19 @@ function updateHUD(dt) {
   // stop / water / coal
   const stl = $('stopLine');
   const act = nearbyService();
+  const cars = CARS.ahead(GAME.train, dir, 500);
+  if (cars) $('swMiniTxt').textContent += ` · cars ${fmtFt(cars.d)}`;
   if (act) stl.innerHTML = `<b>${act.label}</b> <button class="btn" id="btnService" style="padding:5px 8px;font-size:10px">${act.btn}</button>`;
+  else if (cars) stl.innerHTML = cars.facing ? `Coupling in <b>${fmtFt(cars.d)}</b>${cars.d < 60 ? ` · ${Math.round(Math.abs(S.v) / MPH * 10) / 10} mph` : ''}` : `<span style="color:var(--stop)">Cars foul of the route in <b style="color:var(--stop)">${fmtFt(cars.d)}</b></span>`;
   else if (sc.end && sc.end.d < 400) stl.innerHTML = `<span style="color:var(--stop)">End of track in <b style="color:var(--stop)">${fmtMi(sc.end.d)}</b></span>`;
   else if (sc.station && sc.station.d < 6000) stl.innerHTML = `Next: <b>${sc.station.st.name}</b> ${fmtMi(Math.max(0, sc.station.d))}`;
   else stl.innerHTML = '';
+  stl.classList.toggle('cars', !act && !!cars);
   const bs = $('btnService'); if (bs) bs.onclick = () => act.go();
+  carPanel();
 }
+/* feet to the nearest foot up close, then tens and miles */
+function fmtFt(m) { const ft = m / FT; return ft < 100 ? Math.max(0, Math.round(ft)) + ' ft' : fmtMi(m); }
 function nearbyService() {
   const T = GAME.train; if (!T || !T.tender || Math.abs(S.v) > 0.3) return null;
   const tm = T.tender.root.matrixWorld;
@@ -7034,9 +7476,11 @@ function simStep(dt, T) {
     for (let i = 0; i < n; i++) {
       S.time += h;
       const d = physicsStep(h, T);
-      if (d !== 0) {
+      CARS.step(h);
+      if (d !== 0 && !S.derailed) {
         const mph = Math.abs(S.v) / MPH;
-        const moved = T.move(d, {
+        const lim = CARS.limit(T, d);
+        const moved = T.move(lim.d, {
           onNode: (node, from, to) => {
             const sw = node.sw; if (!sw) return;
             const div = from === sw.legs[1].edge || to === sw.legs[1].edge;
@@ -7050,11 +7494,12 @@ function simStep(dt, T) {
             else { if (mph2 > 1) sndClunk(1, 0); S.v = 0; S.vw = 0; toast('Stopped against the bumping post.', 'warn', 2500, 'bump'); }
           },
         });
-        T.dist += moved; S.odo += Math.abs(moved);
+        S.odo += Math.abs(moved);
+        if (lim.hit && !S.derailed) CARS.contact(T, Math.sign(d), lim.hit);
       }
     }
     // curve overspeed (lateral acceleration at the lead truck)
-    const lead = T.vehicles[0].leadPt.tp, k = Math.abs(lead.e.curv(lead.s));
+    const lead = T.lead.leadPt.tp, k = Math.abs(lead.e.curv(lead.s));
     const lat = S.v * S.v * k;
     if (lat > 2.7) GAME.derail(`Overturned on the curve at ${Math.round(Math.abs(S.v) / MPH)} mph.`);
     else if (lat > 1.75) toast('Too fast for this curve!', 'warn', 2000, 'curve');
@@ -7078,6 +7523,7 @@ function renderStep(dt, T) {
   // visuals
   updateSwitchVisuals(dt); updateSignals();
   T.update(dt, S.theta, S.reverser);
+  CARS.render();
   MP.frame(dt);
   if (GAME.running && !S.paused && !S.derailed) MP.contact(T);
   // headlight & glows
@@ -7112,7 +7558,7 @@ function renderStep(dt, T) {
   SKY.clouds.position.set(camera.position.x, camera.position.y + 1600, camera.position.z);
   SKY.clouds.material.map.offset.x += dt * 0.0006; SKY.clouds.material.map.offset.y += dt * 0.0003;
   SKY.moon.position.copy(SKY.sunDir).multiplyScalar(7000).add(camera.position);
-  const lp = (MP.view() || T).vehicles[0].pos;
+  const lp = (MP.view() || T).lead.pos;
   SKY.sun.target.position.copy(lp); SKY.sun.position.copy(lp).addScaledVector(SKY.sunDir, 300);
   updateTrackLOD(camera); updateDetailLOD(camera, scene, dt);
   // effects & sound
@@ -7129,7 +7575,7 @@ function stationStop(T) {
     const d = cab.distanceTo(st.p); if (d > 120) continue;
     if (GAME.lastStation === st.name) return;
     GAME.lastStation = st.name;
-    const along = _v1.subVectors(cab, st.p).dot(T.vehicles[0].fwd);
+    const along = _v1.subVectors(cab, st.p).dot(T.lead.fwd);
     const ft = Math.round(Math.abs(along) / FT);
     const grade = ft < 25 ? 'right on the mark' : ft < 80 ? `${ft} ft ${along > 0 ? 'past' : 'short of'} the mark` : `${ft} ft ${along > 0 ? 'past' : 'short of'} the platform`;
     toast(`Stopped at ${st.name}: ${grade}.`, ft < 80 ? 'good' : 'warn', 4500);
@@ -7155,7 +7601,7 @@ function steamFX(dt, T, tv) {
         const smokiness = clamp(0.25 + (S.stoker - S.fire * 0.75) * 1.4 + intensity * 0.2, 0.08, 0.85), gv = lerp(0.9, 0.24, smokiness);
         for (let j = 0; j < 3; j++) emit(stack, new THREE.Vector3(tv.x + (Math.random() - 0.5) * 1.5, 7 + 13 * intensity + Math.random() * 3, tv.z + (Math.random() - 0.5) * 1.5), 4 + Math.random() * 3 + intensity * 2, 1.1, 7 + intensity * 7, 0.55 + 0.25 * intensity, [gv, gv * 0.98, gv * 0.95], 0.9, 1.1);
         if (S.priming) emit(stack, new THREE.Vector3(tv.x, 9, tv.z), 2.5, 0.8, 5, 0.6, [0.95, 0.96, 0.98], 0.2, 1.2);
-        if (S.cocks) for (const cp of L.cockPos) { const p = T.worldOf(cp); const side = new THREE.Vector3(0, 0, Math.sign(cp.z) * (4 + Math.random() * 3)).applyQuaternion(_cq.setFromRotationMatrix(_cm.extractRotation(L.root.matrixWorld))); emit(p, new THREE.Vector3(tv.x + side.x + T.vehicles[0].fwd.x * 3, -0.6, tv.z + side.z + T.vehicles[0].fwd.z * 3), 1.1 + Math.random() * 0.4, 0.4, 3.2, 0.7, [0.95, 0.95, 0.97], 0.4, 1.6); }
+        if (S.cocks) for (const cp of L.cockPos) { const p = T.worldOf(cp); const side = new THREE.Vector3(0, 0, Math.sign(cp.z) * (4 + Math.random() * 3)).applyQuaternion(_cq.setFromRotationMatrix(_cm.extractRotation(L.root.matrixWorld))); emit(p, new THREE.Vector3(tv.x + side.x + T.lead.fwd.x * 3, -0.6, tv.z + side.z + T.lead.fwd.z * 3), 1.1 + Math.random() * 0.4, 0.4, 3.2, 0.7, [0.95, 0.95, 0.97], 0.4, 1.6); }
       } else if (k % 2 === 0 && n > 0.15) sndClank(n);
     }
     chuffQ = q;
@@ -7194,7 +7640,7 @@ function dieselFX(dt, T, tv) {
 }
 function effectsAndSound(dt, T) {
   const L = T.loco, DSL = T.diesel;
-  const tv = new THREE.Vector3().copy(T.vehicles[0].fwd).multiplyScalar(S.v);
+  const tv = new THREE.Vector3().copy(T.lead.fwd).multiplyScalar(S.v);
   const fx = DSL ? dieselFX(dt, T, tv) : steamFX(dt, T, tv);
   const working = fx.working;
   if (S.bell) { bellT += dt; if (bellT > (DSL ? 1.05 : 0.86)) { bellT = 0; sndBell(DSL); } } else bellT = 0.8;
@@ -7210,10 +7656,10 @@ function effectsAndSound(dt, T) {
   setG(AU.wind.g, inCab ? 0.32 * Math.min(1, (Math.abs(S.v) / 30) ** 2) + 0.02 : 0.03);
   setG(AU.firedoor.g, !DSL && inCab ? 0.14 * S.fire : 0);
   updateDieselAudio(DSL, inCab, T.nUnits || 1);
-  const b0 = T.vehicles[0].brake;
+  const b0 = T.lead.brake;
   setG(AU.bpExhaust.g, b0.dBP < -0.3 ? Math.min(0.5, -b0.dBP * 0.06) : 0, 0.05);
-  const lead = T.vehicles[0].leadPt.tp, kk = Math.abs(lead.e.curv(lead.s));
-  const gw = 1 / (1 + Math.pow(cp.distanceTo(T.vehicles[0].pos) / 30, 1.3));
+  const lead = T.lead.leadPt.tp, kk = Math.abs(lead.e.curv(lead.s));
+  const gw = 1 / (1 + Math.pow(cp.distanceTo(T.lead.pos) / 30, 1.3));
   setG(AU.flange.g, kk > 1 / 320 && Math.abs(S.v) > 1.5 ? 0.05 * Math.min(1, Math.abs(S.v) / 8) * gw : 0, 0.2);
   const bcAvg = T.vehicles.reduce((a, v) => a + v.brake.BC, 0) / T.vehicles.length;
   setG(AU.bsq.g, bcAvg > 15 && Math.abs(S.v) > 0.3 && Math.abs(S.v) < 9 ? 0.035 * gw : 0, 0.15);
