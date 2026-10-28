@@ -9,10 +9,11 @@ const path = require('path');
 const vm = require('vm');
 
 const SRC = path.join(__dirname, '..', 'src');
-const FILES = ['01_util.js', '02_track.js', '06_models.js', '07_train.js', '07b_cars.js', '08_physics.js', '11d_jobs.js'];
+const FILES = ['01_util.js', '02_track.js', '06_models.js', '07_train.js', '07b_cars.js', '08_physics.js', '11d_jobs.js', '11e_traffic.js'];
 const EXPORTS = ['S', 'ENV', 'GAME', 'CARS', 'JOB', 'LOCO_SPEC', 'Consist', 'Cut', 'physicsStep', 'brakeZone', 'brakeLabel', 'consistMass',
   'COUPLE_OK', 'COUPLE_HARD', 'COUPLE_DAMAGE', 'COUPLE_WRECK', 'KN_CLOSED', 'KN_OPEN', 'KN_LIFTED', 'HANDBRAKE', 'MPH', 'LBF', 'STON', 'PSI',
-  'PathBuilder', 'Network', 'TrackPos', 'FOUL_LEN', 'POINTS_CLEAR'];
+  'PathBuilder', 'Network', 'TrackPos', 'FOUL_LEN', 'POINTS_CLEAR',
+  'IX', 'AI', 'routeWalk', 'signalRoute', 'signalAspect', 'swPair'];
 
 /* just enough three.js: real Vector3 math, everything else accepts any call and returns itself */
 class Vector3 {
@@ -51,6 +52,7 @@ function load() {
     sndCouple: g => log.sounds.push(['couple', g]), sndClunk: g => log.sounds.push(['clunk', g]), sndPin: g => log.sounds.push(['pin', g]),
     linearizeObject() {}, truckGeos: () => ({}), plainAxle: () => ({}), newFrame: () => ({ p: new Vector3(), f: new Vector3(1, 0, 0), u: new Vector3(0, 1, 0) }),
     MP: { on: false, noteThrow() {} }, WORLD: { custom: false },
+    SCN: { signals: [], crossings: [] }, RemoteTrain: class {},
   };
   vm.createContext(ctx);
   const code = FILES.map(f => fs.readFileSync(path.join(SRC, f), 'utf8')).join('\n')

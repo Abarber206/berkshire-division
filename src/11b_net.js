@@ -211,10 +211,10 @@ function mpJoints(T, mem, speed, cp) {
 
 /* ---------------- another player's train ---------------- */
 class RemoteTrain {
-  constructor(peer, st) {
+  constructor(peer, st, extra) {
     this.peer = peer;
     this.key = `${st.lk}|${st.ck}|${st.u}`; this.paint = `${st.lv}|${st.mx}|${st.cu}|${st.no}`;
-    this.train = new Train(scene, st.lk, st.ck, Object.assign(mpOpts(st), { remote: true }));
+    this.train = new Train(scene, st.lk, st.ck, Object.assign(mpOpts(st), { remote: true }, extra));
     prepareTrain(this.train);
     this.a0 = this.train.pts[0].a;
     this.tp = null; this.err = 0; this.v = 0; this.theta = 0; this.chuffQ = null; this.idleT = 0; this.bellT = 0.8; this.updT = 0;

@@ -687,10 +687,11 @@ function buildSwitches(scene) {
     WORLD.switchVis.push(sw);
   }
 }
-function updateSwitchVisuals(dt) {
+/* points travel at a fixed rate in sim time; the AI waits for them to finish before it takes a route */
+function stepSwitches(dt) { for (const sw of NET.switches) sw.anim += clamp(sw.state - sw.anim, -dt * 0.9, dt * 0.9); }
+function updateSwitchVisuals() {
   const tau = 0.12;
   for (const sw of NET.switches) {
-    sw.anim += clamp(sw.state - sw.anim, -dt * 0.9, dt * 0.9);
     const k = sw.anim, G = sw.geo;
     const offA = -G.sgn * tau * k, offB = G.sgn * tau * (1 - k);
     sw.vis.points[0].rotation.y = offA / G.P;

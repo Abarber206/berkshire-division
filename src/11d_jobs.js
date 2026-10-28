@@ -18,10 +18,10 @@ const JOBS = [
   { id: 'elevator', name: 'Elevator pickup', kind: 'switch', level: 'Easy', look: 'morning', train: 'light', spawn: 'yardEast', start: hm(6, 50), due: hm(7, 20),
     brief: 'The elevator at Fostoria has loaded four boxcars of grain overnight. Run light to the elevator track, couple to the loads and set them out on Yard 1 at Bellevue for the evening manifest.',
     steps: [
-      { type: 'pickup', from: 'Elevator Track', text: 'Couple to the four loads on the Elevator Track', hint: 'East on the main, into the Fostoria siding at Fostoria West, then the Elevator switch. Couple at 4 mph or less.' },
-      { type: 'spot', to: 'Yard 1', tag: 'Y1', text: 'Set the loads out on Yard 1, clear of the switches', hint: 'Back west on the main and in at Bellevue East. Stop, cut the cars off, and leave them at least 125 ft from every switch.' },
+      { type: 'pickup', from: 'Elevator Track', text: 'Couple to the four loads on the Elevator Track', hint: 'Out of the yard at Bellevue East, over to track 2 at Bellevue crossover A, into the Fostoria siding at Fostoria West, then the Elevator switch. Couple at 4 mph or less.' },
+      { type: 'spot', to: 'Yard 1', tag: 'Y1', text: 'Set the loads out on Yard 1, clear of the switches', hint: 'Back west out of the siding onto track 2, over to track 1 at Bellevue crossover A and in at Bellevue East. Stop, cut the cars off, and leave them at least 125 ft from every switch.' },
     ] },
-  { id: 'no3', name: 'No. 3, Kenton local', kind: 'passenger', level: 'Easy', look: 'morning', train: 'passenger', spawn: 'depot', start: hm(7, 39),
+  { id: 'no3', name: 'No. 3, Kenton local', kind: 'passenger', level: 'Easy', look: 'morning', train: 'passenger', spawn: 'depot', start: hm(7, 39), traffic: [['no12', 12500]],
     brief: 'The morning local. Eight heavyweights out of Bellevue, a stop at Fostoria, and over Kenton Hill to Kenton. Keep the ride smooth, leave no station early and put the engine on the mark.',
     steps: [
       { type: 'depart', at: 'Bellevue', dep: hm(7, 40) },
@@ -29,14 +29,15 @@ const JOBS = [
       { type: 'stop', at: 'Kenton', arr: hm(7, 55) },
     ] },
   { id: 'bd2', name: 'BD-2 time freight', kind: 'freight', level: 'Medium', look: 'golden', train: 'timefreight', spawn: 'yardEast', start: hm(17, 30), vmax: 50,
-    brief: 'Eighteen cars and a caboose of hot merchandise around the division. Make every timing point, hold it to 50 mph, the timetable speed for freight, and bring it home to stop in the clear on the main at Bellevue.',
+    traffic: [['no5', 19800], ['no12', 16500]],
+    brief: 'Eighteen cars and a caboose of hot merchandise around the division on track 1. No. 5, the eastward express, is right behind you: take the Kenton siding and let it by. Hold it to 50 mph, the timetable speed for freight, and bring it home to stop in the clear on the main at Bellevue.',
     steps: [
       { type: 'pass', at: 'Fostoria', by: hm(17, 38) },
-      { type: 'pass', at: 'Kenton', by: hm(17, 46) },
-      { type: 'pass', at: 'Delphos', by: hm(17, 51) },
-      { type: 'clear', between: ['Bellevue West', 'Bellevue East'], where: 'Bellevue', by: hm(17, 58), text: 'Stop in the clear on the main at Bellevue', hint: 'The whole train between Bellevue West and Bellevue East, at least 125 ft from both switches.' },
+      { type: 'meet', train: 'no5', at: 'Kenton Siding', by: hm(17, 47), text: 'Into the Kenton siding for No. 5', hint: 'Throw Kenton East for the siding, pull down to the dwarf signal at the far end and stop clear of Kenton West. Wait for No. 5 to go by on the main and the dwarf to clear.' },
+      { type: 'pass', at: 'Delphos', by: hm(17, 57) },
+      { type: 'clear', between: ['Bellevue West', 'Bellevue East'], where: 'Bellevue', by: hm(18, 4), text: 'Stop in the clear on the main at Bellevue', hint: 'The whole train between Bellevue West and Bellevue East, at least 125 ft from both switches.' },
     ] },
-  { id: 'no7', name: 'No. 7, around the division', kind: 'passenger', level: 'Medium', look: 'noon', train: 'passenger', spawn: 'depot', start: hm(12, 9),
+  { id: 'no7', name: 'No. 7, around the division', kind: 'passenger', level: 'Medium', look: 'noon', train: 'passenger', spawn: 'depot', start: hm(12, 9), traffic: [['no12', 15000], ['x2210', 8200]],
     brief: 'The midday train makes every stop on the division: Fostoria, Kenton over the hill, Delphos past the river bridge, and home to Bellevue. Four stops, four chances to be early, late or off the mark.',
     steps: [
       { type: 'depart', at: 'Bellevue', dep: hm(12, 10) },
@@ -49,7 +50,7 @@ const JOBS = [
     brief: 'Five loads of stone are waiting in quarry storage. Run light out the west end past Delphos, back up the branch at Quarry Jct, pull the loads and bring them home the long way around the division to Yard 2. In the dark.',
     steps: [
       { type: 'pickup', from: 'Quarry Storage', text: 'Couple to the five loads on Quarry Storage', hint: 'West out of the yard past Delphos. The branch faces the other way at Quarry Jct: run past it, throw it, and back up the branch. Storage is off the runaround.' },
-      { type: 'spot', to: 'Yard 2', tag: 'Y2', text: 'Set the loads out on Yard 2, clear of the switches', hint: 'Pull off the branch and keep going east over the river, through Kenton and around the east curve, then back west past Fostoria. In at Bellevue East and up the ladder to Yard 2.' },
+      { type: 'spot', to: 'Yard 2', tag: 'Y2', text: 'Set the loads out on Yard 2, clear of the switches', hint: 'Pull off the branch onto track 1 and head east over the river. Cross to track 2 at Kenton crossover B, then round the east curve and west past Fostoria. Cross back at Bellevue crossover A, in at Bellevue East and up the ladder to Yard 2.' },
     ] },
 ];
 
@@ -147,6 +148,8 @@ JOB.note = function (what, d = {}) {
   else if (what === 'turnout' && once('tov' + d.name, 20)) JOB.dock('rules', 5, 'Over turnout speed', `${d.name}, ${Math.round(d.mph)} in a ${d.limit}`, true);
   else if (what === 'curve' && once('curve', 8)) JOB.dock('rules', 4, 'Too fast for the curve', `${Math.round(d.mph)} mph`, true);
   else if (what === 'foul' && once('foul', 6)) JOB.dock('rules', 5, 'Ran into cars standing foul', '', true);
+  else if (what === 'signal') JOB.dock('rules', 10, 'Passed a signal at Stop', d.why || '', true);
+  else if (what === 'delay' && R.def.traffic && R.def.traffic.length) JOB.dock('time', 2, `Held up ${d.name}`, 'a minute at a red signal', true);
 };
 
 /* derailed, or the fire went out: the job is over */
@@ -273,6 +276,24 @@ JOB.steps = function (R, T, now) {
     st.why = ''; st.doneT = now; const late = lateBy(st.by);
     if (late > 0) JOB.dock('time', Math.min(20, 4 * Math.ceil(late / 60)), `Late into ${st.where}`, `${fmtDur(late)} behind ${fmtClock(st.by)}`);
     done();
+    return;
+  }
+  if (st.type === 'meet') {
+    // into the siding and clear of the main, then wait for the other train to go by
+    const a = AI.trains.find(x => x.id === st.train);
+    if (!a) { done(); return; }     // traffic is switched off
+    const inside = T.pts.every(p => p.tp.e.line && p.tp.e.line.name === st.at) && !NET.switches.some(sw => T.fouls(sw));
+    if (inside && R.lastStop > 1 && st.inT == null) {
+      st.inT = now; const late = lateBy(st.by);
+      if (late > 0) JOB.dock('time', Math.min(12, 3 * Math.ceil(late / 60)), `Late into ${st.at}`, `${fmtDur(late)} behind ${fmtClock(st.by)}`);
+      toast(`In the clear on ${st.at}. Hold here until ${a.name} has gone by.`, 'good', 4600, 'jobmeet');
+    }
+    st.why = st.inT != null ? `Waiting for ${a.name} to go by` : '';
+    if (AI.gone(a, T, st.seen || (st.seen = {}))) {
+      if (st.inT == null) JOB.dock('rules', 8, `Not in the clear for ${a.name}`, st.at);
+      toast(`${a.name} is by. Wait for the signal, then on your way.`, 'good', 4600, 'jobmeet');
+      st.doneT = now; done();
+    }
     return;
   }
   if (st.type === 'pickup') {

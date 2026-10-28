@@ -41,6 +41,7 @@ function sceneryMaterials() {
   SMAT.lampG = new THREE.MeshBasicMaterial({ color: 0x40ff8a });
   SMAT.lampR = new THREE.MeshBasicMaterial({ color: 0xff3c2e });
   SMAT.lampY = new THREE.MeshBasicMaterial({ color: 0xffc23a });
+  SMAT.lampL = new THREE.MeshBasicMaterial({ color: 0xdfe6ff });   // lunar white
   SMAT.lampOff = new THREE.MeshLambertMaterial({ color: 0x121414 });
   const xb = canvasTex(256, 64, (g, w, h) => { g.fillStyle = '#f2f1ec'; g.fillRect(0, 0, w, h); g.strokeStyle = '#111'; g.lineWidth = 4; g.strokeRect(3, 3, w - 6, h - 6); g.fillStyle = '#111'; g.font = 'bold 30px Arial Narrow, Arial'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('RAILROAD', w / 2, h / 2 + 2); });
   SMAT.crossbuck = new THREE.MeshLambertMaterial({ map: xb });
@@ -112,6 +113,18 @@ function inFoot(X, N, pad) {
   for (const f of SCN.foot) { const dx = X - f[0], dz = -N - f[1]; if (Math.abs(dx * f[2] + dz * f[3]) < f[6] + pad && Math.abs(dx * f[4] + dz * f[5]) < f[7] + pad) return true; }
   return false;
 }
+/* distance from a plan point to the nearest track centre line, leaving out the edges in skip */
+function trackGap(X, N, skip) {
+  let d = Infinity;
+  for (const e of NET.edges) {
+    if (skip && skip.includes(e)) continue;
+    if (!e.bb) { e.bb = [Infinity, -Infinity, Infinity, -Infinity]; for (let i = 0; i < e.n; i++) { e.bb[0] = Math.min(e.bb[0], e.X[i]); e.bb[1] = Math.max(e.bb[1], e.X[i]); e.bb[2] = Math.min(e.bb[2], e.N[i]); e.bb[3] = Math.max(e.bb[3], e.N[i]); } }
+    const r = Math.min(d, 60);
+    if (X < e.bb[0] - r || X > e.bb[1] + r || N < e.bb[2] - r || N > e.bb[3] + r) continue;
+    for (let i = 0; i < e.n; i++) { const dd = Math.hypot(e.X[i] - X, e.N[i] - N); if (dd < d) d = dd; }
+  }
+  return d;
+}
 function keep(X, N, r) { SCN.keepout.push([X, N, r]); }
 const kept = (X, N, pad = 0) => { for (const k of SCN.keepout) if ((X - k[0]) ** 2 + (N - k[1]) ** 2 < (k[2] + pad) ** 2) return true; return false; };
 /* frame on a line at distance sLine with lateral offset: returns {X,N,y,yaw} */
@@ -173,6 +186,20 @@ function depot(pl, name, big) {
   for (const s of [-1, 1]) gb.add('redPaint', new THREE.BoxGeometry(1.4, 0.3, 0.05), P(base, s * (0.04 + 0.7 * Math.cos(0.7)), 6.3 + 0.7 * Math.sin(0.7), W / 2 + 2.4, 0, 0, s * 0.7));
   keep(pl.X, pl.N, L / 2 + 8);
   SCN.lamps.push(new THREE.Vector3().setFromMatrixPosition(P(base, 0, 3.4, W / 2 + 1.7)));
+}
+/* A plank walk over both main tracks at the depot, for trains on the far main: planks between the rails
+   like a road crossing, and timber decking between the tracks (and out to a depot beyond track 2) set
+   down into the ballast. Track 2 is on the left (-z) of track 1. */
+function stationCrossing(st) {
+  const sp = ROUTE.spacing, W = st.kind === 'depot' ? 8 : 6.5;
+  const near = 12 + sp - W / 2 - 2.7 - 2.6;   // the track edge of a depot platform beyond track 2
+  const loc = st.line.locate(st.sLine); loc.edge.pose(loc.s, FR);
+  const gb = binAt(FR.p.x, -FR.p.z), m1 = frameMatrix(FR, new THREE.Matrix4());
+  const deck = (m, z0, z1, depth) => gb.add('wood', boxT(3.0, depth, Math.abs(z1 - z0)), m.clone().multiply(M(0, -0.01 - depth / 2, -(z0 + z1) / 2)));
+  const l2 = ROUTE.main2.locate(ROUTE.to2(st.sLine)); l2.edge.pose(l2.s, FR2);
+  for (const m of [m1, frameMatrix(FR2, new THREE.Matrix4())]) for (const z of [[-0.66, 0.66], [-1.5, -0.84], [0.84, 1.5]]) gb.add('wood', boxT(3.0, 0.18, z[1] - z[0]), m.clone().multiply(M(0, -0.1, (z[0] + z[1]) / 2)));
+  deck(m1, 1.5, sp - 1.5, 0.6);
+  if (st.across) deck(m1, sp + 1.5, near, 1.2);
 }
 function waterColumn(pl) {
   const base = baseM(pl.X, pl.y - 0.2, pl.N, pl.yaw + (pl.lat < 0 ? 0 : Math.PI));
@@ -350,11 +377,12 @@ function farmstead(X, N, yaw, r) {
 
 /* -------- bridge (two through-truss Pratt spans) -------- */
 function buildBridge(scene) {
-  const b = ROUTE.bridge, main = ROUTE.main;
-  const c = linePlace(main, b.s, 0);
+  // one double-track truss carries both main tracks: track 1 at z = +h2, track 2 at -h2
+  const b = ROUTE.bridge, main = ROUTE.main, h2 = (ROUTE.spacing || 0) / 2, tracks = h2 ? [h2, -h2] : [0];
+  const c = linePlace(main, b.s, -h2);
   const base = baseM(c.X, c.y, c.N, c.yaw);
   const gb = new GeoBin();
-  const span = 64, H = 9.2, W = 2.85, panels = 8, pw = span / panels;
+  const span = 64, H = 9.2, W = 2.85 + h2, panels = 8, pw = span / panels;
   for (const sOff of [-span / 2, span / 2]) {
     const x0 = sOff - span / 2;
     for (const z of [-W, W]) {
@@ -374,7 +402,7 @@ function buildBridge(scene) {
     }
     // floor beams, stringers, top lateral bracing, portals
     for (let i = 0; i <= panels; i++) gb.add('steel', new THREE.BoxGeometry(0.35, 0.9, 2 * W), P(base, x0 + i * pw, -0.9, 0));
-    for (const z of [-0.85, 0.85]) gb.add('steel', new THREE.BoxGeometry(span, 0.7, 0.3), P(base, sOff, -0.75, z));
+    for (const tz of tracks) for (const z of [-0.85, 0.85]) gb.add('steel', new THREE.BoxGeometry(span, 0.7, 0.3), P(base, sOff, -0.75, tz + z));
     for (let i = 1; i < panels - 1; i++) {
       const xa = x0 + i * pw, xb = xa + pw, L = Math.hypot(pw, 2 * W), a = Math.atan2(2 * W, pw);
       gb.add('steel', new THREE.BoxGeometry(L, 0.14, 0.14), P(base, (xa + xb) / 2, H + 0.2, 0, 0, a, 0));
@@ -396,14 +424,14 @@ function buildBridge(scene) {
     const top = -1.3;
     const g = groundAt(c.X + Math.cos(c.yaw) * x, c.N + Math.sin(c.yaw) * x);
     const h = top - (Math.min(g, -5.6) - 1);
-    gb.add('concrete', boxT(x === 0 ? 3.2 : 5, h, 8.4, 2), P(base, x, top - h / 2, 0));
+    gb.add('concrete', boxT(x === 0 ? 3.2 : 5, h, 8.4 + 2 * h2, 2), P(base, x, top - h / 2, 0));
     if (x !== 0) {
       // abutment backwall, then the ballasted approach fill out to the end of the bridge limits (±72),
       // with the same section as the track ballast carried down its own slope to the ground
       const sx = Math.sign(x), xa = x + sx * 0.6, xb = x + sx * 8.0;   // bridge limits are at ±72
-      footing(gb, 'concrete', base, x + sx * 0.6, 0, 0.8, 8.4, -0.43);
-      const yB = groundUnder(base, (xa + xb) / 2, 0, 8, 14)[0] - 0.3, wB = 1.9 + (-0.205 - yB) * 1.68;
-      const prof = [[-wB, yB, 0.42], [-1.9, -0.205, 0.55], [1.9, -0.205, 0.55], [wB, yB, 0.42]];
+      footing(gb, 'concrete', base, x + sx * 0.6, 0, 0.8, 8.4 + 2 * h2, -0.43);
+      const yB = groundUnder(base, (xa + xb) / 2, 0, 8, 14 + 2 * h2)[0] - 0.3, wB = 1.9 + h2 + (-0.205 - yB) * 1.68;
+      const prof = [[-wB, yB, 0.42], [-1.9 - h2, -0.205, 0.55], [1.9 + h2, -0.205, 0.55], [wB, yB, 0.42]];
       const pos = [], col = [], uv = [];
       const quad = (A, B, C, D) => { for (const v of [A, B, C, A, C, D]) { pos.push(v[0], v[1], v[2]); col.push(v[3], v[3] * 0.96, v[3] * 0.88); uv.push((v[0] + v[2]) / 1.4, v[1] / 1.4); } };
       const at = (xx, q) => [xx, prof[q][1], prof[q][0], prof[q][2]];
@@ -420,15 +448,15 @@ function buildBridge(scene) {
   // open deck ties and guard timbers on the bridge
   const r = rng(44);
   for (let x = -span - 7.8, i = 0; x <= span + 7.8; x += 0.42, i++) {
-    const geo = new THREE.BoxGeometry(0.24, 0.24, i % 4 ? 3.1 : 5.1); geo.translate(x, -0.3, 0);   // every fourth tie runs out under the walkways
+    const geo = new THREE.BoxGeometry(0.24, 0.24, (i % 4 ? 3.1 : 5.1) + 2 * h2); geo.translate(x, -0.3, 0);   // every fourth tie runs out under the walkways
     const v = 0.7 + r() * 0.3, col = new Float32Array(geo.attributes.position.count * 3);
     for (let i = 0; i < col.length; i += 3) { col[i] = 0.42 * v; col[i + 1] = 0.36 * v; col[i + 2] = 0.29 * v; }
     geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
     gb.add('tie', geo, base.clone());
   }
-  for (const z of [-1.42, 1.42]) gb.add('wood', boxT(2 * span + 2, 0.2, 0.2), P(base, 0, -0.1, z));
+  for (const tz of tracks) for (const z of [-1.42, 1.42]) gb.add('wood', boxT(2 * span + 2, 0.2, 0.2), P(base, 0, -0.1, tz + z));
   // walkway & railing
-  for (const z of [-2.2, 2.2]) {
+  for (const z of [-2.2 - h2, 2.2 + h2]) {
     gb.add('wood', boxT(2 * span, 0.06, 0.66), P(base, 0, -0.2, z));
   }
   const vis = gb.build({ steel: MAT.bridge, concrete: SMAT.concrete, tie: MAT.tie, wood: SMAT.wood, nbBridge: SMAT.nbBridge, ballast: MAT.ballast });
@@ -499,11 +527,13 @@ function buildRoads(scene) {
       scene.add(new THREE.Mesh(lg, SMAT.line));
     }
     // crossbucks, planks, whistle posts
-    for (const c of r.cross) {
-      const gb = binAt(c.X, c.N);
-      c.edge.pose(c.s, FR);
-      // crossbucks on each side of the track, right-hand side of road
+    // tracks crossing the road side by side (both mains, a siding) share one pair of crossbucks
+    const groups = [];
+    for (const c of [...r.cross].sort((p, q) => p.along - q.along)) { const g = groups[groups.length - 1]; if (g && c.along - g[g.length - 1].along < 14) g.push(c); else groups.push([c]); }
+    for (const g of groups) {
+      // crossbucks beyond the outermost tracks, right-hand side of road
       for (const side of [-1, 1]) {
+        const c = side > 0 ? g[g.length - 1] : g[0], gb = binAt(c.X, c.N);
         const dx = r.dir === 'N' ? 0 : side * 9, dn = r.dir === 'N' ? side * 9 : 0;
         const lx = r.dir === 'N' ? (side > 0 ? -r.w / 2 - 1.2 : r.w / 2 + 1.2) : 0, ln = r.dir === 'E' ? (side > 0 ? -r.w / 2 - 1.2 : r.w / 2 + 1.2) : 0;
         const X = c.X + dx + lx, N = c.N + dn + ln, y = groundAt(X, N);
@@ -513,12 +543,18 @@ function buildRoads(scene) {
         gb.add('xb1', new THREE.BoxGeometry(0.03, 0.32, 2.4), P(cb, 0.08, 3.35, 0, 0.785, 0, 0));
         gb.add('xb2', new THREE.BoxGeometry(0.03, 0.32, 2.4), P(cb, 0.1, 3.35, 0, -0.785, 0, 0));
       }
-      // whistle posts 1/4 mile before, both directions
-      for (const dir of [-1, 1]) {
+    }
+    // whistle posts 1/4 mile before, on the right of each main track for its direction of running
+    for (const c of r.cross) {
+      const ln = c.edge.line, run = ln === ROUTE.main ? [1] : ln === ROUTE.main2 ? [-1] : c.edge.kind === 'main' && !ROUTE.main2 ? [-1, 1] : [];
+      for (const dir of run) {
         const loc = c.edge; const ss = c.s - dir * 400;
         if (ss < 0 || ss > loc.len) continue;
         loc.pose(ss, FR2); const yaw = Math.atan2(-FR2.f.z, FR2.f.x);
-        const lat = dir > 0 ? 3.4 : -3.4;
+        let lat = dir > 0 ? 3.4 : -3.4;
+        const at = l => [FR2.p.x + Math.sin(yaw) * l, -(FR2.p.z + Math.cos(yaw) * l)];
+        if (trackGap(...at(lat), [loc]) < 3) lat = -lat;
+        if (trackGap(...at(lat), [loc]) < 3) continue;
         const X = FR2.p.x + Math.sin(yaw) * lat, N = -(FR2.p.z + Math.cos(yaw) * lat), y = groundAt(X, N);
         const wb = baseM(X, y, N, yaw + (dir > 0 ? 0 : Math.PI));
         const g2 = binAt(X, N);
@@ -601,44 +637,66 @@ function buildPoleLine(scene) {
 /* -------- signals, mileposts, misc signs -------- */
 function buildSignals(scene) {
   for (const sg of ROUTE.signals) {
-    const lat = sg.dir > 0 ? 3.3 : -3.3;
+    // on the right of the track, or on the left where another track runs close by on the right
+    const dwarf = sg.kind === 'dwarf', off = dwarf ? 2.4 : 3.3, need = dwarf ? 2.2 : 3.0;
+    const own = sg.line.locate(sg.sLine).edge, gap = l => { const q = linePlace(sg.line, sg.sLine, l); return trackGap(q.X, q.N, [own]); };
+    let lat = sg.dir > 0 ? off : -off;
+    if (gap(lat) < need && gap(-lat) >= need) lat = -lat;
+    else if (gap(lat) < need) console.warn('signal crowded by another track', sg.line.name, Math.round(sg.sLine));
     const pl = linePlace(sg.line, sg.sLine, lat);
     const y = pl.y - 0.3;
     const yaw = pl.yaw + (sg.dir > 0 ? Math.PI : 0); // heads face oncoming train
     const base = baseM(pl.X, y, pl.N, yaw);
     const gb = binAt(pl.X, pl.N);
-    footing(gb, 'concrete', base, 0, 0, 0.9, 0.9, 0.35);
-    gb.add('steel', new THREE.CylinderGeometry(0.09, 0.11, 7.2, 8), P(base, 0, 3.8, 0));
-    gb.add('steel', new THREE.BoxGeometry(0.05, 0.05, 0.6), P(base, 0.0, 5.0, -0.3));
-    // ladder up the back of the mast: stiles on standoffs, rungs between
-    for (const z of [-0.22, 0.22]) {
-      gb.add('steel', new THREE.BoxGeometry(0.04, 5.3, 0.04), P(base, -0.24, 3.0, z));
-      for (const y of [0.9, 3.0, 5.1]) gb.add('steel', new THREE.BoxGeometry(0.28, 0.04, 0.03), P(base, -0.165, y, z / 2, 0, z > 0 ? 0.97 : -0.97, 0));
-    }
-    for (let r = 0; r < 6; r++) gb.add('steel', new THREE.BoxGeometry(0.03, 0.03, 0.48), P(base, -0.24, 0.8 + r * 0.9, 0));
     const heads = [];
-    for (const hy of [6.4, 4.4]) {
-      gb.add('signBack', new THREE.CylinderGeometry(0.42, 0.42, 0.08, 20), P(base, 0.14, hy, 0, 0, 0, Math.PI / 2));
-      gb.add('steel', new THREE.BoxGeometry(0.34, 0.5, 0.5), P(base, -0.05, hy, 0));
-      const lens = new THREE.Mesh(new THREE.CircleGeometry(0.13, 16), SMAT.lampOff);
-      lens.matrixAutoUpdate = false; lens.matrix.copy(P(base, 0.19, hy, 0, 0, Math.PI / 2, 0)); scene.add(lens);
-      gb.add('black', new THREE.CylinderGeometry(0.18, 0.18, 0.28, 12, 1, true, 0, Math.PI), P(base, 0.3, hy + 0.02, 0, 0, 0, Math.PI / 2).multiply(M(0, 0, 0, 0, Math.PI / 2, 0)));
-      heads.push(lens);
+    const lamp = (x, hy, r) => { const lens = new THREE.Mesh(new THREE.CircleGeometry(r, 16), SMAT.lampOff); lens.matrixAutoUpdate = false; lens.matrix.copy(P(base, x, hy, 0, 0, Math.PI / 2, 0)); scene.add(lens); heads.push(lens); };
+    if (dwarf) {
+      // a dwarf: two lamps in a low cast housing on a short pedestal
+      footing(gb, 'concrete', base, 0, 0, 0.7, 0.7, 0.3);
+      gb.add('steel', new THREE.CylinderGeometry(0.08, 0.1, 0.32, 8), P(base, 0, 0.46, 0));
+      gb.add('steel', new THREE.BoxGeometry(0.3, 0.62, 0.36), P(base, -0.02, 0.92, 0));
+      gb.add('signBack', new THREE.BoxGeometry(0.03, 0.7, 0.46), P(base, 0.145, 0.92, 0));
+      for (const hy of [1.07, 0.78]) {
+        gb.add('black', new THREE.CylinderGeometry(0.1, 0.1, 0.16, 12, 1, true, 0, Math.PI), P(base, 0.24, hy + 0.01, 0, 0, 0, Math.PI / 2).multiply(M(0, 0, 0, 0, Math.PI / 2, 0)));
+        lamp(0.165, hy, 0.075);
+      }
+    } else {
+      footing(gb, 'concrete', base, 0, 0, 0.9, 0.9, 0.35);
+      gb.add('steel', new THREE.CylinderGeometry(0.09, 0.11, 7.2, 8), P(base, 0, 3.8, 0));
+      gb.add('steel', new THREE.BoxGeometry(0.05, 0.05, 0.6), P(base, 0.0, 5.0, -0.3));
+      // ladder up the back of the mast: stiles on standoffs, rungs between
+      for (const z of [-0.22, 0.22]) {
+        gb.add('steel', new THREE.BoxGeometry(0.04, 5.3, 0.04), P(base, -0.24, 3.0, z));
+        for (const y of [0.9, 3.0, 5.1]) gb.add('steel', new THREE.BoxGeometry(0.28, 0.04, 0.03), P(base, -0.165, y, z / 2, 0, z > 0 ? 0.97 : -0.97, 0));
+      }
+      for (let r = 0; r < 6; r++) gb.add('steel', new THREE.BoxGeometry(0.03, 0.03, 0.48), P(base, -0.24, 0.8 + r * 0.9, 0));
+      for (const hy of [6.4, 4.4]) {
+        gb.add('signBack', new THREE.CylinderGeometry(0.42, 0.42, 0.08, 20), P(base, 0.14, hy, 0, 0, 0, Math.PI / 2));
+        gb.add('steel', new THREE.BoxGeometry(0.34, 0.5, 0.5), P(base, -0.05, hy, 0));
+        gb.add('black', new THREE.CylinderGeometry(0.18, 0.18, 0.28, 12, 1, true, 0, Math.PI), P(base, 0.3, hy + 0.02, 0, 0, 0, Math.PI / 2).multiply(M(0, 0, 0, 0, Math.PI / 2, 0)));
+        lamp(0.19, hy, 0.13);
+      }
     }
-    SCN.signals.push({ sg, heads, X: pl.X, N: pl.N });
+    SCN.signals.push({ sg, heads, X: pl.X, N: pl.N, aspect: '' });
   }
 }
-function updateSignals() {
+/* lamp colours, top head then bottom head, for each aspect */
+const ASPECT_LAMPS = { Clear: ['lampG', 'lampR'], Approach: ['lampY', 'lampR'], 'Diverging Clear': ['lampR', 'lampG'], 'Diverging Approach': ['lampR', 'lampY'], Restricting: ['lampR', 'lampL'], Stop: ['lampR', 'lampR'] };
+let sigT = 0;
+function updateSignals(dt = 0) {
+  if ((sigT -= dt) > 0) return;
+  sigT = 0.25;
   for (const s of SCN.signals) {
-    const rev = s.sg.sw.state === 1;
-    s.heads[0].material = rev ? SMAT.lampR : SMAT.lampG;
-    s.heads[1].material = rev ? SMAT.lampG : SMAT.lampR;
-    s.aspect = rev ? 'Diverging Clear' : 'Clear';
+    const a = signalAspect(s);
+    if (a === s.aspect) continue;
+    s.aspect = a;
+    const L = ASPECT_LAMPS[a];
+    s.heads[0].material = SMAT[L[0]]; s.heads[1].material = SMAT[L[1]];
   }
 }
 function buildSigns() {
   for (const mp of ROUTE.mileposts) {
-    const pl = linePlace(mp.line, mp.sLine, -3.6);
+    const pl = linePlace(mp.line, mp.sLine, -3.6 - (ROUTE.spacing || 0));   // beyond track 2
     const y = groundAt(pl.X, pl.N);
     const base = baseM(pl.X, y, pl.N, pl.yaw + Math.PI / 2);
     const gb = binAt(pl.X, pl.N);
@@ -648,7 +706,7 @@ function buildSigns() {
   }
   // yard limit boards
   for (const [s, d] of [[300, 1], [1980, -1]]) {
-    const pl = linePlace(ROUTE.main, s, d > 0 ? 3.6 : -3.6);
+    const pl = linePlace(ROUTE.main, s, d > 0 ? 3.6 : -3.6 - ROUTE.spacing);
     const y = groundAt(pl.X, pl.N);
     const base = baseM(pl.X, y, pl.N, pl.yaw + (d > 0 ? Math.PI : 0));
     const gb = binAt(pl.X, pl.N);
@@ -661,8 +719,9 @@ function buildSigns() {
 function buildStations() {
   for (const st of ROUTE.stations) {
     if (st.kind === 'quarry') continue;
-    const pl = linePlace(st.line, st.sLine, st.side * 12); pl.lat = st.side;
+    const pl = linePlace(st.line, st.sLine, st.side * (12 + (st.across || 0))); pl.lat = st.side;
     depot(pl, st.name.toUpperCase(), st.kind === 'depot');
+    if (st.line === ROUTE.main && ROUTE.main2) stationCrossing(st);
   }
   for (const w of ROUTE.water) {
     if (w.kind === 'column') { const pl = linePlace(w.line, w.sLine, w.side * 3.1); pl.lat = w.side; waterColumn(pl); w.place = pl; }
@@ -675,14 +734,14 @@ function buildStations() {
   coalingTower(linePlace(eng, ROUTE.coal.sLine, 0));
   sandHouse(linePlace(eng, 300, 0));
   engineHouse(linePlace(eng, eng.len - 24, 0));
-  const yo = linePlace(ROUTE.main, 470, -10); yardOffice(yo);
+  const yo = linePlace(ROUTE.main, 470, -10 - ROUTE.spacing); yardOffice(yo);
   const fe = ROUTE.lines['Elevator Track'];
   const ge = linePlace(fe, 190, -24); ge.lat = -1; grainElevator(ge);
   // Quarry Jct tower
   const sw = NET.switches.find(s => s.name === 'Quarry Jct');
   const lineMain = ROUTE.main;
   let sJ = 0; for (const e of lineMain.edges) if (e.a === sw.node) sJ = e.lineS0;
-  const tp = linePlace(lineMain, sJ - 60, -11); tp.lat = -1; interlockingTower(tp, 'QJ');
+  const tp = linePlace(lineMain, sJ - 60, -11 - ROUTE.spacing); tp.lat = -1; interlockingTower(tp, 'QJ');
   quarry();
 }
 function quarry() {

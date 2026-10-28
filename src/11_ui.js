@@ -297,6 +297,7 @@ function drawNet(g, W, H, cx, cn, sc, opt) {
     const p = T.lead.pos; g.fillStyle = '#ffffff'; g.beginPath(); g.arc(tx(p.x), ty(-p.z), 3.5 * opt.w, 0, TAU); g.fill();
   }
   JOB.drawMap(g, tx, ty, opt);
+  AI.drawMap(g, tx, ty, opt);
   MP.drawMap(g, tx, ty, opt);
   return { tx, ty };
 }

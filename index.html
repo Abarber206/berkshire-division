@@ -673,6 +673,7 @@ details.keys kbd{color:var(--brass)}
       <div class="fgroup"><span class="lbl">Time of day</span><div class="seg" id="optTime"></div></div>
       <div class="fgroup"><span class="lbl">Weather</span><div class="seg" id="optWeather"></div></div>
       <div class="fgroup"><span class="lbl">Firing</span><div class="seg" id="optFire"></div></div>
+      <div class="fgroup"><span class="lbl">Other trains</span><div class="seg" id="optTraffic"></div></div>
       <div id="loadBar"><i></i></div>
       <div id="loadText">Surveying the line…</div>
       <button id="btnStart" disabled>Highball</button>
@@ -1021,6 +1022,16 @@ function peekPath(tp, dir, maxD, visit) {
 const NET = new Network();
 const ROUTE = { lines: {}, stations: [], water: [], signals: [], crossings: [], mileposts: [], bumpers: [], features: {} };
 
+/* the same path moved sideways by off metres (+ left), as builder points */
+function offsetPts(pts, off) {
+  const out = [];
+  for (let i = 0; i < pts.length; i++) {
+    const p = pts[i], X = p.X - Math.sin(p.h) * off, N = p.N + Math.cos(p.h) * off;
+    out.push({ X, N, h: p.h, k: p.k / (1 - p.k * off), s: i ? out[i - 1].s + Math.hypot(X - out[i - 1].X, N - out[i - 1].N) : 0 });
+  }
+  return out;
+}
+
 /* A Line is a continuous builder path that gets cut into edges at nodes. */
 class Line {
   constructor(name, pts, opt = {}) {
@@ -1078,7 +1089,7 @@ class Line {
     for (const sg of segs) {
       const pts = this.slice(sg.s0, sg.s1);
       const bridges = (opt.bridges || []).map(b => [b[0] - sg.s0, b[1] - sg.s0]).filter(b => b[1] > 0 && b[0] < sg.s1 - sg.s0);
-      const e = NET.edge(pts, { kind: opt.kind, name: this.name, limit: opt.limit, bridges });
+      const e = NET.edge(pts, { kind: opt.kind, name: this.name, limit: opt.limit, cant: opt.cant, bridges });
       e.line = this; e.lineS0 = sg.s0;
       e.setProfile((s, X, N) => profile(sg.s0 + s, X, N));
       NET.attach(e, 0, sg.na); NET.attach(e, 1, sg.nb);
@@ -1141,9 +1152,25 @@ function buildRoute() {
   main.opt.bridges = [[sBridge - 72, sBridge + 72]];
   ROUTE.bridge = { s: sBridge, half: 64 };
 
+  /* ---------- the second main track ----------
+     Track 2 runs 4.5 m inside track 1 (the original main) all the way round. Right-hand running: track 1
+     carries eastward (+s) trains and track 2 westward ones. to2 / to1 carry a distance from one to the other. */
+  const DT = 4.5;
+  const p2 = offsetPts(main.pts, DT);
+  const main2 = new Line('Main 2', p2, { kind: 'main', loop: true, limit: 70 });
+  const remap = (A, B, L) => s => {
+    s = ((s % L) + L) % L;
+    let lo = 0, hi = A.length - 1; while (hi - lo > 1) { const m = (lo + hi) >> 1; if (A[m] <= s) lo = m; else hi = m; }
+    return B[lo] + (B[hi] - B[lo]) * (s - A[lo]) / ((A[hi] - A[lo]) || 1);
+  };
+  const S1 = main.pts.map(p => p.s), S2 = p2.map(p => p.s);
+  const to2 = remap(S1, S2, main.len), to1 = remap(S2, S1, main2.len);
+  main2.opt.bridges = [[to2(sBridge - 72), to2(sBridge + 72)]];
+  ROUTE.main2 = main2; ROUTE.to2 = to2; ROUTE.to1 = to1; ROUTE.spacing = DT;
+
   /* helper: a diverging line from a main node */
-  const div = (name, s, off, R, straightLen, back = true, opt = {}) => {
-    const p = main.poseAt(s);
+  const div = (name, s, off, R, straightLen, back = true, opt = {}, from = main) => {
+    const p = from.poseAt(s);
     const b = new PathBuilder(p.X, p.N, p.h);
     const j = b.jog(off, R);
     b.straight(straightLen);
@@ -1184,11 +1211,11 @@ function buildRoute() {
   const eng = new Line('Engine Track', be.pts, { kind: 'yard', limit: 10, startNode: nEN });
   ROUTE.features.engine = eng;
 
-  /* ---------- Fostoria passing siding (north side) + elevator spur ---------- */
+  /* ---------- Fostoria passing siding (north side, off track 2) + elevator spur ---------- */
   const sF1 = 3150, FL = 2650, RS = 235;
-  const nF1 = main.cut(sF1), nF2 = main.cut(sF1 + FL);
+  const nF1 = main2.cut(to2(sF1)), nF2 = main2.cut(to2(sF1 + FL));
   const jS = jogLen(4.5, RS);
-  const fos = div('Fostoria Siding', sF1, 4.5, RS, FL - 2 * jS, true, { kind: 'siding', limit: 30, startNode: nF1, endNode: nF2 });
+  const fos = div('Fostoria Siding', to2(sF1), 4.5, RS, FL - 2 * jS, true, { kind: 'siding', limit: 30, startNode: nF1, endNode: nF2 }, main2);
   const fosProf = projMain(sF1 + FL / 2);
   const sFE = 1350;
   const nFE = fos.line.cut(sFE);
@@ -1227,8 +1254,24 @@ function buildRoute() {
   const stub = new Line('Quarry Storage', bst.pts, { kind: 'yard', limit: 10, startNode: nQS });
   const brProj = (X, N) => { const p0 = branch.poseAt(sBrStraight); return sBrStraight + (N - p0.N); };
 
+  /* ---------- crossovers between the main tracks ----------
+     At each place, A takes an eastward train from track 1 over to track 2 and B, just beyond, brings a
+     train back. Both are on tangent track, where a distance on one main maps straight across to the other. */
+  const XR = 235, xl = jogLen(DT, XR), xos = [];
+  const crossover = (name, s, up) => {
+    const from = up ? main : main2, to = up ? main2 : main, s0 = up ? s : to2(s);
+    const p = from.poseAt(s0), b = new PathBuilder(p.X, p.N, p.h); b.jog(up ? DT : -DT, XR);
+    const nA = from.cut(s0), nB = to.cut(up ? to2(s + xl) : s + xl);
+    xos.push({ line: new Line(name, b.pts, { kind: 'main', limit: 30, cant: false, startNode: nA, endNode: nB }), from, to, nA, nB, prof: projMain(s + xl / 2) });
+  };
+  for (const [place, s] of [['Bellevue', 2150], ['Fostoria', 6100], ['Kenton', 11650], ['Delphos', 17000]]) {
+    crossover(place + ' crossover A', s, true); crossover(place + ' crossover B', s + 150, false);
+  }
+
   /* ---------- build edges ---------- */
   main.build(s => mainY(s));
+  main2.build(s => mainY(to1(s)));
+  for (const x of xos) x.line.build((s, X, N) => mainY(x.prof(X, N)));
   yards.forEach(l => l.build((s, X, N) => mainY(yardProf(X, N))));
   eng.build((s, X, N) => mainY(yardProf(X, N)));
   fos.line.build((s, X, N) => mainY(fosProf(X, N)));
@@ -1255,8 +1298,8 @@ function buildRoute() {
     SW('Yard ladder E' + (k + 1), yards[k].endNode, yards[k - 1], yards[k], false, ['Yard ' + k, 'Yard ' + (k + 1)]);
   }
   SW('Engine Terminal', nEN, y4, eng, true, ['Yard 4', 'Engine track']);
-  SW('Fostoria West', nF1, main, fos.line, true, ['Main', 'Siding']);
-  SW('Fostoria East', nF2, main, fos.line, false, ['Main', 'Siding']);
+  SW('Fostoria West', nF1, main2, fos.line, true, ['Main', 'Siding']);
+  SW('Fostoria East', nF2, main2, fos.line, false, ['Main', 'Siding']);
   SW('Elevator', nFE, fos.line, spur, true, ['Siding', 'Elevator']);
   SW('Kenton East', nK1, main, ken.line, true, ['Main', 'Siding']);
   SW('Kenton West', nK2, main, ken.line, false, ['Main', 'Siding']);
@@ -1264,35 +1307,41 @@ function buildRoute() {
   SW('Quarry South', nQ1, branch, run, true, ['Branch', 'Runaround']);
   SW('Quarry North', nQ2, branch, run, false, ['Branch', 'Runaround']);
   SW('Storage', nQS, run, stub, true, ['Runaround', 'Storage']);
+  // the two switches of a crossover are thrown together
+  for (const x of xos) {
+    const a = SW(x.line.name, x.nA, x.from, x.line, true, [x.from === main ? 'Track 1' : 'Track 2', 'Crossover']);
+    const b = SW(x.line.name, x.nB, x.to, x.line, false, [x.to === main ? 'Track 1' : 'Track 2', 'Crossover']);
+    a.mate = b; b.mate = a;
+  }
   // turnout speed by radius
-  for (const sw of NET.switches) { const dk = sw.legs[1].edge.kind; sw.divLimit = (dk === 'siding' || dk === 'branch') ? 30 : 15; }
+  for (const sw of NET.switches) { const dk = sw.legs[1].edge.kind; sw.divLimit = (dk === 'siding' || dk === 'branch' || dk === 'main') ? 30 : 15; }
 
   /* ---------- dead ends ---------- */
   for (const nd of NET.nodes) if (nd.att.length === 1) ROUTE.bumpers.push(nd);
 
   /* ---------- stations, water, signals ---------- */
-  const st = (name, line, s, side, kind) => { const loc = line.locate(s); ROUTE.stations.push({ name, line, sLine: s, edge: loc.edge, s: loc.s, side, kind }); };
-  st('Bellevue', main, sW1 + 620, -1, 'depot');
+  // a depot on the inside of the loop stands beyond track 2 (across: the extra distance out)
+  const st = (name, line, s, side, kind, across = 0) => { const loc = line.locate(s); ROUTE.stations.push({ name, line, sLine: s, edge: loc.edge, s: loc.s, side, kind, across }); };
+  st('Bellevue', main, sW1 + 620, -1, 'depot', DT);
   st('Fostoria', main, sF1 + 1250, 1, 'depot');
-  st('Kenton', main, sK1 + 700, -1, 'depot');
-  st('Delphos', main, sBR + 1500, -1, 'small');
+  st('Kenton', main, sK1 + 700, -1, 'depot', DT);
+  st('Delphos', main, sBR + 1500, -1, 'small', DT);
   st('Quarry', branch, branch.len - 40, 1, 'quarry');
   const wc = (line, s, side, kind) => { const loc = line.locate(s); ROUTE.water.push({ line, sLine: s, edge: loc.edge, s: loc.s, side, kind }); };
   wc(main, sF1 + 1450, 1, 'column');
-  wc(main, sK1 + 940, -1, 'column');
+  wc(main2, to2(sK1 + 940), -1, 'column');
   wc(eng, 150, 1, 'tower');
   ROUTE.coal = { line: eng, sLine: 235, edge: eng.locate(235).edge, s: eng.locate(235).s };
-  // signals protecting facing-point main switches
-  const sig = (sw, line, sNode, dir) => ROUTE.signals.push({ sw, line, sLine: sNode - dir * 160, dir });
-  sig(NET.switches[0], main, sW1, 1); sig(NET.switches[1], main, sW1 + YL, -1);
-  const fsw = NET.switches.find(s => s.name === 'Fostoria West'), fsw2 = NET.switches.find(s => s.name === 'Fostoria East');
-  sig(fsw, main, sF1, 1); sig(fsw2, main, sF1 + FL, -1);
-  const k1 = NET.switches.find(s => s.name === 'Kenton East'), k2 = NET.switches.find(s => s.name === 'Kenton West');
-  sig(k1, main, sK1, 1); sig(k2, main, sK1 + KL, -1);
-  sig(NET.switches.find(s => s.name === 'Quarry Jct'), main, sBR, 1);
+  /* Signals. Track 1 is signalled for eastward running and track 2 for westward, as double track was in
+     the 1940s: a home signal on the approach to each place with switches on that track, automatic block
+     signals between. Dwarfs govern moves off the sidings, Yard 1 and the quarry branch onto the main. */
+  const sig = (line, sLine, dir, kind = 'mast') => ROUTE.signals.push({ line, sLine, dir, kind });
+  for (const s of [340, 3500, 5940, 8700, 11490, 14000, 16678, 19500]) sig(main, s, 1);
+  for (const s of [2460, 6410, 9000, 11960, 14600, 17310, 20100]) sig(main2, to2(s), -1);
+  for (const [ln, at, dir] of [[fos.line, 110, -1], [fos.line, -110, 1], [ken.line, 110, -1], [ken.line, -110, 1], [yards[0], 78, -1], [yards[0], -78, 1], [branch, 150, -1]]) sig(ln, at < 0 ? ln.len + at : at, dir, 'dwarf');
   // mileposts
   for (let m = 1; m * MILE < main.len; m++) ROUTE.mileposts.push({ line: main, sLine: m * MILE, num: 101 + m });
-  ROUTE.main = main; ROUTE.branch = branch;
+  ROUTE.main = main; ROUTE.branch = branch; ROUTE.crossovers = xos.map(x => x.line);
   ROUTE.startLine = yards[1]; // train starts on Yard 2
   ROUTE.startS = 260;
 }
@@ -2271,10 +2320,11 @@ function buildSwitches(scene) {
     WORLD.switchVis.push(sw);
   }
 }
-function updateSwitchVisuals(dt) {
+/* points travel at a fixed rate in sim time; the AI waits for them to finish before it takes a route */
+function stepSwitches(dt) { for (const sw of NET.switches) sw.anim += clamp(sw.state - sw.anim, -dt * 0.9, dt * 0.9); }
+function updateSwitchVisuals() {
   const tau = 0.12;
   for (const sw of NET.switches) {
-    sw.anim += clamp(sw.state - sw.anim, -dt * 0.9, dt * 0.9);
     const k = sw.anim, G = sw.geo;
     const offA = -G.sgn * tau * k, offB = G.sgn * tau * (1 - k);
     sw.vis.points[0].rotation.y = offA / G.P;
@@ -2368,6 +2418,7 @@ function sceneryMaterials() {
   SMAT.lampG = new THREE.MeshBasicMaterial({ color: 0x40ff8a });
   SMAT.lampR = new THREE.MeshBasicMaterial({ color: 0xff3c2e });
   SMAT.lampY = new THREE.MeshBasicMaterial({ color: 0xffc23a });
+  SMAT.lampL = new THREE.MeshBasicMaterial({ color: 0xdfe6ff });   // lunar white
   SMAT.lampOff = new THREE.MeshLambertMaterial({ color: 0x121414 });
   const xb = canvasTex(256, 64, (g, w, h) => { g.fillStyle = '#f2f1ec'; g.fillRect(0, 0, w, h); g.strokeStyle = '#111'; g.lineWidth = 4; g.strokeRect(3, 3, w - 6, h - 6); g.fillStyle = '#111'; g.font = 'bold 30px Arial Narrow, Arial'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('RAILROAD', w / 2, h / 2 + 2); });
   SMAT.crossbuck = new THREE.MeshLambertMaterial({ map: xb });
@@ -2439,6 +2490,18 @@ function inFoot(X, N, pad) {
   for (const f of SCN.foot) { const dx = X - f[0], dz = -N - f[1]; if (Math.abs(dx * f[2] + dz * f[3]) < f[6] + pad && Math.abs(dx * f[4] + dz * f[5]) < f[7] + pad) return true; }
   return false;
 }
+/* distance from a plan point to the nearest track centre line, leaving out the edges in skip */
+function trackGap(X, N, skip) {
+  let d = Infinity;
+  for (const e of NET.edges) {
+    if (skip && skip.includes(e)) continue;
+    if (!e.bb) { e.bb = [Infinity, -Infinity, Infinity, -Infinity]; for (let i = 0; i < e.n; i++) { e.bb[0] = Math.min(e.bb[0], e.X[i]); e.bb[1] = Math.max(e.bb[1], e.X[i]); e.bb[2] = Math.min(e.bb[2], e.N[i]); e.bb[3] = Math.max(e.bb[3], e.N[i]); } }
+    const r = Math.min(d, 60);
+    if (X < e.bb[0] - r || X > e.bb[1] + r || N < e.bb[2] - r || N > e.bb[3] + r) continue;
+    for (let i = 0; i < e.n; i++) { const dd = Math.hypot(e.X[i] - X, e.N[i] - N); if (dd < d) d = dd; }
+  }
+  return d;
+}
 function keep(X, N, r) { SCN.keepout.push([X, N, r]); }
 const kept = (X, N, pad = 0) => { for (const k of SCN.keepout) if ((X - k[0]) ** 2 + (N - k[1]) ** 2 < (k[2] + pad) ** 2) return true; return false; };
 /* frame on a line at distance sLine with lateral offset: returns {X,N,y,yaw} */
@@ -2500,6 +2563,20 @@ function depot(pl, name, big) {
   for (const s of [-1, 1]) gb.add('redPaint', new THREE.BoxGeometry(1.4, 0.3, 0.05), P(base, s * (0.04 + 0.7 * Math.cos(0.7)), 6.3 + 0.7 * Math.sin(0.7), W / 2 + 2.4, 0, 0, s * 0.7));
   keep(pl.X, pl.N, L / 2 + 8);
   SCN.lamps.push(new THREE.Vector3().setFromMatrixPosition(P(base, 0, 3.4, W / 2 + 1.7)));
+}
+/* A plank walk over both main tracks at the depot, for trains on the far main: planks between the rails
+   like a road crossing, and timber decking between the tracks (and out to a depot beyond track 2) set
+   down into the ballast. Track 2 is on the left (-z) of track 1. */
+function stationCrossing(st) {
+  const sp = ROUTE.spacing, W = st.kind === 'depot' ? 8 : 6.5;
+  const near = 12 + sp - W / 2 - 2.7 - 2.6;   // the track edge of a depot platform beyond track 2
+  const loc = st.line.locate(st.sLine); loc.edge.pose(loc.s, FR);
+  const gb = binAt(FR.p.x, -FR.p.z), m1 = frameMatrix(FR, new THREE.Matrix4());
+  const deck = (m, z0, z1, depth) => gb.add('wood', boxT(3.0, depth, Math.abs(z1 - z0)), m.clone().multiply(M(0, -0.01 - depth / 2, -(z0 + z1) / 2)));
+  const l2 = ROUTE.main2.locate(ROUTE.to2(st.sLine)); l2.edge.pose(l2.s, FR2);
+  for (const m of [m1, frameMatrix(FR2, new THREE.Matrix4())]) for (const z of [[-0.66, 0.66], [-1.5, -0.84], [0.84, 1.5]]) gb.add('wood', boxT(3.0, 0.18, z[1] - z[0]), m.clone().multiply(M(0, -0.1, (z[0] + z[1]) / 2)));
+  deck(m1, 1.5, sp - 1.5, 0.6);
+  if (st.across) deck(m1, sp + 1.5, near, 1.2);
 }
 function waterColumn(pl) {
   const base = baseM(pl.X, pl.y - 0.2, pl.N, pl.yaw + (pl.lat < 0 ? 0 : Math.PI));
@@ -2677,11 +2754,12 @@ function farmstead(X, N, yaw, r) {
 
 /* -------- bridge (two through-truss Pratt spans) -------- */
 function buildBridge(scene) {
-  const b = ROUTE.bridge, main = ROUTE.main;
-  const c = linePlace(main, b.s, 0);
+  // one double-track truss carries both main tracks: track 1 at z = +h2, track 2 at -h2
+  const b = ROUTE.bridge, main = ROUTE.main, h2 = (ROUTE.spacing || 0) / 2, tracks = h2 ? [h2, -h2] : [0];
+  const c = linePlace(main, b.s, -h2);
   const base = baseM(c.X, c.y, c.N, c.yaw);
   const gb = new GeoBin();
-  const span = 64, H = 9.2, W = 2.85, panels = 8, pw = span / panels;
+  const span = 64, H = 9.2, W = 2.85 + h2, panels = 8, pw = span / panels;
   for (const sOff of [-span / 2, span / 2]) {
     const x0 = sOff - span / 2;
     for (const z of [-W, W]) {
@@ -2701,7 +2779,7 @@ function buildBridge(scene) {
     }
     // floor beams, stringers, top lateral bracing, portals
     for (let i = 0; i <= panels; i++) gb.add('steel', new THREE.BoxGeometry(0.35, 0.9, 2 * W), P(base, x0 + i * pw, -0.9, 0));
-    for (const z of [-0.85, 0.85]) gb.add('steel', new THREE.BoxGeometry(span, 0.7, 0.3), P(base, sOff, -0.75, z));
+    for (const tz of tracks) for (const z of [-0.85, 0.85]) gb.add('steel', new THREE.BoxGeometry(span, 0.7, 0.3), P(base, sOff, -0.75, tz + z));
     for (let i = 1; i < panels - 1; i++) {
       const xa = x0 + i * pw, xb = xa + pw, L = Math.hypot(pw, 2 * W), a = Math.atan2(2 * W, pw);
       gb.add('steel', new THREE.BoxGeometry(L, 0.14, 0.14), P(base, (xa + xb) / 2, H + 0.2, 0, 0, a, 0));
@@ -2723,14 +2801,14 @@ function buildBridge(scene) {
     const top = -1.3;
     const g = groundAt(c.X + Math.cos(c.yaw) * x, c.N + Math.sin(c.yaw) * x);
     const h = top - (Math.min(g, -5.6) - 1);
-    gb.add('concrete', boxT(x === 0 ? 3.2 : 5, h, 8.4, 2), P(base, x, top - h / 2, 0));
+    gb.add('concrete', boxT(x === 0 ? 3.2 : 5, h, 8.4 + 2 * h2, 2), P(base, x, top - h / 2, 0));
     if (x !== 0) {
       // abutment backwall, then the ballasted approach fill out to the end of the bridge limits (±72),
       // with the same section as the track ballast carried down its own slope to the ground
       const sx = Math.sign(x), xa = x + sx * 0.6, xb = x + sx * 8.0;   // bridge limits are at ±72
-      footing(gb, 'concrete', base, x + sx * 0.6, 0, 0.8, 8.4, -0.43);
-      const yB = groundUnder(base, (xa + xb) / 2, 0, 8, 14)[0] - 0.3, wB = 1.9 + (-0.205 - yB) * 1.68;
-      const prof = [[-wB, yB, 0.42], [-1.9, -0.205, 0.55], [1.9, -0.205, 0.55], [wB, yB, 0.42]];
+      footing(gb, 'concrete', base, x + sx * 0.6, 0, 0.8, 8.4 + 2 * h2, -0.43);
+      const yB = groundUnder(base, (xa + xb) / 2, 0, 8, 14 + 2 * h2)[0] - 0.3, wB = 1.9 + h2 + (-0.205 - yB) * 1.68;
+      const prof = [[-wB, yB, 0.42], [-1.9 - h2, -0.205, 0.55], [1.9 + h2, -0.205, 0.55], [wB, yB, 0.42]];
       const pos = [], col = [], uv = [];
       const quad = (A, B, C, D) => { for (const v of [A, B, C, A, C, D]) { pos.push(v[0], v[1], v[2]); col.push(v[3], v[3] * 0.96, v[3] * 0.88); uv.push((v[0] + v[2]) / 1.4, v[1] / 1.4); } };
       const at = (xx, q) => [xx, prof[q][1], prof[q][0], prof[q][2]];
@@ -2747,15 +2825,15 @@ function buildBridge(scene) {
   // open deck ties and guard timbers on the bridge
   const r = rng(44);
   for (let x = -span - 7.8, i = 0; x <= span + 7.8; x += 0.42, i++) {
-    const geo = new THREE.BoxGeometry(0.24, 0.24, i % 4 ? 3.1 : 5.1); geo.translate(x, -0.3, 0);   // every fourth tie runs out under the walkways
+    const geo = new THREE.BoxGeometry(0.24, 0.24, (i % 4 ? 3.1 : 5.1) + 2 * h2); geo.translate(x, -0.3, 0);   // every fourth tie runs out under the walkways
     const v = 0.7 + r() * 0.3, col = new Float32Array(geo.attributes.position.count * 3);
     for (let i = 0; i < col.length; i += 3) { col[i] = 0.42 * v; col[i + 1] = 0.36 * v; col[i + 2] = 0.29 * v; }
     geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
     gb.add('tie', geo, base.clone());
   }
-  for (const z of [-1.42, 1.42]) gb.add('wood', boxT(2 * span + 2, 0.2, 0.2), P(base, 0, -0.1, z));
+  for (const tz of tracks) for (const z of [-1.42, 1.42]) gb.add('wood', boxT(2 * span + 2, 0.2, 0.2), P(base, 0, -0.1, tz + z));
   // walkway & railing
-  for (const z of [-2.2, 2.2]) {
+  for (const z of [-2.2 - h2, 2.2 + h2]) {
     gb.add('wood', boxT(2 * span, 0.06, 0.66), P(base, 0, -0.2, z));
   }
   const vis = gb.build({ steel: MAT.bridge, concrete: SMAT.concrete, tie: MAT.tie, wood: SMAT.wood, nbBridge: SMAT.nbBridge, ballast: MAT.ballast });
@@ -2826,11 +2904,13 @@ function buildRoads(scene) {
       scene.add(new THREE.Mesh(lg, SMAT.line));
     }
     // crossbucks, planks, whistle posts
-    for (const c of r.cross) {
-      const gb = binAt(c.X, c.N);
-      c.edge.pose(c.s, FR);
-      // crossbucks on each side of the track, right-hand side of road
+    // tracks crossing the road side by side (both mains, a siding) share one pair of crossbucks
+    const groups = [];
+    for (const c of [...r.cross].sort((p, q) => p.along - q.along)) { const g = groups[groups.length - 1]; if (g && c.along - g[g.length - 1].along < 14) g.push(c); else groups.push([c]); }
+    for (const g of groups) {
+      // crossbucks beyond the outermost tracks, right-hand side of road
       for (const side of [-1, 1]) {
+        const c = side > 0 ? g[g.length - 1] : g[0], gb = binAt(c.X, c.N);
         const dx = r.dir === 'N' ? 0 : side * 9, dn = r.dir === 'N' ? side * 9 : 0;
         const lx = r.dir === 'N' ? (side > 0 ? -r.w / 2 - 1.2 : r.w / 2 + 1.2) : 0, ln = r.dir === 'E' ? (side > 0 ? -r.w / 2 - 1.2 : r.w / 2 + 1.2) : 0;
         const X = c.X + dx + lx, N = c.N + dn + ln, y = groundAt(X, N);
@@ -2840,12 +2920,18 @@ function buildRoads(scene) {
         gb.add('xb1', new THREE.BoxGeometry(0.03, 0.32, 2.4), P(cb, 0.08, 3.35, 0, 0.785, 0, 0));
         gb.add('xb2', new THREE.BoxGeometry(0.03, 0.32, 2.4), P(cb, 0.1, 3.35, 0, -0.785, 0, 0));
       }
-      // whistle posts 1/4 mile before, both directions
-      for (const dir of [-1, 1]) {
+    }
+    // whistle posts 1/4 mile before, on the right of each main track for its direction of running
+    for (const c of r.cross) {
+      const ln = c.edge.line, run = ln === ROUTE.main ? [1] : ln === ROUTE.main2 ? [-1] : c.edge.kind === 'main' && !ROUTE.main2 ? [-1, 1] : [];
+      for (const dir of run) {
         const loc = c.edge; const ss = c.s - dir * 400;
         if (ss < 0 || ss > loc.len) continue;
         loc.pose(ss, FR2); const yaw = Math.atan2(-FR2.f.z, FR2.f.x);
-        const lat = dir > 0 ? 3.4 : -3.4;
+        let lat = dir > 0 ? 3.4 : -3.4;
+        const at = l => [FR2.p.x + Math.sin(yaw) * l, -(FR2.p.z + Math.cos(yaw) * l)];
+        if (trackGap(...at(lat), [loc]) < 3) lat = -lat;
+        if (trackGap(...at(lat), [loc]) < 3) continue;
         const X = FR2.p.x + Math.sin(yaw) * lat, N = -(FR2.p.z + Math.cos(yaw) * lat), y = groundAt(X, N);
         const wb = baseM(X, y, N, yaw + (dir > 0 ? 0 : Math.PI));
         const g2 = binAt(X, N);
@@ -2928,44 +3014,66 @@ function buildPoleLine(scene) {
 /* -------- signals, mileposts, misc signs -------- */
 function buildSignals(scene) {
   for (const sg of ROUTE.signals) {
-    const lat = sg.dir > 0 ? 3.3 : -3.3;
+    // on the right of the track, or on the left where another track runs close by on the right
+    const dwarf = sg.kind === 'dwarf', off = dwarf ? 2.4 : 3.3, need = dwarf ? 2.2 : 3.0;
+    const own = sg.line.locate(sg.sLine).edge, gap = l => { const q = linePlace(sg.line, sg.sLine, l); return trackGap(q.X, q.N, [own]); };
+    let lat = sg.dir > 0 ? off : -off;
+    if (gap(lat) < need && gap(-lat) >= need) lat = -lat;
+    else if (gap(lat) < need) console.warn('signal crowded by another track', sg.line.name, Math.round(sg.sLine));
     const pl = linePlace(sg.line, sg.sLine, lat);
     const y = pl.y - 0.3;
     const yaw = pl.yaw + (sg.dir > 0 ? Math.PI : 0); // heads face oncoming train
     const base = baseM(pl.X, y, pl.N, yaw);
     const gb = binAt(pl.X, pl.N);
-    footing(gb, 'concrete', base, 0, 0, 0.9, 0.9, 0.35);
-    gb.add('steel', new THREE.CylinderGeometry(0.09, 0.11, 7.2, 8), P(base, 0, 3.8, 0));
-    gb.add('steel', new THREE.BoxGeometry(0.05, 0.05, 0.6), P(base, 0.0, 5.0, -0.3));
-    // ladder up the back of the mast: stiles on standoffs, rungs between
-    for (const z of [-0.22, 0.22]) {
-      gb.add('steel', new THREE.BoxGeometry(0.04, 5.3, 0.04), P(base, -0.24, 3.0, z));
-      for (const y of [0.9, 3.0, 5.1]) gb.add('steel', new THREE.BoxGeometry(0.28, 0.04, 0.03), P(base, -0.165, y, z / 2, 0, z > 0 ? 0.97 : -0.97, 0));
-    }
-    for (let r = 0; r < 6; r++) gb.add('steel', new THREE.BoxGeometry(0.03, 0.03, 0.48), P(base, -0.24, 0.8 + r * 0.9, 0));
     const heads = [];
-    for (const hy of [6.4, 4.4]) {
-      gb.add('signBack', new THREE.CylinderGeometry(0.42, 0.42, 0.08, 20), P(base, 0.14, hy, 0, 0, 0, Math.PI / 2));
-      gb.add('steel', new THREE.BoxGeometry(0.34, 0.5, 0.5), P(base, -0.05, hy, 0));
-      const lens = new THREE.Mesh(new THREE.CircleGeometry(0.13, 16), SMAT.lampOff);
-      lens.matrixAutoUpdate = false; lens.matrix.copy(P(base, 0.19, hy, 0, 0, Math.PI / 2, 0)); scene.add(lens);
-      gb.add('black', new THREE.CylinderGeometry(0.18, 0.18, 0.28, 12, 1, true, 0, Math.PI), P(base, 0.3, hy + 0.02, 0, 0, 0, Math.PI / 2).multiply(M(0, 0, 0, 0, Math.PI / 2, 0)));
-      heads.push(lens);
+    const lamp = (x, hy, r) => { const lens = new THREE.Mesh(new THREE.CircleGeometry(r, 16), SMAT.lampOff); lens.matrixAutoUpdate = false; lens.matrix.copy(P(base, x, hy, 0, 0, Math.PI / 2, 0)); scene.add(lens); heads.push(lens); };
+    if (dwarf) {
+      // a dwarf: two lamps in a low cast housing on a short pedestal
+      footing(gb, 'concrete', base, 0, 0, 0.7, 0.7, 0.3);
+      gb.add('steel', new THREE.CylinderGeometry(0.08, 0.1, 0.32, 8), P(base, 0, 0.46, 0));
+      gb.add('steel', new THREE.BoxGeometry(0.3, 0.62, 0.36), P(base, -0.02, 0.92, 0));
+      gb.add('signBack', new THREE.BoxGeometry(0.03, 0.7, 0.46), P(base, 0.145, 0.92, 0));
+      for (const hy of [1.07, 0.78]) {
+        gb.add('black', new THREE.CylinderGeometry(0.1, 0.1, 0.16, 12, 1, true, 0, Math.PI), P(base, 0.24, hy + 0.01, 0, 0, 0, Math.PI / 2).multiply(M(0, 0, 0, 0, Math.PI / 2, 0)));
+        lamp(0.165, hy, 0.075);
+      }
+    } else {
+      footing(gb, 'concrete', base, 0, 0, 0.9, 0.9, 0.35);
+      gb.add('steel', new THREE.CylinderGeometry(0.09, 0.11, 7.2, 8), P(base, 0, 3.8, 0));
+      gb.add('steel', new THREE.BoxGeometry(0.05, 0.05, 0.6), P(base, 0.0, 5.0, -0.3));
+      // ladder up the back of the mast: stiles on standoffs, rungs between
+      for (const z of [-0.22, 0.22]) {
+        gb.add('steel', new THREE.BoxGeometry(0.04, 5.3, 0.04), P(base, -0.24, 3.0, z));
+        for (const y of [0.9, 3.0, 5.1]) gb.add('steel', new THREE.BoxGeometry(0.28, 0.04, 0.03), P(base, -0.165, y, z / 2, 0, z > 0 ? 0.97 : -0.97, 0));
+      }
+      for (let r = 0; r < 6; r++) gb.add('steel', new THREE.BoxGeometry(0.03, 0.03, 0.48), P(base, -0.24, 0.8 + r * 0.9, 0));
+      for (const hy of [6.4, 4.4]) {
+        gb.add('signBack', new THREE.CylinderGeometry(0.42, 0.42, 0.08, 20), P(base, 0.14, hy, 0, 0, 0, Math.PI / 2));
+        gb.add('steel', new THREE.BoxGeometry(0.34, 0.5, 0.5), P(base, -0.05, hy, 0));
+        gb.add('black', new THREE.CylinderGeometry(0.18, 0.18, 0.28, 12, 1, true, 0, Math.PI), P(base, 0.3, hy + 0.02, 0, 0, 0, Math.PI / 2).multiply(M(0, 0, 0, 0, Math.PI / 2, 0)));
+        lamp(0.19, hy, 0.13);
+      }
     }
-    SCN.signals.push({ sg, heads, X: pl.X, N: pl.N });
+    SCN.signals.push({ sg, heads, X: pl.X, N: pl.N, aspect: '' });
   }
 }
-function updateSignals() {
+/* lamp colours, top head then bottom head, for each aspect */
+const ASPECT_LAMPS = { Clear: ['lampG', 'lampR'], Approach: ['lampY', 'lampR'], 'Diverging Clear': ['lampR', 'lampG'], 'Diverging Approach': ['lampR', 'lampY'], Restricting: ['lampR', 'lampL'], Stop: ['lampR', 'lampR'] };
+let sigT = 0;
+function updateSignals(dt = 0) {
+  if ((sigT -= dt) > 0) return;
+  sigT = 0.25;
   for (const s of SCN.signals) {
-    const rev = s.sg.sw.state === 1;
-    s.heads[0].material = rev ? SMAT.lampR : SMAT.lampG;
-    s.heads[1].material = rev ? SMAT.lampG : SMAT.lampR;
-    s.aspect = rev ? 'Diverging Clear' : 'Clear';
+    const a = signalAspect(s);
+    if (a === s.aspect) continue;
+    s.aspect = a;
+    const L = ASPECT_LAMPS[a];
+    s.heads[0].material = SMAT[L[0]]; s.heads[1].material = SMAT[L[1]];
   }
 }
 function buildSigns() {
   for (const mp of ROUTE.mileposts) {
-    const pl = linePlace(mp.line, mp.sLine, -3.6);
+    const pl = linePlace(mp.line, mp.sLine, -3.6 - (ROUTE.spacing || 0));   // beyond track 2
     const y = groundAt(pl.X, pl.N);
     const base = baseM(pl.X, y, pl.N, pl.yaw + Math.PI / 2);
     const gb = binAt(pl.X, pl.N);
@@ -2975,7 +3083,7 @@ function buildSigns() {
   }
   // yard limit boards
   for (const [s, d] of [[300, 1], [1980, -1]]) {
-    const pl = linePlace(ROUTE.main, s, d > 0 ? 3.6 : -3.6);
+    const pl = linePlace(ROUTE.main, s, d > 0 ? 3.6 : -3.6 - ROUTE.spacing);
     const y = groundAt(pl.X, pl.N);
     const base = baseM(pl.X, y, pl.N, pl.yaw + (d > 0 ? Math.PI : 0));
     const gb = binAt(pl.X, pl.N);
@@ -2988,8 +3096,9 @@ function buildSigns() {
 function buildStations() {
   for (const st of ROUTE.stations) {
     if (st.kind === 'quarry') continue;
-    const pl = linePlace(st.line, st.sLine, st.side * 12); pl.lat = st.side;
+    const pl = linePlace(st.line, st.sLine, st.side * (12 + (st.across || 0))); pl.lat = st.side;
     depot(pl, st.name.toUpperCase(), st.kind === 'depot');
+    if (st.line === ROUTE.main && ROUTE.main2) stationCrossing(st);
   }
   for (const w of ROUTE.water) {
     if (w.kind === 'column') { const pl = linePlace(w.line, w.sLine, w.side * 3.1); pl.lat = w.side; waterColumn(pl); w.place = pl; }
@@ -3002,14 +3111,14 @@ function buildStations() {
   coalingTower(linePlace(eng, ROUTE.coal.sLine, 0));
   sandHouse(linePlace(eng, 300, 0));
   engineHouse(linePlace(eng, eng.len - 24, 0));
-  const yo = linePlace(ROUTE.main, 470, -10); yardOffice(yo);
+  const yo = linePlace(ROUTE.main, 470, -10 - ROUTE.spacing); yardOffice(yo);
   const fe = ROUTE.lines['Elevator Track'];
   const ge = linePlace(fe, 190, -24); ge.lat = -1; grainElevator(ge);
   // Quarry Jct tower
   const sw = NET.switches.find(s => s.name === 'Quarry Jct');
   const lineMain = ROUTE.main;
   let sJ = 0; for (const e of lineMain.edges) if (e.a === sw.node) sJ = e.lineS0;
-  const tp = linePlace(lineMain, sJ - 60, -11); tp.lat = -1; interlockingTower(tp, 'QJ');
+  const tp = linePlace(lineMain, sJ - 60, -11 - ROUTE.spacing); tp.lat = -1; interlockingTower(tp, 'QJ');
   quarry();
 }
 function quarry() {
@@ -5195,7 +5304,7 @@ class Train extends Consist {
     super(scene);
     this.locoKey = locoKey; this.consistKey = consistKey;
     this.driverDist = 0;
-    const r = rng(1944);
+    const r = rng(opts.seed || 1944);   // car numbers: AI trains bring their own seed
     // locomotive
     const spec = LOCO_SPEC[locoKey];
     ROAD_SHORT = spec.short;
@@ -5397,7 +5506,7 @@ CARS.setup = function () {
 function carIndex() {
   const idx = new Map();
   const add = (e, s, it) => { let l = idx.get(e); if (!l) idx.set(e, l = []); it.s = s; l.push(it); };
-  for (const c of [GAME.train, ...CARS.cuts]) {
+  for (const c of [GAME.train, ...CARS.cuts, ...AI.trains.map(a => a.train)]) {
     if (!c) continue;
     const f = c.endTP('front'), r = c.endTP('rear');
     add(f.e, f.s, { c, end: 'front', out: f.o });
@@ -5434,7 +5543,7 @@ function carFrom(t, dir, range, idx, skip) {
 }
 /* how far consist c may move by d before it touches something */
 CARS.limit = function (c, d) {
-  if (!CARS.cuts.length) return { d, hit: null };
+  if (!CARS.cuts.length && !AI.trains.length) return { d, hit: null };
   const idx = carIndex();
   const hit = carAhead(c, Math.sign(d), Math.abs(d) + 0.05, idx);
   if (!hit || hit.d >= Math.abs(d)) return { d, hit: null };
@@ -5442,13 +5551,13 @@ CARS.limit = function (c, d) {
 };
 /* open track from tp along dir before the nearest cut of cars (skip: the consist standing at tp) */
 CARS.clearance = function (tp, dir, range, skip) {
-  if (!CARS.cuts.length) return Infinity;
+  if (!CARS.cuts.length && !AI.trains.length) return Infinity;
   const hit = carFrom(tp, dir, range, carIndex(), skip);
   return hit ? hit.d : Infinity;
 };
 /* for the HUD: the cut ahead of the train in the direction of travel */
 CARS.ahead = function (T, dir, range) {
-  if (!CARS.cuts.length) return null;
+  if (!CARS.cuts.length && !AI.trains.length) return null;
   return carAhead(T, dir, range, carIndex());
 };
 
@@ -5487,6 +5596,7 @@ function buff(mA, uA, mB, uB, e) {
 const buffE = closing => closing < 1 ? 0 : 0.3 * smooth(1, 3, closing);
 /* consist A, moving toward its dir end, has just touched hit.c */
 CARS.contact = function (A, dir, hit) {
+  if (A.ai || hit.c.ai) { AI.contact(A, dir, hit); return; }
   const B = hit.c, T = GAME.train;
   const aEnd = dir > 0 ? 'front' : 'rear';
   const sB = hit.end === aEnd ? -1 : 1;   // B's velocity, seen along A's direction
@@ -6675,6 +6785,7 @@ function drawNet(g, W, H, cx, cn, sc, opt) {
     const p = T.lead.pos; g.fillStyle = '#ffffff'; g.beginPath(); g.arc(tx(p.x), ty(-p.z), 3.5 * opt.w, 0, TAU); g.fill();
   }
   JOB.drawMap(g, tx, ty, opt);
+  AI.drawMap(g, tx, ty, opt);
   MP.drawMap(g, tx, ty, opt);
   return { tx, ty };
 }
@@ -7024,10 +7135,10 @@ function mpJoints(T, mem, speed, cp) {
 
 /* ---------------- another player's train ---------------- */
 class RemoteTrain {
-  constructor(peer, st) {
+  constructor(peer, st, extra) {
     this.peer = peer;
     this.key = `${st.lk}|${st.ck}|${st.u}`; this.paint = `${st.lv}|${st.mx}|${st.cu}|${st.no}`;
-    this.train = new Train(scene, st.lk, st.ck, Object.assign(mpOpts(st), { remote: true }));
+    this.train = new Train(scene, st.lk, st.ck, Object.assign(mpOpts(st), { remote: true }, extra));
     prepareTrain(this.train);
     this.a0 = this.train.pts[0].a;
     this.tp = null; this.err = 0; this.v = 0; this.theta = 0; this.chuffQ = null; this.idleT = 0; this.bellT = 0.8; this.updT = 0;
@@ -7640,10 +7751,10 @@ const JOBS = [
   { id: 'elevator', name: 'Elevator pickup', kind: 'switch', level: 'Easy', look: 'morning', train: 'light', spawn: 'yardEast', start: hm(6, 50), due: hm(7, 20),
     brief: 'The elevator at Fostoria has loaded four boxcars of grain overnight. Run light to the elevator track, couple to the loads and set them out on Yard 1 at Bellevue for the evening manifest.',
     steps: [
-      { type: 'pickup', from: 'Elevator Track', text: 'Couple to the four loads on the Elevator Track', hint: 'East on the main, into the Fostoria siding at Fostoria West, then the Elevator switch. Couple at 4 mph or less.' },
-      { type: 'spot', to: 'Yard 1', tag: 'Y1', text: 'Set the loads out on Yard 1, clear of the switches', hint: 'Back west on the main and in at Bellevue East. Stop, cut the cars off, and leave them at least 125 ft from every switch.' },
+      { type: 'pickup', from: 'Elevator Track', text: 'Couple to the four loads on the Elevator Track', hint: 'Out of the yard at Bellevue East, over to track 2 at Bellevue crossover A, into the Fostoria siding at Fostoria West, then the Elevator switch. Couple at 4 mph or less.' },
+      { type: 'spot', to: 'Yard 1', tag: 'Y1', text: 'Set the loads out on Yard 1, clear of the switches', hint: 'Back west out of the siding onto track 2, over to track 1 at Bellevue crossover A and in at Bellevue East. Stop, cut the cars off, and leave them at least 125 ft from every switch.' },
     ] },
-  { id: 'no3', name: 'No. 3, Kenton local', kind: 'passenger', level: 'Easy', look: 'morning', train: 'passenger', spawn: 'depot', start: hm(7, 39),
+  { id: 'no3', name: 'No. 3, Kenton local', kind: 'passenger', level: 'Easy', look: 'morning', train: 'passenger', spawn: 'depot', start: hm(7, 39), traffic: [['no12', 12500]],
     brief: 'The morning local. Eight heavyweights out of Bellevue, a stop at Fostoria, and over Kenton Hill to Kenton. Keep the ride smooth, leave no station early and put the engine on the mark.',
     steps: [
       { type: 'depart', at: 'Bellevue', dep: hm(7, 40) },
@@ -7651,14 +7762,15 @@ const JOBS = [
       { type: 'stop', at: 'Kenton', arr: hm(7, 55) },
     ] },
   { id: 'bd2', name: 'BD-2 time freight', kind: 'freight', level: 'Medium', look: 'golden', train: 'timefreight', spawn: 'yardEast', start: hm(17, 30), vmax: 50,
-    brief: 'Eighteen cars and a caboose of hot merchandise around the division. Make every timing point, hold it to 50 mph, the timetable speed for freight, and bring it home to stop in the clear on the main at Bellevue.',
+    traffic: [['no5', 19800], ['no12', 16500]],
+    brief: 'Eighteen cars and a caboose of hot merchandise around the division on track 1. No. 5, the eastward express, is right behind you: take the Kenton siding and let it by. Hold it to 50 mph, the timetable speed for freight, and bring it home to stop in the clear on the main at Bellevue.',
     steps: [
       { type: 'pass', at: 'Fostoria', by: hm(17, 38) },
-      { type: 'pass', at: 'Kenton', by: hm(17, 46) },
-      { type: 'pass', at: 'Delphos', by: hm(17, 51) },
-      { type: 'clear', between: ['Bellevue West', 'Bellevue East'], where: 'Bellevue', by: hm(17, 58), text: 'Stop in the clear on the main at Bellevue', hint: 'The whole train between Bellevue West and Bellevue East, at least 125 ft from both switches.' },
+      { type: 'meet', train: 'no5', at: 'Kenton Siding', by: hm(17, 47), text: 'Into the Kenton siding for No. 5', hint: 'Throw Kenton East for the siding, pull down to the dwarf signal at the far end and stop clear of Kenton West. Wait for No. 5 to go by on the main and the dwarf to clear.' },
+      { type: 'pass', at: 'Delphos', by: hm(17, 57) },
+      { type: 'clear', between: ['Bellevue West', 'Bellevue East'], where: 'Bellevue', by: hm(18, 4), text: 'Stop in the clear on the main at Bellevue', hint: 'The whole train between Bellevue West and Bellevue East, at least 125 ft from both switches.' },
     ] },
-  { id: 'no7', name: 'No. 7, around the division', kind: 'passenger', level: 'Medium', look: 'noon', train: 'passenger', spawn: 'depot', start: hm(12, 9),
+  { id: 'no7', name: 'No. 7, around the division', kind: 'passenger', level: 'Medium', look: 'noon', train: 'passenger', spawn: 'depot', start: hm(12, 9), traffic: [['no12', 15000], ['x2210', 8200]],
     brief: 'The midday train makes every stop on the division: Fostoria, Kenton over the hill, Delphos past the river bridge, and home to Bellevue. Four stops, four chances to be early, late or off the mark.',
     steps: [
       { type: 'depart', at: 'Bellevue', dep: hm(12, 10) },
@@ -7671,7 +7783,7 @@ const JOBS = [
     brief: 'Five loads of stone are waiting in quarry storage. Run light out the west end past Delphos, back up the branch at Quarry Jct, pull the loads and bring them home the long way around the division to Yard 2. In the dark.',
     steps: [
       { type: 'pickup', from: 'Quarry Storage', text: 'Couple to the five loads on Quarry Storage', hint: 'West out of the yard past Delphos. The branch faces the other way at Quarry Jct: run past it, throw it, and back up the branch. Storage is off the runaround.' },
-      { type: 'spot', to: 'Yard 2', tag: 'Y2', text: 'Set the loads out on Yard 2, clear of the switches', hint: 'Pull off the branch and keep going east over the river, through Kenton and around the east curve, then back west past Fostoria. In at Bellevue East and up the ladder to Yard 2.' },
+      { type: 'spot', to: 'Yard 2', tag: 'Y2', text: 'Set the loads out on Yard 2, clear of the switches', hint: 'Pull off the branch onto track 1 and head east over the river. Cross to track 2 at Kenton crossover B, then round the east curve and west past Fostoria. Cross back at Bellevue crossover A, in at Bellevue East and up the ladder to Yard 2.' },
     ] },
 ];
 
@@ -7769,6 +7881,8 @@ JOB.note = function (what, d = {}) {
   else if (what === 'turnout' && once('tov' + d.name, 20)) JOB.dock('rules', 5, 'Over turnout speed', `${d.name}, ${Math.round(d.mph)} in a ${d.limit}`, true);
   else if (what === 'curve' && once('curve', 8)) JOB.dock('rules', 4, 'Too fast for the curve', `${Math.round(d.mph)} mph`, true);
   else if (what === 'foul' && once('foul', 6)) JOB.dock('rules', 5, 'Ran into cars standing foul', '', true);
+  else if (what === 'signal') JOB.dock('rules', 10, 'Passed a signal at Stop', d.why || '', true);
+  else if (what === 'delay' && R.def.traffic && R.def.traffic.length) JOB.dock('time', 2, `Held up ${d.name}`, 'a minute at a red signal', true);
 };
 
 /* derailed, or the fire went out: the job is over */
@@ -7895,6 +8009,24 @@ JOB.steps = function (R, T, now) {
     st.why = ''; st.doneT = now; const late = lateBy(st.by);
     if (late > 0) JOB.dock('time', Math.min(20, 4 * Math.ceil(late / 60)), `Late into ${st.where}`, `${fmtDur(late)} behind ${fmtClock(st.by)}`);
     done();
+    return;
+  }
+  if (st.type === 'meet') {
+    // into the siding and clear of the main, then wait for the other train to go by
+    const a = AI.trains.find(x => x.id === st.train);
+    if (!a) { done(); return; }     // traffic is switched off
+    const inside = T.pts.every(p => p.tp.e.line && p.tp.e.line.name === st.at) && !NET.switches.some(sw => T.fouls(sw));
+    if (inside && R.lastStop > 1 && st.inT == null) {
+      st.inT = now; const late = lateBy(st.by);
+      if (late > 0) JOB.dock('time', Math.min(12, 3 * Math.ceil(late / 60)), `Late into ${st.at}`, `${fmtDur(late)} behind ${fmtClock(st.by)}`);
+      toast(`In the clear on ${st.at}. Hold here until ${a.name} has gone by.`, 'good', 4600, 'jobmeet');
+    }
+    st.why = st.inT != null ? `Waiting for ${a.name} to go by` : '';
+    if (AI.gone(a, T, st.seen || (st.seen = {}))) {
+      if (st.inT == null) JOB.dock('rules', 8, `Not in the clear for ${a.name}`, st.at);
+      toast(`${a.name} is by. Wait for the signal, then on your way.`, 'good', 4600, 'jobmeet');
+      st.doneT = now; done();
+    }
     return;
   }
   if (st.type === 'pickup') {
@@ -8115,10 +8247,562 @@ JOB.drawMap = function (g, tx, ty, opt) {
 };
 
 /* ============================================================================
+   Traffic: the interlocking (routes locked for AI trains, signal aspects)
+   and AI trains running the timetable on the Berkshire Division
+   ========================================================================== */
+const IX = { res: new Map(), idx: null, idxAt: -1 };
+const AI = { trains: [] };
+
+/* every consist on the railroad: ours, standing cuts, AI trains and other players' trains */
+IX.consists = function () {
+  const a = [];
+  if (GAME.train) a.push(GAME.train);
+  a.push(...CARS.cuts);
+  for (const t of AI.trains) a.push(t.train);
+  if (MP.on) for (const p of MP.peers.values()) if (p.rt && p.rt.placed) a.push(p.rt.train);
+  return a;
+};
+/* where everything stands, by edge: each tracked point and coupler face (rebuilt at most once a tick) */
+IX.index = function () {
+  if (IX.idx && IX.idxAt === S.time) return IX.idx;
+  const idx = new Map(), add = (tp, c) => { let l = idx.get(tp.e); if (!l) idx.set(tp.e, l = []); l.push({ c, s: tp.s }); };
+  for (const c of IX.consists()) { for (const p of c.pts) add(p.tp, c); add(c.endTP('front'), c); add(c.endTP('rear'), c); }
+  IX.idx = idx; IX.idxAt = S.time;
+  return idx;
+};
+/* the consists standing on edge e between a and b (either order), or foul of switch sw */
+IX.on = function (e, a, b, out) {
+  const l = IX.index().get(e); if (!l) return out;
+  const lo = Math.min(a, b), hi = Math.max(a, b);
+  for (const it of l) if (it.s >= lo && it.s <= hi && !out.includes(it.c)) out.push(it.c);
+  return out;
+};
+IX.fouling = function (sw, out) {
+  for (const c of IX.consists()) if (!out.includes(c) && c.fouls(sw)) out.push(c);
+  return out;
+};
+
+/* Walk the route as the switches lie from track position (e, s) heading o (+1 along the edge), for at most
+   maxD metres. piece(e, a, b, d) is called for each stretch of track (d: distance to its start) and
+   node(node, d, facing, lined) at each switch; either returning true stops the walk. Returns the
+   distance walked and why it ended: 'stop' (a callback), 'end' (end of track) or 'far'. */
+function routeWalk(e, s, o, maxD, piece, node) {
+  let d = 0;
+  for (let g = 0; g < 80; g++) {
+    const toEnd = o > 0 ? e.len - s : s, b = o > 0 ? e.len : 0;
+    if (d + toEnd >= maxD) { const bb = s + o * (maxD - d); piece(e, s, bb, d); return { d: maxD, why: 'far' }; }
+    if (piece(e, s, b, d)) return { d, why: 'stop' };
+    d += toEnd;
+    const end = o > 0 ? 1 : 0, nd = end ? e.b : e.a;
+    const nx = nd ? nd.next(e, end, null) : null;
+    if (!nx) return { d, why: 'end' };
+    if (nd.sw) {
+      const sw = nd.sw, facing = sw.trunk.edge === e && sw.trunk.end === end;
+      const lined = facing || sw.legs[sw.state].edge === e && sw.legs[sw.state].end === end;
+      if (node(nd, d, facing, lined)) return { d, why: 'stop' };
+    }
+    e = nx.edge; o = nx.end === 0 ? 1 : -1; s = nx.end === 0 ? 0 : e.len;
+  }
+  return { d, why: 'far' };
+}
+
+/* ---------------- signals ---------------- */
+/* A signal governs the route from itself to the next signal facing the same way. Stop when a train is on
+   that route or foul of it, a switch on it is moving or lined against the move, or an AI train has it
+   locked; Restricting when only standing cars are in the way; Approach when the next signal is at Stop. */
+function signalRoute(s) {
+  if (!s.loc) s.loc = s.sg.line.locate(s.sg.sLine);
+  const out = { pieces: [], switches: [], diverging: false, against: false, next: null, end: false };
+  const w = routeWalk(s.loc.edge, s.loc.s, s.sg.dir, 4500, (e, a, b, d) => {
+    // the next signal facing the same way ends the route
+    let cut = null;
+    for (const q of SCN.signals) {
+      if (q === s) continue;
+      const ql = q.loc || (q.loc = q.sg.line.locate(q.sg.sLine)); if (ql.edge !== e) continue;
+      const o = b >= a ? 1 : -1, ds = (ql.s - a) * o;
+      if (ds <= 2 || ds > Math.abs(b - a) || (q.sg.dir > 0) !== (o > 0)) continue;
+      if (!cut || ds < cut.ds) cut = { q, ds };
+    }
+    out.pieces.push({ e, a, b: cut ? a + (b >= a ? 1 : -1) * cut.ds : b });
+    if (cut) { out.next = cut.q; return true; }
+  }, (nd, d, facing, lined) => {
+    const sw = nd.sw;
+    out.switches.push(sw);
+    if (facing && sw.state) out.diverging = true;
+    if (!lined || Math.abs(sw.anim - sw.state) > 0.02) { out.against = true; return true; }
+  });
+  out.end = w.why === 'end';
+  return out;
+}
+function signalAspect(s) {
+  const r = signalRoute(s);
+  s.route = r; s.why = '';
+  if (r.against) { s.why = 'switch not lined'; return 'Stop'; }
+  // the train this route is locked for, while it is still short of the signal, gets a proceed
+  const mine = IX.holders().find(h => h.signalsAhead.includes(s)) || null;
+  for (const p of r.pieces) { const o = IX.reserved(p.e, p.a, p.b, mine); if (o) { s.why = `route locked for ${o.name}`; return 'Stop'; } }
+  const hit = [];
+  for (const p of r.pieces) IX.on(p.e, p.a, p.b, hit);
+  for (const sw of r.switches) IX.fouling(sw, hit);
+  if (hit.length) {
+    if (hit.every(c => c instanceof Cut)) return 'Restricting';
+    const c = hit.find(c => !(c instanceof Cut));
+    s.why = c === GAME.train ? 'your train is in the block' : c.ai ? `${c.ai.name} is in the block` : 'a train is in the block';
+    return 'Stop';
+  }
+  const nx = r.next && r.next.aspect;
+  const approach = !r.next || nx === 'Stop' || nx === 'Restricting';
+  return r.diverging ? (approach ? 'Diverging Approach' : 'Diverging Clear') : (approach ? 'Approach' : 'Clear');
+}
+
+/* ---------------- route locking ----------------
+   A route is locked as pieces of track (an edge between two distances) held by an owner: an AI train,
+   or the player's train once it is given a signal (IX.PLAYER). Switches on a locked route are locked too,
+   and the two switches of a crossover lock together. */
+IX.lock = new Map();
+IX.PLAYER = { name: 'your train', signalsAhead: [], pieces: [], locks: [] };
+IX.holders = () => [IX.PLAYER, ...AI.trains];
+IX.reserve = function (owner, e, a, b) {
+  const r = { e, a, b, owner };
+  let l = IX.res.get(e); if (!l) IX.res.set(e, l = []);
+  l.push(r);
+  return r;
+};
+IX.unreserve = function (r) { const l = IX.res.get(r.e); if (!l) return; const i = l.indexOf(r); if (i >= 0) l.splice(i, 1); if (!l.length) IX.res.delete(r.e); };
+/* who other than skip holds any of edge e between a and b */
+IX.reserved = function (e, a, b, skip) {
+  const l = IX.res.get(e); if (!l) return null;
+  const lo = Math.min(a, b), hi = Math.max(a, b);
+  for (const r of l) if (r.owner !== skip && Math.max(r.a, r.b) >= lo && Math.min(r.a, r.b) <= hi) return r.owner;
+  return null;
+};
+const swPair = sw => sw.mate ? [sw, sw.mate] : [sw];
+IX.take = function (owner, sw) { for (const s of swPair(sw)) { const k = IX.lock.get(s); if (k && k.owner === owner) k.n++; else IX.lock.set(s, { owner, n: 1 }); } };
+IX.drop = function (owner, sw) { for (const s of swPair(sw)) { const k = IX.lock.get(s); if (k && k.owner === owner && --k.n <= 0) IX.lock.delete(s); } };
+IX.lockedBy = function (sw) { for (const s of swPair(sw)) { const k = IX.lock.get(s); if (k) return k.owner; } return null; };
+IX.clear = function () { IX.res.clear(); IX.lock.clear(); Object.assign(IX.PLAYER, { signalsAhead: [], pieces: [], locks: [], last: null, passed: null }); };
+
+/* The player's train holds the route of a signal it is running up to at speed, and of the signal it has
+   just passed for as long as it is on that route, so an AI train is never let in ahead of it. Passing a
+   signal at Stop is a rules violation. */
+IX.playerTick = function () {
+  const P = IX.PLAYER, T = GAME.train, sc = GAME.scan;
+  if (!T || !sc) return;
+  const sig = sc.signal, av = Math.abs(S.v);
+  // passed a signal: the one we were closing on is no longer the one ahead
+  if (P.last && (!sig || sig.sg !== P.last.sg || sig.d > P.last.d + 5) && P.last.d < 40) {
+    const g = P.last.sg;
+    if (P.last.aspect === 'Stop') { JOB.note('signal', { why: g.why }); toast(`Passed a signal at Stop${g.why ? ': ' + g.why : ''}. Stop short of red signals and wait for them to clear.`, 'bad', 5200, 'stopsig'); }
+    P.passed = g.route && g.aspect !== 'Stop' ? g.route : null;
+  }
+  P.last = sig ? { sg: sig.sg, d: sig.d, aspect: sig.sg.aspect } : null;
+  const want = [], sws = [];
+  if (P.passed && P.passed.pieces.some(p => IX.on(p.e, p.a, p.b, []).includes(T))) { want.push(...P.passed.pieces); sws.push(...P.passed.switches); }
+  else P.passed = null;
+  // running against the current of traffic there are no signals for us: hold the main ahead instead
+  const f = S.v >= 0 ? T.endTP('front') : T.endTP('rear'), dir = (S.v >= 0 ? 1 : -1) * f.o;
+  const ln = f.e.line, against = (ln === ROUTE.main && dir < 0) || (ln === ROUTE.main2 && dir > 0);
+  if (against && av > 0.5) {
+    routeWalk(f.e, f.s, dir, 900 + av * av / 0.8, (e, a, b) => { want.push({ e, a, b }); }, (nd, d, facing, lined) => { sws.push(nd.sw); return !lined; });
+    if (!P.againstT || S.time - P.againstT > 120) toast(`Running against the current of traffic on track ${ln === ROUTE.main ? 1 : 2}. Trains coming the other way are held for you: keep it moving.`, 'warn', 5200, 'against');
+    P.againstT = S.time;
+  }
+  P.signalsAhead = [];
+  if (sig && sig.sg.route && sig.sg.aspect !== 'Stop' && av > 1 && sig.d < 250 + av * av / 0.8) {
+    P.signalsAhead = [sig.sg]; want.push(...sig.sg.route.pieces); sws.push(...sig.sg.route.switches);
+  }
+  for (const r of P.pieces) IX.unreserve(r);
+  for (const sw of P.locks) IX.drop(P, sw);
+  P.pieces = []; P.locks = [];
+  for (const p of want) if (!IX.reserved(p.e, p.a, p.b, P)) P.pieces.push(IX.reserve(P, p.e, p.a, p.b));
+  for (const sw of sws) { const o = IX.lockedBy(sw); if (!o || o === P) { IX.take(P, sw); P.locks.push(sw); } }
+};
+
+/* ---------------- AI trains ----------------
+   Each runs on its own main track in the current of traffic (track 1 eastward, track 2 westward), asking
+   the interlocking for a route one signal at a time and stopping at the signal when it is refused. A slow
+   train with a faster one close behind takes the passing siding on its track (Kenton for eastward trains,
+   Fostoria for westward ones) and waits there until it has gone by. Passenger trains make station stops. */
+const TRAFFIC = {
+  no12: { name: 'No. 12', sub: 'Westward local', loco: '1225', consist: 'passenger', dir: -1, vmax: 60, accel: 0.3, brake: 0.55, stops: true, seed: 12 },
+  no5: { name: 'No. 5', sub: 'Eastward express', loco: 'diesel', units: 2, livery: 'kn', consist: 'passenger', dir: 1, vmax: 70, accel: 0.32, brake: 0.6, stops: true, seed: 5 },
+  x2210: { name: 'Extra 2210 East', sub: 'Manifest freight', loco: 'diesel', units: 2, livery: 'fle', consist: 'freight', dir: 1, vmax: 45, accel: 0.12, brake: 0.32, seed: 2210 },
+};
+/* free running: where each train is on the road when you start (distance along track 1) */
+const FREE_TRAFFIC = [['no12', 13800], ['x2210', 7700], ['no5', 20400]];
+const PASSING = { 1: 'Kenton East', '-1': 'Fostoria East' };
+const DWELL = 35;
+
+class AITrain extends RemoteTrain {
+  constructor(id, def) {
+    const st = { lk: def.loco, ck: def.consist, u: def.units || 1, lv: def.livery || 'ss', mx: false, cu: null, no: null };
+    const road = ROAD_SHORT;
+    super(null, st, { seed: def.seed });
+    ROAD_SHORT = road;
+    this.id = id; this.def = def; this.name = def.name;
+    this.st = Object.assign(st, { hl: 2, wh: 0, bl: false, dl: true, rpm: 300, ex: 0, rv: 0.6 });
+    this.train.ai = this; this.train.v = 0;
+    this.line = def.dir > 0 ? ROUTE.main : ROUTE.main2;
+    this.route = []; this.sws = []; this.signalsAhead = []; this.endSig = null; this.end = null;
+    this.authLeft = 0; this.odo = 0; this.events = []; this.askT = 0; this.held = 0; this.heldWhy = ''; this.dwell = 0;
+    this.horn = []; this.hornT = 0; this.blown = new Set(); this.lookT = 0; this.block = null; this.yieldTo = null; this.yieldT = 0;
+  }
+  get v() { return this.train ? this.train.v : 0; }
+  set v(x) { if (this.train) this.train.v = x; }
+  /* stand the train with its front coupler at track position tp, facing the way it runs */
+  place(tp) {
+    const T = this.train;
+    T.place(tp); T.update(0, this.theta, this.st.rv);
+    this.placed = true; this.visible = true;
+    this.end = T.endTP('front'); this.authLeft = 0; this.endSig = null;
+  }
+  /* the track the train stands on, from rear coupler to front, as pieces */
+  footprint(pad = 0) {
+    const out = [], f = this.train.endTP('front');
+    f.advance(pad, null);
+    routeWalk(f.e, f.s, -f.o, this.train.length + 2 * pad, (e, a, b) => { out.push({ e, a, b }); }, () => {});
+    return out;
+  }
+
+  /* ---- asking for a route ---- */
+  /* the route from the end of our authority to the next signal facing our way, choosing legs as we go */
+  plan() {
+    const sigs = SCN.signals, out = { pieces: [], sws: [], sig: null, len: 0 };
+    let e = this.end.e, s = this.end.s, o = this.end.o, d = 0;
+    for (let g = 0; g < 40 && d < 4500; g++) {
+      const b = o > 0 ? e.len : 0;
+      let cut = null;
+      for (const q of sigs) {
+        const ql = q.loc || (q.loc = q.sg.line.locate(q.sg.sLine)); if (ql.edge !== e || (q.sg.dir > 0) !== (o > 0)) continue;
+        const ds = (ql.s - s) * o; if (ds <= 1 || ds > Math.abs(b - s)) continue;
+        if (!cut || ds < cut.ds) cut = { q, ds };
+      }
+      if (cut) { out.pieces.push({ e, a: s, b: s + o * cut.ds }); out.sig = cut.q; out.len = d + cut.ds; return out; }
+      out.pieces.push({ e, a: s, b }); d += Math.abs(b - s);
+      const end = o > 0 ? 1 : 0, nd = end ? e.b : e.a;
+      if (!nd) { out.len = d - 12; return out; }
+      let nx;
+      if (nd.sw) {
+        const sw = nd.sw, facing = sw.trunk.edge === e && sw.trunk.end === end;
+        const leg = facing ? this.choose(sw) : (sw.legs[0].edge === e && sw.legs[0].end === end ? 0 : 1);
+        out.sws.push({ sw, state: leg, d });
+        nx = facing ? sw.legs[leg] : sw.trunk;
+      } else nx = nd.next(e, end, null);
+      if (!nx) { out.len = d - 12; return out; }   // end of track: stop short of the bumper
+      e = nx.edge; o = nx.end === 0 ? 1 : -1; s = nx.end === 0 ? 0 : e.len;
+    }
+    out.len = d; return out;
+  }
+  /* which way to take a facing switch: straight on, unless it is our passing siding and we should let a faster train by */
+  choose(sw) {
+    if (sw.name !== PASSING[this.def.dir] || this.yieldTo) return this.yieldTo && sw.name === PASSING[this.def.dir] ? 1 : 0;
+    const f = this.follower();
+    if (f) { this.yieldTo = f; this.yieldT = 0; return 1; }
+    return 0;
+  }
+  /* a faster train coming up behind us on our track, within a few miles */
+  follower() {
+    const rear = this.train.endTP('rear'), hit = carFrom(rear, -1, 5000, carIndex(), this.train);
+    if (!hit) return null;
+    const c = hit.c, them = c === GAME.train ? Math.abs(S.v) : Math.abs(c.v || 0);
+    if (c === GAME.train) return them > 6 && hit.d < 3500 ? c : null;
+    if (c.ai && c.ai.def.dir === this.def.dir && c.ai.def.vmax > this.def.vmax + 8) return c;
+    return null;
+  }
+  /* why the route can't be had, or '' */
+  refused(r) {
+    const me = this.train;
+    if (this.yieldTo && this.inSiding() && !this.passedBy(this.yieldTo)) return `letting ${this.yieldTo === GAME.train ? 'you' : this.yieldTo.ai.name} by`;
+    for (const p of r.pieces) {
+      const on = IX.on(p.e, p.a, p.b, []).filter(c => c !== me);
+      if (on.length) return on[0] === GAME.train ? 'your train' : on[0].ai ? on[0].ai.name : 'cars';
+      const o = IX.reserved(p.e, p.a, p.b, this);
+      if (o) return o === IX.PLAYER ? 'your train' : o.name;
+    }
+    for (const { sw, state } of r.sws) for (const s of swPair(sw)) {
+      const o = IX.lockedBy(s);
+      if (o && o !== this && s.state !== state) return o === IX.PLAYER ? 'your train' : o.name;
+      const foul = IX.fouling(s, []).filter(c => c !== me);
+      if (foul.length) return foul[0] === GAME.train ? 'your train' : foul[0].ai ? foul[0].ai.name : 'cars';
+      if (Math.abs(s.anim - s.state) > 0.02) return 'a switch moving';
+    }
+    return '';
+  }
+  ask() {
+    const r = this.plan();
+    if (!r.pieces.length || r.len <= 1) return false;
+    const why = this.refused(r);
+    if (why) { this.heldWhy = why; return false; }
+    // grant: line and lock the switches, lock the track, and note what lies along it
+    const base = this.odo + this.authLeft;
+    for (const { sw, state, d } of r.sws) {
+      const changed = sw.state !== state;
+      for (const s of swPair(sw)) s.state = state;
+      IX.take(this, sw);
+      this.sws.push({ sw, at: base + d, changed, passed: false });
+    }
+    for (const p of r.pieces) this.route.push(IX.reserve(this, p.e, p.a, p.b));
+    if (this.endSig) this.signalsAhead.push(this.endSig);
+    let d = 0;
+    for (const p of r.pieces) {
+      const L = Math.abs(p.b - p.a);
+      this.events.push({ at: base + d, limit: p.e.limit * MPH });
+      if (this.def.stops) for (const st of ROUTE.stations) {
+        const m = this.stopMark(st); if (!m || m.e !== p.e) continue;
+        const k = (m.s - p.a) * Math.sign(p.b - p.a || 1);
+        if (k >= 0 && k <= L) this.events.push({ at: base + d + k + 18, stop: st.name });   // the cab on the mark
+      }
+      for (const c of SCN.crossings) if (c.edge === p.e) { const k = (c.s - p.a) * Math.sign(p.b - p.a || 1); if (k >= 0 && k <= L) this.events.push({ at: base + d + k - 380, horn: 'crossing' }); }
+      d += L;
+    }
+    this.events.sort((a, b) => a.at - b.at);
+    this.authLeft += r.len; this.endSig = r.sig;
+    const last = r.pieces[r.pieces.length - 1]; this.end = new TrackPos(last.e, last.b, Math.sign(last.b - last.a) || this.end.o);
+    this.heldWhy = '';
+    return true;
+  }
+  /* a station's mark on our track */
+  stopMark(st) {
+    if (st.kind !== 'depot' && st.kind !== 'small') return null;
+    if (this.line === ROUTE.main) return st.line === ROUTE.main ? { e: st.edge, s: st.s } : null;
+    const loc = ROUTE.main2.locate(ROUTE.to2(st.sLine)); return { e: loc.edge, s: loc.s };
+  }
+  inSiding() { const k = this.train.endTP('front').e.kind; return k === 'siding' || k === 'yard'; }
+  /* the train t has gone past us: its rear is ahead of our front along the main */
+  passedBy(t) {
+    if (!t || (t !== GAME.train && !AI.trains.some(a => a.train === t))) return true;
+    const dir = this.def.dir, L = ROUTE.mainLen, wrap = x => ((x % L) + L * 1.5) % L - L / 2;
+    const me = AI.along(this.train.endTP('front'), dir), f = AI.along(t.endTP('front'), dir), b = AI.along(t.endTP('rear'), dir);
+    if (me === null || f === null || b === null) return false;
+    return wrap(f - me) > 30 && wrap(b - me) > 30;
+  }
+
+  /* ---- running ---- */
+  tick(dt) {
+    const T = this.train, def = this.def;
+    // keep asking for the road while it is closer than our stopping distance and a bit
+    this.askT -= dt;
+    const stopD = this.v * this.v / (2 * def.brake);
+    if (this.authLeft < stopD + 400 && this.askT <= 0) { this.askT = 1; this.ask(); }
+    if (this.yieldTo) { this.yieldT += dt; if (this.yieldT > 480 || (!this.inSiding() && this.passedBy(this.yieldTo))) this.yieldTo = null; }
+    // something on the track ahead that should not be: brake for it
+    this.lookT -= dt;
+    if (this.lookT <= 0) {
+      this.lookT = 0.25;
+      const hit = carAhead(T, 1, Math.min(this.authLeft + 50, 1500), carIndex());
+      this.block = hit && hit.d < this.authLeft + 20 ? hit : null;
+    }
+    // speed allowed: track limits under the train and ahead, our own top speed, and stopping where we must
+    let vt = def.vmax * MPH;
+    for (const p of T.pts) vt = Math.min(vt, p.tp.e.limit * MPH);
+    // each target is a speed to be down to at a distance ahead; brake to meet the hardest of them
+    const b = def.brake * 0.85, v = this.v, ahead = x => x - this.odo;
+    let need = 0;
+    const target = (v1, d) => {
+      vt = Math.min(vt, Math.sqrt(v1 * v1 + 2 * b * Math.max(0, d)));
+      if (v > v1) need = Math.max(need, (v * v - v1 * v1) / (2 * Math.max(d, 0.5)));
+    };
+    target(0, this.authLeft - 14);
+    if (this.block) target(0, this.block.d - 20);
+    for (const ev of this.events) {
+      const d = ahead(ev.at);
+      if (ev.limit !== undefined && d > 0) target(ev.limit, d - 4);
+      if (ev.stop && !ev.done) { if (d > -3) target(0, d); else ev.done = true; }   // overrun: carry on
+      if (d > 2500) break;
+    }
+    if (this.dwell > 0) { vt = 0; this.dwell -= dt; if (this.dwell <= 0) this.toot([0.5, 0.35, 0.5]); }
+    // throttle and brake
+    let a;
+    if (this.block && this.block.d < stopD + 15 && v > 0.5) { a = -1.6; if (!this.emg) { this.emg = true; this.toot([1.4, 0.3, 1.4, 0.3, 1.4]); } }
+    else {
+      this.emg = false;
+      a = clamp((vt - v) * 0.5, -def.brake, def.accel * Math.min(1, 9 / (v + 4)));
+      if (need > b * 0.5) a = Math.min(a, -Math.min(need, def.brake * 1.3));
+    }
+    let nv = Math.max(0, v + a * dt);
+    if (vt < 0.05 && nv < 0.15) nv = 0;
+    this.accel = (nv - v) / Math.max(dt, 1e-3);
+    this.v = nv;
+    // station stops
+    for (const ev of this.events) if (ev.stop && !ev.done && ahead(ev.at) < 2 && this.v < 0.05) { ev.done = true; this.dwell = DWELL; this.st.bl = true; }
+    // horn for road crossings, ringing the bell through towns
+    for (const ev of this.events) if (ev.horn && !ev.done && ahead(ev.at) < 0) { ev.done = true; if (this.v > 3) this.toot([2.2, 0.35, 2.2, 0.35, 0.8, 0.35, 2.6]); }
+    if (this.st.bl && this.v > 13) this.st.bl = false;
+    if (this.dwell > 0 && this.dwell < 8) this.st.bl = true;
+    this.horning(dt);
+    // move
+    const d = this.v * dt;
+    if (d > 0) {
+      const lim = CARS.limit(T, d);
+      const moved = T.move(lim.d, {
+        onNode: node => { for (const x of this.sws) if (x.sw.node === node) x.passed = true; },
+        onRunThrough: () => {},
+        onBlocked: () => { this.v = 0; },
+      });
+      this.odo += moved; this.authLeft -= moved; this.theta -= moved / LG.rD;
+      if (lim.hit) CARS.contact(T, 1, lim.hit);
+      this.dirty = true;
+    }
+    this.events = this.events.filter(ev => ahead(ev.at) > -50 || (ev.stop && !ev.done));
+    if (this.v < 0.05 && this.dwell <= 0 && this.heldWhy) this.held += dt; else if (this.v > 0.5) this.held = 0;
+    this.st.ex = this.accel > 0.02 ? clamp(0.3 + 0.7 * this.accel / def.accel, 0.3, 1) : (this.v > 1 && this.accel > -0.02 ? 0.22 : 0);
+    this.st.rpm = 300 + (this.accel > 0.02 ? 750 * clamp(0.5 + 0.5 * this.accel / def.accel, 0, 1) : this.v > 1 && this.accel > -0.02 ? 300 : 0);
+    this.release();
+  }
+  /* give back the track behind us, and the switches once we are clear of them */
+  release() {
+    const T = this.train, rear = T.endTP('rear');
+    let k = this.route.findIndex(p => p.e === rear.e && (rear.s - p.a) * Math.sign(p.b - p.a || 1) >= -0.5 && (p.b - rear.s) * Math.sign(p.b - p.a || 1) >= -0.5);
+    if (k < 0 && this.route.length && !this.footprint().some(f => this.route.some(p => p.e === f.e))) k = this.route.length;   // left our route entirely
+    if (k > 0) { for (const p of this.route.splice(0, k)) IX.unreserve(p); }
+    if (this.route.length && this.route[0].e === rear.e) this.route[0].a = rear.s;
+    for (const x of this.sws.slice()) {
+      if (!x.passed || swPair(x.sw).some(s => T.fouls(s))) continue;
+      IX.drop(this, x.sw);
+      this.sws.splice(this.sws.indexOf(x), 1);
+      // put back to normal what we reversed, once no one is near it
+      if (x.changed && x.sw.state && !IX.lockedBy(x.sw) && !swPair(x.sw).some(s => IX.fouling(s, []).length)) for (const s of swPair(x.sw)) s.state = 0;
+    }
+    // the signals we hold a route from and have not reached yet
+    const f = T.endTP('front'), i = this.route.findIndex(p => p.e === f.e && (f.s - p.a) * Math.sign(p.b - p.a || 1) >= -0.5);
+    this.signalsAhead = this.signalsAhead.filter(q => {
+      const ql = q.loc, j = this.route.findIndex(p => p.e === ql.edge && (ql.s - p.a) * Math.sign(p.b - p.a || 1) >= -0.5 && (p.b - ql.s) * Math.sign(p.b - p.a || 1) >= -0.5);
+      return j >= 0 && (j > i || (j === i && (ql.s - f.s) * f.o > 0));
+    });
+  }
+  /* blow a pattern: lengths in seconds, alternately sounding and silent */
+  toot(p) { if (!this.horn.length) { this.horn = p.slice(); this.hornT = 0; } }
+  horning(dt) {
+    if (!this.horn.length) { this.st.wh = Math.max(0, this.st.wh - dt * 6); return; }
+    this.hornT += dt;
+    if (this.hornT >= this.horn[0]) { this.hornT = 0; this.horn.shift(); }
+    const on = this.horn.length % 2 === 1;
+    this.st.wh = clamp(this.st.wh + (on ? 8 : -8) * dt, 0, 1);
+  }
+  render(dt, cam) {
+    const T = this.train;
+    const far = T.lead.pos && T.lead.pos.distanceTo(cam) > 2600 + T.length;
+    if (far) { if (this.visible) { T.setVisible(false); this.visible = false; } this.updT += dt; if (this.updT < 0.5) return; }
+    else if (!this.visible) { T.setVisible(true); this.visible = true; this.dirty = true; }
+    this.updT = 0;
+    if (this.dirty || !far) { T.update(dt, this.theta, this.st.rv); this.dirty = false; }
+    this.fx(dt, this.st, cam);
+  }
+}
+/* position along track 1 of a track position on either main, a siding or a crossover (null elsewhere),
+   in the travel sense of dir */
+AI.along = function (tp, dir) {
+  const e = tp.e, ln = e.line; if (!ln) return null;
+  let s;
+  if (ln === ROUTE.main) s = e.lineS0 + tp.s;
+  else if (ln === ROUTE.main2) s = ROUTE.to1(e.lineS0 + tp.s);
+  else {
+    if (ln.s1 === undefined) { const n = ln.startNode, a = n && n.att.find(x => x.edge.line === ROUTE.main || x.edge.line === ROUTE.main2); if (!a) return null; const ss = a.edge.lineS0 + (a.end ? a.edge.len : 0); ln.s1 = a.edge.line === ROUTE.main ? ss : ROUTE.to1(ss); }
+    s = ln.s1 + e.lineS0 + tp.s;
+  }
+  return dir > 0 ? s : -s;
+};
+
+/* AI train a has gone right past consist T (its rear is ahead of T's front, the way it runs) */
+/* AI train a has gone by train T: its rear has passed both ends of T. On a loop "ahead" is ambiguous, so
+   memo keeps, for each end of T, how far a's rear has still to run to reach it, and an end counts as passed
+   when that distance wraps round from nearly nothing to nearly a whole lap. */
+AI.gone = function (a, T, memo) {
+  const dir = a.def.dir, L = ROUTE.mainLen, r = AI.along(a.train.endTP('rear'), dir);
+  if (r === null) return false;
+  let all = true;
+  for (const k of ['front', 'rear']) {
+    const p = AI.along(T.endTP(k), dir); if (p === null) { all = false; continue; }
+    const need = (((p - r) % L) + L) % L, was = memo[k];
+    if (was !== undefined && was < 600 && need > L - 600) memo[k + 'By'] = true;
+    memo[k] = need;
+    if (!memo[k + 'By']) all = false;
+  }
+  return all;
+};
+
+/* ---------------- the traffic on the railroad ---------------- */
+AI.enabled = () => !MP.on && !WORLD.custom && GAME.settings.traffic !== 'off';
+AI.clear = function () {
+  for (const a of AI.trains) a.dispose();
+  AI.trains = []; IX.clear();
+};
+/* make up the trains for free running or for a job, each where its timetable has it */
+AI.setup = function () {
+  AI.clear();
+  if (!AI.enabled()) return;
+  const job = JOB.wanted(), list = job ? job.traffic || [] : FREE_TRAFFIC;
+  for (const [id, s] of list) AI.spawn(id, s);
+};
+AI.spawn = function (id, sMain) {
+  const def = TRAFFIC[id]; if (!def) return null;
+  const a = new AITrain(id, def);
+  // the front at sMain, or further back along the road if something is in the way there
+  for (let k = 0; k < 8; k++) {
+    const sm = sMain - def.dir * k * 450, line = a.line, loc = line.locate(line === ROUTE.main ? sm : ROUTE.to2(sm));
+    a.place(new TrackPos(loc.edge, loc.s, def.dir));
+    const fp = a.footprint(60), me = a.train;
+    const clash = fp.some(p => IX.on(p.e, p.a, p.b, []).some(c => c !== me) || IX.reserved(p.e, p.a, p.b, a)) || NET.switches.some(sw => me.fouls(sw));
+    if (clash) continue;
+    // running at track speed if the road ahead is clear, standing at the signal if not
+    AI.trains.push(a); IX.idx = null;
+    if (a.ask()) a.v = Math.min(def.vmax * MPH * 0.8, Math.sqrt(2 * def.brake * 0.5 * Math.max(0, a.authLeft - 200)));
+    return a;
+  }
+  a.dispose();
+  return null;
+};
+AI.tick = function (dt) {
+  if (!AI.trains.length) return;
+  if (!AI.enabled()) { AI.clear(); return; }   // a multiplayer session or a custom world started under us
+  IX.playerTick();
+  for (const a of AI.trains) a.tick(dt);
+  // a train held up by ours says so, and on a job it costs a little for every minute
+  for (const a of AI.trains) {
+    if (a.heldWhy !== 'your train' || a.held === 0) { a.told = 0; continue; }
+    if (a.held > 25 && !a.told) { a.told = a.held; toast(`${a.name} is held at a red signal waiting on your train.`, 'warn', 4500, 'held' + a.id); }
+    if (a.told && a.held - a.told > 60) { a.told = a.held; JOB.note('delay', { name: a.name }); }
+  }
+};
+AI.render = function (dt) {
+  const cam = camera.position;
+  for (const a of AI.trains) a.render(dt, cam);
+};
+/* contact between the player's train or a cut of cars and an AI train, or two AI trains: they don't couple */
+AI.contact = function (A, dir, hit) {
+  const B = hit.c, T = GAME.train, aEnd = dir > 0 ? 'front' : 'rear';
+  const vB = hit.end ? velOf(B) * (hit.end === aEnd ? -1 : 1) : 0;
+  const closing = dir * (velOf(A) - vB), mph = Math.round(closing / MPH);
+  const ai = (A.ai || B.ai), other = A.ai ? B : A;
+  if (other === T) {
+    if (closing > 2.7) { GAME.derail(`Collided with ${ai.name} at ${mph} mph. Stop at red signals: they are protecting other trains.`, 'Collision'); return; }
+    sndClunk(0.8, 0); toast(`Buffered up against ${ai.name}.`, 'warn', 2600, 'aibump');
+  } else if (closing > 0.5) sndClunk(clamp(closing / COUPLE_OK, 0.3, 1.2) / (1 + Math.pow(ai.train.lead.pos.distanceTo(camera.position) / 30, 1.3)), 0);
+  for (const c of [A, B]) setVel(c, 0);
+};
+/* which AI train, if any, holds switch sw (locked for its route, or standing over it) */
+AI.holding = function (sw) {
+  const o = IX.lockedBy(sw);
+  if (o && o !== IX.PLAYER) return `${sw.name} is lined and locked for ${o.name}.`;
+  const a = AI.trains.find(t => swPair(sw).some(s => t.train.fouls(s)));
+  return a ? `${a.name} is on ${sw.name}.` : null;
+};
+AI.drawMap = function (g, tx, ty, opt) {
+  for (const a of AI.trains) {
+    const T = a.train; if (!T.lead.pos) continue;
+    g.strokeStyle = '#9fd0ff'; g.lineWidth = 4 * opt.w; g.beginPath();
+    T.vehicles.forEach((v, i) => { const x = tx(v.pos.x), y = ty(-v.pos.z); i ? g.lineTo(x, y) : g.moveTo(x, y); }); g.stroke();
+    const q = T.lead.pos, x = tx(q.x), y = ty(-q.z);
+    g.fillStyle = '#ffffff'; g.beginPath(); g.arc(x, y, 3 * opt.w, 0, TAU); g.fill();
+    if (opt.labels) { g.font = `700 ${opt.fs}px "IBM Plex Sans Condensed", sans-serif`; g.textAlign = 'left'; g.lineWidth = 3; g.strokeStyle = 'rgba(0,0,0,0.75)'; g.strokeText(a.name, x + 7, y - 7); g.fillStyle = '#9fd0ff'; g.fillText(a.name, x + 7, y - 7); }
+  }
+};
+
+/* ============================================================================
    Game: boot, world loading, main loop, rules, HUD
    ========================================================================== */
 const GAME = {
-  settings: { loco: '765', consist: 'passenger', time: 'morning', weather: 'clear', fire: 'auto', units: 1, livery: 'ss', mix: false, finish: 'standard', job: '', custom: { body: 0x2c5f8a, roof: 0x24384a, accent: 0xf0f0ea, letter: 0xf0f0ea, rail: 0xf0f0ea }, number: 4401 },
+  settings: { traffic: 'on', loco: '765', consist: 'passenger', time: 'morning', weather: 'clear', fire: 'auto', units: 1, livery: 'ss', mix: false, finish: 'standard', job: '', custom: { body: 0x2c5f8a, roof: 0x24384a, accent: 0xf0f0ea, letter: 0xf0f0ea, rail: 0xf0f0ea }, number: 4401 },
   train: null, running: false, ready: false, stats: { runThrough: 0 },
   events: {}, stopped: 0, lastStation: null, filling: null,
 };
@@ -8258,6 +8942,7 @@ function layoutFit(tp, need) {
 function finishTrain(t) {
   prepareTrain(t);
   CARS.setup();
+  AI.setup();
   if (!t.diesel) applySteamFinish(GAME.settings.finish);
   resetState();
   S.limit = Math.min(...t.pts.map(p => p.tp.e.limit));
@@ -8353,7 +9038,7 @@ function applyLiveriesLive() {
   const o = dieselOpts();
   t.units.forEach((m, u) => { const lv = dieselLiveryFor(o, u); applyLivery(m, lv, (o.number || lv.num) + u); });
 }
-const SAVE_KEYS = ['job', 'loco', 'consist', 'time', 'weather', 'fire', 'units', 'livery', 'mix', 'finish', 'custom', 'number'];
+const SAVE_KEYS = ['job', 'traffic', 'loco', 'consist', 'time', 'weather', 'fire', 'units', 'livery', 'mix', 'finish', 'custom', 'number'];
 function saveSettings() { try { const o = {}; for (const k of SAVE_KEYS) o[k] = GAME.settings[k]; localStorage.setItem('bd_settings', JSON.stringify(o)); } catch (e) {} }
 function loadSettings() { try { const o = JSON.parse(localStorage.getItem('bd_settings') || 'null'); if (o) for (const k of SAVE_KEYS) if (o[k] !== undefined) GAME.settings[k] = o[k]; } catch (e) {} if (!LOCO_SPEC[GAME.settings.loco]) GAME.settings.loco = '765'; if (!LIVERIES[GAME.settings.livery]) GAME.settings.livery = 'ss'; }
 GAME.needNewTrain = function () { const t = GAME.train, g = GAME.settings, j = JOB.wanted(); return !t || MP.needSpawn || t.locoKey !== g.loco || t.consistKey !== JOB.consist() || (j ? j.id : '') !== JOB.activeId() || (t.diesel && t.nUnits !== (+g.units || 1)); };
@@ -8398,6 +9083,7 @@ function buildMenu() {
   segButtons('optTime', PRESETS, 'time', k => { if (GAME.ready) applyLook(k, GAME.settings.weather, renderer, scene); });
   segButtons('optWeather', WEATHER, 'weather', k => { if (GAME.ready) { applyLook(GAME.settings.time, k, renderer, scene); FX.snow.visible = SKY.snow; } });
   segButtons('optFire', { auto: { name: 'Fireman', sub: 'Stoker & water handled' }, hand: { name: 'Hand fired', sub: 'You run the boiler' } }, 'fire', k => { S.autoFire = k === 'auto'; GAME.refreshKeys(); saveSettings(); });
+  segButtons('optTraffic', { on: { name: 'Timetable', sub: 'No. 5, No. 12 and freights on the road' }, off: { name: 'Clear road', sub: 'Just you and the signals' } }, 'traffic', () => { if (GAME.ready && GAME.train) AI.setup(); saveSettings(); });
   specGrid();
   jobSetup();
   $('btnStart').addEventListener('click', () => GAME.start());
@@ -8506,11 +9192,18 @@ GAME.refreshKeys = function () {
 };
 GAME.occupied = sw => GAME.train.fouls(sw);
 GAME.throwSwitch = function (sw) {
-  if (GAME.occupied(sw)) { toast(`${sw.name} is occupied by your train. Clear it before throwing.`, 'bad', 3200, 'occ'); return; }
-  if (CARS.occupied(sw)) { toast(`Cars are standing over ${sw.name}. Pull them clear before throwing.`, 'bad', 3200, 'occ'); return; }
-  const who = MP.occupant(sw);
-  if (who) { toast(`${who}'s train is on ${sw.name}. Wait until it clears.`, 'bad', 3200, 'occ'); return; }
-  sw.state = 1 - sw.state; sndThrow(); MP.noteThrow(sw);
+  // both switches of a crossover go over together, so both have to be clear
+  for (const s of swPair(sw)) {
+    if (GAME.occupied(s)) { toast(`${sw.name} is occupied by your train. Clear it before throwing.`, 'bad', 3200, 'occ'); return; }
+    if (CARS.occupied(s)) { toast(`Cars are standing over ${sw.name}. Pull them clear before throwing.`, 'bad', 3200, 'occ'); return; }
+    const who = MP.occupant(s);
+    if (who) { toast(`${who}'s train is on ${sw.name}. Wait until it clears.`, 'bad', 3200, 'occ'); return; }
+  }
+  const ai = AI.holding(sw);
+  if (ai) { toast(ai + ' Wait until it has gone by.', 'bad', 3200, 'occ'); return; }
+  const to = 1 - sw.state;
+  for (const s of swPair(sw)) { s.state = to; MP.noteThrow(s); }
+  sndThrow();
   toast(`${sw.name} lined for ${sw.lined}.`, sw.state ? 'warn' : 'good', 2600);
   if (MAP.visible) MAP.draw();
 };
@@ -8576,8 +9269,8 @@ function updateHUD(dt) {
   // signal
   const sl = $('sigLine');
   if (sc.signal && sc.signal.d < 3200) {
-    const rev = sc.signal.sg.sg.sw.state === 1;
-    sl.innerHTML = `<span class="aspect"><i style="background:${rev ? 'var(--stop)' : 'var(--clear)'}"></i><i style="background:${rev ? 'var(--clear)' : 'var(--stop)'}"></i></span> Signal ${fmtMi(sc.signal.d)}: <b style="color:var(--ink)">${rev ? 'Diverging Clear' : 'Clear'}</b>`;
+    const a = sc.signal.sg.aspect || 'Stop', L = ASPECT_LAMPS[a], css = { lampG: 'var(--clear)', lampR: 'var(--stop)', lampY: 'var(--approach)', lampL: '#dfe6ff' };
+    sl.innerHTML = `<span class="aspect"><i style="background:${css[L[0]]}"></i><i style="background:${css[L[1]]}"></i></span> Signal ${fmtMi(sc.signal.d)}: <b style="color:${a === 'Stop' ? 'var(--stop)' : 'var(--ink)'}">${a}</b>${a === 'Stop' && sc.signal.sg.why ? ` · ${sc.signal.sg.why}` : ''}`;
   } else sl.innerHTML = '';
   // stop / water / coal
   const stl = $('stopLine');
@@ -8585,6 +9278,7 @@ function updateHUD(dt) {
   const cars = CARS.ahead(GAME.train, dir, 500);
   if (cars) $('swMiniTxt').textContent += ` · cars ${fmtFt(cars.d)}`;
   if (act) stl.innerHTML = `<b>${act.label}</b> <button class="btn" id="btnService" style="padding:5px 8px;font-size:10px">${act.btn}</button>`;
+  else if (cars && cars.c.ai) stl.innerHTML = `<span style="color:var(--approach)">${cars.c.ai.name} ahead in <b>${fmtFt(cars.d)}</b></span>`;
   else if (cars) stl.innerHTML = cars.facing ? `Coupling in <b>${fmtFt(cars.d)}</b>${cars.d < 60 ? ` · ${Math.round(Math.abs(S.v) / MPH * 10) / 10} mph` : ''}` : `<span style="color:var(--stop)">Cars foul of the route in <b style="color:var(--stop)">${fmtFt(cars.d)}</b></span>`;
   else if (sc.end && sc.end.d < 400) stl.innerHTML = `<span style="color:var(--stop)">End of track in <b style="color:var(--stop)">${fmtMi(sc.end.d)}</b></span>`;
   else if (sc.station && sc.station.d < 6000) stl.innerHTML = `Next: <b>${sc.station.st.name}</b> ${fmtMi(Math.max(0, sc.station.d))}`;
@@ -8611,10 +9305,11 @@ function loop() {
   let dt = Math.min(clock.getDelta(), 0.05);
   const T = GAME.train; if (!T) return;
   const active = GAME.running && !S.paused && !S.derailed;
-  if (active) simStep(dt, T);
+  if (active) simStep(dt, T); else stepSwitches(dt);
   renderStep(dt, T);
 }
 function simStep(dt, T) {
+  stepSwitches(dt);
   {
     const n = Math.max(1, Math.ceil(dt / (1 / 120))), h = dt / n;
     for (let i = 0; i < n; i++) {
@@ -8654,6 +9349,7 @@ function simStep(dt, T) {
       else { S.coal = Math.min(19958, S.coal + 300 * dt); if (S.coal >= 19957) { GAME.filling = null; toast('Coal bunker full: 22 tons.', 'good'); } }
     }
     JOB.tick(dt);
+    AI.tick(dt);
     // station stop detection
     if (Math.abs(S.v) < 0.05) { stopT += dt; if (stopT > 1.2) stationStop(T); } else stopT = 0;
     // start-up slack
@@ -8666,10 +9362,11 @@ function simStep(dt, T) {
 }
 function renderStep(dt, T) {
   // visuals
-  updateSwitchVisuals(dt); updateSignals();
+  updateSwitchVisuals(); updateSignals(dt);
   T.update(dt, S.theta, S.reverser);
   CARS.render();
   CPL.frame(dt);
+  AI.render(dt);
   MP.frame(dt);
   if (GAME.running && !S.paused && !S.derailed) MP.contact(T);
   // headlight & glows
@@ -8856,7 +9553,7 @@ GAME.restore = function (d) {
     applyLook(GAME.settings.time, GAME.settings.weather, renderer, scene);
     cycleCamera(d.cam);
     GAME.running = true; $('menu').hidden = true; $('hud').hidden = false;
-    const keyOf = { optLoco: 'loco', optTrain: 'consist', optTime: 'time', optWeather: 'weather', optFire: 'fire', optLivery: 'livery', optUnits: 'units', optFinish: 'finish' };
+    const keyOf = { optLoco: 'loco', optTrain: 'consist', optTime: 'time', optWeather: 'weather', optFire: 'fire', optTraffic: 'traffic', optLivery: 'livery', optUnits: 'units', optFinish: 'finish' };
     for (const k in keyOf) [...$(k).children].forEach(c => c.setAttribute('aria-pressed', String(c.id === k + '_' + GAME.settings[keyOf[k]])));
     [...$('optMix').children].forEach(c => c.setAttribute('aria-pressed', String(c.id === 'optMix_' + (GAME.settings.mix ? 'mixed' : 'matched'))));
     refreshMenuGroups(); specGrid();
