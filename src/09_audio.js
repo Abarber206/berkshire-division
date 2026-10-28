@@ -209,6 +209,10 @@ function makeRemoteBus(diesel) {
   return { g, lp, roar, eng, kill: () => { try { g.disconnect(); lp.disconnect(); nodes.forEach(n => n.stop()); } catch (e) {} } };
 }
 function sndClunk(gain, delay) { if (!AU.on || gain < 0.01) return; const t = AU.ctx.currentTime + 0.01 + delay; envNoise(t, 0.16, 650, 3, 0.6 * gain, AU.world, 'bandpass', AU.noise, 0.003); envTone(t, 0.12, 75, 0.5 * gain, AU.world, 'sine', 45); }
+/* knuckles closing: a sharp crack, then the slack running in */
+function sndCouple(gain) { if (!AU.on || gain < 0.01) return; const t = AU.ctx.currentTime + 0.01; envNoise(t, 0.08, 2100, 7, 0.45 * gain, AU.world, 'bandpass', AU.white, 0.001); envNoise(t, 0.3, 560, 3, 0.75 * gain, AU.world, 'bandpass', AU.noise, 0.002); envTone(t, 0.2, 68, 0.6 * gain, AU.world, 'sine', 40); envNoise(t + 0.16, 0.2, 700, 3, 0.3 * gain, AU.world, 'bandpass', AU.noise, 0.003); }
+/* cut lever lifting the pin; with dump, the hoses part and the brake pipe vents */
+function sndPin(gain, dump) { if (!AU.on || gain < 0.01) return; const t = AU.ctx.currentTime + 0.01; envNoise(t, 0.1, 1600, 6, 0.3 * gain, AU.world, 'bandpass', AU.white, 0.002); envNoise(t + 0.14, 0.08, 2400, 8, 0.2 * gain, AU.world, 'bandpass', AU.white, 0.002); if (dump) envNoise(t + 0.3, 1.6, 3200, 0.8, 0.35 * gain, AU.world, 'bandpass', AU.white, 0.02); }
 function sndThrow() { if (!AU.on) return; const t = AU.ctx.currentTime + 0.01; envNoise(t, 0.18, 900, 4, 0.25, AU.world, 'bandpass', AU.white, 0.003); envNoise(t + 0.25, 0.12, 1400, 5, 0.2, AU.world, 'bandpass', AU.white, 0.002); }
 function sndChirp(night) {
   if (!AU.on) return; const t = AU.ctx.currentTime + 0.01;

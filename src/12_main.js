@@ -87,6 +87,7 @@ function resetState() {
   if (LOCO_SPEC[GAME.settings.loco].diesel) { S.cocks = false; S.light = SKY.night ? 2 : 2; }
 }
 function makeTrain() {
+  CARS.clear(GAME.train);
   if (GAME.train) GAME.train.dispose();
   const t = new Train(scene, GAME.settings.loco, GAME.settings.consist, dieselOpts());
   GAME.train = t;
@@ -137,6 +138,7 @@ function layoutFit(tp, need) {
 }
 function finishTrain(t) {
   prepareTrain(t);
+  CARS.setup();
   if (!t.diesel) applySteamFinish(GAME.settings.finish);
   resetState();
   S.limit = Math.min(...t.pts.map(p => p.tp.e.limit));
@@ -148,7 +150,7 @@ function finishTrain(t) {
 function prepareTrain(t) {
   for (const v of t.vehicles) linearizeObject(v.root);
   if (t.diesel) t.units.forEach(m => m.trucks.forEach(linearizeObject)); else linearizeObject(t.loco.leadTruck);
-  for (const im of [t.tSix, t.tFour, ...(t.ax6 || []), ...(t.ax4 || [])]) if (im) linearizeObject(im);
+  for (const im of t.inst) linearizeObject(im);
   for (const v of t.vehicles) v.brake = { AR: 90, BC: 0, BP: 90, emerg: false, released: true };
 }
 function dieselOpts() {
@@ -254,6 +256,7 @@ GAME.intro = function () {
   if (MP.on) setTimeout(() => toast(`Made up on ${GAME.spawnName}. The switches are shared with everyone in the room.`, '', 5600), 600);
   else if (WORLD.custom) setTimeout(() => toast(`On ${GAME.spawnName}. Every switch is lined straight: tap one or use Throw to change it.`, '', 5000), 600);
   else setTimeout(() => toast('Yard 2, Bellevue. The ladder is lined out to the main.', '', 5000), 600);
+  if (!MP.on && CARS.cuts.length) setTimeout(() => toast('Cars are waiting on Yard 3, Yard 4, the elevator track and quarry storage. Back in gently to couple; Couplers (U) cuts them off.', '', 7000, 'carsIntro'), 11500);
   if (GAME.train && GAME.train.diesel) setTimeout(() => toast((GAME.train.nUnits > 1 ? GAME.train.nUnits + ' units in multiple: they all answer the lead cab. ' : '') + 'Reverser to forward, engine brake off, then notch out the throttle.', '', 6500), 5200);
   else setTimeout(() => toast('Reverser forward, engine brake off, then ease the throttle open.', '', 6000), 5200);
 };
@@ -313,6 +316,7 @@ GAME.occupied = function (sw) {
 };
 GAME.throwSwitch = function (sw) {
   if (GAME.occupied(sw)) { toast(`${sw.name} is occupied by your train. Clear it before throwing.`, 'bad', 3200, 'occ'); return; }
+  if (CARS.occupied(sw)) { toast(`Cars are standing over ${sw.name}. Pull them clear before throwing.`, 'bad', 3200, 'occ'); return; }
   const who = MP.occupant(sw);
   if (who) { toast(`${who}'s train is on ${sw.name}. Wait until it clears.`, 'bad', 3200, 'occ'); return; }
   sw.state = 1 - sw.state; sndThrow(); MP.noteThrow(sw);
@@ -356,7 +360,7 @@ let hudT = 0, mapT = 0, gaugeT = 0;
 function updateHUD(dt) {
   hudT += dt; mapT += dt; gaugeT += dt;
   updateLevers();
-  if (gaugeT > 0.066) { gaugeT = 0; if ($('gaugeWrap').classList.contains('min')) { const m = $('gaugeMini'); const bp = Math.round(GAME.train.vehicles[0].brake.BP); const t = GAME.isDiesel() ? `<span><b>${S.notch ? 'N' + S.notch : 'IDLE'}</b></span><span>${S.DBF > 1000 ? 'DB' : 'TE'} <b>${Math.round((S.DBF > 1000 ? S.DBF * (GAME.train.nUnits || 1) : Math.abs(S.TE)) / LBF / 1000)}k</b></span><span>BP <b>${bp}</b></span>` : `<span><b>${Math.round(S.P)}</b> psi</span><span>glass <b>${Math.round(clamp((S.W + 0.1) / 1.2, 0, 1) * 100)}%</b></span><span>BP <b>${bp}</b></span>`; if (m.innerHTML !== t) m.innerHTML = t; } else drawGauges(); }
+  if (gaugeT > 0.066) { gaugeT = 0; if ($('gaugeWrap').classList.contains('min')) { const m = $('gaugeMini'); const bp = Math.round(GAME.train.lead.brake.BP); const t = GAME.isDiesel() ? `<span><b>${S.notch ? 'N' + S.notch : 'IDLE'}</b></span><span>${S.DBF > 1000 ? 'DB' : 'TE'} <b>${Math.round((S.DBF > 1000 ? S.DBF * (GAME.train.nUnits || 1) : Math.abs(S.TE)) / LBF / 1000)}k</b></span><span>BP <b>${bp}</b></span>` : `<span><b>${Math.round(S.P)}</b> psi</span><span>glass <b>${Math.round(clamp((S.W + 0.1) / 1.2, 0, 1) * 100)}%</b></span><span>BP <b>${bp}</b></span>`; if (m.innerHTML !== t) m.innerHTML = t; } else drawGauges(); }
   if (mapT > 0.18) { mapT = 0; drawMinimap(); if (MAP.visible) MAP.draw(); }
   if (hudT < 0.1) return; hudT = 0;
   const mph = Math.abs(S.v) / MPH;
@@ -386,12 +390,19 @@ function updateHUD(dt) {
   // stop / water / coal
   const stl = $('stopLine');
   const act = nearbyService();
+  const cars = CARS.ahead(GAME.train, dir, 500);
+  if (cars) $('swMiniTxt').textContent += ` · cars ${fmtFt(cars.d)}`;
   if (act) stl.innerHTML = `<b>${act.label}</b> <button class="btn" id="btnService" style="padding:5px 8px;font-size:10px">${act.btn}</button>`;
+  else if (cars) stl.innerHTML = cars.facing ? `Coupling in <b>${fmtFt(cars.d)}</b>${cars.d < 60 ? ` · ${Math.round(Math.abs(S.v) / MPH * 10) / 10} mph` : ''}` : `<span style="color:var(--stop)">Cars foul of the route in <b style="color:var(--stop)">${fmtFt(cars.d)}</b></span>`;
   else if (sc.end && sc.end.d < 400) stl.innerHTML = `<span style="color:var(--stop)">End of track in <b style="color:var(--stop)">${fmtMi(sc.end.d)}</b></span>`;
   else if (sc.station && sc.station.d < 6000) stl.innerHTML = `Next: <b>${sc.station.st.name}</b> ${fmtMi(Math.max(0, sc.station.d))}`;
   else stl.innerHTML = '';
+  stl.classList.toggle('cars', !act && !!cars);
   const bs = $('btnService'); if (bs) bs.onclick = () => act.go();
+  carPanel();
 }
+/* feet to the nearest foot up close, then tens and miles */
+function fmtFt(m) { const ft = m / FT; return ft < 100 ? Math.max(0, Math.round(ft)) + ' ft' : fmtMi(m); }
 function nearbyService() {
   const T = GAME.train; if (!T || !T.tender || Math.abs(S.v) > 0.3) return null;
   const tm = T.tender.root.matrixWorld;
@@ -417,9 +428,11 @@ function simStep(dt, T) {
     for (let i = 0; i < n; i++) {
       S.time += h;
       const d = physicsStep(h, T);
-      if (d !== 0) {
+      CARS.step(h);
+      if (d !== 0 && !S.derailed) {
         const mph = Math.abs(S.v) / MPH;
-        const moved = T.move(d, {
+        const lim = CARS.limit(T, d);
+        const moved = T.move(lim.d, {
           onNode: (node, from, to) => {
             const sw = node.sw; if (!sw) return;
             const div = from === sw.legs[1].edge || to === sw.legs[1].edge;
@@ -433,11 +446,12 @@ function simStep(dt, T) {
             else { if (mph2 > 1) sndClunk(1, 0); S.v = 0; S.vw = 0; toast('Stopped against the bumping post.', 'warn', 2500, 'bump'); }
           },
         });
-        T.dist += moved; S.odo += Math.abs(moved);
+        S.odo += Math.abs(moved);
+        if (lim.hit && !S.derailed) CARS.contact(T, Math.sign(d), lim.hit);
       }
     }
     // curve overspeed (lateral acceleration at the lead truck)
-    const lead = T.vehicles[0].leadPt.tp, k = Math.abs(lead.e.curv(lead.s));
+    const lead = T.lead.leadPt.tp, k = Math.abs(lead.e.curv(lead.s));
     const lat = S.v * S.v * k;
     if (lat > 2.7) GAME.derail(`Overturned on the curve at ${Math.round(Math.abs(S.v) / MPH)} mph.`);
     else if (lat > 1.75) toast('Too fast for this curve!', 'warn', 2000, 'curve');
@@ -461,6 +475,7 @@ function renderStep(dt, T) {
   // visuals
   updateSwitchVisuals(dt); updateSignals();
   T.update(dt, S.theta, S.reverser);
+  CARS.render();
   MP.frame(dt);
   if (GAME.running && !S.paused && !S.derailed) MP.contact(T);
   // headlight & glows
@@ -495,7 +510,7 @@ function renderStep(dt, T) {
   SKY.clouds.position.set(camera.position.x, camera.position.y + 1600, camera.position.z);
   SKY.clouds.material.map.offset.x += dt * 0.0006; SKY.clouds.material.map.offset.y += dt * 0.0003;
   SKY.moon.position.copy(SKY.sunDir).multiplyScalar(7000).add(camera.position);
-  const lp = (MP.view() || T).vehicles[0].pos;
+  const lp = (MP.view() || T).lead.pos;
   SKY.sun.target.position.copy(lp); SKY.sun.position.copy(lp).addScaledVector(SKY.sunDir, 300);
   updateTrackLOD(camera); updateDetailLOD(camera, scene, dt);
   // effects & sound
@@ -512,7 +527,7 @@ function stationStop(T) {
     const d = cab.distanceTo(st.p); if (d > 120) continue;
     if (GAME.lastStation === st.name) return;
     GAME.lastStation = st.name;
-    const along = _v1.subVectors(cab, st.p).dot(T.vehicles[0].fwd);
+    const along = _v1.subVectors(cab, st.p).dot(T.lead.fwd);
     const ft = Math.round(Math.abs(along) / FT);
     const grade = ft < 25 ? 'right on the mark' : ft < 80 ? `${ft} ft ${along > 0 ? 'past' : 'short of'} the mark` : `${ft} ft ${along > 0 ? 'past' : 'short of'} the platform`;
     toast(`Stopped at ${st.name}: ${grade}.`, ft < 80 ? 'good' : 'warn', 4500);
@@ -538,7 +553,7 @@ function steamFX(dt, T, tv) {
         const smokiness = clamp(0.25 + (S.stoker - S.fire * 0.75) * 1.4 + intensity * 0.2, 0.08, 0.85), gv = lerp(0.9, 0.24, smokiness);
         for (let j = 0; j < 3; j++) emit(stack, new THREE.Vector3(tv.x + (Math.random() - 0.5) * 1.5, 7 + 13 * intensity + Math.random() * 3, tv.z + (Math.random() - 0.5) * 1.5), 4 + Math.random() * 3 + intensity * 2, 1.1, 7 + intensity * 7, 0.55 + 0.25 * intensity, [gv, gv * 0.98, gv * 0.95], 0.9, 1.1);
         if (S.priming) emit(stack, new THREE.Vector3(tv.x, 9, tv.z), 2.5, 0.8, 5, 0.6, [0.95, 0.96, 0.98], 0.2, 1.2);
-        if (S.cocks) for (const cp of L.cockPos) { const p = T.worldOf(cp); const side = new THREE.Vector3(0, 0, Math.sign(cp.z) * (4 + Math.random() * 3)).applyQuaternion(_cq.setFromRotationMatrix(_cm.extractRotation(L.root.matrixWorld))); emit(p, new THREE.Vector3(tv.x + side.x + T.vehicles[0].fwd.x * 3, -0.6, tv.z + side.z + T.vehicles[0].fwd.z * 3), 1.1 + Math.random() * 0.4, 0.4, 3.2, 0.7, [0.95, 0.95, 0.97], 0.4, 1.6); }
+        if (S.cocks) for (const cp of L.cockPos) { const p = T.worldOf(cp); const side = new THREE.Vector3(0, 0, Math.sign(cp.z) * (4 + Math.random() * 3)).applyQuaternion(_cq.setFromRotationMatrix(_cm.extractRotation(L.root.matrixWorld))); emit(p, new THREE.Vector3(tv.x + side.x + T.lead.fwd.x * 3, -0.6, tv.z + side.z + T.lead.fwd.z * 3), 1.1 + Math.random() * 0.4, 0.4, 3.2, 0.7, [0.95, 0.95, 0.97], 0.4, 1.6); }
       } else if (k % 2 === 0 && n > 0.15) sndClank(n);
     }
     chuffQ = q;
@@ -577,7 +592,7 @@ function dieselFX(dt, T, tv) {
 }
 function effectsAndSound(dt, T) {
   const L = T.loco, DSL = T.diesel;
-  const tv = new THREE.Vector3().copy(T.vehicles[0].fwd).multiplyScalar(S.v);
+  const tv = new THREE.Vector3().copy(T.lead.fwd).multiplyScalar(S.v);
   const fx = DSL ? dieselFX(dt, T, tv) : steamFX(dt, T, tv);
   const working = fx.working;
   if (S.bell) { bellT += dt; if (bellT > (DSL ? 1.05 : 0.86)) { bellT = 0; sndBell(DSL); } } else bellT = 0.8;
@@ -593,10 +608,10 @@ function effectsAndSound(dt, T) {
   setG(AU.wind.g, inCab ? 0.32 * Math.min(1, (Math.abs(S.v) / 30) ** 2) + 0.02 : 0.03);
   setG(AU.firedoor.g, !DSL && inCab ? 0.14 * S.fire : 0);
   updateDieselAudio(DSL, inCab, T.nUnits || 1);
-  const b0 = T.vehicles[0].brake;
+  const b0 = T.lead.brake;
   setG(AU.bpExhaust.g, b0.dBP < -0.3 ? Math.min(0.5, -b0.dBP * 0.06) : 0, 0.05);
-  const lead = T.vehicles[0].leadPt.tp, kk = Math.abs(lead.e.curv(lead.s));
-  const gw = 1 / (1 + Math.pow(cp.distanceTo(T.vehicles[0].pos) / 30, 1.3));
+  const lead = T.lead.leadPt.tp, kk = Math.abs(lead.e.curv(lead.s));
+  const gw = 1 / (1 + Math.pow(cp.distanceTo(T.lead.pos) / 30, 1.3));
   setG(AU.flange.g, kk > 1 / 320 && Math.abs(S.v) > 1.5 ? 0.05 * Math.min(1, Math.abs(S.v) / 8) * gw : 0, 0.2);
   const bcAvg = T.vehicles.reduce((a, v) => a + v.brake.BC, 0) / T.vehicles.length;
   setG(AU.bsq.g, bcAvg > 15 && Math.abs(S.v) > 0.3 && Math.abs(S.v) < 9 ? 0.035 * gw : 0, 0.15);

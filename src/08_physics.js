@@ -74,13 +74,17 @@ function physicsStep(dt, train) {
   if (z === 'REL') { erT = 90; erRate = 5; } else if (z === 'RUN') { erT = 90; erRate = 2.2; } else if (z === 'LAP') { erT = S.ER; } else if (z === 'SRV') { erT = 90 - (6 + 20 * (S.brakeH - 0.28) / 0.62); erRate = 1.6; } else { erT = 0; erRate = 40; }
   const prevER = S.ER;
   if (erT > S.ER) S.ER = Math.min(erT, S.ER + erRate * dt * (S.MR > S.ER + 5 ? 1 : 0.2)); else S.ER = Math.max(erT, S.ER - erRate * dt);
-  // brake pipe propagation front to rear
-  let prev = S.ER, chargeFlow = 0;
-  for (let i = 0; i < V.length; i++) {
-    const b = V[i].brake, tau = i === 0 ? 0.35 : 0.22;
-    const nb = b.BP + (prev - b.BP) * Math.min(1, dt / tau);
-    b.dBP = (nb - b.BP) / dt; if (nb > b.BP) chargeFlow += nb - b.BP;
-    b.BP = nb; prev = b.BP;
+  // brake pipe propagation outward from the engine, both ways when cars are coupled ahead of it
+  let chargeFlow = 0;
+  const li = train.li;
+  for (const step of [1, -1]) {
+    let prev = step > 0 ? S.ER : V[li].brake.BP;
+    for (let i = step > 0 ? li : li - 1; i >= 0 && i < V.length; i += step) {
+      const b = V[i].brake, tau = i === li ? 0.35 : 0.22;
+      const nb = b.BP + (prev - b.BP) * Math.min(1, dt / tau);
+      b.dBP = (nb - b.BP) / dt; if (nb > b.BP) chargeFlow += nb - b.BP;
+      b.BP = nb; prev = b.BP;
+    }
   }
   if (z === 'EMG') for (const v of V) v.brake.BP = Math.max(0, v.brake.BP - 60 * dt);
   // compressor
@@ -111,7 +115,7 @@ function physicsStep(dt, train) {
     }
   }
   // locomotive: independent brake + automatic (bail-off releases the automatic)
-  const lb = V[0].brake;
+  const lb = V[li].brake;
   const ind = clamp((S.indH - 0.1) / 0.9, 0, 1) * 45;
   const autoLoco = S.bailoff ? 0 : lb.BC;
   S.BCloco = Math.max(ind, autoLoco);
@@ -159,7 +163,7 @@ function physicsStep(dt, train) {
     M += mass;
     const f = v.fp[0].F && v.fp[1].F ? _v1.addVectors(v.fp[0].F.f, v.fp[1].F.f).multiplyScalar(0.5) : _v1.set(1, 0, 0);
     Fgrade -= mass * 9.81 * f.y;
-    if (i === 0) gradeLead = f.y;
+    if (i === li) gradeLead = f.y;
     const tons = mass / STON;
     const k = Math.abs(v.fp[0].tp.e.curv(v.fp[0].tp.s));
     let R = 1.3 * tons + 29 * v.axles + (v.kind === 'coach' ? 0.03 : 0.045) * tons * vm + (i === 0 ? 0.0024 * 125 : 0.0005 * (v.area || 90)) * vm * vm;
