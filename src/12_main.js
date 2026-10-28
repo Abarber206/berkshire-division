@@ -365,42 +365,45 @@ GAME.pause = function (p) {
   if (p) { $('menu').hidden = false; startLabel(); }
 };
 GAME.fail = function (title, body) { S.throttle = 0; if (JOB.fail(title, body)) return; $('bigMsg').classList.remove('wreck'); $('bigTitle').textContent = title; $('bigBody').textContent = body; $('bigMsg').hidden = false; };
-/* A derailment plays out: the train keeps its way on, ploughing along with the cars nearest the point
-   of impact going over and the ones behind piling in, and only once it has all come to rest does the
-   game say what happened. wk says where and how hard: { a: metres back from the front coupler, side,
-   k: 0..1 }; left out, the leading end goes, as hard as the speed it was doing. A collision (hit) has
-   met something solid, so most of its speed goes into the wreck rather than the slide. */
-const WRECK_DECEL = 3.2;
+/* A derailment plays out. The cars come off the rails as rigid bodies (WreckSim, 07d_wreck.js) with the
+   speed the train had, starting with the one at the point of impact; the rest keep running on the
+   rails into the pile until they are dragged off or hit it hard, and only once it has all come to rest
+   does the game say what happened. wk says where and how hard: { a: metres back from the front coupler,
+   side, k: 0..1 }; left out, the leading end goes, as hard as the speed it was doing. A collision (hit)
+   has met something solid: the car that hit stops almost dead and the train behind runs into it. */
 GAME.derail = function (why, title = 'Derailed', wk, hit) {
   if (S.derailed) return;
   const T = GAME.train, v0 = Math.abs(S.v), mph = v0 / MPH;
   if (hit === undefined) hit = title === 'Collision';
-  if (T) T.wreck(Object.assign({ a: S.v < 0 ? T.length : 0, side: Math.random() < 0.5 ? -1 : 1, k: clamp((mph - 4) / 40, 0.15, 1), v0 }, wk, { seed: 1 + ((Math.random() * 1e9) | 0) }));
-  S.derailed = true; S.throttle = 0; MP.dirty = true;
-  if (hit) S.v *= 0.15;
-  S.vw = S.v;
-  GAME.wrecking = { title, why, still: 0, clunkT: 0, done: false };
+  if (T) T.wreck(Object.assign({ a: S.v < 0 ? T.length : 0, side: Math.random() < 0.5 ? -1 : 1, k: clamp((mph - 4) / 40, 0.15, 1), v0 }, wk, { vs: S.v, hit, seed: 1 + ((Math.random() * 1e9) | 0) }));
+  S.derailed = true; S.throttle = 0; S.vw = S.v; MP.dirty = true;
+  GAME.wrecking = { title, why, clunkT: 0, done: false, kin: { v: S.v, mass: 0, force: 0 } };
   if (AU.on) for (let i = 0; i < 8; i++) sndClunk(1, i * 0.07);
   CAM.shakeHit = 1;
   toast(`${title}! ${why}`, 'bad', 4500, 'derail');
 };
-/* the wrecked train sliding to rest: no power, no brakes that matter, just the cars digging in */
 GAME.wreckStep = function (dt, T) {
   const W = GAME.wrecking; if (!W) return;
+  const R = T.rb, kin = W.kin;
+  kin.v = S.v; kin.mass = 0; for (const v of T.vehicles) if (!v.rb) kin.mass += v.mass || 40000;
+  // a fault in the wreck physics must never freeze the game: the pile just stays where it is
+  if (R && !R.asleep) { try { R.step(dt, kin); } catch (e) { console.warn('wreck', e); R.asleep = true; kin.v = 0; } }
+  S.v = S.vw = kin.mass > 0 ? kin.v : 0;
   if (S.v !== 0) {
-    const nv = Math.sign(S.v) * Math.max(0, Math.abs(S.v) - WRECK_DECEL * dt), d = (S.v + nv) / 2 * dt;
-    S.v = S.vw = nv;
-    const lim = CARS.limit(T, d);
+    // the cars still on the rails run on
+    const d = S.v * dt, lim = CARS.limit(T, d);
     const moved = T.move(lim.d, { onBlocked: () => { S.v = S.vw = 0; } });
     S.odo += Math.abs(moved);
     if (lim.hit) { S.v = S.vw = 0; sndClunk(1.2, 0); }   // ploughed into standing cars
+  }
+  const moving = Math.abs(S.v) > 0.05 || (R && !R.asleep);
+  if (moving) {
     CAM.shakeHit = Math.max(CAM.shakeHit, clamp(Math.abs(S.v) / 20, 0, 0.5));
     W.clunkT -= dt;
-    if (W.clunkT <= 0 && AU.on) { W.clunkT = 0.1 + Math.random() * 0.25; sndClunk(clamp(Math.abs(S.v) / 6, 0.3, 1.5), 0); }
-    W.still = 0;
-  } else if (!W.done && (W.still += dt) > 1.5) {
+    if (W.clunkT <= 0 && AU.on) { W.clunkT = 0.12 + Math.random() * 0.3; sndClunk(clamp(Math.abs(S.v) / 6, 0.3, 1.5), 0); }
+  } else if (!W.done) {
     // the dust has settled: a job is over; otherwise offer to put it back on the rails
-    W.done = true;
+    W.done = true; S.v = S.vw = 0;
     if (!JOB.fail(W.title, W.why)) GAME.wreckBar();
   }
 };
