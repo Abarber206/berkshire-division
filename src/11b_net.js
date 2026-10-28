@@ -203,7 +203,7 @@ function mpJoints(T, mem, speed, cp) {
     const pts = (v.kind === 'loco' || v.kind === 'loco2') ? (T.diesel ? [[v.fp[0], 3, DG.axle], [v.fp[1], 3, DG.axle]] : [[v.leadPt, 1, 0], [v.fp[0], 4, 1.855]]) : v.tp.map((p, i) => [p, v.trucks[i].type === 'four' ? 2 : 3, v.trucks[i].sp || (v.trucks[i].type === 'four' ? 1.73 : 1.676)]);
     for (const [p, axles, sp] of pts) {
       const j = Math.floor(p.tp.s / 11.89), prev = mem.get(p);
-      if (prev && prev.e === p.tp.e && prev.j !== j) for (let a = 0; a < axles; a++) sndJoint(g * (a === 0 ? 1 : 0.8), a * sp / Math.max(0.5, Math.abs(speed)));
+      if (prev && prev.e === p.tp.e && prev.j !== j) for (let a = 0; a < axles; a++) sndJoint(g * (a === 0 ? 1 : 0.8), a * sp / Math.max(0.5, Math.abs(speed)), v.pos, Math.abs(speed));
       mem.set(p, { e: p.tp.e, j });
     }
   }
@@ -300,32 +300,12 @@ class RemoteTrain {
     // sound
     if (!AU.on) return;
     if (!this.bus) this.bus = makeRemoteBus(T.diesel);
-    const t = AU.ctx.currentTime, gL = d > 1000 ? 0 : 1 / (1 + Math.pow(d / 26, 1.25));
-    setG(this.bus.g, gL, 0.1); this.bus.lp.frequency.setTargetAtTime(clamp(16000 / (1 + d / 80), 900, 16000), t, 0.1);
-    setG(this.bus.roar, 0.3 * Math.min(1, Math.abs(this.v) / 22), 0.2);
-    if (this.bus.eng) {
-      const E = this.bus.eng, rpm = Math.max(300, st.rpm || 0), fire = rpm / 60 * 6, rf = clamp((rpm - 300) / 750, 0, 1);
-      E.o1.frequency.setTargetAtTime(fire, t, 0.1); E.o2.frequency.setTargetAtTime(fire / 2, t, 0.1); E.f.frequency.setTargetAtTime(260 + 700 * rf + 400 * rf * st.ex, t, 0.1);
-      setG(E.g, st.rpm > 20 ? (0.2 + 0.3 * rf) * (1 + 0.28 * (st.u - 1)) : 0, 0.15);
-    }
-    if (st.bl) { this.bellT += dt; if (this.bellT > (T.diesel ? 1.05 : 0.86)) { this.bellT = 0; if (gL > 0.01) sndBell(T.diesel, this.bus.g); } } else this.bellT = 0.8;
-    if (st.wh > 0.02 && !this.wh) this.wh = makeWhistle(WHISTLES[LOCO_SPEC[st.lk].whistle]);
-    if (this.wh) {
-      const W = this.wh, src = T.worldOf(T.diesel ? L.hornPos : L.whistlePos, this.wp);
-      const toCam = _mpA.subVectors(cam, src), dist = toCam.length(); toCam.normalize();
-      const riding = CAM.mode !== 'side' && !MP.watching && GAME.train;
-      const vl = riding ? _mpB.copy(GAME.train.lead.fwd).multiplyScalar(S.v).dot(toCam) : 0;
-      const dop = 343 / (343 - clamp(this.tv.dot(toCam) - vl, -60, 60));
-      setG(W.out, (1 / (1 + Math.pow(dist / 90, 1.1))) * Math.pow(st.wh, T.diesel ? 0.5 : 0.8) * 0.95, W.attack);
-      const bend = 1 - W.quill * (1 - st.wh);
-      for (const v of W.voices) { const f = v.f * bend * dop; v.o1.frequency.setTargetAtTime(f, t, 0.04); v.o2.frequency.setTargetAtTime(f * v.ratio2, t, 0.04); }
-      W.lp.frequency.setTargetAtTime(clamp(11000 / (1 + dist / 160), 1800, 7000), t, 0.1);
-    }
+    remoteSound(this, dt, st, d, cam);
     if (d < 160 && Math.abs(this.v) > 0.6) mpJoints(T, this.mem, this.v, cam);
   }
   dispose() {
     this.train.disposeDeep();
-    if (this.bus) this.bus.kill(); if (this.wh) this.wh.kill();
+    if (this.bus) this.bus.kill(); if (this.wh) this.wh.kill(); this.bus = this.wh = null;
   }
 }
 

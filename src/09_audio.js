@@ -1,5 +1,6 @@
 /* ============================================================================
-   Synthesized sound: exhaust, whistle, bell, air pump, rails, ambience
+   Sound: the audio graph, and synthesized voices that stand in for the
+   recordings of 09b_sound.js when those can't be loaded
    ========================================================================== */
 const AU = { ctx: null, on: false };
 function audioInit() {
@@ -43,6 +44,7 @@ function audioInit() {
   buildDieselAudio();
   AU.lastJ = new Map();
   AU.on = true;
+  SND.init();
 }
 /* Whistles and horns. Each locomotive gets its own chord and its own tone colour:
    - a deep, mellow six-chime (minor voicing) with a long quill,
@@ -125,6 +127,7 @@ function buildDieselAudio() {
 function updateDieselAudio(on, inCab, units = 1) {
   const Z = AU.dz; if (!Z) return;
   const t = AU.ctx.currentTime, tc = 0.08;
+  if (dieselRec(on, inCab, units)) on = false;
   if (!on) { Z.out.gain.setTargetAtTime(0, t, 0.05); Z.tbG.gain.setTargetAtTime(0, t, 0.05); Z.tnG.gain.setTargetAtTime(0, t, 0.05); Z.tmG.gain.setTargetAtTime(0, t, 0.05); Z.dbG.gain.setTargetAtTime(0, t, 0.05); return; }
   const rpm = Math.max(1, S.rpm), fire = rpm / 60 * 6, rf = clamp((rpm - 300) / 750, 0, 1);
   Z.o1.frequency.setTargetAtTime(fire, t, tc); Z.o2.frequency.setTargetAtTime(fire / 2, t, tc);
@@ -141,7 +144,7 @@ function updateDieselAudio(on, inCab, units = 1) {
   Z.tmG.gain.setTargetAtTime(0.06 * work * Math.min(1, v / 2) * (inCab ? 0.5 : 1), t, 0.15);
   Z.dbF.frequency.setTargetAtTime(380 + 900 * S.dbLoad, t, 0.3); Z.dbG.gain.setTargetAtTime(0.45 * S.dbLoad, t, 0.4);
 }
-function sndCrank() { if (!AU.on) return; const t = AU.ctx.currentTime + 0.005; envNoise(t, 0.22, 140, 1.2, 0.5, AU.loco, 'lowpass', AU.noise, 0.02); envTone(t, 0.25, 70 + Math.random() * 10, 0.22, AU.loco, 'sawtooth', 55); }
+function sndCrank() { if (!AU.on) return; if (SND.has('dz_start')) { const now = AU.ctx.currentTime; if (now > (SND.crankEnd || 0)) { const p = SND.shot('dz_start', AU.loco, { gain: SND_GAIN.dz_start || 1, vary: 0.02 }); if (p) SND.crankEnd = now + p.s.buffer.duration; } return; } const t = AU.ctx.currentTime + 0.005; envNoise(t, 0.22, 140, 1.2, 0.5, AU.loco, 'lowpass', AU.noise, 0.02); envTone(t, 0.25, 70 + Math.random() * 10, 0.22, AU.loco, 'sawtooth', 55); }
 function envNoise(t, dur, f, q, gain, dest, type = 'bandpass', buf = AU.noise, att = 0.006) {
   const ctx = AU.ctx; const s = ctx.createBufferSource(); s.buffer = buf; const fl = ctx.createBiquadFilter(); fl.type = type; fl.frequency.value = f; fl.Q.value = q; const g = ctx.createGain();
   g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(Math.max(0.0002, gain), t + att); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
@@ -156,6 +159,7 @@ function envTone(t, dur, f, gain, dest, type = 'sine', f2) {
 /* one exhaust beat */
 function sndChuff(k, n, intensity, dest = AU.loco, cocks = S.cocks) {
   if (!AU.on) return;
+  if (SND.has('chuff')) return chuffRec(k, n, intensity, dest, cocks);
   const t = AU.ctx.currentTime + 0.005;
   const dur = clamp(0.38 / (1 + n * 0.85), 0.055, 0.34);
   const limp = (k % 4 === 1 || k % 4 === 3) ? 0.82 : 1;
@@ -167,53 +171,44 @@ function sndChuff(k, n, intensity, dest = AU.loco, cocks = S.cocks) {
   if (cocks) envNoise(t, Math.min(0.5, dur * 1.8), 2600, 0.6, 0.35 * Math.min(1, intensity + 0.3), dest, 'highpass', AU.white, 0.01);
 }
 function sndClank(n) {
-  if (!AU.on) return; const t = AU.ctx.currentTime + 0.003;
+  if (!AU.on) return; if (SND.has('clank')) { SND.shot('clank', AU.loco, { gain: (SND_GAIN.clank || 1) * clamp(n / 3, 0.3, 1) }); return; } const t = AU.ctx.currentTime + 0.003;
   envNoise(t, 0.05, 1100, 6, 0.18, AU.loco, 'bandpass', AU.white, 0.002);
   envTone(t, 0.06, 310 + Math.random() * 30, 0.08, AU.loco, 'triangle');
 }
-function sndJoint(gain, delay = 0) {
-  if (!AU.on || gain < 0.01) return; const t = AU.ctx.currentTime + 0.005 + delay;
+function sndJoint(gain, delay = 0, pos = null, v = 10) {
+  if (!AU.on || gain < 0.01) return;
+  if (SND.has('joint')) return jointRec(gain, delay, pos, v);
+  const t = AU.ctx.currentTime + 0.005 + delay;
   envNoise(t, 0.035, 2300, 1.3, 0.5 * gain, AU.world, 'bandpass', AU.white, 0.0015);
   envTone(t, 0.07, 140, 0.45 * gain, AU.world, 'sine', 70);
 }
 function sndPump(phase) {
-  if (!AU.on) return; const t = AU.ctx.currentTime + 0.005;
+  if (!AU.on) return; if (SND.has('pump')) { SND.shot('pump', AU.loco, { i: SND.bufs.pump.length > 1 ? phase % 2 : 0, gain: SND_GAIN.pump || 1, vary: 0.03 }); return; } const t = AU.ctx.currentTime + 0.005;
   if (phase % 2) envNoise(t, 0.22, 800, 1.2, 0.22, AU.loco, 'bandpass', AU.noise, 0.02);
   else { envNoise(t, 0.16, 300, 1, 0.3, AU.loco, 'lowpass', AU.noise, 0.01); envTone(t, 0.1, 90, 0.12, AU.loco); }
 }
 function sndBell(diesel, dest = AU.loco) {
-  if (!AU.on) return; const t = AU.ctx.currentTime + 0.005;
+  if (!AU.on) return;
+  // the steam engine's big cast bell rings lower than the diesel's
+  if (SND.has('bell')) { SND.shot('bell', dest, { gain: SND_GAIN.bell || 1, rate: diesel ? 1 : 0.8, vary: 0.01 }); return; } const t = AU.ctx.currentTime + 0.005;
   const f = diesel ? 640 : 435;
   for (const [r, g, d] of [[1, 0.5, 2.6], [2.02, 0.28, 1.8], [2.74, 0.22, 1.3], [3.95, 0.14, 0.9], [5.41, 0.08, 0.6], [0.5, 0.18, 2.0]]) envTone(t, d, f * r, g * 0.55, dest, 'sine');
   envNoise(t, 0.03, 4000, 2, 0.15, dest, 'bandpass', AU.white, 0.001);
 }
-/* a sound bus for another player's train: distance gain and air absorption, its own rolling roar,
-   and for a diesel a small prime-mover voice */
-function makeRemoteBus(diesel) {
-  const ctx = AU.ctx;
-  const g = ctx.createGain(); g.gain.value = 0;
-  const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 8000;
-  g.connect(lp); lp.connect(AU.master);
-  const send = ctx.createGain(); send.gain.value = 0.2; lp.connect(send); send.connect(AU.verbIn);
-  const nodes = [];
-  const rs = ctx.createBufferSource(); rs.buffer = AU.noise; rs.loop = true; const rf = ctx.createBiquadFilter(); rf.type = 'lowpass'; rf.frequency.value = 260; rf.Q.value = 0.7;
-  const roar = ctx.createGain(); roar.gain.value = 0; rs.connect(rf); rf.connect(roar); roar.connect(g); rs.start(0, Math.random()); nodes.push(rs);
-  let eng = null;
-  if (diesel) {
-    const o1 = ctx.createOscillator(); o1.type = 'sawtooth'; const o2 = ctx.createOscillator(); o2.type = 'square';
-    const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 380; f.Q.value = 1;
-    const eg = ctx.createGain(); eg.gain.value = 0; const g2 = ctx.createGain(); g2.gain.value = 0.4;
-    o1.connect(f); o2.connect(g2); g2.connect(f); f.connect(eg); eg.connect(g); o1.start(); o2.start(); nodes.push(o1, o2);
-    eng = { o1, o2, f, g: eg };
-  }
-  return { g, lp, roar, eng, kill: () => { try { g.disconnect(); lp.disconnect(); nodes.forEach(n => n.stop()); } catch (e) {} } };
-}
-function sndClunk(gain, delay) { if (!AU.on || gain < 0.01) return; const t = AU.ctx.currentTime + 0.01 + delay; envNoise(t, 0.16, 650, 3, 0.6 * gain, AU.world, 'bandpass', AU.noise, 0.003); envTone(t, 0.12, 75, 0.5 * gain, AU.world, 'sine', 45); }
+function sndClunk(gain, delay) { if (!AU.on || gain < 0.01) return; if (SND.has('clunk')) { SND.shot('clunk', AU.world, { gain: gain * (SND_GAIN.clunk || 1), delay }); return; } const t = AU.ctx.currentTime + 0.01 + delay; envNoise(t, 0.16, 650, 3, 0.6 * gain, AU.world, 'bandpass', AU.noise, 0.003); envTone(t, 0.12, 75, 0.5 * gain, AU.world, 'sine', 45); }
 /* knuckles closing: a sharp crack, then the slack running in */
-function sndCouple(gain) { if (!AU.on || gain < 0.01) return; const t = AU.ctx.currentTime + 0.01; envNoise(t, 0.08, 2100, 7, 0.45 * gain, AU.world, 'bandpass', AU.white, 0.001); envNoise(t, 0.3, 560, 3, 0.75 * gain, AU.world, 'bandpass', AU.noise, 0.002); envTone(t, 0.2, 68, 0.6 * gain, AU.world, 'sine', 40); envNoise(t + 0.16, 0.2, 700, 3, 0.3 * gain, AU.world, 'bandpass', AU.noise, 0.003); }
+function sndCouple(gain) { if (!AU.on || gain < 0.01) return; if (SND.has('couple')) { SND.shot('couple', AU.world, { gain: gain * (SND_GAIN.couple || 1) }); return; } const t = AU.ctx.currentTime + 0.01; envNoise(t, 0.08, 2100, 7, 0.45 * gain, AU.world, 'bandpass', AU.white, 0.001); envNoise(t, 0.3, 560, 3, 0.75 * gain, AU.world, 'bandpass', AU.noise, 0.002); envTone(t, 0.2, 68, 0.6 * gain, AU.world, 'sine', 40); envNoise(t + 0.16, 0.2, 700, 3, 0.3 * gain, AU.world, 'bandpass', AU.noise, 0.003); }
 /* cut lever lifting the pin; with dump, the hoses part and the brake pipe vents */
-function sndPin(gain, dump) { if (!AU.on || gain < 0.01) return; const t = AU.ctx.currentTime + 0.01; envNoise(t, 0.1, 1600, 6, 0.3 * gain, AU.world, 'bandpass', AU.white, 0.002); envNoise(t + 0.14, 0.08, 2400, 8, 0.2 * gain, AU.world, 'bandpass', AU.white, 0.002); if (dump) envNoise(t + 0.3, 1.6, 3200, 0.8, 0.35 * gain, AU.world, 'bandpass', AU.white, 0.02); }
-function sndThrow() { if (!AU.on) return; const t = AU.ctx.currentTime + 0.01; envNoise(t, 0.18, 900, 4, 0.25, AU.world, 'bandpass', AU.white, 0.003); envNoise(t + 0.25, 0.12, 1400, 5, 0.2, AU.world, 'bandpass', AU.white, 0.002); }
+function sndPin(gain, dump) {
+  if (!AU.on || gain < 0.01) return;
+  const t = AU.ctx.currentTime + 0.01;
+  if (SND.has('pin')) SND.shot('pin', AU.world, { gain: gain * (SND_GAIN.pin || 1) });
+  else { envNoise(t, 0.1, 1600, 6, 0.3 * gain, AU.world, 'bandpass', AU.white, 0.002); envNoise(t + 0.14, 0.08, 2400, 8, 0.2 * gain, AU.world, 'bandpass', AU.white, 0.002); }
+  if (!dump) return;
+  if (SND.has('dump')) SND.shot('dump', AU.world, { gain: gain * (SND_GAIN.dump || 1), delay: 0.3 });
+  else envNoise(t + 0.3, 1.6, 3200, 0.8, 0.35 * gain, AU.world, 'bandpass', AU.white, 0.02);
+}
+function sndThrow() { if (!AU.on) return; if (SND.has('switch')) { SND.shot('switch', AU.world, { gain: SND_GAIN.switch || 1 }); return; } const t = AU.ctx.currentTime + 0.01; envNoise(t, 0.18, 900, 4, 0.25, AU.world, 'bandpass', AU.white, 0.003); envNoise(t + 0.25, 0.12, 1400, 5, 0.2, AU.world, 'bandpass', AU.white, 0.002); }
 function sndChirp(night) {
   if (!AU.on) return; const t = AU.ctx.currentTime + 0.01;
   if (night) { for (let i = 0; i < 4; i++) envTone(t + i * 0.05, 0.03, 4600, 0.012, AU.world); }
