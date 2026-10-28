@@ -5,7 +5,7 @@
 const hm = (h, m) => h * 3600 + m * 60;
 const JOB_CATS = [['time', 'On time', 40], ['handling', 'Train handling', 30], ['rules', 'Rules', 30]];
 const PLATFORM = 120;          // metres either side of the station mark that count as the platform
-const FOUL = 38;               // cars closer than this to a switch are foul of it (same as the switch lockout)
+const FOUL = FOUL_LEN;         // cars closer than this to a switch are foul of it (same as the switch lockout)
 
 /* Where a job's train is made up. s < 0 counts back from the end of the line. */
 const JOB_SPAWNS = {
@@ -197,13 +197,7 @@ JOB.closeOver = function () {
 
 function cabPos(T) { return T.worldOf(new THREE.Vector3(T.loco.cabEye.x, 0, 0)); }
 /* a consist stands clear of every switch */
-function foulOf(c) {
-  for (const sw of NET.switches) for (const p of c.pts) for (const att of sw.node.att) {
-    if (p.tp.e !== att.edge) continue;
-    const d = att.end === 0 ? p.tp.s : att.edge.len - p.tp.s; if (d < FOUL) return sw;
-  }
-  return null;
-}
+function foulOf(c) { return NET.switches.find(sw => c.fouls(sw)) || null; }
 const cutOf = v => CARS.cuts.find(c => c.vehicles.includes(v)) || null;
 
 JOB.steps = function (R, T, now) {
