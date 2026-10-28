@@ -295,6 +295,84 @@ details.keys kbd{color:var(--brass)}
   #btnPlayers{padding:0 6px}
 }
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* ---------- layout editor ---------- */
+#editor{position:fixed;inset:0;z-index:30;background:#0d1214;touch-action:none}
+#edCanvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:crosshair}
+#edTop{position:absolute;left:0;right:0;top:0;display:flex;gap:6px;align-items:center;flex-wrap:wrap;
+  padding:calc(env(safe-area-inset-top,0px) + 8px) calc(env(safe-area-inset-right,0px) + 10px) 8px calc(env(safe-area-inset-left,0px) + 10px);
+  background:linear-gradient(rgba(10,14,17,.94),rgba(10,14,17,.78));border-bottom:1px solid var(--rule)}
+#edTop .sp{flex:1}
+#edTop .btn{padding:8px 10px;font-size:11px;white-space:nowrap}
+#edTop .icon-btn{width:36px;height:34px}
+#edTop .icon-btn:disabled{opacity:.35}
+#edName{flex:0 1 200px;height:34px}
+.edTitle{font-family:var(--f-display);font-weight:800;font-size:20px;letter-spacing:1px;color:#f3efe2;margin-right:2px}
+#edInfo{position:absolute;left:calc(env(safe-area-inset-left,0px) + 10px);top:calc(env(safe-area-inset-top,0px) + 62px);width:min(300px,calc(100vw - 20px));
+  padding:8px 10px;display:flex;flex-direction:column;gap:6px;font-size:12px;line-height:1.35}
+#edStats{font-family:var(--f-num);font-size:11px;color:var(--ink-dim)}
+#edStats b{color:var(--ink);font-weight:600}
+#edIssues{display:flex;flex-direction:column;gap:3px}
+#edIssues button{text-align:left;background:rgba(238,75,61,.1);border:1px solid rgba(238,75,61,.45);border-radius:4px;padding:5px 7px;font-size:11.5px;color:#f3c4be}
+#edIssues .ok{color:var(--clear);font-size:11.5px}
+#edHint{color:var(--ink-dim);font-size:12px}
+#edHint b{color:var(--ink);font-weight:600}
+#edMsg{position:absolute;left:50%;transform:translateX(-50%);top:calc(env(safe-area-inset-top,0px) + 64px);z-index:3;pointer-events:none;
+  background:rgba(14,19,23,.95);border:1px solid var(--rule);border-left:3px solid var(--brass);border-radius:4px;padding:7px 12px;font-size:13px;
+  max-width:min(92vw,440px);opacity:0;transition:opacity .25s}
+#edMsg.on{opacity:1}
+#edMsg.bad{border-left-color:var(--stop)}#edMsg.good{border-left-color:var(--clear)}
+#edDock{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom,0px) + 10px);width:min(760px,calc(100vw - 20px));
+  padding:6px;display:flex;flex-direction:column;gap:6px}
+#edTabs{display:flex;gap:4px}
+#edTabs button{flex:1;border:1px solid var(--rule);background:transparent;border-radius:4px;padding:6px 4px;font-size:10.5px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:var(--ink-dim)}
+#edTabs button[aria-selected="true"]{color:var(--brass);border-color:var(--brass-deep);background:rgba(207,166,81,.08)}
+#edPal{display:flex;gap:5px;overflow-x:auto;padding-bottom:2px;scrollbar-width:thin;align-items:stretch}
+#edPal .grp{display:flex;gap:4px;align-items:stretch;flex:none}
+#edPal .grp+.grp{border-left:1px solid var(--rule);padding-left:5px}
+.pc{flex:none;border:1px solid #33424c;background:linear-gradient(#1d262c,#141b20);border-radius:5px;padding:4px 6px 5px;display:flex;flex-direction:column;align-items:center;gap:2px;
+  font-size:10.5px;font-weight:600;min-width:62px;line-height:1.1}
+.pc canvas{width:56px;height:30px;display:block}
+.pc small{font-weight:400;color:var(--ink-dim);font-size:9.5px}
+.pc[aria-pressed="true"]{border-color:var(--brass);background:linear-gradient(#2a2416,#1c180f);color:#f6e2ad}
+.pc:disabled{opacity:.4}
+.chips{display:flex;flex-direction:column;gap:3px;justify-content:center}
+.chips .lbl{font-size:9px}
+.chips div{display:flex;gap:3px}
+.chip{border:1px solid var(--rule);background:var(--steel-2);border-radius:4px;padding:5px 6px;font:600 10.5px var(--f-num);color:var(--ink-dim)}
+.chip[aria-pressed="true"]{border-color:var(--brass);color:#f6e2ad;background:linear-gradient(#2a2416,#1c180f)}
+#edSel{position:absolute;right:calc(env(safe-area-inset-right,0px) + 10px);top:calc(env(safe-area-inset-top,0px) + 62px);width:min(280px,calc(100vw - 20px));
+  padding:10px;display:flex;flex-direction:column;gap:8px;font-size:12px}
+#edSel h3{margin:0;font-size:14px;font-weight:700;letter-spacing:.3px}
+#edSel .sub{color:var(--ink-dim);font-size:11.5px;margin-top:-4px}
+#edSel .acts{display:flex;gap:5px;flex-wrap:wrap}
+#edSel .btn{padding:7px 9px;font-size:10.5px}
+#edSel .btn.warn{border-color:rgba(238,75,61,.6);color:#f3c4be}
+#edSel .btn[aria-pressed="true"]{border-color:var(--brass);color:#f6e2ad}
+#edSt{display:flex;flex-direction:column;gap:6px;border-top:1px solid var(--rule);padding-top:8px}
+#btList{display:flex;flex-wrap:wrap;gap:6px;font-size:12px}
+#btList span{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--rule);border-radius:12px;padding:3px 9px}
+#btList i{width:8px;height:8px;border-radius:50%;display:inline-block}
+#edTogBtn.on{border-color:var(--clear);color:var(--clear)}
+.edModal{position:absolute;inset:0;z-index:4;display:flex;align-items:center;justify-content:center;background:rgba(5,8,10,.7);padding:16px}
+.edModal .card{background:rgba(14,19,23,.97);border:1px solid var(--rule);border-radius:8px;padding:14px;width:min(420px,100%);max-height:100%;overflow:auto;display:flex;flex-direction:column;gap:10px}
+.edModal h2{margin:0;font-family:var(--f-display);font-size:28px;letter-spacing:1px}
+#edList{display:flex;flex-direction:column;gap:4px}
+#edList button{display:flex;justify-content:space-between;gap:8px;text-align:left;border:1px solid var(--rule);background:var(--steel-2);border-radius:5px;padding:8px 10px;font-size:13px;font-weight:600}
+#edList button small{color:var(--ink-dim);font-weight:400;font-family:var(--f-num);font-size:11px}
+#edList button[aria-current="true"]{border-color:var(--brass)}
+.edModal .acts{display:flex;gap:6px;flex-wrap:wrap}
+.edModal .btn{font-size:11px}
+#grpRail .row2{display:flex;gap:6px;flex-wrap:wrap}
+#grpRail .btn{flex:1;white-space:nowrap}
+@media (max-width:600px){
+  .edTitle{display:none}
+  #edName{flex:1 1 120px}
+  #edInfo{top:auto;bottom:calc(env(safe-area-inset-bottom,0px) + 136px);max-height:30vh;overflow:auto}
+  #edInfo.min #edHint,#edInfo.min #edIssues{display:none}
+  #edSel{top:auto;bottom:calc(env(safe-area-inset-bottom,0px) + 136px);right:10px;left:10px;width:auto}
+  #edMsg{top:calc(env(safe-area-inset-top,0px) + 104px)}
+}
 </style>
 
 <canvas id="gl" tabindex="0" aria-label="3D railway view"></canvas>
@@ -368,6 +446,56 @@ details.keys kbd{color:var(--brass)}
 
 <div id="bigMsg" hidden><div class="card"><h2 id="bigTitle">Derailed</h2><p id="bigBody"></p><div class="acts"><button class="btn prim" id="bigRetry">Re-rail and continue</button><button class="btn" id="bigMenu">Main menu</button></div></div></div>
 
+<div id="editor" hidden>
+  <canvas id="edCanvas" aria-label="Layout plan. Tap an amber end to build from it."></canvas>
+  <div id="edTop">
+    <button class="btn" id="edBack" type="button">Menu</button>
+    <span class="edTitle">Layout editor</span>
+    <input id="edName" class="mpIn" maxlength="32" placeholder="Name your railroad" autocomplete="off" spellcheck="false" aria-label="Layout name">
+    <button class="btn" id="edFileBtn" type="button">Layouts</button>
+    <button class="btn" id="edTogBtn" type="button">Build together</button>
+    <span class="sp"></span>
+    <button class="icon-btn" id="edUndo" type="button" aria-label="Undo" disabled><svg viewBox="0 0 24 24"><path d="M9 7L4 12l5 5"/><path d="M4 12h10a6 6 0 0 1 0 12"/></svg></button>
+    <button class="icon-btn" id="edRedo" type="button" aria-label="Redo" disabled><svg viewBox="0 0 24 24"><path d="M15 7l5 5-5 5"/><path d="M20 12H10a6 6 0 0 0 0 12"/></svg></button>
+    <button class="icon-btn" id="edFit" type="button" aria-label="Show the whole layout"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/></svg></button>
+    <button class="btn prim" id="edDrive" type="button">Drive it</button>
+  </div>
+  <div id="edInfo" class="hud-box">
+    <div id="edStats"></div>
+    <div id="edIssues"></div>
+    <div id="edHint"></div>
+  </div>
+  <div id="edMsg" role="status" aria-live="polite"></div>
+  <div id="edSel" class="hud-box" hidden></div>
+  <div id="edDock" class="hud-box">
+    <div id="edTabs" role="tablist"></div>
+    <div id="edPal"></div>
+  </div>
+  <div id="edTog" class="edModal" hidden><div class="card">
+    <h2>Build together</h2>
+    <p class="help" id="btIntro">Lay track with friends on one shared layout. Everyone sees each piece as it goes down, and when you tap <b>Drive it</b> you all end up in the same room on the same railroad.</p>
+    <div class="mpRow"><input id="btName" class="mpIn" maxlength="16" placeholder="Your name" autocomplete="off" spellcheck="false" aria-label="Your name"></div>
+    <div class="mpRow" id="btSolo"><button class="btn prim" id="btCreate" type="button">Start building</button><input id="btCode" class="mpIn code" maxlength="6" placeholder="CODE" autocomplete="off" spellcheck="false" autocapitalize="characters" aria-label="Build code"><button class="btn" id="btJoin" type="button">Join</button></div>
+    <div class="mpRow" id="btIn" hidden><span class="mpCode" id="btCodeBig"></span><button class="btn" id="btShare" type="button">Share link</button><button class="btn" id="btLeave" type="button">Leave</button></div>
+    <div class="mpStatus" id="btStatus"></div>
+    <div id="btList"></div>
+    <div class="acts"><button class="btn prim" id="btClose" type="button">Done</button></div>
+  </div></div>
+  <div id="edFiles" class="edModal" hidden><div class="card">
+    <h2>Layouts</h2>
+    <div id="edList"></div>
+    <div class="acts">
+      <button class="btn" id="edNew" type="button">New blank</button>
+      <button class="btn" id="edTpl" type="button">New from sample</button>
+      <button class="btn" id="edImportBtn" type="button">Import file</button>
+      <button class="btn" id="edExport" type="button">Export this one</button>
+      <button class="btn" id="edDelete" type="button">Delete this one</button>
+    </div>
+    <div class="acts"><button class="btn prim" id="edFilesClose" type="button">Done</button></div>
+    <input type="file" id="edImport" accept=".json,application/json" hidden>
+  </div></div>
+</div>
+
 <div id="menu" class="overlay">
   <div class="sheet">
     <div class="brandmark">
@@ -378,6 +506,9 @@ details.keys kbd{color:var(--brass)}
       <p class="help" id="helpText">Fire up, set the <b>reverser</b> forward, release the <b>train brake</b> to RUN, then ease the <b>throttle</b> open. Heavy throttle on a wet rail will slip the drivers. Check the switch card before every turnout: diverging routes are 30 mph.</p>
     </div>
     <div class="form">
+      <div class="fgroup" id="grpRail"><span class="lbl">Railroad</span><div class="seg" id="optRail"></div>
+        <div class="row2"><button class="btn" id="btnEditor" type="button">Build your own layout</button></div>
+      </div>
       <div class="fgroup" id="grpMP"><span class="lbl">Multiplayer</span>
         <div class="mp">
           <div class="mpRow"><input id="mpName" class="mpIn" maxlength="16" placeholder="Your name" autocomplete="off" spellcheck="false" aria-label="Your name"></div>

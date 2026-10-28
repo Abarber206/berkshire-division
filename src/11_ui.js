@@ -293,13 +293,18 @@ function drawMinimap() {
   const c = $('minimap'), g = c.getContext('2d'), W = c.width, H = c.height;
   g.fillStyle = 'rgba(10,14,17,0.92)'; g.fillRect(0, 0, W, H);
   const p = GAME.train.vehicles[0].pos;
-  drawNet(g, W, H, p.x, -p.z, 0.11, { w: 1.6, sr: 5, labels: true, fs: 15, river: true });
+  drawNet(g, W, H, p.x, -p.z, 0.11, { w: 1.6, sr: 5, labels: true, fs: 15, river: !WORLD.custom });
   g.fillStyle = '#8d9aa2'; g.font = '600 14px "IBM Plex Sans Condensed", sans-serif'; g.textAlign = 'right'; g.fillText('MAP', W - 10, H - 10);
 }
 MAP.open = function () {
   MAP.visible = true; $('mapView').hidden = false;
   const p = GAME.train ? GAME.train.vehicles[0].pos : { x: 0, z: -2400 };
   MAP.cx = 0; MAP.cn = 2700; MAP.scale = Math.min(innerWidth / 11000, innerHeight / 7600);
+  if (WORLD.custom) { // frame the whole layout
+    let x0 = Infinity, x1 = -Infinity, n0 = Infinity, n1 = -Infinity;
+    for (const L of MAP.lines) for (const q of L.pts) { x0 = Math.min(x0, q[0]); x1 = Math.max(x1, q[0]); n0 = Math.min(n0, q[1]); n1 = Math.max(n1, q[1]); }
+    MAP.cx = (x0 + x1) / 2; MAP.cn = (n0 + n1) / 2; MAP.scale = clamp(Math.min(innerWidth / (x1 - x0 + 200), innerHeight / (n1 - n0 + 200)) * 0.85, 0.04, 3);
+  }
   MAP.draw();
 };
 MAP.close = function () { MAP.visible = false; $('mapView').hidden = true; };
@@ -313,7 +318,7 @@ MAP.draw = function () {
   const step = 1000 * MAP.scale; const ox = (innerWidth / 2 - MAP.cx * MAP.scale) % step, oy = (innerHeight / 2 + MAP.cn * MAP.scale) % step;
   for (let x = ox; x < innerWidth; x += step) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, innerHeight); g.stroke(); }
   for (let y = oy; y < innerHeight; y += step) { g.beginPath(); g.moveTo(0, y); g.lineTo(innerWidth, y); g.stroke(); }
-  MAP.t = drawNet(g, innerWidth, innerHeight, MAP.cx, MAP.cn, MAP.scale, { w: 1, sr: clamp(MAP.scale * 60, 6, 11), labels: true, fs: 13, swLabels: MAP.scale > 0.35, river: true });
+  MAP.t = drawNet(g, innerWidth, innerHeight, MAP.cx, MAP.cn, MAP.scale, { w: 1, sr: clamp(MAP.scale * 60, 6, 11), labels: true, fs: 13, swLabels: MAP.scale > 0.35, river: !WORLD.custom });
   g.fillStyle = '#8d9aa2'; g.font = '500 12px "IBM Plex Mono", monospace'; g.textAlign = 'left'; g.fillText('1 km grid', 14, innerHeight - 14);
 };
 function setupMap() {
