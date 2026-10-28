@@ -9,6 +9,11 @@ const CONSISTS = {
   timefreight: { name: 'Time freight', sub: '18 cars · 1,400 tons', hidden: true, build: () => ['box', 'box', 'tank', 'box', 'hopper', 'box', 'gon', 'box', 'box', 'tank', 'tank', 'box', 'hopper', 'hopper', 'box', 'gon', 'box', 'box', 'caboose'].map(t => [t, 0]) },
 };
 
+/* Switch lockout. On either leg a car stands foul of the other track until it is back of the fouling
+   point, where the two tracks are a car width apart. Ahead of the points (the trunk) there is only one
+   track, so a train there just has to have its coupler clear of the points to let the switch be thrown. */
+const FOUL_LEN = 38, POINTS_CLEAR = 3;
+
 /* A string of coupled vehicles following the track: the player's train, or a cut of cars standing in
    a yard. Vehicles can move between consists when they are coupled or cut off, so everything that
    depends on the order (offsets, tracked points, instanced trucks) is rebuilt by layout(). */
@@ -66,6 +71,18 @@ class Consist {
   endTP(end) {
     if (end === 'front') { const p = this.pts[0], t = p.tp.clone(); t.advance(p.a, null); return t; }
     const p = this.pts[this.pts.length - 1], t = p.tp.clone(); t.advance(-(this.length - p.a), null); return t;
+  }
+  /* standing over switch sw or foul of it (see FOUL_LEN) */
+  fouls(sw) {
+    const near = tp => {
+      for (const att of sw.node.att) {
+        if (tp.e !== att.edge) continue;
+        const d = att.end === 0 ? tp.s : att.edge.len - tp.s;
+        if (d < (att.edge === sw.trunk.edge && att.end === sw.trunk.end ? POINTS_CLEAR : FOUL_LEN)) return true;
+      }
+      return false;
+    };
+    return this.pts.some(p => near(p.tp)) || near(this.endTP('front')) || near(this.endTP('rear'));
   }
   /* move the whole consist by d metres; returns actually moved distance and node events */
   move(d, ctx) {

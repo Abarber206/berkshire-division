@@ -388,12 +388,7 @@ GAME.refreshKeys = function () {
   }
   $('btnFire').hidden = D; $('btnBlower').hidden = D; $('lvDyn').hidden = !D;
 };
-GAME.occupied = function (sw) {
-  for (const p of GAME.train.pts) {
-    for (const att of sw.node.att) { if (p.tp.e !== att.edge) continue; const d = att.end === 0 ? p.tp.s : att.edge.len - p.tp.s; if (d < 38) return true; }
-  }
-  return false;
-};
+GAME.occupied = sw => GAME.train.fouls(sw);
 GAME.throwSwitch = function (sw) {
   if (GAME.occupied(sw)) { toast(`${sw.name} is occupied by your train. Clear it before throwing.`, 'bad', 3200, 'occ'); return; }
   if (CARS.occupied(sw)) { toast(`Cars are standing over ${sw.name}. Pull them clear before throwing.`, 'bad', 3200, 'occ'); return; }

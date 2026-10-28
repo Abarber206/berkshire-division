@@ -1,7 +1,7 @@
 /* ============================================================================
    Headless harness: loads the simulation source from src/ into a Node VM with
    a small stand-in for three.js and no-op browser hooks, so the boiler, air
-   brake and coupling code can be stepped and checked without a page or GPU.
+   brake, coupling and track code can be stepped and checked without a page or GPU.
    ========================================================================== */
 'use strict';
 const fs = require('fs');
@@ -9,9 +9,10 @@ const path = require('path');
 const vm = require('vm');
 
 const SRC = path.join(__dirname, '..', 'src');
-const FILES = ['01_util.js', '06_models.js', '07_train.js', '07b_cars.js', '08_physics.js', '11d_jobs.js'];
+const FILES = ['01_util.js', '02_track.js', '06_models.js', '07_train.js', '07b_cars.js', '08_physics.js', '11d_jobs.js'];
 const EXPORTS = ['S', 'ENV', 'GAME', 'CARS', 'JOB', 'LOCO_SPEC', 'Consist', 'Cut', 'physicsStep', 'brakeZone', 'brakeLabel', 'consistMass',
-  'COUPLE_OK', 'COUPLE_HARD', 'COUPLE_WRECK', 'MPH', 'LBF', 'STON', 'PSI'];
+  'COUPLE_OK', 'COUPLE_HARD', 'COUPLE_WRECK', 'MPH', 'LBF', 'STON', 'PSI',
+  'PathBuilder', 'Network', 'TrackPos', 'FOUL_LEN', 'POINTS_CLEAR'];
 
 /* just enough three.js: real Vector3 math, everything else accepts any call and returns itself */
 class Vector3 {

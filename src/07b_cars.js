@@ -309,10 +309,4 @@ CARS.render = function () {
 };
 
 /* switch points with cars standing over them */
-CARS.occupied = function (sw) {
-  for (const c of CARS.cuts) for (const p of c.pts) for (const att of sw.node.att) {
-    if (p.tp.e !== att.edge) continue;
-    const d = att.end === 0 ? p.tp.s : att.edge.len - p.tp.s; if (d < 38) return true;
-  }
-  return false;
-};
+CARS.occupied = sw => CARS.cuts.some(c => c.fouls(sw));

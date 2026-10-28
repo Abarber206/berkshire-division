@@ -545,7 +545,7 @@ MP.occupant = function (sw) {
   if (!MP.on) return null;
   for (const p of MP.peers.values()) {
     const rt = p.rt; if (!rt || !rt.placed) continue;
-    for (const q of rt.train.pts) for (const att of sw.node.att) { if (q.tp.e !== att.edge) continue; const d = att.end === 0 ? q.tp.s : att.edge.len - q.tp.s; if (d < 38) return p.st.nm; }
+    if (rt.train.fouls(sw)) return p.st.nm;
   }
   return null;
 };
