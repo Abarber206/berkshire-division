@@ -731,6 +731,7 @@ function updateTrackLOD(cam) {
   for (const g of WORLD.poleGroups || []) g.forEach(m => m.visible = m.userData.c.distanceTo(cp) - m.userData.r < 1800);
   // buildings and signals stay until the fog has hidden them, so they never blink out in clear air
   const far = fogFar(6500);
+  updateWire(cp);
   for (const b of WORLD.binGroups || []) b.visible = b.userData.c.distanceTo(cp) - b.userData.r < Math.max(3400, far);
   for (const sg of SCN.signals) { const d = Math.hypot(sg.X - cp.x, -sg.N - cp.z); for (const h of sg.heads) h.visible = d < Math.max(3500, far); }
   for (const t of WORLD.tiles) { const d = t.c.distanceTo(cp) - t.r; const near = d < 2300; t.hi.visible = near; t.lo.visible = !near; }

@@ -159,7 +159,7 @@ function setupButtons() {
   tog('btnSand', () => { S.sander = !S.sander; });
   tog('btnCocks', () => { if (GAME.isDiesel()) S.ditch = !S.ditch; else S.cocks = !S.cocks; });
   tog('btnLight', () => { S.light = (S.light + 1) % 3; });
-  tog('btnInj', () => { if (GAME.isDiesel()) { if (S.engineRun) { S.engineRun = false; toast('Engine shut down.', 'warn', 2200, 'eng'); } else if (S.crank <= 0 && S.fuel > 0) { S.crank = 6.5; toast('Cranking the prime mover…', '', 2200, 'eng'); } } else { GAME.manualFire('injector'); S.injector = !S.injector; } });
+  tog('btnInj', () => { if (GAME.train && GAME.train.elec) { S.panUp = !S.panUp; toast(S.panUp ? 'Raising the pantograph…' : 'Pantograph down: main breaker open.', S.panUp ? '' : 'warn', 2200, 'eng'); } else if (GAME.isDiesel()) { if (S.engineRun) { S.engineRun = false; toast('Engine shut down.', 'warn', 2200, 'eng'); } else if (S.crank <= 0 && S.fuel > 0) { S.crank = 6.5; toast('Cranking the prime mover…', '', 2200, 'eng'); } } else { GAME.manualFire('injector'); S.injector = !S.injector; } });
   tog('btnFire', () => { GAME.manualFire('stoker'); const steps = [0, 0.25, 0.5, 0.75, 1]; let i = steps.findIndex(s => s > S.stoker + 0.05); S.stoker = i < 0 ? 0 : steps[i]; });
   tog('btnBlower', () => { GAME.manualFire('blower'); S.blower = S.blower > 0.3 ? 0 : 0.65; });
   $('gaugeWrap').addEventListener('click', () => { const g = $('gaugeWrap'); g.classList.toggle('min'); try { localStorage.setItem('bd_gmin', g.classList.contains('min') ? '1' : ''); } catch (e) {} });
@@ -235,6 +235,7 @@ function drawGauges() {
   const T = GAME.train, b = T ? T.vehicles : null;
   // the end car farthest from the engine, which may be ahead of it when shoving
   const lastBP = b ? (T.li > b.length - 1 - T.li ? b[0] : b[b.length - 1]).brake.BP : 90;
+  if (T && T.elec) { drawElectricGauges(g, dial, b, lastBP); return; }
   if (GAME.isDiesel()) { drawDieselGauges(g, dial, b, lastBP); return; }
   dial(108, 112, 96, 300, 'BOILER PSI', [[S.P, '#151515']], [245, 300], 50, 10);
   g.font = '600 18px "IBM Plex Mono", monospace'; g.fillStyle = S.safety ? '#ee4b3d' : '#cfa651'; g.textAlign = 'center'; g.fillText(S.safety ? 'POPPING' : 'CHEST ' + Math.round(S.Psc), 108, 224);
@@ -436,5 +437,34 @@ function drawDieselGauges(g, dial, b, lastBP) {
   g.fillStyle = '#dfe4e6'; g.fillText(Math.round(S.fuel / 3.785).toLocaleString(), 604, 66); g.fillStyle = '#8d9aa2'; g.fillText('gal', 604, 86);
   g.fillStyle = '#dfe4e6'; g.fillText(S.notch ? 'N' + S.notch : 'IDLE', 604, 118); g.fillStyle = '#8d9aa2'; g.fillText('notch', 604, 138);
   g.fillStyle = S.dyn > 0.06 ? '#f2b33d' : '#dfe4e6'; g.fillText(S.dyn > 0.06 ? Math.round(S.dbLoad * 100) + '%' : 'OFF', 604, 176); g.fillStyle = '#8d9aa2'; g.fillText('dyn brk', 604, 196);
+  g.fillStyle = S.sander ? '#cfa651' : '#8d9aa2'; g.fillText(S.sander ? 'SAND ON' : 'SAND', 604, 222);
+}
+
+/* electric set: tractive and regenerative effort, air, line and power from the wire */
+function drawElectricGauges(g, dial, b, lastBP) {
+  const sp = LOCO_SPEC[GAME.train.locoKey], mx = Math.ceil(sp.TEmax / 1000 / 100) * 100 + 100;
+  const te = Math.abs(S.TE) / 1000, rb = (S.DBF + S.blend) / 1000;
+  dial(108, 112, 96, mx, 'TE · REGEN  kN', [[te, '#151515'], [rb, '#2a7fd0']], null, 100, 20);
+  g.font = '600 18px "IBM Plex Mono", monospace'; g.textAlign = 'center';
+  g.fillStyle = S.slipCtl ? '#ee4b3d' : '#cfa651'; g.fillText(S.slipCtl ? 'WHEEL SLIP' : (S.notch ? 'P' + S.notch : (S.dyn > 0.06 ? 'REGEN' : 'OFF')) + ' · ' + Math.round(Math.abs(S.v) * 3.6) + ' km/h', 108, 224);
+  dial(296, 86, 70, 160, 'MR · EQ', [[S.MR, '#c0281e'], [S.ER, '#151515']], null, 40, 10);
+  dial(458, 86, 70, 160, 'BP · BC', [[b ? GAME.train.lead.brake.BP : 90, '#151515'], [S.BCloco || 0, '#c0281e']], null, 40, 10);
+  g.font = '600 17px "IBM Plex Mono", monospace'; g.fillStyle = '#8d9aa2';
+  g.fillText((S.kW < 0 ? 'RETURN ' : 'DRAW ') + Math.abs(Math.round(S.kW)).toLocaleString() + ' kW', 296, 186); g.fillText('REAR ' + Math.round(lastBP), 458, 186);
+  g.fillText('LINE ' + (S.vcb ? '25.0 kV' : '—'), 296, 212);
+  g.fillStyle = S.vcb ? '#52d483' : (S.panUp ? '#f2b33d' : '#ee4b3d'); g.fillText(S.vcb ? 'BREAKER IN' : (S.panUp ? 'PAN RISING' : 'PAN DOWN'), 458, 212);
+  // pantograph height, where the diesel has its fuel gauge
+  const gx = 560, gy0 = 26, gy1 = 200, gw = 26;
+  g.fillStyle = '#6d531f'; g.fillRect(gx - 6, gy0 - 14, gw + 12, 12); g.fillRect(gx - 6, gy1 + 2, gw + 12, 12);
+  g.fillStyle = '#0d1418'; g.fillRect(gx, gy0, gw, gy1 - gy0);
+  const py = gy1 - S.pan * (gy1 - gy0);
+  g.fillStyle = '#9ea3a8'; g.fillRect(gx, py, gw, 4); g.fillStyle = 'rgba(158,163,168,0.25)'; g.fillRect(gx, py + 4, gw, gy1 - py - 4);
+  g.strokeStyle = '#cfa651'; g.lineWidth = 2; g.strokeRect(gx, gy0, gw, gy1 - gy0);
+  g.font = '600 15px "IBM Plex Sans Condensed", sans-serif'; g.fillStyle = '#8d9aa2'; g.textAlign = 'center'; g.fillText('PAN', gx + gw / 2, 226);
+  g.textAlign = 'left'; g.font = '600 16px "IBM Plex Mono", monospace';
+  g.fillStyle = '#8d9aa2'; g.fillText('ENERGY', 604, 40);
+  g.fillStyle = '#dfe4e6'; g.fillText(Math.round(S.kWh).toLocaleString(), 604, 66); g.fillStyle = '#8d9aa2'; g.fillText('kWh', 604, 86);
+  g.fillStyle = '#dfe4e6'; g.fillText(S.notch ? 'P' + S.notch : 'OFF', 604, 118); g.fillStyle = '#8d9aa2'; g.fillText('power', 604, 138);
+  g.fillStyle = S.dyn > 0.06 ? '#2a7fd0' : '#dfe4e6'; g.fillText(S.dyn > 0.06 ? Math.round(S.dbLoad * 100) + '%' : 'OFF', 604, 176); g.fillStyle = '#8d9aa2'; g.fillText('regen', 604, 196);
   g.fillStyle = S.sander ? '#cfa651' : '#8d9aa2'; g.fillText(S.sander ? 'SAND ON' : 'SAND', 604, 222);
 }

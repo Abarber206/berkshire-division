@@ -906,6 +906,7 @@ function buildFarms() {
 }
 
 function finalizeScenery(scene) {
+  sceneryBoxes();   // before the bins merge: the overhead line keeps its masts clear of all of it
   const mats = { ...SMAT, steel: SMAT.steel, redPaint: MAT.redPaint, tie: MAT.tie };
   WORLD.binGroups = [];
   for (const [, gb] of SCN.bins) {

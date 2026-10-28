@@ -11,6 +11,7 @@ const S = {
   TE: 0, use: 0, gen: 0, cut: 0, mu: 0.27, grade: 0, limit: 70,
   dead: false, derailed: false, paused: false, time: 0, warnTimer: 0,
   notch: 0, dyn: 0, dbLoad: 0, DBF: 0, rpm: 300, engineRun: true, crank: 0, load: 0, fuel: 18927, turbo: 0.15, ditch: true, ditchFlash: 0, slipCtl: false, amps: 0,
+  pan: 1, panUp: true, vcb: true, vcbT: 0, kW: 0, kWh: 0, rbMax: 0, blend: 0,
 };
 const ENV = { mu: 0.27, wind: new THREE.Vector3(-1.2, 0, 0.6) };
 const DRIVER_C = Math.PI * 2 * LG.rD, VCYL = Math.PI / 4 * 0.635 * 0.635 * 0.864;
@@ -26,7 +27,8 @@ function physicsStep(dt, train) {
   const DSL = train.diesel;
   let TEcmd = 0;
   const nU = DSL ? train.nUnits : 1;
-  if (DSL) TEcmd = dieselPower(dt) * nU;
+  if (train.elec) TEcmd = electricPower(dt, spec);
+  else if (DSL) TEcmd = dieselPower(dt) * nU;
   else {
   /* ----------------- boiler & front end ----------------- */
   const n = Math.abs(S.vw) / DRIVER_C;                 // driver revolutions per second
@@ -80,7 +82,7 @@ function physicsStep(dt, train) {
   for (const step of [1, -1]) {
     let prev = step > 0 ? S.ER : V[li].brake.BP;
     for (let i = step > 0 ? li : li - 1; i >= 0 && i < V.length; i += step) {
-      const b = V[i].brake, tau = i === li ? 0.35 : 0.22;
+      const b = V[i].brake, tau = train.elec ? 0.04 : i === li ? 0.35 : 0.22;   // a trainset's brakes are electrically controlled, all at once
       const nb = b.BP + (prev - b.BP) * Math.min(1, dt / tau);
       b.dBP = (nb - b.BP) / dt; if (nb > b.BP) chargeFlow += nb - b.BP;
       b.BP = nb; prev = b.BP;
@@ -156,6 +158,8 @@ function physicsStep(dt, train) {
   let M = 0, Fgrade = 0, Fres = 0, Fbrake = 0;
   const vm = Math.abs(S.v) / MPH;
   const shoe = 1.25 - 0.5 * smooth(0, 35, Math.abs(S.v));
+  const disc = 1 - 0.3 * smooth(20, 90, Math.abs(S.v));   // disc brakes, held back at speed to what the rail will take
+  let motorBrake = 0;
   let gradeLead = 0, limit = 99;
   for (let i = 0; i < V.length; i++) {
     const v = V[i];
@@ -166,15 +170,28 @@ function physicsStep(dt, train) {
     if (i === li) gradeLead = f.y;
     const tons = mass / STON;
     const k = Math.abs(v.fp[0].tp.e.curv(v.fp[0].tp.s));
-    let R = 1.3 * tons + 29 * v.axles + (v.kind === 'coach' ? 0.03 : 0.045) * tons * vm + (i === 0 ? 0.0024 * 125 : 0.0005 * (v.area || 90)) * vm * vm;
-    if (v.kind === 'loco' || v.kind === 'loco2') R += 14 * tons;
+    // a trainset's streamlined cab takes the air at whichever end is leading
+    const leading = i === (S.v >= 0 ? 0 : V.length - 1);
+    const aero = v.aero !== undefined ? (leading ? v.aeroLead : v.aero) : (i === 0 ? 0.0024 * 125 : 0.0005 * (v.area || 90));
+    let R = 1.3 * tons + 29 * v.axles + (v.kind === 'coach' || v.emu ? 0.03 : 0.045) * tons * vm + aero * vm * vm;
+    if ((v.kind === 'loco' || v.kind === 'loco2') && !v.emu) R += 14 * tons;
     R += 0.8 * tons * 1746.4 * k;
     R += (v.kind === 'coach' || v.kind === 'loco' || v.kind === 'loco2' || v.kind === 'tender' ? 7 : 14) * tons * (1 - smooth(0.15, 2.0, Math.abs(S.v)));
     Fres += R * LBF;
     const isLoco = v.kind === 'loco' || v.kind === 'loco2';
     const bc = isLoco ? S.BCloco : v.brake.BC;
-    Fbrake += mass * v.brakeA * (bc / 64) * shoe + (isLoco && DSL ? S.DBF : 0);
-    for (const p of [v.fp[0], v.fp[1]]) limit = Math.min(limit, p.tp.e.limit);
+    const fb = mass * v.brakeA * (bc / 64) * (v.disc ? disc : shoe);
+    Fbrake += fb + (isLoco && DSL && !train.elec ? S.DBF : 0);
+    if (v.motor) motorBrake += fb;
+    for (const p of [v.fp[0], v.fp[1]]) limit = Math.min(limit, spec.hs ? hsLimit(p.tp, spec) : p.tp.e.limit);
+  }
+  if (train.elec) {
+    // the regenerative brake comes in on the motored cars first and the discs make up the rest (blending)
+    Fbrake += S.DBF;
+    S.blend = Math.min(motorBrake, Math.max(0, S.rbMax - S.DBF));
+    const regen = (S.DBF + S.blend) * Math.abs(S.v);
+    S.kW = (Math.abs(S.TE) * Math.abs(S.v) / 0.92 - regen * 0.85) / 1000 + (S.vcb ? 180 : 0);   // auxiliaries: air, cooling, the cars' heat and light
+    S.kWh += S.kW * dt / 3600;
   }
   S.limit = Math.min(limit, JOB.vmax()); S.grade = gradeLead;
   const Meff = M * 1.04;
@@ -195,6 +212,17 @@ function physicsStep(dt, train) {
   S.theta -= S.vw * dt / LG.rD;
   S.M = M;
   return S.v * dt;
+}
+
+/* A high-speed set runs at its own top speed on main track (and straight through the turnouts there), with
+   each curve posted for 1.5 m/s2 of lateral acceleration, rounded down to 5 mph. Everything else (yards,
+   sidings, crossovers) keeps its own limit. */
+function hsLimit(tp, spec) {
+  const e = tp.e;
+  if (e.kind !== 'main' || e.limit < 70) return e.limit;
+  const k = Math.abs(e.curv(tp.s));
+  const curve = k > 1e-5 ? Math.floor(Math.sqrt(1.5 / k) / MPH / 5) * 5 : Infinity;
+  return Math.min(Math.floor(spec.vmax / 5) * 5, curve);
 }
 
 /* An attentive fireman: holds 240 psi and half a glass. */
@@ -242,5 +270,34 @@ function dieselPower(dt) {
   S.amps = TE / 814e3 * 1350 - S.DBF / 445e3 * 760;
   S.turbo += ((S.engineRun ? 0.12 + 0.88 * rf * (0.35 + 0.65 * S.load) : 0) - S.turbo) * Math.min(1, dt * 0.55);
   S.Psc = 0; S.cut = 0; S.use = 0;
+  return dir * TE;
+}
+
+/* Electric trainset: pantograph and main breaker, power controller, traction motors fed from the line,
+   regenerative brake, and the speed governor at the set's top speed. */
+function electricPower(dt, spec) {
+  const notch = Math.round(S.throttle * 8); S.notch = notch;
+  const dir = S.reverser > 0.5 ? 1 : (S.reverser < -0.5 ? -1 : 0);
+  const v = Math.abs(S.v);
+  // the pantograph takes about 7 s to rise and 3 s to drop; the breaker closes once it is on the wire
+  S.pan = clamp(S.pan + (S.panUp ? dt / 7 : -dt / 3), 0, 1);
+  if (S.panUp && S.pan >= 1) { if (!S.vcb) { S.vcbT += dt; if (S.vcbT > 1.5) { S.vcb = true; S.vcbT = 0; GAME.event('vcb'); } } }
+  else { if (S.vcb) GAME.event('vcbOpen'); S.vcb = false; S.vcbT = 0; }
+  S.engineRun = S.vcb; S.rpm = S.vcb ? 600 : 0;   // the compressor runs off the auxiliary supply
+  const regenOn = S.dyn > 0.06;
+  if (regenOn && notch > 0) GAME.event('dynInterlock');
+  const powerOK = S.vcb && notch > 0 && dir !== 0 && !regenOn;
+  // IGBT inverters answer in a second or two
+  S.load += clamp((powerOK ? 1 : 0) - S.load, -1.5 * dt, 0.6 * dt);
+  const nf = notch / 8, vmax = spec.vmax * MPH;
+  const gov = 1 - smooth(vmax - 2, vmax + 0.5, v);
+  const P = spec.P * nf * S.load * gov, TEcap = spec.TEmax * Math.min(1, nf * 1.6) * S.load * gov;
+  const TE = S.load > 0.001 ? Math.min(TEcap, P / Math.max(v, 0.5)) : 0;
+  // regeneration back into the line needs the breaker in; power cars with rheostats can burn it off instead
+  S.rbMax = (S.vcb || spec.rheo ? 1 : 0) * Math.min(spec.RBmax, spec.RP / Math.max(v, 0.1)) * smooth(0.6, 2.2, v);
+  S.dbLoad += clamp((regenOn ? (S.dyn - 0.06) / 0.94 : 0) - S.dbLoad, -1.0 * dt, 0.8 * dt);
+  S.DBF = S.rbMax * S.dbLoad;
+  S.amps = TE / spec.TEmax * 1000 - S.DBF / spec.RBmax * 800;
+  S.Psc = 0; S.cut = 0; S.use = 0; S.turbo = 0;
   return dir * TE;
 }

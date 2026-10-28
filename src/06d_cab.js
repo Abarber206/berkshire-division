@@ -9,12 +9,12 @@
    t is lever travel: 0 at the top of a HUD lever, 1 at the bottom. */
 const CTL = {
   throttle: { get: () => S.throttle, set: v => { S.throttle = v; }, fromT: t => GAME.isDiesel() ? Math.round((1 - t) * 8) / 8 : 1 - t, toT: v => 1 - v,
-    label: v => GAME.isDiesel() ? (Math.round(v * 8) ? 'N' + Math.round(v * 8) : 'IDLE') : Math.round(v * 100) + '%',
+    label: v => GAME.isDiesel() ? (Math.round(v * 8) ? (GAME.train && GAME.train.elec ? 'P' : 'N') + Math.round(v * 8) : (GAME.train && GAME.train.elec ? 'OFF' : 'IDLE')) : Math.round(v * 100) + '%',
     ticks: () => GAME.isDiesel() ? [...Array(9)].map((_, i) => [i / 8, '']) : [[0, ''], [0.25, ''], [0.5, ''], [0.75, ''], [1, '']] },
   reverser: { get: () => S.reverser, set: v => { S.reverser = v; },
     fromT: t => { if (GAME.isDiesel()) return t < 0.34 ? 1 : (t > 0.66 ? -1 : 0); let r = 1 - 2 * t; if (Math.abs(r) < 0.06) r = 0; return Math.round(r * 17) / 17; }, toT: v => (1 - v) / 2,
     label: v => GAME.isDiesel() ? (v > 0.5 ? 'FWD' : v < -0.5 ? 'REV' : 'N') : (v === 0 ? 'N' : (v > 0 ? 'F ' : 'R ') + Math.round(Math.abs(v) * 85) + '%'), ticks: [[0, 'F'], [0.5, 'N'], [1, 'R']] },
-  dyn: { get: () => S.dyn, set: v => { S.dyn = v; }, fromT: t => t < 0.04 ? 0 : t, toT: v => v, label: v => v < 0.03 ? 'OFF' : v < 0.06 ? 'SETUP' : 'DB ' + Math.round((v - 0.06) / 0.94 * 100) + '%', ticks: [[0, ''], [0.06, ''], [1, '']] },
+  dyn: { get: () => S.dyn, set: v => { S.dyn = v; }, fromT: t => t < 0.04 ? 0 : t, toT: v => v, label: v => v < 0.03 ? 'OFF' : v < 0.06 ? 'SETUP' : (GAME.train && GAME.train.elec ? 'RB ' : 'DB ') + Math.round((v - 0.06) / 0.94 * 100) + '%', ticks: [[0, ''], [0.06, ''], [1, '']] },
   brake: { get: () => S.brakeH, set: v => { S.brakeH = v; }, fromT: t => { if (Math.abs(t - 0.12) < 0.04) return 0.12; if (Math.abs(t - 0.23) < 0.035) return 0.23; return t; }, toT: v => v, label: v => brakeLabel(v), ticks: [[0.03, 'REL'], [0.12, 'RUN'], [0.23, 'LAP'], [0.3, 'SVC'], [0.95, 'EMG']] },
   ind: { get: () => S.indH, set: v => { S.indH = v; }, fromT: t => t < 0.08 ? 0 : t, toT: v => v, label: v => Math.round(clamp((v - 0.1) / 0.9, 0, 1) * 45) + ' psi', ticks: [[0, 'REL'], [1, 'FULL']] },
 };
