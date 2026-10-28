@@ -738,7 +738,7 @@ CAB.tapInfo = function (x, y) {
   CAB.tip(c, x, y); clearTimeout(CAB.tipT); CAB.tipT = setTimeout(() => CAB.tip(null), 2200);
   return true;
 };
-/* entering the cab: look out ahead. V swings between the road and the controls. */
+/* entering the cab: look out ahead. N swings between the road and the controls. */
 CAB.enter = function () {
   const T = GAME.train, cab = T && T.loco.cab; if (!cab) return;
   CAB.look = 0; CAM.cabYaw = cab.look[0].yaw; CAM.cabPitch = cab.look[0].pitch; CAB.lookTo = null;

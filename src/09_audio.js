@@ -192,7 +192,7 @@ function sndPump(phase) {
 function sndBell(diesel, dest = AU.loco) {
   if (!AU.on) return;
   // the steam engine's big cast bell rings lower than the diesel's
-  if (SND.has('bell')) { SND.shot('bell', dest, { gain: SND_GAIN.bell || 1, rate: diesel ? 1 : 0.8, vary: 0.01 }); return; } const t = AU.ctx.currentTime + 0.005;
+  if (SND.has('bell')) { SND.shot('bell', dest, { gain: SND_GAIN.bell || 1, rate: diesel ? 0.7 : 0.56, vary: 0.01 }); return; } const t = AU.ctx.currentTime + 0.005;
   const f = diesel ? 640 : 435;
   for (const [r, g, d] of [[1, 0.5, 2.6], [2.02, 0.28, 1.8], [2.74, 0.22, 1.3], [3.95, 0.14, 0.9], [5.41, 0.08, 0.6], [0.5, 0.18, 2.0]]) envTone(t, d, f * r, g * 0.55, dest, 'sine');
   envNoise(t, 0.03, 4000, 2, 0.15, dest, 'bandpass', AU.white, 0.001);

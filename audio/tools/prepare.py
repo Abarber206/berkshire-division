@@ -3,6 +3,8 @@
 
     python3 -I audio/tools/prepare.py <sources dir> audio/tools/recipe.json
 
+<sources dir> is the project's sound-sources library: each recipe `src` is a path inside it.
+
 Each recipe entry names a source file and what to make of it:
   shot   one take from start to end, faded at both ends
   bed    a long take for crossfaded weaving (no loop point needed)
@@ -10,6 +12,8 @@ Each recipe entry names a source file and what to make of it:
   slice  cut every onset between start and end into its own take (exhaust beats, joints, bell strokes)
   loop   a sustain cut at matching phase so it can loop seamlessly (whistles, horns); written as WAV,
          since MP3 encoder padding would break the loop
+A bed or shot can also be flattened (`flat`: seconds), which evens out a slow swell in level,
+such as a locomotive drawing closer, so that random slices of it all sit at one level.
 Everything is made mono, filtered as asked, and levelled to a common loudness so the
 in-game trims (SND_GAIN) stay small. Needs ffmpeg and numpy.
 """
@@ -48,6 +52,12 @@ def level(x, db):
     g = 10 ** (db / 20) / max(ref, 1e-6)
     g = min(g, 0.97 / max(np.abs(x).max(), 1e-6))
     return x * g
+
+
+def flatten(x, w):
+    """divide out the level averaged over w seconds, so a take recorded as its source drew near holds steady"""
+    r = np.sqrt(mavg(x * x, int(w * SR)))
+    return x * (np.median(r) / np.maximum(r, np.median(r) * 0.05))
 
 
 def fade(x, a=0.004, b=0.02):
@@ -108,6 +118,7 @@ def main(src_dir, recipe):
     for e in json.load(open(recipe)):
         x = load(os.path.join(src_dir, e['src']), e.get('start', 0), e.get('end'), e.get('hp'), e.get('lp'))
         name, kind, db = e['name'], e['kind'], e.get('db', -18)
+        if e.get('flat'): x = flatten(x, e['flat'])
         lst = files.setdefault(name, [])
         if kind == 'cuts':   # explicit [start, end] pairs, in seconds from `start`
             for a, b in e['at']:

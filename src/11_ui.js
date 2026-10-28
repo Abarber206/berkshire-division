@@ -1,25 +1,15 @@
 /* ============================================================================
    Cameras, input, control stand, gauges, minimap, track map, toasts
    ========================================================================== */
-const CAM = { mode: 'chase', modes: ['chase', 'cab', 'side', 'drone', 'rear'], names: { chase: 'Chase', cab: 'Cab', side: 'Trackside', drone: 'Overhead', rear: 'Rear car' },
+const CAM = { mode: 'chase', modes: ['chase', 'cab', 'side', 'drone', 'rear', 'cine'], names: { chase: 'Chase', cab: 'Cab', side: 'Trackside', drone: 'Overhead', rear: 'Rear car', cine: 'Cinematic' },
   yaw: -0.95, pitch: 0.14, dist: 24, cabYaw: 0, cabPitch: -0.06, droneYaw: 0.8, side: null, sideT: 0, fov: 52, shake: 0 };
+const CAM_HOME = { chase: { yaw: -0.95, pitch: 0.14, dist: 24 }, drone: { droneYaw: 0.8, dronePitch: 0.85, dist: 24 }, cab: { cabYaw: 0, cabPitch: -0.06 } };
 const _cq = new THREE.Quaternion(), _cm = new THREE.Matrix4(), _ce = new THREE.Euler();
 function updateCamera(cam, train, dt) {
   const L = train.loco, body = L.root;
-  const fwd = train.lead.fwd, pos = train.lead.pos;
-  const hdg = Math.atan2(fwd.x, fwd.z);
   cam.near = 0.3; let fov = 52;
-  if (CAM.mode === 'chase' || CAM.mode === 'drone') {
-    const tgt = new THREE.Vector3().copy(pos).addScaledVector(fwd, CAM.mode === 'drone' ? -10 : 0); tgt.y += CAM.mode === 'drone' ? 1 : 2.6;
-    const portrait = cam.aspect < 1 ? clamp(1.25 / cam.aspect, 1, 2.2) : 1;
-    const yaw = hdg + (CAM.mode === 'drone' ? CAM.droneYaw : CAM.yaw), pitch = CAM.mode === 'drone' ? 0.85 : CAM.pitch, dist = (CAM.mode === 'drone' ? CAM.dist * 3.2 + 40 : CAM.dist) * portrait;
-    const want = new THREE.Vector3(tgt.x + Math.sin(yaw) * Math.cos(pitch) * dist, tgt.y + Math.sin(pitch) * dist, tgt.z + Math.cos(yaw) * Math.cos(pitch) * dist);
-    const gy = groundAt(want.x, -want.z) + 1.0; if (want.y < gy) want.y = gy;
-    if (!CAM.init) { cam.position.copy(want); CAM.init = true; }
-    cam.position.lerp(want, 1 - Math.exp(-dt * 10));
-    const lk = tgt.clone(); if (CAM.mode === 'chase') lk.y -= Math.min(3.2, dist * 0.09);
-    cam.lookAt(lk);
-  } else if (CAM.mode === 'cab') {
+  camTrack(train, dt);
+  if (CAM.mode === 'cab') {
     cam.near = 0.05;
     const eye = L.cabEye.clone().applyMatrix4(body.matrixWorld);
     const sp = Math.abs(S.v);
@@ -31,58 +21,36 @@ function updateCamera(cam, train, dt) {
     _ce.set(CAM.cabPitch + Math.sin(CAM.shake * 0.9) * jit * 0.4, -Math.PI / 2 + CAM.cabYaw, 0, 'YXZ');
     cam.quaternion.copy(_cq).multiply(new THREE.Quaternion().setFromEuler(_ce));
     fov = 62;
-  } else if (CAM.mode === 'side') {
-    const need = !CAM.side || cam.position.distanceTo(pos) > 700 || CAM.sideT > 70 || (CAM.side.passed && cam.position.distanceTo(train.last.pos) > 160);
-    if (need) pickTrackside(train);
-    CAM.sideT += dt;
-    const P = CAM.side.pos;
-    cam.position.copy(P);
-    const look = new THREE.Vector3().copy(pos).addScaledVector(fwd, 4); look.y += 2.2;
-    cam.lookAt(look);
-    const d = P.distanceTo(look);
-    fov = clamp(2 * Math.atan(16 / d) * 180 / Math.PI, 9, 58);
-    const toCam = new THREE.Vector3().subVectors(P, pos);
-    if (toCam.dot(fwd) * Math.sign(S.v || 1) < -12) CAM.side.passed = true;
-  } else if (CAM.mode === 'rear') {
-    const v = train.last;
-    const back = v.pos.clone().addScaledVector(v.fwd, -(v.len / 2 + 7)); back.y += 6.5;
-    const sideOff = new THREE.Vector3(v.fwd.z, 0, -v.fwd.x).multiplyScalar(3.2); back.add(sideOff);
-    cam.position.lerp(back, 1 - Math.exp(-dt * 6));
-    const look = v.pos.clone().addScaledVector(v.fwd, 40); look.y += 2;
-    cam.lookAt(look);
-  }
-  if (cam.aspect < 1 && CAM.mode !== 'side') fov = Math.min(80, fov * 1.25);
-  CAM.fov += (fov - CAM.fov) * Math.min(1, dt * 4);
+    if (cam.aspect < 1) fov = Math.min(80, fov * 1.25);
+  } else fov = outsideCamera(cam, train, dt);
+  CAM.fov += (fov - CAM.fov) * (CAM.fovCut ? 1 : Math.min(1, dt * 4)); CAM.fovCut = false;
   cam.fov = CAM.fov; cam.updateProjectionMatrix();
 }
-function pickTrackside(train) {
-  const dir = Math.sign(S.v) || Math.sign(S.reverser) || 1;
-  const tp = (dir > 0 ? train.frontTP() : train.rearTP()).clone();
-  const ahead = 240 + Math.random() * 220;
-  tp.advance(dir * ahead, null);
-  tp.pose(FR);
-  const side = Math.random() < 0.5 ? -1 : 1, off = 9 + Math.random() * 9;
-  const p = FR.p.clone().addScaledVector(FR.r, side * off);
-  let y = groundAt(p.x, -p.z); if (!isFinite(y)) y = FR.p.y;
-  p.y = Math.max(y + 1.6 + Math.random() * 1.8, FR.p.y + 0.6);
-  CAM.side = { pos: p, passed: false }; CAM.sideT = 0;
-}
 function cycleCamera(to) {
-  const i = CAM.modes.indexOf(CAM.mode);
+  const i = CAM.modes.indexOf(CAM.mode), from = CAM.mode;
   CAM.mode = to || CAM.modes[(i + 1) % CAM.modes.length];
-  CAM.side = null; CAM.init = false;
+  // asking again for the view already up puts it back where it started (or, cinematic, cuts to the next shot)
+  if (to && to === from) { Object.assign(CAM, CAM_HOME[to] || {}); CAM.fling = 0; if (to === 'cine' || to === 'side') CAM.nextShot(); return; }
+  CAM.side = null; CAM.shot = null; CAM.fling = 0;
+  // outside views glide from one to the next; the cab, trackside and cinematic cut, as a film would
+  const glide = ['chase', 'drone', 'rear'];
+  CAM.blend = null;
+  if (glide.includes(from) && glide.includes(CAM.mode) && GAME.train && camera) { camBlendFrom(camera, MP.view() || GAME.train, 0.85); CAM.init = false; CAM.ready = false; }
+  else CAM.init = false;
+  CAM.fovCut = !glide.includes(CAM.mode) || !glide.includes(from);
   if (CAM.mode === 'cab') CAB.enter();
-  $('camName').textContent = CAM.names[CAM.mode];
+  CAM.label = ''; $('camName').textContent = CAM.names[CAM.mode];
 }
 
 /* ---------------- pointer input on the 3D view ---------------- */
 function setupViewInput(canvas, camera) {
-  const ptrs = new Map(); let pinch0 = 0, dist0 = 0, tapStart = null;
+  const ptrs = new Map(); let pinch0 = 0, dist0 = 0, ang0 = 0, tapStart = null, flick = 0, flickT = 0;
+  const zoom = d => { CAM.dist = clamp(d, 7, 140); };
   canvas.addEventListener('pointerdown', e => {
     if (PLACE.on) return;
     // in the cab, a control under the pointer takes the drag instead of the view
     if (!ptrs.size && !CAB.grab && CAB.down(e.clientX, e.clientY, e.pointerId)) { canvas.setPointerCapture(e.pointerId); e.preventDefault(); return; }
-    canvas.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY }); if (ptrs.size === 1) tapStart = { x: e.clientX, y: e.clientY, t: performance.now() }; if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinch0 = Math.hypot(a.x - b.x, a.y - b.y); dist0 = CAM.dist; tapStart = null; } });
+    canvas.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY }); CAM.fling = 0; flick = 0; if (ptrs.size === 1) tapStart = { x: e.clientX, y: e.clientY, t: performance.now() }; if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinch0 = Math.hypot(a.x - b.x, a.y - b.y); ang0 = Math.atan2(b.y - a.y, b.x - a.x); dist0 = CAM.dist; tapStart = null; } });
   canvas.addEventListener('pointermove', e => {
     if (PLACE.on) return;
     if (CAB.grab) { if (e.pointerId === CAB.grab.pid) CAB.move(e.clientX, e.clientY); return; }
@@ -90,20 +58,30 @@ function setupViewInput(canvas, camera) {
     if (!ptrs.has(e.pointerId)) return;
     const p = ptrs.get(e.pointerId), dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
     if (tapStart && Math.hypot(e.clientX - tapStart.x, e.clientY - tapStart.y) > 8) tapStart = null;
-    if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; const d = Math.hypot(a.x - b.x, a.y - b.y); if (pinch0 > 0) CAM.dist = clamp(dist0 * pinch0 / d, 7, 140); return; }
-    const k = 0.006;
-    if (CAM.mode === 'chase') { CAM.yaw -= dx * k; CAM.pitch = clamp(CAM.pitch + dy * k * 0.8, -0.05, 1.35); }
+    if (ptrs.size === 2) {
+      const [a, b] = [...ptrs.values()], d = Math.hypot(a.x - b.x, a.y - b.y), ang = Math.atan2(b.y - a.y, b.x - a.x);
+      if (pinch0 > 0) zoom(dist0 * pinch0 / d);
+      // a two-finger twist turns the view round the train
+      const tw = angWrap(ang - ang0); ang0 = ang;
+      if (CAM.mode === 'chase') CAM.yaw -= tw; else if (CAM.mode === 'drone') CAM.droneYaw -= tw;
+      return;
+    }
+    const k = 0.006, now = performance.now();
+    if (CAM.mode === 'chase') { CAM.yaw -= dx * k; CAM.pitch = clamp(CAM.pitch + dy * k * 0.8, -0.16, 1.35); }
     else if (CAM.mode === 'cab') { CAB.lookTo = null; CAM.cabYaw = clamp(CAM.cabYaw - dx * k * 0.7, -2.2, 2.2); CAM.cabPitch = clamp(CAM.cabPitch - dy * k * 0.7, -0.8, 0.6); }
-    else if (CAM.mode === 'drone') CAM.droneYaw -= dx * k;
+    else if (CAM.mode === 'drone') { CAM.droneYaw -= dx * k; CAM.dronePitch = clamp(CAM.dronePitch + dy * k * 0.6, 0.35, 1.5); }
+    // how fast the drag is going, so letting go mid-swing keeps the view turning and easing to a stop
+    const vt = Math.max(8, now - flickT); flick = flick * 0.4 + (-dx * k / vt * 1000) * 0.6; flickT = now;
   });
   const up = e => {
     if (PLACE.on) { ptrs.delete(e.pointerId); tapStart = null; return; }
     if (CAB.grab && e.pointerId === CAB.grab.pid) { CAB.up(); return; }
     if (tapStart && ptrs.size === 1 && performance.now() - tapStart.t < 400) handleTap(e.clientX, e.clientY, camera);
+    else if (ptrs.size === 1 && performance.now() - flickT < 70 && (CAM.mode === 'chase' || CAM.mode === 'drone')) CAM.fling = clamp(flick, -4, 4);
     ptrs.delete(e.pointerId); if (ptrs.size < 2) pinch0 = 0; tapStart = null;
   };
   canvas.addEventListener('pointerup', up); canvas.addEventListener('pointerleave', () => { if (PLACE.on) return; CPL.point(null); if (!CAB.grab) CAB.point(null); }); canvas.addEventListener('pointercancel', e => { if (CAB.grab && e.pointerId === CAB.grab.pid) CAB.up(); ptrs.delete(e.pointerId); tapStart = null; });
-  canvas.addEventListener('wheel', e => { if (PLACE.on) return; e.preventDefault(); CAM.dist = clamp(CAM.dist * (1 + e.deltaY * 0.0012), 7, 140); }, { passive: false });
+  canvas.addEventListener('wheel', e => { if (PLACE.on) return; e.preventDefault(); zoom(CAM.dist * (1 + clamp(e.deltaY * (e.deltaMode ? 33 : 1), -120, 120) * 0.0012)); }, { passive: false });
   document.addEventListener('gesturestart', e => e.preventDefault());
 }
 const _ray = new THREE.Raycaster();
@@ -114,6 +92,8 @@ function handleTap(x, y, camera) {
   _ray.setFromCamera(v, camera);
   const hits = _ray.intersectObjects(NET.switches.map(s => s.vis.hit), false);
   if (hits.length) { GAME.throwSwitch(hits[0].object.userData.sw); return; }
+  // tapping the scene in cinematic mode cuts to the next shot
+  if (CAM.mode === 'cine') CAM.nextShot();
 }
 
 /* ---------------- levers ---------------- */
@@ -179,7 +159,7 @@ function setupButtons() {
   addEventListener('keydown', e => {
     if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
     if (PLACE.on) { PLACE.key(e); return; }
-    if (e.repeat && !['KeyW', 'KeyS', 'KeyQ', 'KeyE', 'KeyZ', 'KeyC', 'KeyA', 'KeyD', 'ArrowUp', 'ArrowDown'].includes(e.code)) return;
+    if (e.repeat && !['KeyW', 'KeyS', 'KeyQ', 'KeyE', 'KeyZ', 'KeyC', 'KeyA', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Minus', 'Equal', 'NumpadSubtract', 'NumpadAdd'].includes(e.code)) return;
     if ($('menu').hidden === false) return;
     keys[e.code] = true;
     switch (e.code) {
@@ -202,12 +182,16 @@ function setupButtons() {
       case 'KeyF': if (GAME.isDiesel()) break; GAME.manualFire('stoker'); S.stoker = clamp(S.stoker + 0.25, 0, 1.0001) > 1 ? 0 : S.stoker + 0.25; break;
       case 'KeyL': if (GAME.isDiesel()) break; GAME.manualFire('blower'); S.blower = S.blower > 0.3 ? 0 : 0.65; break;
       case 'KeyT': GAME.throwAhead(); break;
-      case 'KeyV': CAB.nextLook(); break;
+      case 'KeyN': CAB.nextLook(); break;
       case 'KeyU': carPanelToggle(); break;
       case 'KeyG': PLACE.enter(); break;
       case 'KeyM': MAP.visible ? MAP.close() : MAP.open(); break;
       case 'KeyP': GAME.pause(!S.paused); break;
-      case 'Digit1': cycleCamera('chase'); break; case 'Digit2': cycleCamera('cab'); break; case 'Digit3': cycleCamera('side'); break; case 'Digit4': cycleCamera('drone'); break; case 'Digit5': cycleCamera('rear'); break;
+      case 'Digit1': cycleCamera('chase'); break; case 'Digit2': cycleCamera('cab'); break; case 'Digit3': cycleCamera('side'); break; case 'Digit4': cycleCamera('drone'); break; case 'Digit5': cycleCamera('rear'); break; case 'Digit6': cycleCamera('cine'); break;
+      case 'KeyV': cycleCamera(); break;
+      case 'ArrowLeft': case 'ArrowRight': { const d = (e.code === 'ArrowLeft' ? 1 : -1) * 0.07; if (CAM.mode === 'drone') CAM.droneYaw += d; else if (CAM.mode === 'chase') CAM.yaw += d; else if (CAM.mode === 'cab') CAM.cabYaw = clamp(CAM.cabYaw + d, -2.2, 2.2); e.preventDefault(); break; }
+      case 'Minus': case 'NumpadSubtract': CAM.dist = clamp(CAM.dist * 1.12, 7, 140); break;
+      case 'Equal': case 'NumpadAdd': CAM.dist = clamp(CAM.dist / 1.12, 7, 140); break;
     }
     GAME.refreshKeys();
   });

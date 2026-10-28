@@ -2,16 +2,84 @@
  {
   "name": "dz",
   "kind": "bed",
-  "src": "aporee_40970_46758.wav",
-  "start": 1,
-  "end": 64,
-  "db": -18,
+  "src": "diesel-idle/freight-engine-idle-houston.mp3",
+  "start": 38,
+  "end": 83,
+  "db": -20,
   "hp": 25
+ },
+ {
+  "name": "dz",
+  "kind": "bed",
+  "src": "diesel-passby/csx-freight-indianapolis-crawl.mp3",
+  "start": 50.5,
+  "end": 57,
+  "db": -17,
+  "hp": 25,
+  "flat": 1.0
+ },
+ {
+  "name": "dz",
+  "kind": "bed",
+  "src": "diesel-passby/union-pacific-freight-in-woods.wav",
+  "start": 17.5,
+  "end": 25,
+  "db": -15,
+  "hp": 25,
+  "flat": 1.0
+ },
+ {
+  "name": "comp",
+  "kind": "bed",
+  "src": "diesel-idle/freight-engine-idle-houston.mp3",
+  "start": 25.6,
+  "end": 34.3,
+  "db": -18
+ },
+ {
+  "name": "purge",
+  "kind": "cuts",
+  "src": "diesel-idle/freight-engine-idle-houston.mp3",
+  "start": 0,
+  "end": 40,
+  "at": [
+   [
+    21.35,
+    22.2
+   ],
+   [
+    22.85,
+    23.4
+   ],
+   [
+    24.45,
+    25.35
+   ],
+   [
+    36.1,
+    37.35
+   ]
+  ],
+  "db": -16
+ },
+ {
+  "name": "dump",
+  "kind": "cuts",
+  "src": "diesel-idle/freight-engine-idle-houston.mp3",
+  "start": 80,
+  "end": 88,
+  "at": [
+   [
+    4.3,
+    6.2
+   ]
+  ],
+  "db": -14
  },
  {
   "name": "chuff",
   "kind": "slice",
-  "src": "aporee_53147_60730.mp3",
+  "src": "steam-exhaust/steam-departure-close-toddington.mp3",
   "start": 17.9,
   "end": 26.2,
   "hp": 60,
@@ -22,9 +90,24 @@
   "db": -14
  },
  {
+  "name": "chuff_hard",
+  "kind": "slice",
+  "src": "steam-exhaust/steam-departure-swanage.mp3",
+  "start": 109.3,
+  "end": 118.6,
+  "hp": 60,
+  "gap": 0.4,
+  "rise": 1.4,
+  "len": 0.9,
+  "max": 10,
+  "db": -12,
+  "decay": 4,
+  "look": 0.2
+ },
+ {
   "name": "wh_deep6",
   "kind": "loop",
-  "src": "aporee_53885_85003.wav",
+  "src": "steam-passby/big-boy-4014-passing-under-overpass.wav",
   "start": 92.6,
   "end": 96.6,
   "len": 1.6,
@@ -34,7 +117,7 @@
  {
   "name": "wh_deep6_on",
   "kind": "shot",
-  "src": "aporee_53885_85003.wav",
+  "src": "steam-passby/big-boy-4014-passing-under-overpass.wav",
   "start": 91.9,
   "end": 93.2,
   "db": -14,
@@ -43,7 +126,7 @@
  {
   "name": "safety",
   "kind": "bed",
-  "src": "aporee_59111_67834.mp3",
+  "src": "used-in-game/aporee_59111_67834.mp3",
   "start": 852.2,
   "end": 860.0,
   "db": -16
@@ -51,15 +134,24 @@
  {
   "name": "blower",
   "kind": "bed",
-  "src": "aporee_59111_67834.mp3",
+  "src": "used-in-game/aporee_59111_67834.mp3",
   "start": 20,
   "end": 140,
   "db": -20
  },
  {
+  "name": "fire",
+  "kind": "bed",
+  "src": "used-in-game/aporee_59111_67834.mp3",
+  "start": 20,
+  "end": 140,
+  "db": -20,
+  "lp": 300
+ },
+ {
   "name": "pump_a",
   "kind": "cuts",
-  "src": "aporee_59111_67834.mp3",
+  "src": "used-in-game/aporee_59111_67834.mp3",
   "start": 0,
   "at": [
    [
@@ -108,7 +200,7 @@
  {
   "name": "pump_b",
   "kind": "cuts",
-  "src": "aporee_59111_67834.mp3",
+  "src": "used-in-game/aporee_59111_67834.mp3",
   "start": 0,
   "at": [
    [
@@ -157,7 +249,7 @@
  {
   "name": "wind",
   "kind": "bed",
-  "src": "aporee_51400_58655.wav",
+  "src": "used-in-game/aporee_51400_58655.wav",
   "start": 2,
   "end": 80,
   "db": -22
@@ -165,7 +257,7 @@
  {
   "name": "birds",
   "kind": "bed",
-  "src": "aporee_43758_49812.wav",
+  "src": "used-in-game/aporee_43758_49812.wav",
   "start": 1,
   "end": 180,
   "db": -24
@@ -173,15 +265,24 @@
  {
   "name": "night",
   "kind": "bed",
-  "src": "aporee_51356_58608.mp3",
+  "src": "ambient-night/night-wind-in-trees-lost-bridge-indiana.mp3",
   "start": 1,
   "end": 100,
   "db": -26
  },
  {
+  "name": "crickets",
+  "kind": "bed",
+  "src": "ambient-night/late-night-summer-insects-meaford-ontario.mp3",
+  "start": 3,
+  "end": 140,
+  "db": -26,
+  "hp": 1500
+ },
+ {
   "name": "roll",
   "kind": "bed",
-  "src": "aporee_45607_51790.wav",
+  "src": "diesel-passby/train-passing-bluffton-in.wav",
   "start": 50,
   "end": 115,
   "db": -18,
@@ -190,16 +291,25 @@
  {
   "name": "flange",
   "kind": "bed",
-  "src": "aporee_45607_51790.wav",
-  "start": 138,
-  "end": 152,
+  "src": "diesel-passby/csx-freight-indianapolis-crawl.mp3",
+  "start": 140,
+  "end": 168,
   "db": -20,
-  "hp": 2500
+  "hp": 1800
+ },
+ {
+  "name": "squeal",
+  "kind": "bed",
+  "src": "brake-squeal/train-braking-rail-screech-savannah.wav",
+  "start": 15.3,
+  "end": 22,
+  "db": -18,
+  "hp": 700
  },
  {
   "name": "joint",
   "kind": "slice",
-  "src": "aporee_53147_60730.mp3",
+  "src": "steam-exhaust/steam-departure-close-toddington.mp3",
   "start": 46.8,
   "end": 80,
   "hp": 200,
@@ -213,7 +323,7 @@
  {
   "name": "wh_bright3",
   "kind": "loop",
-  "src": "aporee_51506_58768.wav",
+  "src": "used-in-game/aporee_51506_58768.wav",
   "start": 57.8,
   "end": 58.7,
   "len": 0.5,
@@ -223,7 +333,7 @@
  {
   "name": "wh_bright3_on",
   "kind": "shot",
-  "src": "aporee_51506_58768.wav",
+  "src": "used-in-game/aporee_51506_58768.wav",
   "start": 57.6,
   "end": 58.4,
   "db": -14,
@@ -232,7 +342,7 @@
  {
   "name": "wh_k5",
   "kind": "loop",
-  "src": "commons_AirChime_K5LA.ogg",
+  "src": "horn/commons-airchime-k5la.ogg",
   "start": 7.9,
   "end": 11.2,
   "len": 1.6,
@@ -242,7 +352,7 @@
  {
   "name": "wh_k5_on",
   "kind": "shot",
-  "src": "commons_AirChime_K5LA.ogg",
+  "src": "horn/commons-airchime-k5la.ogg",
   "start": 7.05,
   "end": 8.4,
   "db": -14,
@@ -251,7 +361,7 @@
  {
   "name": "cocks",
   "kind": "bed",
-  "src": "aporee_59111_67834.mp3",
+  "src": "used-in-game/aporee_59111_67834.mp3",
   "start": 852.3,
   "end": 859.8,
   "db": -18,
@@ -260,7 +370,7 @@
  {
   "name": "bpx",
   "kind": "bed",
-  "src": "aporee_59111_67834.mp3",
+  "src": "used-in-game/aporee_59111_67834.mp3",
   "start": 852.3,
   "end": 859.8,
   "db": -20,
@@ -270,10 +380,23 @@
  {
   "name": "injector",
   "kind": "bed",
-  "src": "aporee_59111_67834.mp3",
+  "src": "used-in-game/aporee_59111_67834.mp3",
   "start": 150,
   "end": 250,
   "db": -22,
   "hp": 2200
+ },
+ {
+  "name": "bell",
+  "kind": "slice",
+  "src": "bell/old-metal-crossing-bell-braunschweig.mp3",
+  "start": 11.5,
+  "end": 34,
+  "hp": 300,
+  "gap": 0.5,
+  "rise": 2.0,
+  "len": 1.2,
+  "max": 12,
+  "db": -14
  }
 ]
