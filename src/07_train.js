@@ -182,9 +182,11 @@ class Train extends Consist {
     const list = CONSISTS[consistKey].build(r);
     let n = 0;
     for (const [type, flag] of list) {
-      const m = type === 'coach' ? coachModel(spec, 3010 + (n++) * 7, !!flag) : freightModel(type, 10000 + ((r() * 89999) | 0), r);
+      const num = type === 'coach' ? 3010 + (n++) * 7 : 10000 + ((r() * 89999) | 0);
+      const m = type === 'coach' ? coachModel(spec, num, !!flag) : freightModel(type, num, r);
       scene.add(m.root);
-      this.vehicles.push(carVehicle(m));
+      const v = carVehicle(m); v.made = { type, num, flag: !!flag };
+      this.vehicles.push(v);
     }
     // tender mass varies with water & coal
     this.tenderEmpty = 92000;
@@ -203,7 +205,13 @@ class Train extends Consist {
       this.cabLight = new THREE.PointLight(0xffd09a, 0, 5, 2); L.body.add(this.cabLight); if (L.cabLightPos) this.cabLight.position.copy(L.cabLightPos); else this.cabLight.position.set(ax(15.8), 4.1, 0);
     } else { this.head = null; this.fireLight = null; this.cabLight = null; }
     this.markerMats = [];
-    for (const v of this.vehicles) if (v.markers) for (const p of v.markers) { const m = new THREE.Mesh(new THREE.CircleGeometry(0.07, 12), new THREE.MeshBasicMaterial({ color: 0xff2a1e })); m.position.copy(p); m.rotation.y = -Math.PI / 2; v.root.add(m); this.markerMats.push(m); }
+    for (const v of this.vehicles) this.markerLamps(v);
+  }
+  /* red marker lamps on a caboose or observation car */
+  markerLamps(v) {
+    if (!v.markers || v.lamps) return;
+    v.lamps = true;
+    for (const p of v.markers) { const m = new THREE.Mesh(new THREE.CircleGeometry(0.07, 12), new THREE.MeshBasicMaterial({ color: 0xff2a1e })); m.position.copy(p); m.rotation.y = -Math.PI / 2; v.root.add(m); this.markerMats.push(m); }
   }
   update(dt, theta = 0, rev = 0) {
     super.update(dt, theta, rev);

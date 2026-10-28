@@ -150,11 +150,83 @@ function finishTrain(t) {
   GAME.jointMem = new Map();
 }
 /* colour-space fix-up and fresh brakes for a newly built train (ours or another player's) */
-function prepareTrain(t) {
+function prepareTrain(t, keepBrakes) {
   for (const v of t.vehicles) linearizeObject(v.root);
   if (t.diesel) t.units.forEach(m => m.trucks.forEach(linearizeObject)); else linearizeObject(t.loco.leadTruck);
   for (const im of t.inst) linearizeObject(im);
-  for (const v of t.vehicles) v.brake = { AR: 90, BC: 0, BP: 90, emerg: false, released: true };
+  if (!keepBrakes) for (const v of t.vehicles) v.brake = { AR: 90, BC: 0, BP: 90, emerg: false, released: true };
+}
+/* Change the engine or the train from the menu without making up a new train in the yard. The coupler
+   between the engine and its train stays where it is (the train slides a little if the new one would
+   run into cars or the end of the track), cars picked up in the yard stay coupled, and the speed, air
+   and switches carry on. Returns false when there is no room, so New train makes it up in the yard. */
+GAME.swapLive = function () {
+  const old = GAME.train, g = GAME.settings, j = JOB.wanted();
+  if (!GAME.ready || !old) return false;
+  if (!GAME.running) { if (!MP.on) makeTrain(); return true; }   // the train on show behind the menu
+  if (MP.needSpawn || (j ? j.id : '') !== JOB.activeId()) return false;
+  const ck = JOB.consist(), units = +g.units || 1;
+  const newLoco = old.locoKey !== g.loco || (old.diesel && old.nUnits !== units), newCars = old.consistKey !== ck;
+  if (!newLoco && !newCars) return true;
+  const t = new Train(scene, g.loco, ck, dieselOpts());
+  const power = t.vehicles.filter(isPower), built = t.vehicles.filter(v => !isPower(v));
+  // a new road reletters the cars that came with the train
+  const road = LOCO_SPEC[g.loco].short !== LOCO_SPEC[old.locoKey].short;
+  const V = newCars || !road ? old.vehicles : old.vehicles.map(v => v.made && !v.yard ? relettered(t, old, v) : v);
+  const plan = CARS.swapPlan(V, power, newCars ? built : null);
+  // room around the joint that stays put: the end of the track, standing cars, other players' trains
+  const anchor = old.endTP('front'); anchor.advance(-plan.a0, null);
+  const room = dir => { const max = plan.length + 60, a = anchor.clone(), left = Math.abs(a.advance(dir * max, null)); return Math.min(max - left, CARS.clearance(anchor, dir, max, old) - 0.5); };
+  const lo = plan.length - plan.a1 - room(-1), hi = room(1) - plan.a1;
+  const front = anchor.clone(); front.advance(plan.a1 + clamp(0, lo, hi), null);
+  if (lo > hi || !MP.clearOf(front, plan.length)) {
+    for (const v of V) if (!old.vehicles.includes(v)) { scene.remove(v.root); freeVehicle(v); }
+    t.disposeDeep(); ROAD_SHORT = LOCO_SPEC[old.locoKey].short;
+    toast(`${lo > hi ? (plan.length > old.length ? 'No room here for a longer train.' : 'No room here to make the change.') : 'Another train is in the way.'} Press New train to make it up in the yard.`, 'warn', 5200, 'swap');
+    return false;
+  }
+  // build the new train out of the old one
+  for (const v of built) if (!plan.vehicles.includes(v)) scene.remove(v.root);
+  const kept = plan.vehicles.filter(v => old.vehicles.includes(v)), lb = old.lead.brake;
+  old.dispose();
+  for (const v of kept) { scene.add(v.root); old.release(v); }
+  for (const v of plan.vehicles) {
+    if (!v.ptsAll) t.track(v);
+    // the new engine and cars come on with the train's air
+    if (t.vehicles.includes(v)) v.brake = { AR: lb.AR, BC: lb.BC, BP: lb.BP, emerg: lb.emerg, released: lb.released };
+    t.markerLamps(v);
+  }
+  t.vehicles = plan.vehicles; t.consistKey = newCars ? ck : old.consistKey;
+  t.layout(); t.buildInstances();
+  t.place(front);
+  prepareTrain(t, true);
+  GAME.train = t;
+  if (old.diesel !== t.diesel) carryOver();
+  else if (old.locoKey !== t.locoKey) { S.throttle = 0; S.notch = 0; S.dyn = 0; }
+  if (!t.diesel) applySteamFinish(g.finish);
+  S.limit = Math.min(...t.pts.map(p => p.tp.e.limit));
+  buildWhistleIfReady(); GAME.jointMem = new Map(); GAME.filling = null;
+  t.update(0, S.theta, S.reverser);
+  CARS.gen++; if (CARS.onChange) CARS.onChange();
+  if (MP.on) MP.dirty = true;
+  const what = t.diesel ? (t.nUnits > 1 ? `${t.nUnits} diesels` : 'the diesel') : `${LOCO_SPEC[g.loco].short} ${g.loco}`, cars = { passenger: 'the passenger train', freight: 'the manifest freight' }[ck] || 'the train';
+  toast(newLoco && newCars ? `Now ${what} on ${cars}.` : newLoco ? `${what[0].toUpperCase() + what.slice(1)} coupled on.` : ck === 'light' ? 'Cut off from the train: running light.' : `Now running ${cars}.`, 'good', 3200, 'swap');
+  return true;
+};
+/* the same car, lettered for the road of train t */
+function relettered(t, old, v) {
+  const { type, num, flag } = v.made;
+  const m = type === 'coach' ? coachModel(LOCO_SPEC[t.locoKey], num, flag) : freightModel(type, num, rng(num));
+  scene.add(m.root);
+  return Object.assign(carVehicle(m), { made: v.made, flip: v.flip, hb: v.hb, brake: v.brake, roll: old.dist * (v.flip ? -1 : 1) + (v.roll || 0) });
+}
+/* steam to diesel or back: the run keeps its speed, air and lights; the new engine comes with full
+   supplies and its throttle shut, and the reverser keeps its direction */
+function carryOver() {
+  const keep = {}; for (const k of ['v', 'vw', 'odo', 'brakeH', 'indH', 'ER', 'MR', 'light', 'bell', 'sander', 'paused', 'derailed', 'theta']) keep[k] = S[k];
+  const dir = Math.abs(S.reverser) > 0.03 ? Math.sign(S.reverser) : 0;
+  resetState(); Object.assign(S, keep);
+  S.reverser = GAME.isDiesel() ? dir : dir * 0.75;
 }
 function dieselOpts() {
   const g = GAME.settings, custom = g.livery === 'custom';
@@ -186,10 +258,10 @@ function buildMenu() {
   loadSettings();
   MP.init();
   const locoOpts = { '765': { name: 'NKP 765', sub: 'S-2 · Lima 1944' }, '1225': { name: 'PM 1225', sub: 'N-1 · Lima 1941' }, 'diesel': { name: 'Wide-cab diesel', sub: 'AC · 4,400 hp' } };
-  segButtons('optLoco', locoOpts, 'loco', () => { specGrid(); startLabel(); refreshMenuGroups(); saveSettings(); });
+  segButtons('optLoco', locoOpts, 'loco', () => { GAME.swapLive(); specGrid(); startLabel(); refreshMenuGroups(); saveSettings(); });
   const livOpts = {}; for (const k in LIVERIES) { const L = LIVERIES[k]; livOpts[k] = { name: L.name, sub: L.sub, swatch: `linear-gradient(90deg, ${hexCss(k === 'custom' ? GAME.settings.custom.body : L.body)} 0 64%, ${hexCss(k === 'custom' ? GAME.settings.custom.accent : L.accent)} 64% 100%)` }; }
   segButtons('optLivery', livOpts, 'livery', () => { applyLiveriesLive(); refreshMenuGroups(); specGrid(); saveSettings(); });
-  segButtons('optUnits', { 1: { name: '1 unit', sub: '4,400 hp' }, 2: { name: '2 units', sub: '8,800 hp' }, 3: { name: '3 units', sub: '13,200 hp' } }, 'units', k => { GAME.settings.units = +k; startLabel(); refreshMenuGroups(); saveSettings(); });
+  segButtons('optUnits', { 1: { name: '1 unit', sub: '4,400 hp' }, 2: { name: '2 units', sub: '8,800 hp' }, 3: { name: '3 units', sub: '13,200 hp' } }, 'units', k => { GAME.settings.units = +k; GAME.swapLive(); startLabel(); refreshMenuGroups(); saveSettings(); });
   segButtons('optMix', { matched: { name: 'Matched', sub: 'All one scheme' }, mixed: { name: 'Mixed', sub: 'Run-through power' } }, 'mixKey', k => { GAME.settings.mix = k === 'mixed'; applyLiveriesLive(); saveSettings(); });
   [...$('optMix').children].forEach(c => c.setAttribute('aria-pressed', String(c.id === 'optMix_' + (GAME.settings.mix ? 'mixed' : 'matched'))));
   segButtons('optFinish', { standard: { name: 'As delivered', sub: 'Graphite smokebox' }, white: { name: 'White trim', sub: 'Excursion style' }, black: { name: 'All black', sub: 'Plain' } }, 'finish', k => { applySteamFinish(k); saveSettings(); });
@@ -206,7 +278,7 @@ function buildMenu() {
   };
   for (const id of ['cBody', 'cAccent', 'cLetter', 'cNum']) $(id).addEventListener('input', onCustom);
   refreshMenuGroups();
-  segButtons('optTrain', Object.fromEntries(Object.entries(CONSISTS).filter(([, c]) => !c.hidden)), 'consist', () => { startLabel(); saveSettings(); });
+  segButtons('optTrain', Object.fromEntries(Object.entries(CONSISTS).filter(([, c]) => !c.hidden)), 'consist', () => { GAME.swapLive(); startLabel(); saveSettings(); });
   segButtons('optTime', PRESETS, 'time', k => { if (GAME.ready) applyLook(k, GAME.settings.weather, renderer, scene); });
   segButtons('optWeather', WEATHER, 'weather', k => { if (GAME.ready) { applyLook(GAME.settings.time, k, renderer, scene); FX.snow.visible = SKY.snow; } });
   segButtons('optFire', { auto: { name: 'Fireman', sub: 'Stoker & water handled' }, hand: { name: 'Hand fired', sub: 'You run the boiler' } }, 'fire', k => { S.autoFire = k === 'auto'; GAME.refreshKeys(); saveSettings(); });
