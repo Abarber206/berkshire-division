@@ -430,7 +430,7 @@ JOB.closeUI = function () { const d = $('jobDone'); if (d) d.hidden = true; cons
 JOB.again = function () {
   const id = JOB.run.def.id; JOB.closeUI(); JOB.end();
   GAME.settings.job = id; saveSettings(); jobMenu();
-  S.derailed = false; GAME.start();
+  S.derailed = false; if (GAME.train) GAME.train.wreck(null); GAME.start();
 };
 JOB.drive = function () {
   const R = JOB.run; JOB.closeUI();
