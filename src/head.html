@@ -265,7 +265,7 @@ details.keys kbd{color:var(--brass)}
 #btnPlayers{width:auto;padding:0 8px;display:flex;gap:4px;align-items:center}
 #mpCount{font-family:var(--f-num);font-size:12px;font-weight:600;color:var(--brass)}
 #mpPanel{position:absolute;z-index:7;right:calc(env(safe-area-inset-right,0px) + 10px);top:calc(env(safe-area-inset-top,0px) + 54px);
-  width:min(340px,calc(100vw - 20px));max-height:calc(100vh - 70px);overflow:auto;padding:10px;display:flex;flex-direction:column;gap:8px}
+  width:min(340px,calc(100vw - 20px));max-height:calc(100vh - 70px);overflow:auto;padding:10px;display:flex;flex-direction:column;gap:8px;box-sizing:border-box}
 .mpHead{display:flex;gap:8px;align-items:center}
 .mpHead>span{flex:1;font-size:12px;color:var(--ink-dim);letter-spacing:1px;text-transform:uppercase}
 .mpHead>span b{font-family:var(--f-num);color:var(--brass);letter-spacing:2px;font-size:14px}
@@ -296,7 +296,7 @@ details.keys kbd{color:var(--brass)}
 }
 /* ---------- couplers ---------- */
 #carPanel{position:absolute;z-index:7;right:calc(env(safe-area-inset-right,0px) + 10px);top:calc(env(safe-area-inset-top,0px) + 54px);
-  width:min(420px,calc(100vw - 20px));padding:10px;display:flex;flex-direction:column;gap:8px}
+  width:min(420px,calc(100vw - 20px));padding:10px;display:flex;flex-direction:column;gap:8px;box-sizing:border-box}
 #toast{z-index:8}
 #btnCars.on{border-color:var(--brass)}#btnCars.on svg{stroke:var(--brass)}
 #carSum{font-size:12px;color:var(--ink-dim)}
@@ -320,6 +320,77 @@ details.keys kbd{color:var(--brass)}
   #carPanel{top:calc(env(safe-area-inset-top,0px) + 42px);right:calc(env(safe-area-inset-right,0px) + 206px);width:min(420px,calc(100vw - 236px));gap:6px;padding:8px}
   .cv{height:38px;min-width:34px}.cj{height:32px;width:28px}
   #carHint{font-size:10.5px}
+}
+/* ---------- jobs ---------- */
+#jobBox{box-sizing:border-box;display:flex;flex-direction:column;gap:2px;padding:6px 10px;min-width:180px;max-width:250px;text-align:left;font:inherit;color:var(--ink)}
+.jbTop{display:flex;gap:8px;align-items:baseline;font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:var(--ink-dim)}
+#jobClock{font-family:var(--f-num);font-size:15px;letter-spacing:0;color:var(--brass);font-weight:600;font-variant-numeric:tabular-nums;text-transform:none}
+#jobName{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#jobScore{font-family:var(--f-num);font-size:12px;color:var(--ink);letter-spacing:0;font-weight:600}
+#jobScore:after{content:' pts';font-size:9px;color:var(--ink-dim)}
+#jobTask{font-size:12.5px;font-weight:600;line-height:1.2}
+#jobSub{font-family:var(--f-num);font-size:11px;color:var(--ink-dim);font-variant-numeric:tabular-nums}
+#jobSub.warn{color:var(--approach)}#jobSub.bad{color:var(--stop)}#jobSub.good{color:var(--clear)}
+#jobPanel{position:absolute;z-index:7;right:calc(env(safe-area-inset-right,0px) + 10px);top:calc(env(safe-area-inset-top,0px) + 54px);
+  width:min(440px,calc(100vw - 20px));max-height:calc(100vh - 70px);overflow:auto;padding:10px;display:flex;flex-direction:column;gap:8px;box-sizing:border-box}
+#jobPanel .mpHead>span{color:var(--ink);text-transform:none;letter-spacing:.3px;font-size:13px;font-weight:600}
+.jt{display:flex;flex-direction:column;gap:1px;background:var(--rule);border:1px solid var(--rule);border-radius:5px;overflow:hidden}
+.jr{display:grid;grid-template-columns:16px 1fr auto auto;gap:8px;align-items:baseline;background:var(--steel);padding:6px 8px;font-size:12px}
+.jr.cur{background:#1d1a12}
+.jr>i{font-style:normal;color:var(--ink-dim);text-align:center}
+.jr>i.ok{color:var(--clear)}.jr>i.no{color:var(--stop)}.jr>i.cur{color:var(--brass)}
+.jw{min-width:0}
+.jh{color:var(--ink-dim);font-size:11px;line-height:1.35;margin-top:3px}
+.js,.ja{font-family:var(--f-num);font-size:11px;color:var(--ink-dim);white-space:nowrap;font-variant-numeric:tabular-nums}
+.ja{color:var(--ink);min-width:0}.ja.late{color:var(--approach)}
+.jl{margin-top:2px}
+.jds{display:flex;flex-direction:column;gap:3px}
+.jd{display:flex;gap:8px;justify-content:space-between;align-items:baseline;font-size:12px;padding:2px 2px}
+.jd span{min-width:0}
+.jd small{display:block;color:var(--ink-dim);font-size:11px}
+.jd b{font-family:var(--f-num);color:var(--stop);font-weight:600}
+.jd.none{color:var(--clear)}
+.seg.jobs{grid-template-columns:repeat(auto-fit,minmax(124px,1fr))}
+.seg.jobs .best{font-style:normal;font-family:var(--f-num);font-size:10.5px;color:var(--brass);margin-top:2px;letter-spacing:.5px}
+#jobBrief{display:flex;flex-direction:column;gap:8px;margin-top:2px}
+#jobBrief .jb{margin:0;font-size:12.5px;line-height:1.45;color:#b9c3c8}
+.jm{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1px;background:var(--rule);border:1px solid var(--rule);border-radius:5px;overflow:hidden}
+.jm span{background:var(--steel);padding:6px 8px;display:flex;flex-direction:column;gap:1px;font-size:9.5px;letter-spacing:1.1px;text-transform:uppercase;color:var(--ink-dim);min-width:0}
+.jm b{font-family:var(--f-num);font-size:12px;font-weight:600;color:var(--ink);letter-spacing:0;text-transform:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#jobDone{z-index:19}
+#jobDone .card{background:rgba(14,19,23,.97);border:1px solid var(--rule);border-top:3px solid var(--clear);border-radius:8px;padding:16px 18px;
+  width:min(100%,460px);max-height:100%;overflow:auto;display:flex;flex-direction:column;gap:10px}
+#jobDone.fail .card{border-top-color:var(--stop)}
+.jdHead{display:flex;gap:12px;align-items:flex-end;justify-content:space-between}
+#jdTitle{margin:0;font-family:var(--f-display);font-size:32px;letter-spacing:1px;line-height:1;text-wrap:balance}
+#jdScore{white-space:nowrap;flex:none}
+#jdScore b{font-family:var(--f-num);font-size:40px;font-weight:600;line-height:.9;color:#f3efe2}
+#jdScore small{font-family:var(--f-num);font-size:12px;color:var(--ink-dim);margin-left:3px}
+#jdStars{font-size:22px;letter-spacing:4px;color:var(--brass);line-height:1}
+#jdStars:empty,#jdFail:empty,#jdCats:empty,#jdBest:empty{display:none}
+#jdFail{margin:0;color:#b9c3c8;line-height:1.45}
+#jdCats{display:flex;flex-direction:column;gap:6px}
+.jc{display:grid;grid-template-columns:110px 1fr 48px;gap:10px;align-items:center;font-size:12px}
+.jc i{height:6px;border-radius:3px;background:#0a0d10;overflow:hidden}
+.jc em{display:block;height:100%;background:var(--brass);border-radius:3px}
+.jc b{font-family:var(--f-num);font-weight:600;text-align:right}
+.jc b small{color:var(--ink-dim);font-weight:500}
+#jdBest{font-size:12px;color:var(--ink-dim)}
+#jobDone .acts{display:flex;gap:8px;flex-wrap:wrap}
+.cv.wb{box-shadow:inset 0 0 0 1.5px #ffb347}
+.cv>i{position:absolute;top:3px;left:3px;font-style:normal;font-family:var(--f-num);font-size:8.5px;font-weight:600;color:#1b1408;background:#ffb347;border-radius:2px;padding:0 2px;line-height:11px}
+@media (max-width:600px){
+  #jobBox{max-width:none;width:min(300px,calc(100vw - 20px))}
+  #hud.job #toast{top:calc(env(safe-area-inset-top,0px) + 228px)}
+  .jc{grid-template-columns:96px 1fr 44px}
+}
+@media (max-height:500px) and (orientation:landscape){
+  #jobBox{min-width:0;max-width:200px;padding:4px 8px;gap:1px}
+  #jobClock{font-size:13px}
+  #jobTask{font-size:11px}
+  #jobSub{font-size:10px}
+  #hud.job #toast{top:calc(env(safe-area-inset-top,0px) + 100px)}
+  #jobPanel{top:calc(env(safe-area-inset-top,0px) + 42px);right:calc(env(safe-area-inset-right,0px) + 206px);width:min(440px,calc(100vw - 236px));max-height:calc(100vh - 50px)}
 }
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 
@@ -419,6 +490,11 @@ details.keys kbd{color:var(--brass)}
       <div id="stopLine"></div>
     </div>
     <div id="routeMini" class="hud-box"><span id="swLampMini" class="none" style="width:10px;height:10px;border-radius:50%;background:#445"></span><span id="swMiniTxt">—</span><button id="btnThrowMini" class="btn" style="padding:6px 8px;font-size:10px">Throw</button></div>
+    <button id="jobBox" class="hud-box" type="button" hidden aria-label="Job sheet">
+      <span class="jbTop"><span id="jobClock">0:00:00</span><span id="jobName"></span><span id="jobScore">100</span></span>
+      <span id="jobTask"></span>
+      <span id="jobSub"></span>
+    </button>
   </div>
   <div id="tr">
     <div class="btns">
@@ -446,6 +522,10 @@ details.keys kbd{color:var(--brass)}
     <div id="carSum"></div>
     <div id="carStrip"></div>
     <div id="carHint" class="mpStatus"></div>
+  </div>
+  <div id="jobPanel" class="hud-box" hidden>
+    <div class="mpHead"><span id="jpTitle">Job</span><button class="btn" id="jpAbandon" type="button">Abandon job</button><button class="btn" id="jpClose" type="button" aria-label="Close">Close</button></div>
+    <div id="jpBody"></div>
   </div>
   <div id="stand">
     <div id="gaugeWrap" class="hud-box" role="button" tabindex="0" aria-label="Gauges, tap to shrink or expand"><canvas id="gauges" width="680" height="232"></canvas><div id="gaugeMini"></div></div>
@@ -479,6 +559,17 @@ details.keys kbd{color:var(--brass)}
 </div>
 
 <div id="bigMsg" hidden><div class="card"><h2 id="bigTitle">Derailed</h2><p id="bigBody"></p><div class="acts"><button class="btn prim" id="bigRetry">Re-rail and continue</button><button class="btn" id="bigMenu">Main menu</button></div></div></div>
+
+<div id="jobDone" class="overlay" hidden><div class="card" role="dialog" aria-labelledby="jdTitle">
+  <div class="eyebrow" id="jdEyebrow"></div>
+  <div class="jdHead"><h2 id="jdTitle">Completed</h2><div id="jdScore"></div></div>
+  <div id="jdStars" aria-hidden="true"></div>
+  <p id="jdFail"></p>
+  <div id="jdCats"></div>
+  <div id="jdBest"></div>
+  <div id="jdSheet"></div>
+  <div class="acts"><button class="btn prim" id="jdAgain" type="button">Run it again</button><button class="btn" id="jdDrive" type="button">Keep driving</button><button class="btn" id="jdBoard" type="button">Job board</button></div>
+</div></div>
 
 <div id="editor" hidden>
   <canvas id="edCanvas" aria-label="Layout plan. Tap an amber end to build from it."></canvas>
@@ -543,6 +634,7 @@ details.keys kbd{color:var(--brass)}
       <div class="fgroup" id="grpRail"><span class="lbl">Railroad</span><div class="seg" id="optRail"></div>
         <div class="row2"><button class="btn" id="btnEditor" type="button">Build your own layout</button></div>
       </div>
+      <div class="fgroup" id="grpJob"><span class="lbl">Work</span><div class="seg jobs" id="optJob"></div><div id="jobBrief" hidden></div></div>
       <div class="fgroup" id="grpMP"><span class="lbl">Multiplayer</span>
         <div class="mp">
           <div class="mpRow"><input id="mpName" class="mpIn" maxlength="16" placeholder="Your name" autocomplete="off" spellcheck="false" aria-label="Your name"></div>

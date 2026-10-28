@@ -176,7 +176,7 @@ function physicsStep(dt, train) {
     Fbrake += mass * v.brakeA * (bc / 64) * shoe + (isLoco && DSL ? S.DBF : 0);
     for (const p of [v.fp[0], v.fp[1]]) limit = Math.min(limit, p.tp.e.limit);
   }
-  S.limit = limit; S.grade = gradeLead;
+  S.limit = Math.min(limit, JOB.vmax()); S.grade = gradeLead;
   const Meff = M * 1.04;
   const Fdrive = Frail + Fgrade;
   let a;
