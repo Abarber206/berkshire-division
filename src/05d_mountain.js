@@ -33,9 +33,12 @@ function mtBuildViaduct(scene) {
   for (const [s, dir] of [[s0, -1], [s1, 1]]) {
     const F = frameAt(s, newFrame()), base = frameMatrix(F, new THREE.Matrix4());
     const gl = Math.min(...[-3, 0, 3].map(z => groundAt(at(F, 0, 0, z).x, -at(F, 0, 0, z).z))) - F.p.y;
-    const h = -0.5 - gl + 1.5;
-    gb.add('concrete', boxT(4.2, h, 6.6, 2), base.clone().multiply(M(dir * 1.6, -0.5 - h / 2, 0)));
-    gb.add('concrete', boxT(0.8, 1.2, 6.6), base.clone().multiply(M(-dir * 0.1, -0.35, 0)));
+    // the body under the approach fill, the bridge seat the girder ends bear on, and the backwall between them,
+    // which stops under the ties so the track runs straight over it
+    const h = -0.5 - gl + 1.5, hs = yBot - gl + 1.5;
+    gb.add('concrete', boxT(3.7, h, 6.6, 2), base.clone().multiply(M(dir * 1.85, -0.5 - h / 2, 0)));
+    gb.add('concrete', boxT(1.4, hs, 6.6, 2), base.clone().multiply(M(-dir * 0.7, yBot - hs / 2, 0)));
+    gb.add('concrete', boxT(0.5, -0.42 - yBot, 6.6), base.clone().multiply(M(-dir * 0.25, (yBot - 0.42) / 2, 0)));
   }
   // the towers: every 27 m, a 9 m tower span then an 18 m girder span
   const towers = [];
@@ -139,7 +142,7 @@ function mtBuildTunnels(scene) {
         pos.push(F.p.x + F.r.x * x + F.u.x * y, F.p.y + F.r.y * x + F.u.y * y, F.p.z + F.r.z * x + F.u.z * y);
         const v = (0.55 + 0.1 * Noise.hash(i, Math.round(y * 3))) * k; col.push(v, v * 0.97, v * 0.92);
       }
-      if (i) { const n = prof.length, a = (i - 1) * n, b = i * n; for (let q = 0; q < n - 1; q++) idx.push(a + q, a + q + 1, b + q, a + q + 1, b + q + 1, b + q); }
+      if (i) { const n = prof.length, a = (i - 1) * n, b = i * n; for (let q = 0; q < n - 1; q++) idx.push(a + q, b + q, a + q + 1, a + q + 1, b + q, b + q + 1); }
     }
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); g.setIndex(idx);
     g.computeVertexNormals(); g.computeBoundingSphere();
@@ -226,7 +229,7 @@ function mtPortalPatch(scene, P) {
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.BufferAttribute(col, 3)); g.setAttribute('uv', new THREE.BufferAttribute(uv, 2)); g.setAttribute('aCrop', new THREE.BufferAttribute(crop, 1));
   g.setIndex(idx); g.computeVertexNormals(); mtRockColors(g); g.computeBoundingSphere();
-  patch.mesh = new THREE.Mesh(g, MAT.ground); patch.mesh.receiveShadow = true; patch.mesh.visible = false; scene.add(patch.mesh);
+  patch.mesh = new THREE.Mesh(g, MAT.ground); patch.mesh.receiveShadow = true; scene.add(patch.mesh);
   WORLD.patches.push(patch);
 }
 /* the terrain grid's own surface (its triangles), whatever patches lie over it */
@@ -273,7 +276,8 @@ function mtInBore(x, z, pad = 0) {
     if (!P0) continue;
     const [a, l] = portalAL(P0, x, -z), len = portalAL(P0, P1.X, P1.N)[0];
     if (a < -0.8 || a > len + 0.8 || Math.abs(l) > BORE.half + pad) continue;
-    return { rail: lerp(P0.y, P1.y, clamp(a / len, 0, 1)), depth: Math.min(a, len - a), l };
+    const top = BORE.spring + Math.sqrt(Math.max(0, BORE.half * BORE.half - l * l));   // the lining's height over the rail here
+    return { rail: lerp(P0.y, P1.y, clamp(a / len, 0, 1)), depth: Math.min(a, len - a), l, top, P: P0 };
   }
   return null;
 }
@@ -344,6 +348,7 @@ function mtForestUpdate(cp, scene, all = false) {
   WORLD.treeCount = [...FOREST.tiles.values()].reduce((a, t) => a + t.n, 0);
 }
 function mtBuildForest(scene) {
+  WORLD.treeTiles = [];
   const st = ROUTE.startLine.poseAt(ROUTE.startS);
   mtForestUpdate(new THREE.Vector3(st.X, 0, -st.N), scene, true);
 }
@@ -352,10 +357,6 @@ function mtBuildForest(scene) {
 function mtUpdate(cam, scene) {
   if (!WORLD.mtn) return;
   mtForestUpdate(cam.position, scene);
-  for (const p of WORLD.patches || []) {
-    const d = Math.hypot(p.P.X - cam.position.x, -p.P.N - cam.position.z);
-    p.mesh.visible = d < 2400;
-  }
   const b = mtInBore(cam.position.x, cam.position.z, 1);
   const k = b && cam.position.y < b.rail + BORE.crown + 0.5 ? smooth(4, 60, b.depth) : 0;
   if (SKY.sun && SKY.sunBase !== undefined) { SKY.sun.intensity = SKY.sunBase * (1 - 0.94 * k); SKY.hemi.intensity = SKY.hemiBase * (1 - 0.85 * k); }

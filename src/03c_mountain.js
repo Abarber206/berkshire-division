@@ -1,12 +1,12 @@
 /* ============================================================================
    Laurel Mountain: the second railroad. A single-track mountain division,
-   34 miles from Riverton Yard up the river, round the Laurel Run horseshoe,
+   35 miles from Riverton Yard up the river, round the Laurel Run horseshoe,
    along the valley wall to Summit tunnel and down Pine Creek to Ashby. A
    turning loop at each end; the ruling grade is 1.9 per cent eastward.
    ========================================================================== */
 const ROUTES = {
   ohio: { name: 'Berkshire Division', sub: 'Ohio farm country · 13.8 mi double-track loop' },
-  laurel: { name: 'Laurel Mountain', sub: 'Mountain grades · 34 mi single track, horseshoe curve, tunnel' },
+  laurel: { name: 'Laurel Mountain', sub: 'Mountain grades · 35.6 mi single track, horseshoe curve, tunnel' },
 };
 /* ?route= picks the railroad; without it, the one last driven. A layout from the editor overrides both. */
 const ROUTE_KEY = (() => {
@@ -160,16 +160,16 @@ function buildMountainRoute() {
 
   /* ---------- stations, water, signals, mileposts ---------- */
   const st = (name, line, s, side, kind, across = 0) => { const loc = line.locate(s); ROUTE.stations.push({ name, line, sLine: s, edge: loc.edge, s: loc.s, side, kind, across }); };
-  st('Riverton', main, 1500, 1, 'depot');
-  st('Hollins', main, F.hollins + 1100, -1, 'depot');
-  st('Big Laurel', main, 17000, -1, 'small');
+  st('Riverton', main, 1500, -1, 'depot');
+  st('Hollins', main, F.hollins + 1100, -1, 'depot', 4.5);   // beyond the siding
+  st('Big Laurel', main, 17000, -1, 'small', 4.5);
   st('Glen Iron', main, 30400, 1, 'small', 4.5);
-  st('Summit', main, 38800, -1, 'small');
-  st('Pine Flats', main, 50000, 1, 'depot');
-  st('Ashby', main, F.ashby + 700, 1, 'depot');
+  st('Summit', main, 38800, -1, 'small', 4.5);
+  st('Pine Flats', main, 50000, 1, 'depot', 4.5);
+  st('Ashby', main, F.ashby + 700, -1, 'depot');
   const wc = (line, s, side, kind) => { const loc = line.locate(s); ROUTE.water.push({ line, sLine: s, edge: loc.edge, s: loc.s, side, kind }); };
-  wc(main, 17500, -1, 'column'); wc(main, 39100, -1, 'column'); wc(main, 50400, 1, 'column');
-  wc(eng, 160, 1, 'tower'); wc(main, F.ashby + 1000, 1, 'column');
+  wc(main, 17500, 1, 'column'); wc(main, 39100, 1, 'column'); wc(main, 50400, -1, 'column');   // on the side away from the siding
+  wc(eng, 160, 1, 'tower'); wc(main, F.ashby + 1000, -1, 'column');
   ROUTE.coal = { line: eng, sLine: 260, edge: eng.locate(260).edge, s: eng.locate(260).s };
   /* Single track, signalled both ways: a home signal 400 m out from each end of every siding and
      automatic block signals in between, staggered. Dwarfs govern moves off the sidings and Riverton 1. */

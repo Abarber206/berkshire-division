@@ -279,6 +279,8 @@ function buildMenu() {
   MP.init();
   const locoOpts = { '765': { name: 'NKP 765', sub: 'S-2 · Lima 1944' }, '1225': { name: 'PM 1225', sub: 'N-1 · Lima 1941' }, 'diesel': { name: 'Wide-cab diesel', sub: 'AC · 4,400 hp' },
     'e5': { name: 'E5 Shinkansen', sub: 'Bullet train · 200 mph' }, 'acela': { name: 'Acela Express', sub: 'High speed · 150 mph' } };
+  // the mountain has no wires up for the high-speed sets
+  if (ROUTE_KEY === 'laurel' && !PLAY_LAYOUT) { delete locoOpts.e5; delete locoOpts.acela; if (LOCO_SPEC[GAME.settings.loco].hs) GAME.settings.loco = '765'; }
   segButtons('optLoco', locoOpts, 'loco', () => { GAME.swapLive(); jobMenu(); specGrid(); startLabel(); refreshMenuGroups(); saveSettings(); });
   const livOpts = {}; for (const k in LIVERIES) { const L = LIVERIES[k]; livOpts[k] = { name: L.name, sub: L.sub, swatch: `linear-gradient(90deg, ${hexCss(k === 'custom' ? GAME.settings.custom.body : L.body)} 0 64%, ${hexCss(k === 'custom' ? GAME.settings.custom.accent : L.accent)} 64% 100%)` }; }
   segButtons('optLivery', livOpts, 'livery', () => { applyLiveriesLive(); refreshMenuGroups(); specGrid(); saveSettings(); });
@@ -679,7 +681,7 @@ function renderStep(dt, T) {
   SKY.moon.position.copy(SKY.sunDir).multiplyScalar(7000).add(camera.position);
   const lp = PLACE.on ? PLACE.focus() : (MP.view() || T).lead.pos;
   SKY.sun.target.position.copy(lp); SKY.sun.position.copy(lp).addScaledVector(SKY.sunDir, 300);
-  updateTrackLOD(camera); updateDetailLOD(camera, scene, dt);
+  updateTrackLOD(camera); updateDetailLOD(camera, scene, dt); mtUpdate(camera, scene);
   // effects & sound
   effectsAndSound(dt, T);
   MP.post(dt);

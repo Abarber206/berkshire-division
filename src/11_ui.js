@@ -263,7 +263,8 @@ function drawNet(g, W, H, cx, cn, sc, opt) {
     g.beginPath(); L.pts.forEach((p, i) => { const x = tx(p[0]), y = ty(p[1]); i ? g.lineTo(x, y) : g.moveTo(x, y); }); g.stroke();
   }
   // river
-  if (opt.river) { g.strokeStyle = 'rgba(70,120,140,0.55)'; g.lineWidth = Math.max(2, 50 * sc); g.beginPath(); WORLD.riverPts.forEach((p, i) => { const x = tx(p[0]), y = ty(p[1]); i ? g.lineTo(x, y) : g.moveTo(x, y); }); g.stroke(); g.fillStyle = 'rgba(70,120,140,0.55)'; g.beginPath(); g.arc(tx(WORLD.lake.X), ty(WORLD.lake.N), WORLD.lake.r * sc, 0, TAU); g.fill(); }
+  if (opt.river && WORLD.mtn) for (const r of MT.rivers) { g.strokeStyle = 'rgba(70,120,140,0.6)'; g.lineWidth = Math.max(1.5, 2 * r.halfW * sc); g.beginPath(); r.pts.forEach((p, i) => { if (i % 4 && i < r.pts.length - 1) return; const x = tx(p.X), y = ty(p.N); i ? g.lineTo(x, y) : g.moveTo(x, y); }); g.stroke(); }
+  else if (opt.river) { g.strokeStyle = 'rgba(70,120,140,0.55)'; g.lineWidth = Math.max(2, 50 * sc); g.beginPath(); WORLD.riverPts.forEach((p, i) => { const x = tx(p[0]), y = ty(p[1]); i ? g.lineTo(x, y) : g.moveTo(x, y); }); g.stroke(); g.fillStyle = 'rgba(70,120,140,0.55)'; g.beginPath(); g.arc(tx(WORLD.lake.X), ty(WORLD.lake.N), WORLD.lake.r * sc, 0, TAU); g.fill(); }
   // stations
   if (opt.labels) {
     g.font = `600 ${opt.fs}px "IBM Plex Sans Condensed", sans-serif`; g.textAlign = 'center';
@@ -303,7 +304,7 @@ MAP.open = function () {
   MAP.visible = true; $('mapView').hidden = false;
   const p = GAME.train ? GAME.train.lead.pos : { x: 0, z: -2400 };
   MAP.cx = 0; MAP.cn = 2700; MAP.scale = Math.min(innerWidth / 11000, innerHeight / 7600);
-  if (WORLD.custom) { // frame the whole layout
+  if (WORLD.custom || WORLD.mtn) { // frame the whole layout
     let x0 = Infinity, x1 = -Infinity, n0 = Infinity, n1 = -Infinity;
     for (const L of MAP.lines) for (const q of L.pts) { x0 = Math.min(x0, q[0]); x1 = Math.max(x1, q[0]); n0 = Math.min(n0, q[1]); n1 = Math.max(n1, q[1]); }
     MAP.cx = (x0 + x1) / 2; MAP.cn = (n0 + n1) / 2; MAP.scale = clamp(Math.min(innerWidth / (x1 - x0 + 200), innerHeight / (n1 - n0 + 200)) * 0.85, 0.04, 3);

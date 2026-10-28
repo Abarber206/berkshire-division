@@ -140,6 +140,33 @@ test('released on a 0.9% descending grade the train starts to roll, and coasting
   between(flat.S.v / flat.MPH, 10, 19.5, 'speed after coasting a minute from 20 mph');
 });
 
+/* Laurel Mountain's ruling grade is 1.9 per cent */
+test('on a 1.9% climb the 765 lifts 10 loaded cars and settles at a steady speed, and 14 cars stall it', () => {
+  const sim = h.load(), T = h.train(sim, 10, { grade: 0.019 }), S = sim.S;
+  Object.assign(S, { cocks: false, throttle: 1, reverser: 0.6, indH: 0, brakeH: 0, v: 10 * sim.MPH });
+  h.run(sim, T, 480); const v8 = S.v / sim.MPH;
+  h.run(sim, T, 120); const v10 = S.v / sim.MPH;
+  between(v10, 15, 30, 'balancing speed with 10 cars (mph)');
+  assert.ok(Math.abs(v10 - v8) < 1.5, `should have settled (${v8.toFixed(1)} -> ${v10.toFixed(1)} mph)`);
+  assert.equal(S.slip, false);
+
+  const heavy = h.load(), H = h.train(heavy, 14, { grade: 0.019 });
+  Object.assign(heavy.S, { cocks: false, throttle: 1, reverser: 0.6, indH: 0, brakeH: 0, v: 10 * heavy.MPH });
+  h.run(heavy, H, 300);
+  assert.ok(heavy.S.v < 0.1, `14 cars should stall on the grade (${(heavy.S.v / heavy.MPH).toFixed(1)} mph)`);
+});
+
+test('down a 1.9% grade a train runs away with the brakes off and a service application holds it back', () => {
+  const speed = brakeH => {
+    const sim = h.load(), T = h.train(sim, 20, { grade: -0.019 }), S = sim.S;
+    Object.assign(S, { throttle: 0, indH: 0, brakeH, v: 25 * sim.MPH });
+    h.run(sim, T, 120);
+    return S.v / sim.MPH;
+  };
+  between(speed(0), 50, 70, 'speed after two minutes drifting from 25 mph (mph)');
+  between(speed(0.35), 12, 25, 'speed after two minutes under a light service application (mph)');
+});
+
 test('the independent brake alone holds a light engine on the grade', () => {
   const sim = h.load(), T = h.train(sim, 0, { grade: -0.009 }), S = sim.S;
   Object.assign(S, { indH: 1, brakeH: 0 });

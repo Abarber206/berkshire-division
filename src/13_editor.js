@@ -598,18 +598,19 @@ function edDrive() {
 function railMenu() {
   const host = $('optRail'); if (!host) return;
   host.innerHTML = '';
-  const cur = PLAY_LAYOUT ? PLAY_LAYOUT.id : '';
-  const opts = [['', 'Berkshire Division', '13.8 mi · built in']];
+  const cur = PLAY_LAYOUT ? PLAY_LAYOUT.id : 'route:' + ROUTE_KEY;
+  const opts = Object.entries(ROUTES).map(([k, r]) => ['route:' + k, r.name, r.sub]);
   for (const m of Object.values(LAYOUTS.all()).filter(m => (m.pieces || []).length).sort((a, b) => (b.saved || 0) - (a.saved || 0)).slice(0, 5)) opts.push([m.id, m.name || 'Untitled', `${(m.pieces || []).length} pieces · yours`]);
   for (const [id, name, sub] of opts) {
     const b = document.createElement('button'); b.type = 'button'; b.setAttribute('aria-pressed', String(id === cur));
     b.innerHTML = '<span></span><small></small>'; b.firstChild.textContent = name; b.lastChild.textContent = sub;
-    const changed = id && id === cur && (LAYOUTS.get(id) || {}).saved !== PLAY_LAYOUT.saved;
+    const changed = !id.startsWith('route:') && id === cur && (LAYOUTS.get(id) || {}).saved !== PLAY_LAYOUT.saved;
     if (changed) b.lastChild.textContent = 'Edited · tap to reload';
     b.addEventListener('click', () => {
       if (id === cur && !changed) return;
-      if (id && !((LAYOUTS.get(id) || {}).pieces || []).length) return;
-      location.href = location.pathname + (id ? '?layout=' + encodeURIComponent(id) : '');
+      if (id.startsWith('route:')) { const k = id.slice(6); try { localStorage.setItem('bd_route', k); } catch (e) {} location.href = location.pathname + '?route=' + k; return; }
+      if (!((LAYOUTS.get(id) || {}).pieces || []).length) return;
+      location.href = location.pathname + '?layout=' + encodeURIComponent(id);
     });
     host.appendChild(b);
   }

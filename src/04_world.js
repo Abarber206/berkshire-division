@@ -212,6 +212,7 @@ function groundH(X, N, lat) {
 }
 function groundAt(X, N) { // continuous sampler; exact terrain triangles once the grid is filled
   const L = INNER;
+  if (WORLD.patches) { const p = patchAt(X, N); if (p !== null) return p; }
   if (X < L.x0 || X > L.x1 || N < L.n0 || N > L.n1) return heightRaw(X, N);
   const HG = WORLD.hgrid;
   if (HG && (HG.ready || WORLD.mtn)) {
@@ -249,6 +250,7 @@ function fieldAt(X, N) {
 /* Vertex colour carries everything that is not crop (verges, ballast shoulders, banks, roads, hills).
    out[3] is the crop weight; the ground shader paints the crop pattern itself, per pixel. */
 function groundColor(X, N, h, lat, out) {
+  if (WORLD.mtn) return mtGroundColor(X, N, h, lat, out);
   let r = 0.37, g = 0.49, b = 0.22, w = 1;
   if (lat && lat.d < 30) {
     const k = 1 - smooth(6, 30, lat.d); r = lerp(r, 0.34, k); g = lerp(g, 0.45, k); b = lerp(b, 0.21, k); w *= 1 - k;
@@ -373,6 +375,7 @@ function terrainGeo(x0, n0, size, step) {
   geo.setAttribute('aCrop', new THREE.BufferAttribute(crop, 1));
   geo.setIndex(idx);
   geo.computeVertexNormals();
+  if (WORLD.mtn) mtRockColors(geo);
   geo.computeBoundingSphere();
   return geo;
 }

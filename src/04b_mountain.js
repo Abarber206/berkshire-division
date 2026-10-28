@@ -82,7 +82,7 @@ function mtPrepare() {
     mtRiver('Pine Creek', pts, p => { const s = F.tunnelEnd + 2200 + p.s; return Y(Math.min(s, m.len)) - 11 - 0.004 * p.s; }, { halfW: 4, bank: 0.4 });
   }
   // the summit ridge the tunnel goes through: a crest across the line at the bore's middle
-  { const sm = (F.tunnel + F.tunnelEnd) / 2, p = m.poseAt(sm); MT.ridges.push({ X: p.X, N: p.N, h: p.h, top: Y(sm) + 95, w: 520, len: 5200 }); }
+  { const sm = (F.tunnel + F.tunnelEnd) / 2, p = m.poseAt(sm); MT.ridges.push({ X: p.X, N: p.N, h: p.h, top: Y(sm) + 95, w: (F.tunnelEnd - F.tunnel) / 2 - 80, len: 5200 }); }
 
   /* ---------- level ground for the towns ---------- */
   for (const st of ROUTE.stations) {
@@ -100,8 +100,8 @@ function mtPrepare() {
     let a = MT.rh.get(k); if (!a) MT.rh.set(k, a = []); a.push(p, r, i);
   }
   // distance to the nearest water, by a chamfer sweep on a 100 m grid (good to a few per cent, which is all the uplift needs)
-  const dV = G(100), near = new Int32Array(dV.nx * dV.nn).fill(-1), seeds = [];
-  for (const r of MT.rivers) for (let i = 0; i < r.pts.length; i += 3) seeds.push(r.pts[i]);
+  const chamfer = (seeds) => {
+  const dV = G(100), near = new Int32Array(dV.nx * dV.nn).fill(-1);
   dV.a.fill(1e9);
   for (let q = 0; q < seeds.length; q++) { const p = seeds[q], i = Math.round((p.X - INNER.x0) / 100), j = Math.round((p.N - INNER.n0) / 100); if (i < 0 || j < 0 || i >= dV.nx || j >= dV.nn) continue; const k = j * dV.nx + i, d = Math.hypot(INNER.x0 + i * 100 - p.X, INNER.n0 + j * 100 - p.N); if (d < dV.a[k]) { dV.a[k] = d; near[k] = q; } }
   const relax = (i, j, ii, jj) => { if (ii < 0 || jj < 0 || ii >= dV.nx || jj >= dV.nn) return; const kk = jj * dV.nx + ii, q = near[kk]; if (q < 0) return; const p = seeds[q], k = j * dV.nx + i, d = Math.hypot(INNER.x0 + i * 100 - p.X, INNER.n0 + j * 100 - p.N); if (d < dV.a[k]) { dV.a[k] = d; near[k] = q; } };
@@ -109,7 +109,15 @@ function mtPrepare() {
     for (let j = 0; j < dV.nn; j++) for (let i = 0; i < dV.nx; i++) { relax(i, j, i - 1, j); relax(i, j, i, j - 1); relax(i, j, i - 1, j - 1); relax(i, j, i + 1, j - 1); }
     for (let j = dV.nn - 1; j >= 0; j--) for (let i = dV.nx - 1; i >= 0; i--) { relax(i, j, i + 1, j); relax(i, j, i, j + 1); relax(i, j, i + 1, j + 1); relax(i, j, i - 1, j + 1); }
   }
-  MT.dV = dV;
+  return dV;
+  };
+  const wet = [];
+  for (const r of MT.rivers) for (let i = 0; i < r.pts.length; i += 3) wet.push(r.pts[i]);
+  MT.dV = chamfer(wet);
+  // and to the nearest track (the forest and the far scenery thin out with it)
+  const rails = [];
+  for (const e of NET.edges) for (let s = 0; s <= e.len; s += 40) { const [X, N] = e.xz(s); rails.push({ X, N }); }
+  MT.dT = chamfer(rails);
   // the valley floor: river elevations spread out by a wide Gaussian (and a still wider one beyond it)
   const fl = G(250), fw = 1400, smp = [];
   for (const r of MT.rivers) for (let i = 0; i < r.pts.length; i += 10) smp.push(r.pts[i]);
@@ -156,9 +164,13 @@ function mtValley(X, N) {
   const up = 430 * Math.pow(smooth(60, 3800, dv), 0.85);
   const amp = 18 + 150 * smooth(150, 1800, dv);
   let h = fl + up + amp * (mtRidged(X / 2300 + 7.1, N / 2300 - 3.3, 5) - 0.42) + 6 * Noise.fbm(X / 260, N / 260, 3);
+  return h;
+}
+/* the summit ridge: full height over the whole bore, falling away beyond the portals */
+function mtRidge(X, N, h) {
   for (const r of MT.ridges) {
     const dx = X - r.X, dn = N - r.N, c = Math.cos(r.h), s = Math.sin(r.h), along = dx * c + dn * s, across = -dx * s + dn * c;
-    h = Math.max(h, lerp(h, r.top + 40 * Noise.fbm(X / 700, N / 700, 3), Math.exp(-((along / r.w) ** 2)) * (1 - smooth(r.len * 0.35, r.len * 0.5, Math.abs(across)))));
+    h = Math.max(h, lerp(h, r.top + 40 * Noise.fbm(X / 700, N / 700, 3), (1 - smooth(r.w, r.w + 450, Math.abs(along))) * (1 - smooth(r.len * 0.35, r.len * 0.5, Math.abs(across)))));
   }
   return h;
 }
@@ -180,7 +192,8 @@ function mtWaterNear(X, N) {
 }
 /* the natural ground before the track is graded in */
 function mtNaturalH(X, N) {
-  let h = mtValley(X, N) + mtField(MT.C, X, N);
+  // the ridge goes on after the railroad's correction, which would otherwise pull it down to the approach cuts
+  let h = mtRidge(X, N, mtValley(X, N) + mtField(MT.C, X, N));
   // the water cuts its own bed: flat across the stream, banks rising away
   const w = mtWaterNear(X, N);
   if (w) {
@@ -211,4 +224,23 @@ function mtBuildWater(scene) {
     const m = new THREE.Mesh(g, MAT.water); m.renderOrder = 1; scene.add(m);
     WORLD.riverPts.push(...P.filter((p, i) => i % 4 === 0).map(p => [p.X, p.N]));
   }
+}
+
+/* the mountain's ground: no crops, leaf litter and moss under the woods, rough meadow where the woods thin,
+   cinder and ballast shoulders by the track and gravel bars along the water */
+function mtGroundColor(X, N, h, lat, out) {
+  const wood = (0.55 + 0.5 * Noise.fbm(X / 420 + 9, N / 420 - 4, 3)) * (1 - 0.55 * smooth(700, 2600, mtField(MT.dT, X, N)));
+  const k0 = smooth(0.35, 0.75, wood);
+  let r = lerp(0.40, 0.31, k0), g = lerp(0.47, 0.30, k0), b = lerp(0.24, 0.18, k0);
+  // hemlock needles darken the high ground
+  const hk = smooth(300, 560, h) * k0; r = lerp(r, 0.24, hk * 0.5); g = lerp(g, 0.27, hk * 0.5); b = lerp(b, 0.18, hk * 0.5);
+  if (lat && lat.d < 30) {
+    const k = 1 - smooth(8, 30, lat.d); r = lerp(r, 0.38, k); g = lerp(g, 0.44, k); b = lerp(b, 0.23, k);
+    if (lat.d < 7) { const k2 = 1 - smooth(3, 7, lat.d); r = lerp(r, 0.33, k2); g = lerp(g, 0.31, k2); b = lerp(b, 0.28, k2); }
+  }
+  const dr = mtRiverDist(X, N);
+  if (dr < 50) { const k = 1 - smooth(14, 50, dr); r = lerp(r, 0.42, k); g = lerp(g, 0.40, k); b = lerp(b, 0.33, k); }
+  if (WORLD.townMask && inTown(X, N)) { r = 0.36; g = 0.45; b = 0.22; }
+  const n = 0.86 + 0.28 * (Noise.n2(X / 37, N / 37) * 0.5 + 0.5);
+  out[0] = r * n; out[1] = g * n; out[2] = b * n; out[3] = 0;
 }
