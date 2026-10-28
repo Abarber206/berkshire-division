@@ -137,8 +137,11 @@ JOB.note = function (what, d = {}) {
   const R = JOB.run; if (!R || R.over) return;
   const now = S.time, once = (k, gap) => { if (R.ep[k] && now - R.ep[k] < gap) return false; R.ep[k] = now; return true; };
   if (what === 'couple') {
-    if (d.mph > COUPLE_HARD / MPH) JOB.dock('handling', 6, 'Hard coupling', `${Math.round(d.mph)} mph`, true);
-    else if (d.mph > COUPLE_OK / MPH) JOB.dock('handling', 3, 'Firm coupling', `${Math.round(d.mph)} mph`, true);
+    const how = d.shove ? 'shove' : 'coupling';
+    if (d.shove && !once('shove', 3)) return;
+    if (d.mph > COUPLE_DAMAGE / MPH) JOB.dock('handling', 12, 'Damaging impact', `${Math.round(d.mph)} mph`, true);
+    else if (d.mph > COUPLE_HARD / MPH) JOB.dock('handling', 6, 'Hard ' + how, `${Math.round(d.mph)} mph`, true);
+    else if (d.mph > COUPLE_OK / MPH) JOB.dock('handling', 3, 'Firm ' + how, `${Math.round(d.mph)} mph`, true);
   } else if (what === 'bumper' && once('bump', 4)) JOB.dock('handling', 3, 'Hit the bumping post', `${Math.round(d.mph)} mph`, true);
   else if (what === 'runThrough') JOB.dock('rules', 10, 'Ran through a switch', d.name, true);
   else if (what === 'turnout' && once('tov' + d.name, 20)) JOB.dock('rules', 5, 'Over turnout speed', `${d.name}, ${Math.round(d.mph)} in a ${d.limit}`, true);

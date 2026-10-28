@@ -1,6 +1,7 @@
 /* ============================================================================
-   Car work: cuts of cars standing on the yard and spur tracks, coupling on
-   contact, pulling the pin, kicking cars, tie-downs
+   Car work: cuts of cars standing on the yard and spur tracks, knuckle
+   couplers, coupling on contact, shoving, pulling the pin, kicking cars,
+   tie-downs
    ========================================================================== */
 const CARS = { cuts: [], geo: null, gen: 0, cutAt: 0, cutFrom: null };
 
@@ -12,8 +13,20 @@ const YARD_CUTS = [
   { line: 'Quarry Storage', end: 20, cars: ['hopper', 'hopper', 'gon', 'gon', 'hopper'] },
 ];
 const CAR_NAMES = { box: 'Box', hopper: 'Hopper', tank: 'Tank', gon: 'Gon', caboose: 'Caboose', coach: 'Coach', tender: 'Tender' };
-const COUPLE_OK = 4 * MPH, COUPLE_HARD = 8 * MPH, COUPLE_WRECK = 11 * MPH;
+/* closing speeds: clean, hard, damaging (lading and draft gear), and a wreck that derails the cars */
+const COUPLE_OK = 4 * MPH, COUPLE_HARD = 8 * MPH, COUPLE_DAMAGE = 11 * MPH, COUPLE_WRECK = 25 * MPH;
+/* a knuckle is closed (0), open (1), or has its lock lifted by the cut lever (2) while the faces are still
+   pressed together: it swings open once the cars part. Two closed knuckles only buff; one open one couples. */
+const KN_CLOSED = 0, KN_OPEN = 1, KN_LIFTED = 2;
 const isPower = v => v.kind === 'loco' || v.kind === 'loco2' || v.kind === 'tender';
+/* the vehicle at one end of consist c and which of its own couplers (0 at its front, 1 at its rear) faces out there */
+function endCoupler(c, end) {
+  const v = end === 'front' ? c.vehicles[0] : c.vehicles[c.vehicles.length - 1];
+  if (!v.kn) v.kn = [KN_CLOSED, KN_CLOSED];
+  return { v, k: (end === 'front') !== !!v.flip ? 0 : 1 };
+}
+const knOf = e => e.v.kn[e.k];
+function setKn(e, s) { if (e.v.kn[e.k] !== s) { e.v.kn[e.k] = s; CARS.gen++; } }
 
 class Cut extends Consist {
   constructor(scene, vehicles) {
@@ -68,6 +81,7 @@ CARS.setup = function () {
     const loc = line.locate(sF);
     c.place(new TrackPos(loc.edge, loc.s, 1));
     c.home = def.line;
+    for (const end of ['front', 'rear']) setKn(endCoupler(c, end), KN_OPEN);   // the crew left the end knuckles open
     CARS.cuts.push(c);
   }
 };
@@ -136,6 +150,7 @@ CARS.ahead = function (T, dir, range) {
 /* K keeps going with X's cars added at its kEnd; X's coupler xEnd is the one that met it */
 function absorb(K, kEnd, X, xEnd) {
   const flip = kEnd === xEnd;
+  setKn(endCoupler(K, kEnd), KN_CLOSED); setKn(endCoupler(X, xEnd), KN_CLOSED);
   const MK = consistMass(K), MX = consistMass(X);
   const v = (MK * velOf(K) + MX * velOf(X) * (flip ? -1 : 1)) / (MK + MX);
   const list = X.vehicles.slice();
@@ -156,11 +171,20 @@ function absorb(K, kEnd, X, xEnd) {
   CARS.gen++;
   return list.length;
 }
+/* Two consists meeting end on, with closing speed u > 0 measured along A's travel: the draft gear soaks up most
+   of a hard hit (restitution e), and below a walking pace they simply move off together. Returns the
+   speeds of A and B afterward, both along A's travel. */
+function buff(mA, uA, mB, uB, e) {
+  const k = (1 + e) * (uA - uB) / (mA + mB);
+  return [uA - k * mB, uB + k * mA];
+}
+const buffE = closing => closing < 1 ? 0 : 0.3 * smooth(1, 3, closing);
 /* consist A, moving toward its dir end, has just touched hit.c */
 CARS.contact = function (A, dir, hit) {
   const B = hit.c, T = GAME.train;
   const aEnd = dir > 0 ? 'front' : 'rear';
-  const vB = hit.end ? velOf(B) * (hit.end === aEnd ? -1 : 1) : 0;
+  const sB = hit.end === aEnd ? -1 : 1;   // B's velocity, seen along A's direction
+  const vB = hit.end ? velOf(B) * sB : 0;
   const closing = dir * (velOf(A) - vB);
   const mph = Math.round(closing / MPH);
   const ours = A === T || B === T;
@@ -176,7 +200,23 @@ CARS.contact = function (A, dir, hit) {
     return;
   }
   if (ours && closing > COUPLE_WRECK) {
-    GAME.derail(`Hit a cut of cars at ${mph} mph and buckled the couplers. Couple at a walking pace: 4 mph or less.`, 'Collision');
+    GAME.derail(`Hit a cut of cars at ${mph} mph: the couplers buckled and the cars climbed each other. Shove at a walking pace, 4 mph or less.`, 'Collision');
+    return;
+  }
+  const ka = endCoupler(A, aEnd), kb = endCoupler(B, hit.end);
+  const couple = knOf(ka) === KN_OPEN || knOf(kb) === KN_OPEN;
+  if (!couple) {
+    // both knuckles closed (or a lock still lifted against the other car): the cars buff and get shoved along
+    const [uA, uB] = buff(consistMass(A), dir * velOf(A), consistMass(B), dir * vB, buffE(closing));
+    setVel(A, dir * uA); setVel(B, dir * uB * sB);
+    if (closing > 0.15) sndClunk(gain, 0);
+    if (closing > COUPLE_OK) JOB.note('couple', { mph: closing / MPH, shove: true });
+    if (!ours) return;
+    const X = A === T ? B : A;
+    if (closing > COUPLE_DAMAGE) toast(`Slammed the cars at ${mph} mph. Nothing derailed, but that wrecks lading and draft gear.`, 'bad', 4200, 'slam');
+    else if (closing > COUPLE_HARD) toast(`Hit the cars hard at ${mph} mph and shoved them along. Ease in at 4 mph or less.`, 'bad', 3800, 'hardshove');
+    else if (CARS.cutFrom === X && performance.now() - CARS.cutAt < 6000) toast('Pin pulled, still shoving: the cars part as soon as you ease off or brake.', '', 3600, 'stillshove');
+    else if (closing > 0.3) toast('Both knuckles are closed, so the cars are only shoved. Tap a coupler to open its knuckle, then ease in to couple.', 'warn', 4800, 'shove');
     return;
   }
   sndCouple(gain);
@@ -185,46 +225,82 @@ CARS.contact = function (A, dir, hit) {
   const n = absorb(K, kEnd, X, xEnd);
   if (closing > COUPLE_OK) JOB.note('couple', { mph: closing / MPH });
   if (!ours) { toast(`A rolling cut coupled into the cars on ${K.home || 'the track'}${closing > COUPLE_HARD ? `, hard, at ${mph} mph` : ''}.`, closing > COUPLE_HARD ? 'warn' : '', 2600, 'cc'); return; }
-  const re = CARS.cutFrom === X && performance.now() - CARS.cutAt < 4000;
   const what = `${n} car${n > 1 ? 's' : ''}`;
-  if (re) toast(`Still shoving, so the cut coupled back on. Brake as you pull the pin and let the cars run.`, 'warn', 4200, 'recouple');
+  if (closing > COUPLE_DAMAGE) toast(`Slammed into ${what} at ${mph} mph. The knuckles held and they coupled, but that wrecks lading and draft gear.`, 'bad', 4800, 'slam');
   else if (closing > COUPLE_HARD) toast(`Hard coupling at ${mph} mph to ${what}. That rattles lading; 4 mph is the limit.`, 'bad', 4200, 'hard');
   else if (closing > COUPLE_OK) toast(`Coupled to ${what} at ${mph} mph: a bit hard. Ease in slower.`, 'warn', 3600, 'firm');
   else toast(`Coupled to ${what}. Hoses connected and handbrakes released: let the air pump up before you pull.`, 'good', 4600, 'coupled');
   if (CARS.onChange) CARS.onChange();
 };
 
+/* a lifted knuckle swings open once nothing is pressed against it */
+CARS.settle = function () {
+  let idx = null;
+  for (const c of [GAME.train, ...CARS.cuts]) {
+    if (!c || !c.vehicles.length) continue;
+    for (const end of ['front', 'rear']) {
+      const e = endCoupler(c, end);
+      if (knOf(e) !== KN_LIFTED) continue;
+      idx = idx || carIndex();
+      if (!carAhead(c, end === 'front' ? 1 : -1, 0.08, idx)) setKn(e, KN_OPEN);
+    }
+  }
+};
+
+/* the trainman works the coupler at one end of a consist: lifts the pin to open a closed knuckle, or
+   pushes an open one shut */
+CARS.knuckle = function (c, end) {
+  if (MP.on) { toast('Car work is not shared with the room yet, so couplers stay locked in multiplayer.', 'warn', 4000, 'mpcars'); return; }
+  const e = endCoupler(c, end), s = knOf(e);
+  setKn(e, s === KN_CLOSED ? KN_LIFTED : KN_CLOSED);
+  if (s === KN_CLOSED) CARS.settle();
+  const p = e.v.pos, g = p ? 1 / (1 + Math.pow(p.distanceTo(camera.position) / 30, 1.3)) : 1;
+  sndPin(0.6 * g, false);
+  const now = knOf(e);
+  toast(now === KN_OPEN ? 'Knuckle open: ease in at 4 mph or less to couple.' : now === KN_LIFTED ? 'Pin lifted. The knuckle swings open when the cars part.' : 'Knuckle closed: these cars will only be shoved, not coupled.', now === KN_OPEN ? 'good' : '', 3200, 'knuckle');
+  if (CARS.onChange) CARS.onChange();
+};
+
 /* ---------------- pulling the pin ---------------- */
-/* joint j sits between vehicles j-1 and j of the player's train */
+/* joint j sits between vehicles j-1 and j of a consist (the player's train unless c is given) */
 CARS.canCut = function (T, j) {
   const V = T.vehicles; if (j <= 0 || j >= V.length) return false;
   return !(isPower(V[j - 1]) && isPower(V[j]));
 };
-CARS.uncouple = function (j) {
-  const T = GAME.train;
+CARS.uncouple = function (j, c0) {
+  const T = c0 || GAME.train;
   if (MP.on) { toast('Car work is not shared with the room yet, so couplers stay locked in multiplayer.', 'warn', 4000, 'mpcars'); return; }
   if (!T || !CARS.canCut(T, j)) return;
   if (!CARS.geo) CARS.geo = { tg: truckGeos(), a6: plainAxle(0.457), a4: plainAxle(0.419) };
-  const V = T.vehicles, behind = j > T.li;
+  const ours = T === GAME.train, vT = velOf(T);
+  const V = T.vehicles, behind = ours ? j > T.li : true;
   const off = behind ? V.slice(j) : V.slice(0, j);
   T.vehicles = behind ? V.slice(0, j) : V.slice(j);
   for (const v of off) T.release(v);
   T.layout(); T.buildInstances();
   for (const im of T.inst) linearizeObject(im);
   const c = new Cut(scene, off);
-  c.v = S.v;
-  const kick = Math.abs(S.v) > 0.6;
-  if (kick) c.rolling = true;
+  c.v = vT; c.home = T.home;
+  // the cut lever lifts the lock on the car being cut off; its knuckle swings open as the cars part
+  setKn(endCoupler(c, behind ? 'front' : 'rear'), KN_LIFTED);
+  const kick = Math.abs(vT) > 0.6;
+  if (!ours) {
+    // splitting a standing or rolling cut: both halves keep their brakes as they were
+    c.rolling = T.rolling; c.vented = T.vented;
+    for (const v of off) v.hb = v.hb && !c.rolling;
+  } else if (kick) c.rolling = true;
   else {
     // angle cock closed on the engine side; the cut's hoses part and its brakes go into emergency
-    c.vented = true; c.rolling = Math.abs(S.v) > 0.005;
+    c.vented = true; c.rolling = Math.abs(vT) > 0.005;
     for (const v of off) { v.brake.BP = 0; v.brake.emerg = true; }
   }
   CARS.cuts.push(c); CARS.cutFrom = c; CARS.cutAt = performance.now(); CARS.gen++;
-  c.update(0); T.update(0, S.theta, S.reverser);
-  sndPin(1 / (1 + Math.pow(off[0].pos.distanceTo(camera.position) / 30, 1.3)), !kick);
+  c.update(0);
+  if (ours) T.update(0, S.theta, S.reverser); else T.update(0);
+  sndPin(1 / (1 + Math.pow(off[0].pos.distanceTo(camera.position) / 30, 1.3)), ours && !kick);
   const n = off.length, what = `${n} car${n > 1 ? 's' : ''}`;
-  if (kick) toast(`Pin pulled: ${what} rolling free at ${Math.round(Math.abs(S.v) / MPH)} mph. Brake to let them run.`, 'warn', 4200, 'kick');
+  if (!ours) toast(`Pin pulled: the cut is split, ${what} on the far side.`, 'good', 3200, 'split');
+  else if (kick) toast(`Pin pulled: ${what} rolling free at ${Math.round(Math.abs(vT) / MPH)} mph. Brake to let them run.`, 'warn', 4200, 'kick');
   else toast(`Cut off ${what}. Their air is dumped and the brakeman ties them down.`, 'good', 4000, 'setout');
   if (CARS.onChange) CARS.onChange();
 };
@@ -249,7 +325,10 @@ CARS.swapPlan = function (V, power, cars) {
 };
 
 /* ---------------- cars rolling on their own ---------------- */
+/* a tied-down car: a handbrake shoe holds about 4% of the car's weight, so an engine can skid one along */
+const HANDBRAKE = 0.04;
 CARS.step = function (h) {
+  CARS.settle();
   for (const c of CARS.cuts.slice()) {
     if (!c.rolling || !CARS.cuts.includes(c)) continue;
     for (const v of c.vehicles) for (const p of v.fp) p.tp.pose(p.F);
@@ -263,7 +342,7 @@ CARS.step = function (h) {
       Fg -= v.mass * 9.81 * f.y;
       const tons = v.mass / STON, k = Math.abs(v.fp[0].tp.e.curv(v.fp[0].tp.s));
       Fr += (1.3 * tons + 29 * v.axles + 0.045 * tons * vm + (i === 0 ? 0.0024 : 0.0005) * (v.area || 90) * vm * vm + 0.8 * tons * 1746.4 * k + 14 * tons * (1 - smooth(0.15, 2.0, av))) * LBF;
-      Fb += v.mass * v.brakeA * (b.BC / 64) * shoe + (v.hb ? v.mass * 9.81 * 0.1 : 0);
+      Fb += v.mass * v.brakeA * (b.BC / 64) * shoe + (v.hb ? v.mass * 9.81 * HANDBRAKE : 0);
     });
     let a;
     if (av < 0.03) {

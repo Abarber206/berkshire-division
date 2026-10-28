@@ -11,7 +11,7 @@ const vm = require('vm');
 const SRC = path.join(__dirname, '..', 'src');
 const FILES = ['01_util.js', '02_track.js', '06_models.js', '07_train.js', '07b_cars.js', '08_physics.js', '11d_jobs.js'];
 const EXPORTS = ['S', 'ENV', 'GAME', 'CARS', 'JOB', 'LOCO_SPEC', 'Consist', 'Cut', 'physicsStep', 'brakeZone', 'brakeLabel', 'consistMass',
-  'COUPLE_OK', 'COUPLE_HARD', 'COUPLE_WRECK', 'MPH', 'LBF', 'STON', 'PSI',
+  'COUPLE_OK', 'COUPLE_HARD', 'COUPLE_DAMAGE', 'COUPLE_WRECK', 'KN_CLOSED', 'KN_OPEN', 'KN_LIFTED', 'HANDBRAKE', 'MPH', 'LBF', 'STON', 'PSI',
   'PathBuilder', 'Network', 'TrackPos', 'FOUL_LEN', 'POINTS_CLEAR'];
 
 /* just enough three.js: real Vector3 math, everything else accepts any call and returns itself */
@@ -70,7 +70,7 @@ function pivot(grade, limit) {
 }
 function vehicle(kind, mass, axles, opt = {}) {
   const v = { kind, mass, axles, len: opt.len || 15, area: opt.area || 0, brakeA: opt.brakeA || (kind === 'coach' ? 0.95 : 0.5),
-    brake: { AR: 90, BC: 0, BP: 90, emerg: false, released: true, ...(opt.brake || {}) }, flip: false, trucks: [], frame: [2, 13], root: Anything() };
+    brake: { AR: 90, BC: 0, BP: 90, emerg: false, released: true, ...(opt.brake || {}) }, kn: [0, 0], flip: false, trucks: [], frame: [2, 13], root: Anything() };
   v.fp = [pivot(opt.grade || 0, opt.limit || 70), pivot(opt.grade || 0, opt.limit || 70)];
   v.ptsAll = v.fp.map(p => ({ ...p, loc: 0, a: 0 }));
   v.pos = new Vector3();

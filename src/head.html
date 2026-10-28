@@ -78,6 +78,8 @@ button:focus-visible,.lever:focus-visible{outline:2px solid var(--brass);outline
   display:flex;flex-direction:column;gap:6px;align-items:center;pointer-events:none;width:min(92vw,460px)}
 .toast{background:rgba(14,19,23,.9);border:1px solid var(--rule);border-left:3px solid var(--brass);padding:7px 12px;border-radius:4px;
   font-size:13px;animation:tin .25s ease-out;max-width:100%}
+#cplTip{position:absolute;z-index:9;pointer-events:none;background:rgba(14,19,23,.92);border:1px solid var(--rule);border-left:3px solid var(--brass);
+  padding:4px 8px;border-radius:4px;font-size:12px;color:var(--ink);white-space:nowrap}
 .toast.warn{border-left-color:var(--approach)}.toast.bad{border-left-color:var(--stop)}.toast.good{border-left-color:var(--clear)}
 @keyframes tin{from{opacity:0;transform:translateY(-6px)}}
 
@@ -509,6 +511,7 @@ details.keys kbd{color:var(--brass)}
     <div id="camName">Chase</div>
   </div>
   <div id="toast"></div>
+  <div id="cplTip" hidden></div>
   <div id="mpWatch" class="hud-box" hidden><span>Watching <b id="mpWatchName"></b></span><button class="btn" id="mpWatchBack">My train</button></div>
   <div id="mpPanel" class="hud-box" hidden>
     <div class="mpHead"><span>Room <b id="mpPanelCode"></b></span><button class="btn" id="mpShare2">Invite</button><button class="btn" id="mpPanelClose" aria-label="Close">Close</button></div>

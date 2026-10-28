@@ -154,8 +154,8 @@ class Consist {
 
 /* a freight car or coach as a vehicle record */
 function carVehicle(m) {
-  return { kind: m.kind, model: m, root: m.root, len: m.len, frame: m.frame, trucks: m.trucks, mass: m.weight, axles: m.axles, area: m.area, brakeA: m.kind === 'coach' ? 0.95 : 0.5, markers: m.root.userData.markers,
-    brake: { AR: 90, BC: 0, BP: 90, emerg: false, released: true } };
+  return { kind: m.kind, model: m, root: m.root, len: m.len, frame: m.frame, trucks: m.trucks, mass: m.weight, axles: m.axles, area: m.area, brakeA: m.kind === 'coach' ? 0.95 : 0.5, markers: m.root.userData.markers, cpl: m.couplers,
+    brake: { AR: 90, BC: 0, BP: 90, emerg: false, released: true }, kn: [0, 0] };
 }
 
 class Train extends Consist {
@@ -180,7 +180,8 @@ class Train extends Consist {
         const wrap = new THREE.Group(); wrap.add(m.root);
         const reversed = n > 1 && u === n - 1; if (reversed) m.root.rotation.y = Math.PI;
         scene.add(wrap); m.trucks.forEach(t => scene.add(t));
-        this.vehicles.push({ kind: u === 0 ? 'loco' : 'loco2', model: m, root: wrap, len: m.len, frame: m.frame, trucks: [], mass: engMass, axles: 6, area: u === 0 ? 125 : 0, brakeA: 0.6, reversed });
+        this.vehicles.push({ kind: u === 0 ? 'loco' : 'loco2', model: m, root: wrap, len: m.len, frame: m.frame, trucks: [], mass: engMass, axles: 6, area: u === 0 ? 125 : 0, brakeA: 0.6, reversed,
+          cpl: reversed ? [m.couplers[1], m.couplers[0]] : m.couplers });
         this.units.push(m); m.vehicle = this.vehicles[this.vehicles.length - 1];
       }
       L = this.units[0];
@@ -188,11 +189,11 @@ class Train extends Consist {
     } else {
       L = buildBerkshire(locoKey);
       scene.add(L.root); scene.add(L.leadTruck);
-      this.vehicles.push({ kind: 'loco', model: L, root: L.root, len: LG.len, frame: [LG.aD[0], LG.aD[3]], trucks: [], mass: engMass, axles: 10, area: 125, brakeA: 0.55 });
+      this.vehicles.push({ kind: 'loco', model: L, root: L.root, len: LG.len, frame: [LG.aD[0], LG.aD[3]], trucks: [], mass: engMass, axles: 10, area: 125, brakeA: 0.55, cpl: L.couplers });
       const T = buildTender(locoKey);
       scene.add(T.root);
       this.tender = T;
-      this.vehicles.push({ kind: 'tender', model: T, root: T.root, len: T.len, frame: T.frame, trucks: T.trucks, mass: 0, axles: 6, area: 0, brakeA: 0.6 });
+      this.vehicles.push({ kind: 'tender', model: T, root: T.root, len: T.len, frame: T.frame, trucks: T.trucks, mass: 0, axles: 6, area: 0, brakeA: 0.6, cpl: T.couplers });
     }
     this.loco = L;
     // cars
@@ -207,7 +208,7 @@ class Train extends Consist {
     }
     // tender mass varies with water & coal
     this.tenderEmpty = 92000;
-    for (const v of this.vehicles) { v.brake = v.brake || { AR: 90, BC: 0, BP: 90, emerg: false, released: true }; this.track(v); }
+    for (const v of this.vehicles) { v.brake = v.brake || { AR: 90, BC: 0, BP: 90, emerg: false, released: true }; v.kn = v.kn || [0, 0]; this.track(v); }
     this.layout();
     this.buildInstances({ tg: truckGeos(), a6: plainAxle(0.457), a4: plainAxle(0.419) });
     // headlight. Another player's train (opts.remote) gets no real lights: adding lights
