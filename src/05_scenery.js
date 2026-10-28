@@ -134,6 +134,14 @@ function linePlace(line, sLine, lat = 0) {
   const X = FR.p.x + Math.sin(yaw) * lat, N = -(FR.p.z + Math.cos(yaw) * lat);
   return { X, N, y: FR.p.y, yaw, edge: loc.edge, s: loc.s };
 }
+/* plan point at lateral offset lat from a placement */
+const latXN = (pl, lat) => [pl.X + Math.sin(pl.yaw) * lat, pl.N - Math.cos(pl.yaw) * lat];
+/* like linePlace, but stepped outward (away from the line) until it is gap metres clear of every track */
+function clearPlace(line, sLine, lat, gap = 3.4) {
+  const d = Math.sign(lat) || 1;
+  for (let k = 0; k < 80; k++, lat += d * 0.5) { const pl = linePlace(line, sLine, lat); if (trackGap(pl.X, pl.N) >= gap) return pl; }
+  return linePlace(line, sLine, lat);
+}
 function windowsRow(gb, base, x0, x1, y, z, w, h, n, face = 1) {
   for (let i = 0; i < n; i++) { const x = n === 1 ? (x0 + x1) / 2 : lerp(x0, x1, i / (n - 1)); gb.add('win', new THREE.BoxGeometry(w, h, 0.06), P(base, x, y, z + face * 0.03)); gb.add('trim', new THREE.BoxGeometry(w + 0.16, 0.1, 0.1), P(base, x, y - h / 2 - 0.05, z + face * 0.05)); }
 }
@@ -245,12 +253,13 @@ function coalingTower(pl) {
   gb.add('slate', gableRoof(6, 5, 1.6, 0.3), P(base, 0, 26.5, 0));
   for (const x of [-2.5, 2.5]) gb.add('steel', new THREE.BoxGeometry(0.8, 0.6, 3.2), P(base, x, 6.7, 1.2, -0.6, 0, 0));
   windowsRow(gb, base, -3.5, 3.5, 18, 4.5, 0.8, 1.2, 3);
-  // conveyor/hoist house at side
-  gb.add('tin', boxT(4, 3, 4), P(base, 0, 1.5, -8));
-  footing(gb, 'concrete', base, 0, -8, 4.2, 4.2, 0.05);
-  gb.add('tin', gableRoof(4, 4, 0.9, 0.2), P(base, 0, 3, -8));
+  // conveyor/hoist house at side, on whichever side is clear of the neighbouring track
+  const sd = trackGap(...latXN(pl, 8)) >= 4.5 ? 1 : -1;
+  gb.add('tin', boxT(4, 3, 4), P(base, 0, 1.5, sd * 8));
+  footing(gb, 'concrete', base, 0, sd * 8, 4.2, 4.2, 0.05);
+  gb.add('tin', gableRoof(4, 4, 0.9, 0.2), P(base, 0, 3, sd * 8));
   // inclined conveyor from the hoist house roof into the bin
-  gb.add('steel', new THREE.BoxGeometry(1.4, 1.4, 10.6), P(base, 0, 7.75, -5.95, -Math.atan2(9.7, 4.1), 0, 0));
+  gb.add('steel', new THREE.BoxGeometry(1.4, 1.4, 10.6), P(base, 0, 7.75, sd * 5.95, -sd * Math.atan2(9.7, 4.1), 0, 0));
   keep(pl.X, pl.N, 9);
 }
 function sandHouse(pl) {
@@ -602,7 +611,7 @@ function buildPoleLine(scene) {
     const sph = new THREE.Sphere(); const pts = group.map(g => g.p);
     sph.setFromPoints(pts); sph.radius += 12;
     group.forEach((g, i) => im.setMatrixAt(i, new THREE.Matrix4().makeRotationY(g.yaw).setPosition(g.p)));
-    im.geometry.boundingSphere = sph; im.castShadow = false; scene.add(im);
+    im.geometry.boundingSphere = sph; im.castShadow = false; im.name = 'pole line'; scene.add(im);
     im.userData = { c: sph.center.clone(), r: sph.radius };
     const grpM = [im];
     if (groupWires.length) { const lg = new THREE.BufferGeometry(); lg.setAttribute('position', new THREE.Float32BufferAttribute(groupWires, 3)); lg.computeBoundingSphere(); const ls = new THREE.LineSegments(lg, wireMat); ls.userData = im.userData; scene.add(ls); grpM.push(ls); }
@@ -611,7 +620,7 @@ function buildPoleLine(scene) {
   };
   let prev = null;
   for (let s = 20; s < main.len; s += 48) {
-    const pl = linePlace(main, s, -14.5);
+    const pl = clearPlace(main, s, -14.5, 3.5);   // swings out round the passing sidings
     if (kept(pl.X, pl.N, 2) || riverDist(pl.X, pl.N) < 32) { prev = null; continue; }
     const y = groundAt(pl.X, pl.N) - 0.3;
     const p = new THREE.Vector3(pl.X, y, -pl.N);
@@ -696,7 +705,7 @@ function updateSignals(dt = 0) {
 }
 function buildSigns() {
   for (const mp of ROUTE.mileposts) {
-    const pl = linePlace(mp.line, mp.sLine, -3.6 - (ROUTE.spacing || 0));   // beyond track 2
+    const pl = clearPlace(mp.line, mp.sLine, -3.6 - (ROUTE.spacing || 0));   // beyond track 2 and any siding off it
     const y = groundAt(pl.X, pl.N);
     const base = baseM(pl.X, y, pl.N, pl.yaw + Math.PI / 2);
     const gb = binAt(pl.X, pl.N);
@@ -706,7 +715,7 @@ function buildSigns() {
   }
   // yard limit boards
   for (const [s, d] of [[300, 1], [1980, -1]]) {
-    const pl = linePlace(ROUTE.main, s, d > 0 ? 3.6 : -3.6 - ROUTE.spacing);
+    const pl = clearPlace(ROUTE.main, s, d > 0 ? 3.6 : -3.6 - ROUTE.spacing);
     const y = groundAt(pl.X, pl.N);
     const base = baseM(pl.X, y, pl.N, pl.yaw + (d > 0 ? Math.PI : 0));
     const gb = binAt(pl.X, pl.N);

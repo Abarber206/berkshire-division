@@ -13,6 +13,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Fetch three.js r128 for the scenery clearance test
+        run: |
+          mkdir -p tests/vendor && cd tests/vendor
+          npm pack three@0.128.0 --silent
+          tar -xzf three-0.128.0.tgz package/build/three.min.js && mv package/build/three.min.js . && rm -rf package three-0.128.0.tgz
       - name: Physics tests
         run: node --test tests/*.test.js
       - name: Build
