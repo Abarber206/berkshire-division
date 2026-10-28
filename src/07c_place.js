@@ -106,7 +106,9 @@ function placeFit(C, front, skip, via) {
   const fwd = R.clone(); fwd.advance(len, null);
   if (out.line.length || !sameTP(fwd, F)) { out.why = 'points'; return out; }
   // couplers that now meet another
-  const touch = (from, dir, end) => { const h = carFrom(from, dir, 0.06, idx, skip); if (h && h.end && h.facing && !h.c.ai) out.joins.push({ end, c: h.c, cEnd: h.end }); };
+  // a trainset's nose coupler sits behind its fairing and takes no cars
+  const sealed = (c, end) => endCoupler(c, end).v.noCouple;
+  const touch = (from, dir, end) => { const h = carFrom(from, dir, 0.06, idx, skip); if (h && h.end && h.facing && !h.c.ai && !sealed(C, end) && !sealed(h.c, h.end)) out.joins.push({ end, c: h.c, cEnd: h.end }); };
   touch(F, 1, 'front'); touch(R, -1, 'rear');
   out.ok = true;
   return out;
