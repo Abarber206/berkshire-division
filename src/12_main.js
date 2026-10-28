@@ -150,6 +150,7 @@ function finishTrain(t) {
   buildWhistleIfReady();
   CAM.init = false;
   GAME.jointMem = new Map();
+  GAME.spawnAt = performance.now();
 }
 /* colour-space fix-up and fresh brakes for a newly built train (ours or another player's) */
 function prepareTrain(t, keepBrakes) {
@@ -364,15 +365,20 @@ GAME.pause = function (p) {
   if (p) { $('menu').hidden = false; startLabel(); }
 };
 GAME.fail = function (title, body) { S.throttle = 0; if (JOB.fail(title, body)) return; $('bigTitle').textContent = title; $('bigBody').textContent = body; $('bigMsg').hidden = false; };
-GAME.derail = function (why, title = 'Derailed') {
+/* wk says where and how hard the train came off: { a: metres back from the front coupler, side, k: 0..1 };
+   left out, the leading end goes, as hard as the speed it was doing */
+GAME.derail = function (why, title = 'Derailed', wk) {
   if (S.derailed) return;
-  S.derailed = true; S.v = 0; S.vw = 0; S.throttle = 0;
+  const T = GAME.train, mph = Math.abs(S.v) / MPH;
+  if (T) T.wreck(Object.assign({ a: S.v < 0 ? T.length : 0, side: Math.random() < 0.5 ? -1 : 1, k: clamp((mph - 4) / 40, 0.15, 1) }, wk, { seed: 1 + ((Math.random() * 1e9) | 0) }));
+  S.derailed = true; S.v = 0; S.vw = 0; S.throttle = 0; MP.dirty = true;
   if (AU.on) for (let i = 0; i < 8; i++) sndClunk(1, i * 0.07);
   CAM.shakeHit = 1;
   GAME.fail(title, why);
 };
 GAME.rerail = function () {
-  $('bigMsg').hidden = true; S.derailed = false; S.v = 0; S.vw = 0; S.brakeH = 0.12;
+  $('bigMsg').hidden = true; S.derailed = false; S.v = 0; S.vw = 0; S.brakeH = 0.12; MP.dirty = true;
+  GAME.train.wreck(null);
   if (S.dead) { S.dead = false; S.W = 0.6; S.fire = 0.4; S.P = 180; }
   for (const v of GAME.train.vehicles) { v.brake.BP = 90; v.brake.AR = 90; v.brake.BC = 0; v.brake.emerg = false; }
   S.ER = 90;

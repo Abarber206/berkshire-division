@@ -126,7 +126,7 @@ const MP = {
   chatN: 0, chat: null, log: [], watching: null, edges: null, panelT: 0, joinedAt: 0, autoJoin: '', last: null,
   brokers: ['wss://broker.hivemq.com:8884/mqtt', 'wss://broker.emqx.io:8084/mqtt'],
 };
-const _mpA = new THREE.Vector3(), _mpB = new THREE.Vector3(), _mpC = new THREE.Vector3(), _mpD = new THREE.Vector3();
+const _mpA = new THREE.Vector3(), _mpB = new THREE.Vector3(), _mpC = new THREE.Vector3(), _mpD = new THREE.Vector3(), _mpE = new THREE.Vector3(), _mpF = new THREE.Vector3(), _mpG = new THREE.Vector3();
 function mpHash(s) { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
 /* control, bidi, zero-width and private-use characters are dropped from names and chat */
 const MP_STRIP = new RegExp('[' + [[0, 31], [127, 159], [173, 173], [8203, 8204], [8206, 8207], [8232, 8238], [8288, 8292], [8298, 8303], [57344, 63743], [65279, 65279], [65529, 65531]].map(([a, b]) => String.fromCharCode(a) + '-' + String.fromCharCode(b)).join('') + ']', 'g');
@@ -153,10 +153,13 @@ function mpClean(r) {
     o.s = n(r.s, 0, 1e5); o.o = r.o < 0 ? -1 : 1; o.v = n(r.v, -60, 60); o.rv = n(r.rv, -1, 1);
     o.wh = n(r.wh, 0, 1); o.bl = r.bl ? 1 : 0; o.hl = Math.round(n(r.hl, 0, 2, 1)); o.dl = r.dl ? 1 : 0;
     o.ex = n(r.ex, 0, 1.5); o.rpm = n(r.rpm, 0, 1200); o.dr = r.dr ? 1 : 0;
+    o.wk = o.dr && Array.isArray(r.wk) && r.wk.length === 4 ? [n(r.wk[0], 0, 5000), r.wk[1] < 0 ? -1 : 1, Math.round(n(r.wk[2], 1, 2e9, 1)), n(r.wk[3], 0, 1)] : null;
   }
   o.pz = r.pz ? 1 : 0;
   o.sw = !o.other && Array.isArray(r.sw) && r.sw.length === NET.switches.length ? r.sw.map(x => Math.round(n(x, 0, 2e9))) : null;
   o.lt = Array.isArray(r.lt) && r.lt.length === 2 ? [Math.round(n(r.lt[0], 0, 255)), Math.round(n(r.lt[1], 0, 1e9))] : null;
+  // a hit on someone's train: [their id, count, mph, x, z of the point of impact]
+  o.hx = Array.isArray(r.hx) && r.hx.length === 5 && typeof r.hx[0] === 'string' ? [r.hx[0].slice(0, 16), Math.round(n(r.hx[1], 0, 1e9)), n(r.hx[2], 0, 200), n(r.hx[3], -1e5, 1e5), n(r.hx[4], -1e5, 1e5)] : null;
   o.ch = Array.isArray(r.ch) && r.ch.length === 2 ? [Math.round(n(r.ch[0], 0, 1e9)), mpText(r.ch[1], 80)] : null;
   return o;
 }
@@ -230,9 +233,13 @@ class RemoteTrain {
   target(st) {
     const e = MP.edges.get(st.e); if (!e) return;
     const tp = new TrackPos(e, clamp(st.s, 0, e.len), st.o);
-    if (!this.tp) { this.tp = tp; this.err = 0; }
-    else { const d = trackDelta(this.tp, tp); if (d === null || Math.abs(d) > 45) { this.tp = tp; this.err = 0; } else this.err = d; }
-    this.v = st.v;
+    // since: when this train appeared where it is, so a train made up on top of ours is not taken for a collision
+    if (!this.tp) { this.tp = tp; this.err = 0; this.since = performance.now(); }
+    else { const d = trackDelta(this.tp, tp); if (d === null || Math.abs(d) > 45) { this.tp = tp; this.err = 0; this.since = performance.now(); } else this.err = d; }
+    this.v = st.dr ? 0 : st.v;
+    // their wreck, as they see it
+    const wk = st.dr && st.wk ? st.wk.join() : '';
+    if (wk !== (this.wkKey || '')) { this.wkKey = wk; this.train.wreck(wk ? { a: st.wk[0], side: st.wk[1], seed: st.wk[2], k: st.wk[3] } : null); }
   }
   frame(dt, st, cam, force) {
     if (!this.tp) return;
@@ -364,7 +371,7 @@ MP.connect = function (code, creator) {
   MP.on = true; MP.code = code; MP.creator = creator; MP.joinedAt = performance.now(); MP.onSince = 0;
   MP.swv = NET.switches.map(() => creator ? 1 : 0); MP.seen = NET.switches.map(() => 0); MP.pend.clear(); MP.lt = null;
   MP.spawned = creator && GAME.running; MP.needSpawn = !MP.spawned;
-  MP.topic = 'bdiv/v1/' + code;
+  MP.topic = 'bdiv/v1/' + code; MP.hit = null;
   const will = { topic: MP.topic, payload: JSON.stringify({ id: MP.id, bye: 1 }) };
   MP.links = MP.brokers.map((url, i) => { const l = new MiniMQTT(url, 'bd-' + MP.id + '-' + i, will, (t, txt) => t === MP.topic ? MP.onText(txt) : MP.onWorldText(txt), () => MP.ui()); l.subscribe(MP.topic); l.subscribe(MP.topic + '/w'); return l; });
   MP.worldJoin(creator);
@@ -459,6 +466,8 @@ MP.receive = function (raw) {
   } else if (st.q <= p.q) return;
   p.q = st.q; p.st = st; p.at = performance.now();
   if (st.sw) MP.mergeSwitches(p, st.sw);
+  if (st.hx && st.hx[0] === MP.id && st.hx[1] > (p.hx || 0)) { const fresh = p.hx !== undefined; p.hx = st.hx[1]; if (fresh) MP.struck(p, st.hx); }
+  else if (p.hx === undefined) p.hx = st.hx ? st.hx[1] : 0;
   if (st.ch && st.ch[0] !== p.lastCh) { p.lastCh = st.ch[0]; if (st.ch[1]) { toast(`${st.nm}: ${st.ch[1]}`, '', 5200); MP.addLog(st.nm, p.color, st.ch[1]); } }
   if (st.e < 0) { if (p.rt) { if (MP.watching === p.id) MP.unwatch(); p.rt.dispose(); p.rt = null; } return; }
   const key = `${st.lk}|${st.ck}|${st.u}`;
@@ -487,9 +496,11 @@ MP.state = function () {
       ex: T.diesel ? +S.load.toFixed(2) : (S.Psc > 6 && S.cut > 0 && S.throttle > 0.02 ? +clamp((S.Psc / 245) * (0.35 + S.cut * 1.25), 0, 1.3).toFixed(2) : 0),
       rpm: T.diesel && !T.elec && S.engineRun ? Math.round(S.rpm) : 0, dr: S.derailed ? 1 : 0,
     });
+    if (S.derailed && T.wk) st.wk = [+T.wk.a.toFixed(1), T.wk.side, T.wk.seed, +T.wk.k.toFixed(2)];
   }
   st.sw = NET.switches.map((sw, i) => MP.swv[i] * 2 + sw.state);
   if (MP.lt) st.lt = MP.lt;
+  if (MP.hit) st.hx = MP.hit;
   if (MP.chat) st.ch = MP.chat;
   return st;
 };
@@ -550,18 +561,29 @@ MP.clearOf = function (front, len) {
 MP.spawnSlot = function (T) {
   // make sure every train we have heard about is placed before looking for room
   for (const p of MP.peers.values()) if (p.rt && p.rt.tp && !p.rt.placed) p.rt.frame(0, p.st, camera.position, true);
-  const others = [];
-  for (const p of MP.peers.values()) if (p.rt && p.rt.placed) for (let i = 0; i < p.rt.polyN; i++) others.push(p.rt.poly[i]);
+  const rts = [...MP.peers.values()].map(p => p.rt).filter(rt => rt && rt.placed && rt.polyN);
+  // clear when no other train comes within 3.4 m of the track centre anywhere along our length, plus 30 m each end
+  const clear = (line, sF) => {
+    for (let s = sF + 30; s >= sF - T.length - 30; s -= 3) {
+      const P = line.poseAt(line.loop ? ((s % line.len) + line.len) % line.len : clamp(s, 0, line.len));
+      _mpE.set(P.X, 0, -P.N);
+      for (const rt of rts) for (let i = 0; i < rt.polyN - 1; i++) {
+        _mpF.copy(rt.poly[i]).setY(0); _mpG.copy(rt.poly[i + 1]).setY(0);
+        if (mpSegDist(_mpE, _mpF, _mpG) < 3.4) return false;
+      }
+    }
+    return true;
+  };
   for (const [name, off] of MP_SPAWNS) {
     const line = ROUTE.lines[name]; if (!line) continue;
     const sF = off < 0 ? line.len + off : off;
     if (!line.loop && sF - T.length < 5) continue;
-    let clear = true;
-    for (let s = sF + 30; s >= sF - T.length - 30 && clear; s -= 6) {
-      const P = line.poseAt(s);
-      for (const q of others) if (Math.hypot(q.x - P.X, -q.z - P.N) < 3.4) { clear = false; break; }
-    }
-    if (clear) return { line, s: sF, name: MP_SPAWN_NAMES[name] || name };
+    if (clear(line, sF)) return { line, s: sF, name: MP_SPAWN_NAMES[name] || name };
+  }
+  // every usual place is taken: anywhere on either main
+  for (const name of ['Main', 'Main 2']) {
+    const line = ROUTE.lines[name]; if (!line) continue;
+    for (let sF = 1500; sF < line.len; sF += 700) if (clear(line, sF)) return { line, s: sF, name: MP_SPAWN_NAMES.Main };
   }
   return null;
 };
@@ -587,28 +609,90 @@ MP.post = function (dt) {
   for (const p of MP.peers.values()) if (p.rt) p.rt.fx(dt, p.st, cam);
   MP.tags();
 };
-/* buffers and collisions with other players' trains (checked against our own two couplers) */
+/* Buffers and collisions with other players' trains, checked against our own two couplers.
+   - Coupler to coupler: we buff off their end, and they feel the same hit on their screen, so a train
+     that runs into another shoves it along. Over 25 mph both trains are wrecked.
+   - Into the side of their train (foul at a switch or a crossover): over 5 mph both trains are wrecked,
+     slower than that we stop against it.
+   - A train made up on top of another (or found inside it on joining) passes through it untouched
+     until the two are clear, instead of the pair locking together. */
+const MP_END = 10, MP_TOUCH = 1.25, MP_SIDESWIPE = 2.2;
 MP.contact = function (T) {
   if (!MP.on || !MP.spawned || !T) return;
   const front = _mpA, rear = _mpB; mpEnds(T, front, rear);
-  const fwd = T.lead.fwd;
+  const fwd = T.lead.fwd, now = performance.now();
   for (const p of MP.peers.values()) {
     const rt = p.rt; if (!rt || !rt.placed || !rt.polyN) continue;
-    if (front.distanceTo(rt.poly[0]) > T.length + rt.train.length + 60) continue;
-    for (const [end, sg] of [[front, 1], [rear, -1]]) {
-      let d = 1e9; for (let i = 0; i < rt.polyN - 1; i++) { const x = mpSegDist(end, rt.poly[i], rt.poly[i + 1]); if (x < d) d = x; }
-      if (d > 1.25) continue;
+    if (front.distanceTo(rt.poly[0]) > T.length + rt.train.length + 60) { p.touch = null; continue; }
+    const touch = p.touch || (p.touch = [null, null]);
+    let any = false;
+    for (const [ei, end, sg] of [[0, front, 1], [1, rear, -1]]) {
+      // nearest point of their train to this coupler, and how far along their train it is
+      let d = 1e9, at = 0, run = 0, len = 0;
+      for (let i = 0; i < rt.polyN - 1; i++) {
+        const A = rt.poly[i], B = rt.poly[i + 1], L = A.distanceTo(B);
+        const x = mpSegDist(end, A, B);
+        if (x < d) { d = x; at = run + (L > 1e-6 ? clamp(_mpD.copy(end).sub(A).dot(_mpC.subVectors(B, A)) / (L * L), 0, 1) * L : 0); }
+        run += L;
+      }
+      len = run;
+      if (d > MP_TOUCH) { if (d > MP_TOUCH + 1) touch[ei] = null; continue; }
+      any = true;
       const theirs = rt.train.lead.fwd.dot(fwd) * rt.v, closing = sg * (S.v - theirs);
-      if (closing > COUPLE_WRECK) { GAME.derail(`Collided with ${p.st.nm}'s train at ${Math.round(closing / MPH)} mph. Back away before you try again.`, 'Collision'); return; }
-      // their train is driven on their screen, so ours buffs off it: the draft gear soaks up most of the hit
+      if (!touch[ei]) {
+        // first contact for this coupler: what kind?
+        const depth = Math.min(at, len - at);
+        const fresh = now - (rt.since || 0) < 15000 || now - (GAME.spawnAt || 0) < 15000;
+        const deep = MP.overlaps(T, rt, 3), slow = Math.abs(closing) < 0.45;
+        touch[ei] = { kind: !deep && depth <= MP_END ? 'end' : (fresh || slow ? 'ghost' : 'side'), d };
+        if (touch[ei].kind === 'ghost') toast(`Your train is overlapping ${p.st.nm}'s. Drive clear of it.`, 'warn', 4000, 'mpghost');
+      }
+      const tc = touch[ei];
+      if (p.ghost || tc.kind === 'ghost') { p.ghost = true; continue; }
+      if (tc.kind === 'side') {
+        const sp = Math.abs(S.v - theirs);
+        if (sp > MP_SIDESWIPE) { MP.wreckBoth(T, p, end, sp, sg); return; }
+        // pressed against their side: no further in
+        if (d < tc.d - 0.01 && Math.abs(S.v) > 0.02) { S.v = 0; S.vw = 0; toast(`Stopped against ${p.st.nm}'s train. It is foul of your track.`, 'warn', 3000, 'mpside'); }
+        tc.d = Math.min(tc.d, d);
+        continue;
+      }
+      // coupler to coupler
+      if (closing > COUPLE_WRECK) { MP.wreckBoth(T, p, end, closing, sg); return; }
       if (closing > 0.02) {
         S.v = theirs - sg * buffE(closing) * closing; S.vw = S.v;
         if (closing > 0.3) sndClunk(clamp(closing / COUPLE_OK, 0.3, 1.5), 0);
         if (closing > COUPLE_OK) JOB.note('couple', { mph: closing / MPH, shove: true });
         toast(closing > COUPLE_HARD ? `Hit ${p.st.nm}'s train hard at ${Math.round(closing / MPH)} mph and bounced off.` : `Buffered up against ${p.st.nm}'s train.`, closing > COUPLE_HARD ? 'bad' : 'warn', 2600, 'mpbump');
       }
+      // their updates come a few times a second, so we can end up a little inside their end: back out
+      const depth = Math.min(at, len - at);
+      if (depth > 0.3 && depth <= MP_END + 2) T.move(-sg * (depth - 0.2), {});
     }
+    if (!any) { touch[0] = touch[1] = null; if (p.ghost && !MP.overlaps(T, rt)) p.ghost = false; }
   }
+};
+/* n or more of our tracked points within a car width of their train: the two are inside each other */
+MP.overlaps = function (T, rt, n = 1) {
+  let k = 0;
+  for (const q of T.pts) for (let i = 0; i < rt.polyN - 1; i++) if (mpSegDist(q.F.p, rt.poly[i], rt.poly[i + 1]) < 2) { if (++k >= n) return true; break; }
+  return false;
+};
+/* a collision bad enough to put both trains on the ground */
+MP.wreckBoth = function (T, p, end, sp, sg) {
+  const mph = Math.round(sp / MPH);
+  MP.hitN = (MP.hitN || 0) + 1;
+  MP.hit = [p.id, MP.hitN, mph, +end.x.toFixed(1), +end.z.toFixed(1)];
+  GAME.derail(`Collided with ${p.st.nm}'s train at ${mph} mph. Back away before you try again.`, 'Collision', { a: sg > 0 ? 0 : T.length, k: clamp((sp / MPH - 4) / 35, 0.3, 1) });
+};
+/* someone else's train hit ours hard */
+MP.struck = function (p, hx) {
+  const T = GAME.train; if (!T || !MP.spawned || S.derailed || !GAME.running) return;
+  // where along our train it hit
+  let a = 0, best = Infinity; _mpC.set(hx[3], 0, hx[4]);
+  for (const v of T.vehicles) { const dd = Math.hypot(v.pos.x - _mpC.x, v.pos.z - _mpC.z); if (dd < best) { best = dd; a = v.a0 + v.len / 2; } }
+  if (best > 80) return;   // not near us any more: an old message
+  GAME.derail(`${p.st.nm}'s train hit yours at ${hx[2]} mph.`, 'Collision', { a, k: clamp((hx[2] - 4) / 35, 0.3, 1) });
 };
 MP.view = function () {
   if (!MP.watching) return null;
