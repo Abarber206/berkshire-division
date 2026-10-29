@@ -69,7 +69,7 @@ CARS.setup = function () {
     const vehicles = def.cars.map(type => {
       const m = freightModel(type, num += 7 + ((r() * 40) | 0), r);
       scene.add(m.root); linearizeObject(m.root);
-      const v = carVehicle(m); v.yard = true; v.hb = true;
+      const v = carVehicle(m); v.yard = true; v.hb = true; v.made = { type, num, rs: ROAD_SHORT };
       v.brake = { AR: 0, BC: 0, BP: 0, emerg: false, released: true };   // bled off and tied down
       return v;
     });

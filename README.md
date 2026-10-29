@@ -44,6 +44,7 @@ Rooms connect through free public MQTT relay servers (HiveMQ and EMQX), so there
 - Synthesized sound: exhaust beats tied to the drivers; a different whistle for each engine (765's deep six-chime, 1225's brighter three-chime) with Doppler; a five-chime air horn; V12 prime mover, turbocharger and traction motors, louder with more units; bell, air pump, rail joints
 - Cameras: chase, cab, trackside, overhead, rear car, and a cinematic camera that cuts between trackside, rail-level, long-lens, tracking, running-gear, helicopter and drone-flyby shots. Outside views ease where you point them, glide from one to the next, and keep out of the ground, buildings, trees, poles and trains
 - Time of day (morning, midday, golden hour, night) and weather (clear, overcast, snow)
+- Save and resume: the run autosaves every minute of running and whenever the menu comes up or the page is put away, and three save slots keep runs of your own. A save holds the railroad, every car where it stands (coupled or not, knuckles, handbrakes and air), the switches, the engine's controls, boiler, air and fuel, the job sheet, the clock and weather, the timetable trains, the camera, and a wreck as it came to rest. Loading a run made on another railroad loads that railroad first. Single player only
 
 ## Controls
 
