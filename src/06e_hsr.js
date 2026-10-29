@@ -59,7 +59,7 @@ Object.assign(LOCO_SPEC, {
 function hsMaterials() {
   if (RMAT.hsGlass) return;
   const mk = (c, m, r, extra = {}) => new THREE.MeshStandardMaterial({ color: c, metalness: m, roughness: r, ...extra });
-  RMAT.hsGlass = mk(0x0d1418, 0.6, 0.06, { side: THREE.DoubleSide });
+  RMAT.hsGlass = mk(0x0d1418, 0.6, 0.06, { side: THREE.DoubleSide, transparent: true, opacity: 0.4, depthWrite: false });
   RMAT.hsWin = new THREE.MeshStandardMaterial({ color: 0x141b20, metalness: 0.4, roughness: 0.08, emissive: 0xeaf1ff, emissiveIntensity: 0 });
   SCN.winMats.push(RMAT.hsWin);
   RMAT.hsUnder = mk(0x2b2e30, 0.4, 0.7, { side: THREE.DoubleSide });
@@ -79,7 +79,8 @@ function hsMaterials() {
    A half section runs from the bottom centre round the right side to the roof centre:
    flat bottom, rounded bottom corner (radius ch), a side from yb + ch to the shoulder ys (leaning in by
    tum at the top), then a superellipse (exponent n) over to the roof at yt. Point CUT_I lies on the side
-   at height cut, where the body is cut away over the bogies. */
+   at height cut, where the body is cut away over the bogies. When the section carries window heights wy = [y0, y1],
+   the two side points between the cut and the shoulder sit on them, so a window is one strip of the ring (WIN_J). */
 const HS_HALF = 24, CUT_I = 6;
 function hsHalf(p, cut) {
   const pts = [[0, p.yb], [(p.w - p.ch) * 0.5, p.yb], [p.w - p.ch, p.yb]];
@@ -87,7 +88,8 @@ function hsHalf(p, cut) {
   const y0 = p.yb + p.ch, tum = p.tum || 0, zs = y => p.w - tum * clamp((y - y0) / Math.max(0.01, p.ys - y0), 0, 1) ** 1.6;
   const yc = clamp(cut, y0 + 0.002, p.ys - 0.002);
   pts.push([zs(yc), yc]);
-  for (let i = 1; i <= 3; i++) { const y = lerp(yc, p.ys, i / 3); pts.push([zs(y), y]); }
+  const wy = p.wy && p.wy[0] > yc + 0.05 && p.wy[1] < p.ys - 0.005 ? p.wy : null;
+  for (let i = 1; i <= 3; i++) { const y = wy && i < 3 ? wy[i - 1] : lerp(yc, p.ys, i / 3); pts.push([zs(y), y]); }
   const ws = p.w - tum;
   for (let i = 1; i <= 14; i++) { const t = i / 14 * Math.PI / 2; pts.push([ws * Math.pow(Math.cos(t), 2 / p.n), p.ys + (p.yt - p.ys) * Math.pow(Math.sin(t), 2 / p.n)]); }
   pts[pts.length - 1][0] = 0;
@@ -100,6 +102,8 @@ function hsRing(p, cut) {
   return R;
 }
 const RING_N = 2 * HS_HALF - 1, CUT_L = RING_N - 1 - CUT_I;   // 47 points; the left cut point
+const WIN_J = CUT_I + 1, ROOF_J = CUT_I + 3;                      // window bottom (top is the next point); the shoulder, where the roof starts
+const mirJ = j => RING_N - 1 - j;                                 // the same point on the left
 /* the half width of the body at height y on station ring R (right side) */
 function ringZ(R, y) {
   for (let i = 0; i < HS_HALF - 1; i++) {
@@ -117,8 +121,9 @@ function ringTop(R, z) {
   }
   return R[HS_HALF - 1][1];
 }
-/* Triangles from stations (each {a, R}) over ring indices idx, with UVs planar in (a, y) */
-function loftInto(acc, st, idx, ref, uvL, uvH, out = 0) {
+/* Triangles from stations (each {a, R}) over ring indices idx, with UVs planar in (a, y);
+   skip(a0, a1, j0, j1) leaves a quad out (a window or windscreen opening) */
+function loftInto(acc, st, idx, ref, uvL, uvH, out = 0, skip = null) {
   const base = acc.pos.length / 3;
   for (const s of st) for (const j of idx) {
     const [z, y] = s.R[j], k = out ? 1 + out / Math.max(0.3, Math.hypot(z, y - 1.6)) : 1;
@@ -127,6 +132,7 @@ function loftInto(acc, st, idx, ref, uvL, uvH, out = 0) {
   }
   const n = idx.length;
   for (let i = 0; i < st.length - 1; i++) for (let j = 0; j < n - 1; j++) {
+    if (skip && skip(st[i].a, st[i + 1].a, idx[j], idx[j + 1])) continue;
     const A = base + i * n + j, B = A + 1, C = A + n + 1, D = A + n;
     acc.idx.push(A, B, C, A, C, D);
   }
@@ -161,18 +167,27 @@ function rrectGeo(w, h, r, seg = 4) {
 
 /* Build the body of one car. B describes the body:
    sect(a) -> section params at a; len; ends: [front, rear] each 'nose' | 'joint'; cut: bogie well height;
-   wells: [[a0, a1], ...] cut away for the bogies; skin: material key; uvL/uvH texture size in metres. */
+   wells: [[a0, a1], ...] cut away for the bogies; skin: material key; uvL/uvH texture size in metres.
+   holes: [[a0, a1], ...] window openings, both sides, on the ring's window strip (the section's wy);
+   canopy: { A0, A1, th0(a) } a windscreen over the roof (see hsCanopy). Returns the stations. */
 function hsBody(gb, B, ref) {
-  const L = B.len, st = [];
+  const L = B.len, st = [], holes = B.holes || [], cn = B.canopy;
   const grid = new Set([...B.stations]);
   for (const [w0, w1] of B.wells) { grid.add(w0); grid.add(w1); for (let a = w0; a < w1; a += 0.5) grid.add(a); }
+  for (const [h0, h1] of holes) { grid.add(h0); grid.add(h1); }
+  for (const a of B.extra || []) grid.add(a);
+  if (cn) for (let k = 0; k <= 16; k++) grid.add(lerp(cn.A0, cn.A1, k / 16));
   const as = [...grid].filter(a => a >= B.a0 - 1e-6 && a <= B.a1 + 1e-6).sort((x, y) => x - y);
-  for (const a of as) st.push({ a, R: hsRing(B.sect(a), B.cut) });
+  for (const a of as) { const p = B.sect(a); st.push({ a, p, R: hsRing(p, B.cut) }); }
   const skin = newMesh(), under = newMesh();
   const upper = []; for (let j = CUT_I; j <= CUT_L; j++) upper.push(j);
   const lower = []; for (let j = CUT_L; j < RING_N; j++) lower.push(j); for (let j = 1; j <= CUT_I; j++) lower.push(j);
   lower[lower.indexOf(RING_N - 1)] = 0;
-  loftInto(skin, st, upper, ref, B.uvL, B.uvH);
+  const within = (a0, a1, h0, h1) => a0 >= h0 - 1e-6 && a1 <= h1 + 1e-6;
+  const skip = (a0, a1, j0, j1) => (cn && j0 >= ROOF_J && j1 <= mirJ(ROOF_J) && within(a0, a1, cn.A0, cn.A1))
+    || (((j0 === WIN_J && j1 === WIN_J + 1) || (j1 === mirJ(WIN_J) && j0 === mirJ(WIN_J + 1))) && holes.some(([h0, h1]) => within(a0, a1, h0, h1)));
+  loftInto(skin, st, upper, ref, B.uvL, B.uvH, 0, skip);
+  if (cn) hsCanopy(gb, B, st.filter(s => within(s.a, s.a, cn.A0, cn.A1)), ref);
   // below the cut: everywhere except over the bogies, where the well roof and its end walls close the body
   const inWell = (a0, a1) => B.wells.some(([w0, w1]) => a0 >= w0 - 1e-6 && a1 <= w1 + 1e-6);
   let run = [];
@@ -202,6 +217,27 @@ function hsBody(gb, B, ref) {
   gb.add(B.skin, meshGeo(skin));
   gb.add('hsUnder', meshGeo(under));
   return st;
+}
+/* The windscreen over a cab: between A0 and A1 the roof is a frame of skin either side of the glass, which runs
+   from angle th0(a) on the right to pi - th0 on the left. The angle is the roof's own parameter (hsSup), so frame,
+   rubber and glass share their edges, and at A0 and A1 (th0 = pi / 2) the frame is the roof itself. */
+function hsCanopy(gb, B, cst, ref) {
+  const fr = newMesh(), rb = newMesh(), gl = newMesh(), F = [], Rb = [], G = [];
+  const mir = R => R.map(([z, y]) => [-z, y]);
+  for (const s of cst) {
+    const p = s.p, th0 = B.canopy.th0(s.a), d = 0.025 * clamp((Math.PI / 2 - th0) / 0.1, 0, 1);
+    const R = []; for (let i = 0; i <= 14; i++) R.push(hsSup(p, (th0 - d) * i / 14));
+    F.push({ a: s.a, R });
+    Rb.push({ a: s.a, R: [hsSup(p, th0 - d), hsSup(p, th0)] });
+    const ws = p.w - (p.tum || 0), Gr = [];
+    for (let j = 0; j <= 10; j++) { const th = lerp(th0, Math.PI - th0, j / 10), c = Math.cos(th); Gr.push([Math.sign(c) * ws * Math.pow(Math.abs(c), 2 / p.n), p.ys + (p.yt - p.ys) * Math.pow(Math.sin(th), 2 / p.n)]); }
+    G.push({ a: s.a, R: Gr });
+  }
+  const i15 = [...Array(15).keys()];
+  loftInto(fr, F, i15, ref, B.uvL, B.uvH); loftInto(fr, F.map(f => ({ a: f.a, R: mir(f.R) })), i15, ref, B.uvL, B.uvH);
+  loftInto(rb, Rb, [0, 1], ref, 1, 1); loftInto(rb, Rb.map(f => ({ a: f.a, R: mir(f.R) })), [0, 1], ref, 1, 1);
+  loftInto(gl, G, [...Array(11).keys()], ref, 1, 1);
+  gb.add(B.skin, meshGeo(fr)); gb.add('hsRubber', meshGeo(rb)); gb.add('hsGlass', meshGeo(gl));
 }
 /* Full-section rubber gangway cover from the body end out to the car end (a0 -> a1), a little inside the body */
 function hsGangway(gb, sect, a0, a1, ref, k = 0.975) {
@@ -266,24 +302,32 @@ function e5Skin(nose) {
 }
 /* E5 car: def from HSR.e5.cars. Built nose forward (a = 0 at the nose tip or the joint at car 1's end) */
 function buildE5Car(def, idx) {
-  hsMaterials();
-  const nose = def.type === 'nose', L = def.len;
+  hsMaterials(); hsIntMaterials();
+  const nose = def.type === 'nose', L = def.len, rev = idx === HSR.e5.cars.length - 1;
   const t0 = nose ? L - E5.OV - E5.BOG : E5.OV, t1 = L - E5.OV, ref = (t0 + t1) / 2, x = a => ref - a;
   const root = new THREE.Group(), body = new THREE.Group(); root.add(body);
   const gb = new GeoBin();
   const skinKey = nose ? 'e5SkinNose' : 'e5SkinMid'; e5Skin(nose);
-  const sect = a => e5Sect(a, nose);
+  // the side windows sit on the constant body behind the nose: put two ring points on their sill and head
+  const WY = [2.08, 2.58], sect = a => Object.assign(e5Sect(a, nose), !nose || a >= E5.LN ? { wy: WY } : {});
+  const pitch = def.cls === 'gran' ? 1.3 : def.cls === 'green' ? 1.16 : 1.04, wW = def.cls === 'ord' ? 0.62 : 0.78;
+  // seating saloon between the vestibules, a window to each row of seats; car 1 and car 10 lose the front of the car to the nose and cab
+  const s0 = nose ? E5.LN + 1.2 : 3.4, s1 = L - 3.1, door1 = L - 1.85;
+  const n = Math.floor((s1 - s0) / pitch), wins = [];
+  for (let i = 0; i < n; i++) wins.push(s0 + (s1 - s0 - (n - 1) * pitch) / 2 + i * pitch);
+  const holes = wins.map(a => [a - wW / 2, a + wW / 2]), S0 = s0 - 0.5, S1 = s1 + 0.5;
+  const CB = { A0: 7.8, A1: 12.5, yF: 1.95 };
+  const canopy = nose ? { A0: 8.0, A1: 11.6, th0: a => Math.PI / 2 - (Math.PI / 2 - 0.55) * Math.pow(Math.sin(Math.PI * clamp((a - 8.0) / 3.6, 0, 1)), 0.45) } : null;
   const stations = [];
   if (nose) { for (const a of [0, 0.01, 0.03, 0.06, 0.1, 0.16, 0.24, 0.34, 0.47, 0.62, 0.8, 1.0, 1.25]) stations.push(a); for (let a = 1.5; a < E5.LN; a += 0.35) stations.push(a); }
   for (const a of [nose ? E5.LN : E5.GW, L - E5.GW]) stations.push(a);
   const wells = [[t0 - 1.75, t0 + 1.75], [t1 - 1.75, t1 + 1.75]];
-  hsBody(gb, { len: L, a0: nose ? 0 : E5.GW, a1: L - E5.GW, stations, wells, cut: E5.CUT, sect, skin: skinKey, uvL: L, uvH: 4 }, ref);
+  const st = hsBody(gb, { len: L, a0: nose ? 0 : E5.GW, a1: L - E5.GW, stations, wells, cut: E5.CUT, sect, skin: skinKey, uvL: L, uvH: 4, holes, canopy, extra: nose ? [S0, S1, CB.A0, CB.A1] : [S0, S1] }, ref);
   if (!nose) hsGangway(gb, sect, E5.GW, 0.0, ref);
   hsGangway(gb, sect, L - E5.GW, L, ref);
 
   /* ---- windows, doors, lettering ---- */
   const HW = E5.HW, side = s => s * (HW + 0.004);
-  const win = (a, y, w, h, k = 'hsWin') => { for (const s of [-1, 1]) gb.add(k, rrectGeo(w, h, Math.min(w, h) * 0.22), M(x(a), y, side(s), 0, s > 0 ? 0 : Math.PI, 0)); };
   const door = (a, w = 1.0) => {
     for (const s of [-1, 1]) {
       const z = s * (HW + 0.003);
@@ -293,11 +337,6 @@ function buildE5Car(def, idx) {
       gb.box('hsSeam', w * 0.9, 0.05, 0.08, x(a), 0.93, s * (HW - 0.01));   // step plate in the doorway sill
     }
   };
-  const pitch = def.cls === 'gran' ? 1.3 : def.cls === 'green' ? 1.16 : 1.04, wW = def.cls === 'ord' ? 0.62 : 0.78;
-  // seating saloon between the vestibules; car 1 and car 10 lose the front of the car to the nose and cab
-  const s0 = nose ? E5.LN + 1.2 : 3.4, s1 = L - 3.1, door1 = L - 1.85;
-  const n = Math.floor((s1 - s0) / pitch);
-  for (let i = 0; i < n; i++) win(s0 + (s1 - s0 - (n - 1) * pitch) / 2 + i * pitch, 2.33, wW, 0.5);
   door(door1);
   if (!nose) door(1.85);
   else {
@@ -319,18 +358,6 @@ function buildE5Car(def, idx) {
   /* ---- the cab: windscreen over the canopy, headlights low on the nose ---- */
   let lens = null, lenses = [], beam = null, halo = null;
   if (nose) {
-    // windscreen: the top of the canopy between a = 8.5 and 11.5, a superellipse patch over the roof centre
-    const acc = newMesh(), st = [];
-    const A0 = 8.4, A1 = 11.6;
-    for (let k = 0; k <= 16; k++) {
-      const a = lerp(A0, A1, k / 16), p = sect(a), gq = Math.sin(Math.PI * k / 16) ** 0.45, th0 = Math.PI / 2 - (Math.PI / 2 - 0.55) * gq, R = [];
-      const ws = p.w - (p.tum || 0);
-      for (let j = 0; j <= 10; j++) { const th = lerp(th0, Math.PI - th0, j / 10), c = Math.cos(th); R.push([Math.sign(c) * ws * Math.pow(Math.abs(c), 2 / p.n), p.ys + (p.yt - p.ys) * Math.pow(Math.sin(th), 2 / p.n)]); }
-      st.push({ a, R });
-    }
-    const idx = []; for (let j = 0; j <= 10; j++) idx.push(j);
-    loftInto(acc, st, idx, ref, 1, 1, 0.006);
-    gb.add('hsGlass', meshGeo(acc));
     // headlights: a slim lamp each side on the white just under the line, about 3 m back from the tip
     for (const s of [-1, 1]) {
       const a0 = 2.3, a1 = 4.1, la = newMesh(), st2 = [];
@@ -352,6 +379,20 @@ function buildE5Car(def, idx) {
     // obstacle deflector (snow plough) under the tip
     gb.add('hsUnder', plowGeo(x(0.5), x(2.4), 1.15, 0.16, 0.8));
   }
+  /* ---- inside: the saloon behind the windows, and the cab under the canopy ---- */
+  const ib = new GeoBin(), nIn = body.children.length;
+  const inside = (a0, a1) => st.filter(s => s.a >= a0 - 1e-6 && s.a <= a1 + 1e-6);
+  const face = rev ? -1 : 1;
+  hsSaloon(gb, ib, { st: inside(S0, S1), ref, yF: 1.25, holes, r: Math.min(wW, 0.5) * 0.22, skin: skinKey, uvL: L, uvH: 4, cls: def.cls, face, rows: wins.map(a => x(a)),
+    layout: { ord: [3, 2], green: [2, 2], gran: [2, 1] }[def.cls], rackY: 2.82 });
+  let cab = null;
+  if (nose) {
+    const gW = a => a > canopy.A0 && a < canopy.A1 ? hsSup(sect(a), canopy.th0(a))[1] : Infinity;
+    cab = hsCab(gb, body, ib, { st: inside(CB.A0, CB.A1), ref, yF: CB.yF, th0: a => a >= canopy.A0 && a <= canopy.A1 ? canopy.th0(a) : Math.PI / 2, dx: x,
+      eye: new THREE.Vector3(x(10.35), 3.18, -0.3), drv: -0.3, seats: [-0.3], seatA: 10.2, door: 0.5, sect, cut: E5.CUT, gW,
+      prof: [[7.8, 2.5], [9.0, 2.8], [9.32, 2.68]], screen: [1, 2], desk: [9.3, 9.85, 2.68, 2.61], kind: 'e5', lead: idx === 0, uid: 'e5' + idx });
+  }
+  const cabParts = body.children.slice(nIn);
   /* ---- roof: pantograph on cars 3 and 7, roof fairing at the gangways ---- */
   const pans = [];
   if (def.pan) pans.push(hsPantograph(gb, body, { a: def.pan, ref, roofAt: z => ringTop(hsRing(sect(def.pan), E5.CUT), z), roof: E5.ROOF, w: 1.45, L1: 1.42, L2: 1.52, raised: !!def.raised, rise: HSR.e5.wireH }));
@@ -359,12 +400,16 @@ function buildE5Car(def, idx) {
   const trucks = [], wheels = [];
   for (const ta of [t0, t1]) { const B = hsBogie({ wb: E5.WB, R: E5.R, motor: def.motor, top: E5.CUT, w: 1.03 }); trucks.push(B.grp); wheels.push(...B.wheels); }
   body.add(gb.build({ ...RMAT }));
+  const inner = ib.build({ ...RMAT }, { cast: false }); body.add(inner);
   const hit = new THREE.Mesh(new THREE.BoxGeometry(L, 3.2, 3.3), RMAT.hit); hit.position.set(x(L / 2), 2.1, 0); body.add(hit);
   root.traverse(o => { if (o.isMesh && o.material !== RMAT.hsGlass && o.material !== RMAT.hit) { o.castShadow = true; o.receiveShadow = true; } });
+  hsNoCast([...cabParts, inner]);
   if (beam) beam.castShadow = false;
   return {
     root, body, trucks, wheels, rW: E5.R, wb: E5.WB, len: L, frame: [t0, t1], ref, pans, lens, lenses, beam, halo, ditch: [], set: 'e5', nose, motor: def.motor, mass: def.t * 1000, num: def.num,
-    headlightPos: new THREE.Vector3(x(0.6), 1.25, 0), cabEye: new THREE.Vector3(x(10.6), 3.05, 0.42), hornPos: new THREE.Vector3(x(2.0), 1.0, 0), cabLightPos: new THREE.Vector3(x(11.0), 2.9, 0),
+    cab, cabEye: cab ? cab.eye : new THREE.Vector3(x(10.35), 3.18, -0.3),
+    inner, shell: { sect, cut: E5.CUT, yF: 1.25, saloon: [S0, S1], cabA: nose ? [CB.A0, CB.A1] : null, holes },
+    headlightPos: new THREE.Vector3(x(0.6), 1.25, 0), hornPos: new THREE.Vector3(x(2.0), 1.0, 0), cabLightPos: new THREE.Vector3(x(11.0), 2.9, 0),
     enginePos: new THREE.Vector3(x(L / 2), 0.8, 0), skin: {},
   };
 }
@@ -536,20 +581,27 @@ function acSkin(power) {
   }, { metal: 0.55, rough: 0.33 });
 }
 function buildAcelaCar(def, idx) {
-  hsMaterials();
+  hsMaterials(); hsIntMaterials();
   const power = def.type === 'power', L = def.len, bog = power ? AC.PBOG : AC.CBOG;
   const t0 = (L - bog) / 2, t1 = t0 + bog, ref = (t0 + t1) / 2, x = a => ref - a;
   const root = new THREE.Group(), body = new THREE.Group(); root.add(body);
   const gb = new GeoBin();
   const skinKey = power ? 'acSkinPower' : 'acSkinCoach'; acSkin(power);
-  const sect = power ? acPowerSect : acCoachSect, cut = power ? AC.PCUT : AC.CCUT, hw = power ? AC.PW : AC.CW;
+  const cut = power ? AC.PCUT : AC.CCUT, hw = power ? AC.PW : AC.CW;
+  // window sill and head as ring points: the coaches' window band, and the cab side window of a power car
+  const sect = power ? a => Object.assign(acPowerSect(a), a >= 2.5 ? { wy: [2.345, 2.895] } : {}) : () => Object.assign(acCoachSect(), { wy: [2.31, 2.93] });
+  const pitch = def.cls === 'first' ? 1.36 : 1.17, s0 = 3.0, s1 = L - 2.4, n = Math.floor((s1 - s0) / pitch), wins = [];
+  if (!power) for (let i = 0; i < n; i++) wins.push(s0 + (s1 - s0 - (n - 1) * pitch) / 2 + i * pitch);
+  const holes = power ? [[3.55 - 0.475, 3.55 + 0.475]] : wins.map(a => [a - 0.5, a + 0.5]), S0 = s0 - 0.5, S1 = s1 + 0.5;
+  const CB = { A0: 0.9, A1: 4.45, yF: 2.02 };
+  const canopy = power ? { A0: 1.0, A1: 3.7, th0: a => Math.PI / 2 - (Math.PI / 2 - 0.62) * Math.pow(Math.sin(Math.PI * clamp((a - 1.0) / 2.7, 0, 1)), 0.35) } : null;
   const stations = [];
   if (power) { for (const a of [0, 0.01, 0.03, 0.06, 0.1, 0.16, 0.24, 0.35, 0.5]) stations.push(a); for (let a = 0.7; a < AC.LN; a += 0.25) stations.push(a); stations.push(AC.LN); }
   else stations.push(AC.GW);
   stations.push(L - AC.GW);
   const half = power ? 1.85 : 1.6;
   const wells = [[t0 - half, t0 + half], [t1 - half, t1 + half]];
-  hsBody(gb, { len: L, a0: power ? 0 : AC.GW, a1: L - AC.GW, stations, wells, cut, sect, skin: skinKey, uvL: L, uvH: 4.4 }, ref);
+  const st = hsBody(gb, { len: L, a0: power ? 0 : AC.GW, a1: L - AC.GW, stations, wells, cut, sect, skin: skinKey, uvL: L, uvH: 4.4, holes, canopy, extra: power ? [CB.A0, CB.A1] : [S0, S1] }, ref);
   if (!power) hsGangway(gb, () => AC_GANG(), AC.GW, 0, ref, 1);
   hsGangway(gb, () => AC_GANG(), L - AC.GW, L, ref, 1);
   const R0 = hsRing(sect(L / 2), cut);
@@ -564,16 +616,13 @@ function buildAcelaCar(def, idx) {
     onSide('hsWin', rrectGeo(0.4, 0.62, 0.07), a, 2.5, 0.005);
   };
   if (power) {
-    // cab side window and crew door, cooling grilles, the name on the side
-    onSide('hsWin', rrectGeo(0.95, 0.55, 0.1), 3.55, 2.62, 0.006);
+    // crew door behind the cab (its side window is cut through, below), cooling grilles, the name on the side
     door(5.0, 0.7);
     for (const [a0, a1] of [[13.6, 16.3], [16.8, 19.5]]) onSide('acGrille', new THREE.PlaneGeometry(a1 - a0, 0.78), (a0 + a1) / 2, 1.62, 0.005);
     RMAT.acGrille = RMAT.acGrille || new THREE.MeshStandardMaterial({ color: 0x9aa0a5, metalness: 0.6, roughness: 0.45, map: louverTex() });
     RMAT.acLogo = RMAT.acLogo || decalMat(1024, 256, (g, w, h) => { g.fillStyle = ACC.logo; g.font = 'italic 600 170px "Helvetica Neue", Arial, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; if (g.letterSpacing !== undefined) g.letterSpacing = '6px'; g.fillText('Acela', w / 2, h / 2 + 10); });
     for (const s of [-1, 1]) gb.add('acLogo', new THREE.PlaneGeometry(4.0, 1.0), M(x(10.2), 1.62, s * (ringZ(R0, 1.62) + 0.006), 0, s > 0 ? 0 : Math.PI, 0));
   } else {
-    const pitch = def.cls === 'first' ? 1.36 : 1.17, s0 = 3.0, s1 = L - 2.4, n = Math.floor((s1 - s0) / pitch);
-    for (let i = 0; i < n; i++) onSide('hsWin', rrectGeo(1.0, 0.62, 0.1), s0 + (s1 - s0 - (n - 1) * pitch) / 2 + i * pitch, 2.62, 0.005);
     door(1.55);
   }
   const nk = 'acn_' + def.num; RMAT[nk] = RMAT[nk] || textDecal(def.num, 256, 96, '#2c3238', 'sans', 60);
@@ -581,16 +630,7 @@ function buildAcelaCar(def, idx) {
 
   let lens = null, lenses = [], beam = null, halo = null; const ditch = [];
   if (power) {
-    // big raked windscreen, two headlights low in the nose with ditch lights out at the corners, a pilot
-    const acc = newMesh(), st = [], A0 = 1.0, A1 = 3.7;
-    for (let k = 0; k <= 16; k++) {
-      const a = lerp(A0, A1, k / 16), p = sect(a), gq = Math.sin(Math.PI * k / 16) ** 0.35, th0 = Math.PI / 2 - (Math.PI / 2 - 0.62) * gq, R = [];
-      const ws = p.w - (p.tum || 0);
-      for (let j = 0; j <= 10; j++) { const th = lerp(th0, Math.PI - th0, j / 10), c = Math.cos(th); R.push([Math.sign(c) * ws * Math.pow(Math.abs(c), 2 / p.n), p.ys + (p.yt - p.ys) * Math.pow(Math.sin(th), 2 / p.n)]); }
-      st.push({ a, R });
-    }
-    const idw = []; for (let j = 0; j <= 10; j++) idw.push(j);
-    loftInto(acc, st, idw, ref, 1, 1, 0.006); gb.add('hsGlass', meshGeo(acc));
+    // two headlights low in the nose with ditch lights out at the corners, a pilot (the windscreen is cut in by hsBody)
     for (const s of [-1, 1]) {
       // lamps let into the nose: find where the lamp's axis meets the skin, face the lens along the skin's normal there
       // and run the housing back through the skin into the body
@@ -623,6 +663,27 @@ function buildAcelaCar(def, idx) {
     // pilot and snow plow below the nose
     gb.add('hsUnder', plowGeo(x(0.7), x(2.6), 1.2, 0.16, 0.75));
   }
+  /* ---- inside: a coach's saloon, or a power car's cab ---- */
+  const ib = new GeoBin(), nIn = body.children.length;
+  const inside = (a0, a1) => st.filter(s => s.a >= a0 - 1e-6 && s.a <= a1 + 1e-6);
+  let cab = null;
+  if (power) {
+    const gW = a => a > canopy.A0 && a < canopy.A1 ? hsSup(sect(a), canopy.th0(a))[1] : Infinity;
+    cab = hsCab(gb, body, ib, { st: inside(CB.A0, CB.A1), ref, yF: CB.yF, th0: a => a >= canopy.A0 && a <= canopy.A1 ? canopy.th0(a) : Math.PI / 2, dx: x,
+      holes, r: 0.1, skin: skinKey, uvL: L, uvH: 4.4,
+      eye: new THREE.Vector3(x(2.9), 3.25, 0.62), drv: 0.62, seats: [0.62, -0.62], seatA: 2.75, door: 0, sect, cut, gW,
+      prof: [[0.9, 2.3], [2.0, 2.86], [2.27, 2.77]], screen: [1, 2], desk: [2.25, 2.7, 2.77, 2.69], kind: 'acela', lead: idx === 0, uid: 'ac' + idx });
+  } else {
+    const cafe = def.cls === 'cafe', half = Math.ceil(wins.length / 2), rows = cafe ? wins.slice(half) : wins;
+    const faces = def.cls === 'bus' ? rows.map((_, i) => i < rows.length / 2 ? -1 : 1) : null;
+    const mid = faces ? rows.length / 2 : -1;
+    const tables = cafe ? rows.slice(0, -1).map((a, i) => i % 2 ? null : [x(a), x(rows[i + 1])]).filter(Boolean)
+      : faces && mid >= 1 ? [[x(rows[mid - 1]), x(rows[mid])]] : [];
+    hsSaloon(gb, ib, { st: inside(S0, S1), ref, yF: 1.27, holes, r: 0.1, skin: skinKey, uvL: L, uvH: 4.4, cls: def.cls, rows: rows.map(a => x(a)), face: 1,
+      faces: cafe ? rows.map((_, i) => i % 2 ? 1 : -1) : faces, tables, counter: cafe ? [S0 + 0.6, wins[half - 1] + 0.5] : null,
+      layout: def.cls === 'first' ? [2, 1] : [2, 2], rackY: 3.2 });
+  }
+  const cabParts = body.children.slice(nIn);
   const pans = [];
   if (power) {
     const roofAt = z => ringTop(hsRing(sect(15), cut), z);
@@ -632,16 +693,23 @@ function buildAcelaCar(def, idx) {
   const trucks = [], wheels = [];
   for (const ta of [t0, t1]) { const B = hsBogie({ wb: power ? AC.PWB : AC.CWB, R: power ? AC.PR : AC.CR, motor: power, top: cut, w: 1.03 }); trucks.push(B.grp); wheels.push(...B.wheels); }
   body.add(gb.build({ ...RMAT }));
+  const inner = ib.build({ ...RMAT }, { cast: false }); body.add(inner);
   const hit = new THREE.Mesh(new THREE.BoxGeometry(L, 3.8, 3.2), RMAT.hit); hit.position.set(x(L / 2), 2.4, 0); body.add(hit);
   root.traverse(o => { if (o.isMesh && o.material !== RMAT.hsGlass && o.material !== RMAT.hit) { o.castShadow = true; o.receiveShadow = true; } });
+  hsNoCast([...cabParts, inner]);
   if (beam) beam.castShadow = false;
   return {
     root, body, trucks, wheels, rW: power ? AC.PR : AC.CR, wb: power ? AC.PWB : AC.CWB, len: L, frame: [t0, t1], ref, pans, lens, lenses, beam, halo, ditch, set: 'acela', nose: power, motor: power, mass: def.t * 1000, num: def.num,
     tilt: !power, tiltY: 1.3,
-    headlightPos: new THREE.Vector3(x(0.4), 1.12, 0), cabEye: new THREE.Vector3(x(2.9), 3.25, 0.62), hornPos: new THREE.Vector3(x(6), AC.PROOF + 0.1, 0), cabLightPos: new THREE.Vector3(x(3.2), 3.6, 0),
+    cab, cabEye: cab ? cab.eye : new THREE.Vector3(x(2.9), 3.25, 0.62),
+    inner, shell: { sect, cut, yF: 1.27, saloon: power ? null : [S0, S1], cabA: power ? [CB.A0, CB.A1] : null, holes },
+    headlightPos: new THREE.Vector3(x(0.4), 1.12, 0), hornPos: new THREE.Vector3(x(6), AC.PROOF + 0.1, 0), cabLightPos: new THREE.Vector3(x(3.2), 3.6, 0),
     enginePos: new THREE.Vector3(x(L / 2), 2.0, 0), skin: {},
   };
 }
+
+/* the inside casts no shadows (the body round it does) */
+function hsNoCast(objs) { for (const c of objs) c.traverse(o => { if (o.isMesh) o.castShadow = false; }); }
 
 /* ---------------- the trainset ---------------- */
 /* every car of set key, front to back; the last cab car (or power car) runs turned */
@@ -669,6 +737,8 @@ function setVehicle(m, i) {
 /* every frame: pantographs up to the wire or folded down, and the tilting coaches leaning into the curves */
 function animateTrainset(T, dt) {
   const panK = T.remote ? 1 : S.pan, v = T.remote ? 0 : S.v;
+  // the lamps inside: the surfaces glow a little by day, more at night, as the cars' own lighting would show them
+  if (RMAT.hsLit) { const d = smooth(0.2, 0.6, SKY.dark || 0); for (const m of RMAT.hsLit) m.emissiveIntensity = lerp(0.12, 0.42, d); RMAT.hsLight.emissiveIntensity = lerp(0.7, 1.1, d); }
   for (const veh of T.vehicles) {
     const m = veh.model; if (!m || !m.set) continue;
     for (const p of m.pans) p.set(p.raised ? lerp(p.down, p.rise, smooth(0, 1, panK)) : p.down);
