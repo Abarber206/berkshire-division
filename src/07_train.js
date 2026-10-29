@@ -230,7 +230,7 @@ class Train extends Consist {
       const num = type === 'coach' ? 3010 + (n++) * 7 : 10000 + ((r() * 89999) | 0);
       const m = type === 'coach' ? coachModel(spec, num, !!flag) : freightModel(type, num, r);
       scene.add(m.root);
-      const v = carVehicle(m); v.made = { type, num, flag: !!flag };
+      const v = carVehicle(m); v.made = { type, num, flag: !!flag, rk: locoKey, rs: spec.short };
       this.vehicles.push(v);
     }
     // tender mass varies with water & coal

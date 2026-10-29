@@ -78,6 +78,7 @@ async function loadWorld() {
   GAME.ready = true;
   $('btnStart').disabled = false;
   MP.worldReady();
+  SAVE.setup(); SAVE.ready();
   const hot = window.claude && window.claude.hot;
   if (hot && hot.snapshot) hot.snapshot(() => GAME.snapshot());
   const resume = data => { if (data && data.running) GAME.restore(data); };
@@ -238,7 +239,7 @@ function relettered(t, old, v) {
   const { type, num, flag } = v.made;
   const m = type === 'coach' ? coachModel(LOCO_SPEC[t.locoKey], num, flag) : freightModel(type, num, rng(num));
   scene.add(m.root);
-  return Object.assign(carVehicle(m), { made: v.made, flip: v.flip, hb: v.hb, brake: v.brake, roll: old.dist * (v.flip ? -1 : 1) + (v.roll || 0) });
+  return Object.assign(carVehicle(m), { made: { ...v.made, rk: t.locoKey, rs: LOCO_SPEC[t.locoKey].short }, flip: v.flip, hb: v.hb, brake: v.brake, roll: old.dist * (v.flip ? -1 : 1) + (v.roll || 0) });
 }
 /* steam to diesel or back: the run keeps its speed, air and lights; the new engine comes with full
    supplies and its throttle shut, and the reverser keeps its direction */
@@ -373,7 +374,7 @@ GAME.intro = function () {
 };
 GAME.pause = function (p) {
   S.paused = p;
-  if (p) { $('menu').hidden = false; startLabel(); }
+  if (p) { SAVE.auto(); $('menu').hidden = false; startLabel(); SAVE.menu(); }
 };
 GAME.fail = function (title, body) { S.throttle = 0; if (JOB.fail(title, body)) return; $('bigMsg').classList.remove('wreck'); $('bigTitle').textContent = title; $('bigBody').textContent = body; $('bigMsg').hidden = false; };
 /* A derailment plays out. The cars come off the rails as rigid bodies (WreckSim, 07d_wreck.js) with the
@@ -583,7 +584,7 @@ function loop() {
   let dt = Math.min(clock.getDelta(), 0.05);
   const T = GAME.train; if (!T) return;
   const active = GAME.running && !S.paused && !S.derailed && !PLACE.on;
-  if (active) simStep(dt, T); else { stepSwitches(dt); if (S.derailed && GAME.running && !S.paused && !PLACE.on) GAME.wreckStep(dt, T); }
+  if (active) { simStep(dt, T); SAVE.tick(dt); } else { stepSwitches(dt); if (S.derailed && GAME.running && !S.paused && !PLACE.on) GAME.wreckStep(dt, T); }
   renderStep(dt, T);
 }
 function simStep(dt, T) {
