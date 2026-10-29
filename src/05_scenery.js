@@ -31,7 +31,13 @@ function sceneryMaterials() {
   SMAT.silver = new THREE.MeshLambertMaterial({ color: 0xc8ccd0 });
   SMAT.platform = new THREE.MeshLambertMaterial({ color: 0x8e8a80, map: TEX.ground });
   SMAT.win = new THREE.MeshLambertMaterial({ color: 0x1c2228, emissive: 0xffbe6a, emissiveIntensity: 0 });
-  SCN.winMats.push(SMAT.win);
+  // three sets of house and depot windows, so a town lights up over a few minutes at dusk rather
+  // than all at once, and some rooms stay dark (win3: a hall lamp or a television, bluer and dim)
+  SMAT.win2 = SMAT.win.clone(); SMAT.win2.emissive.set(0xffcf8a);
+  SMAT.win3 = SMAT.win.clone(); SMAT.win3.emissive.set(0xc8d4ff);
+  SMAT.win.userData = { litAt: 0.2, litI: 0.95 }; SMAT.win2.userData = { litAt: 0.45, litI: 0.8 }; SMAT.win3.userData = { litAt: 0.7, litI: 0.3 };
+  SCN.winMats.push(SMAT.win, SMAT.win2, SMAT.win3);
+  SMAT.lampGlass = new THREE.MeshLambertMaterial({ color: 0x4a4436, emissive: 0xffc27a, emissiveIntensity: 0 });
   SMAT.road = new THREE.MeshLambertMaterial({ color: 0x55534f, map: TEX.ground });
   SMAT.gravel = new THREE.MeshLambertMaterial({ color: 0x9f927a, map: TEX.ballast });
   SMAT.line = new THREE.MeshBasicMaterial({ color: 0xd9c56a });
@@ -144,11 +150,27 @@ function clearPlace(line, sLine, lat, gap = 3.4) {
   for (let k = 0; k < 80; k++, lat += d * 0.5) { const pl = linePlace(line, sLine, lat); if (trackGap(pl.X, pl.N) >= gap) return pl; }
   return linePlace(line, sLine, lat);
 }
+const WIN_SETS = ['win', 'win', 'win2', 'win2', 'win3'];
 function windowsRow(gb, base, x0, x1, y, z, w, h, n, face = 1) {
-  for (let i = 0; i < n; i++) { const x = n === 1 ? (x0 + x1) / 2 : lerp(x0, x1, i / (n - 1)); gb.add('win', new THREE.BoxGeometry(w, h, 0.06), P(base, x, y, z + face * 0.03)); gb.add('trim', new THREE.BoxGeometry(w + 0.16, 0.1, 0.1), P(base, x, y - h / 2 - 0.05, z + face * 0.05)); }
+  const e = base.elements, seed = Math.abs(Math.round(e[12] * 7.3 + e[14] * 3.1 + y * 11 + z * 5));
+  for (let i = 0; i < n; i++) { const x = n === 1 ? (x0 + x1) / 2 : lerp(x0, x1, i / (n - 1)); gb.add(WIN_SETS[(seed + i * 3) % 5], new THREE.BoxGeometry(w, h, 0.06), P(base, x, y, z + face * 0.03)); gb.add('trim', new THREE.BoxGeometry(w + 0.16, 0.1, 0.1), P(base, x, y - h / 2 - 0.05, z + face * 0.05)); }
 }
 
 /* -------- buildings -------- */
+const LAMPS = { plat: [], sig: [], pools: [] };   // lit after dark by 10c_lamps.js
+/* a platform lamp post on a depot's platform: cast iron plinth and post, a glazed lantern and its cap.
+   x, z are in the depot's own frame, whose platform top is at y = 0.16. */
+function platformLamp(gb, base, x, z, pool) {
+  gb.add('black', new THREE.CylinderGeometry(0.15, 0.19, 0.36, 10), P(base, x, 0.16 + 0.18 - 0.01, z));   // sits 1 cm into the boards
+  gb.add('black', new THREE.CylinderGeometry(0.055, 0.075, 3.12, 8), P(base, x, 0.5 + 1.56, z));
+  gb.add('black', new THREE.BoxGeometry(0.36, 0.05, 0.36), P(base, x, 3.6, z));
+  gb.add('lampGlass', new THREE.BoxGeometry(0.3, 0.38, 0.3), P(base, x, 3.6 + 0.02 + 0.19, z));
+  gb.add('black', new THREE.ConeGeometry(0.27, 0.22, 4, 1).rotateY(Math.PI / 4), P(base, x, 4.0 + 0.11 - 0.005, z));
+  gb.add('black', new THREE.SphereGeometry(0.05, 8, 6), P(base, x, 4.24, z));
+  LAMPS.plat.push({ p: new THREE.Vector3().setFromMatrixPosition(P(base, x, 3.81, z)), c: [1.0, 0.72, 0.42] });
+  if (pool) LAMPS.pools.push({ base, ...pool });
+}
+
 function depot(pl, name, big) {
   const L = big ? 26 : 16, W = big ? 8 : 6.5, H = 4.1;
   const off = pl.lat;
@@ -176,6 +198,9 @@ function depot(pl, name, big) {
   // platform along the track
   gb.add('platform', boxT(L + 50, 0.32, 5.2, 3), P(base, 0, 0.0, W / 2 + 2.7));
   footing(gb, 'concrete', base, 0, W / 2 + 2.7, L + 50, 5.2, -0.16);
+  // lamp posts along the back of the platform, beyond the depot's ends
+  const plat = { px0: -(L + 50) / 2 + 0.05, px1: (L + 50) / 2 - 0.05, pz0: W / 2 + 0.15, pz1: W / 2 + 5.25 };
+  for (const lx of [-(L / 2 + 20), -(L / 2 + 9), L / 2 + 11, L / 2 + 20]) platformLamp(gb, base, lx, W / 2 + 0.9, { ...plat, x: lx, z: W / 2 + 0.9 });
   // name boards on both ends + track side
   const nb = nameBoard(name);
   const mat = 'nb_' + name;
@@ -666,7 +691,8 @@ function buildSignals(scene) {
     const base = baseM(pl.X, y, pl.N, yaw);
     const gb = binAt(pl.X, pl.N);
     const heads = [];
-    const lamp = (x, hy, r) => { const lens = new THREE.Mesh(new THREE.CircleGeometry(r, 16), SMAT.lampOff); lens.matrixAutoUpdate = false; lens.matrix.copy(P(base, x, hy, 0, 0, Math.PI / 2, 0)); scene.add(lens); heads.push(lens); };
+    const lamp = (x, hy, r) => { const lens = new THREE.Mesh(new THREE.CircleGeometry(r, 16), SMAT.lampOff); lens.matrixAutoUpdate = false; lens.matrix.copy(P(base, x, hy, 0, 0, Math.PI / 2, 0)); scene.add(lens); heads.push(lens);
+      lens.userData.glowAt = new THREE.Vector3().setFromMatrixPosition(P(base, x + 0.1, hy, 0)); };
     if (dwarf) {
       // a dwarf: two lamps in a low cast housing on a short pedestal
       footing(gb, 'concrete', base, 0, 0, 0.7, 0.7, 0.3);
@@ -703,13 +729,16 @@ let sigT = 0;
 function updateSignals(dt = 0) {
   if ((sigT -= dt) > 0) return;
   sigT = 0.25;
+  let changed = false;
   for (const s of SCN.signals) {
     const a = signalAspect(s);
     if (a === s.aspect) continue;
     s.aspect = a;
     const L = ASPECT_LAMPS[a];
     s.heads[0].material = SMAT[L[0]]; s.heads[1].material = SMAT[L[1]];
+    changed = true;
   }
+  if (changed) lampsSignals();
 }
 function buildSigns() {
   for (const mp of ROUTE.mileposts) {

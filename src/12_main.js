@@ -2,7 +2,7 @@
    Game: boot, world loading, main loop, rules, HUD
    ========================================================================== */
 const GAME = {
-  settings: { traffic: 'on', loco: '765', consist: 'passenger', time: 'morning', weather: 'clear', fire: 'auto', units: 1, livery: 'ss', mix: false, finish: 'standard', job: '', custom: { body: 0x2c5f8a, roof: 0x24384a, accent: 0xf0f0ea, letter: 0xf0f0ea, rail: 0xf0f0ea }, number: 4401 },
+  settings: { traffic: 'on', loco: '765', consist: 'passenger', time: 'morning', cycle: 'x30', weather: 'clear', fire: 'auto', units: 1, livery: 'ss', mix: false, finish: 'standard', job: '', custom: { body: 0x2c5f8a, roof: 0x24384a, accent: 0xf0f0ea, letter: 0xf0f0ea, rail: 0xf0f0ea }, number: 4401 },
   train: null, running: false, ready: false, stats: { runThrough: 0 },
   events: {}, stopped: 0, lastStation: null, filling: null,
 };
@@ -66,7 +66,7 @@ async function loadWorld() {
   if (WORLD.mtn) mtBuildForest(scene); else buildTrees(scene);
   finalizeScenery(scene);
   prog(0.92, 'Lighting the fire…'); await frame();
-  buildSky(scene, renderer); buildFX(scene); buildSparks(scene);
+  buildSky(scene, renderer); buildFX(scene); buildSparks(scene); buildLamps(scene);
   for (const st of ROUTE.stations) { st.edge.pose(st.s, FR); st.p = FR.p.clone(); }
   for (const w of ROUTE.water) { w.edge.pose(w.s, FR); w.p = FR.p.clone(); }
   if (ROUTE.coal) { const c = ROUTE.coal; c.edge.pose(c.s, FR); c.p = FR.p.clone(); }
@@ -257,9 +257,9 @@ function applyLiveriesLive() {
   const o = dieselOpts();
   t.units.forEach((m, u) => { const lv = dieselLiveryFor(o, u); applyLivery(m, lv, (o.number || lv.num) + u); });
 }
-const SAVE_KEYS = ['job', 'traffic', 'loco', 'consist', 'time', 'weather', 'fire', 'units', 'livery', 'mix', 'finish', 'custom', 'number'];
+const SAVE_KEYS = ['job', 'traffic', 'loco', 'consist', 'time', 'cycle', 'weather', 'fire', 'units', 'livery', 'mix', 'finish', 'custom', 'number'];
 function saveSettings() { try { const o = {}; for (const k of SAVE_KEYS) o[k] = GAME.settings[k]; localStorage.setItem('bd_settings', JSON.stringify(o)); } catch (e) {} }
-function loadSettings() { try { const o = JSON.parse(localStorage.getItem('bd_settings') || 'null'); if (o) for (const k of SAVE_KEYS) if (o[k] !== undefined) GAME.settings[k] = o[k]; } catch (e) {} if (!LOCO_SPEC[GAME.settings.loco]) GAME.settings.loco = '765'; if (!LIVERIES[GAME.settings.livery]) GAME.settings.livery = 'ss'; }
+function loadSettings() { try { const o = JSON.parse(localStorage.getItem('bd_settings') || 'null'); if (o) for (const k of SAVE_KEYS) if (o[k] !== undefined) GAME.settings[k] = o[k]; } catch (e) {} if (!LOCO_SPEC[GAME.settings.loco]) GAME.settings.loco = '765'; if (!LIVERIES[GAME.settings.livery]) GAME.settings.livery = 'ss'; if (!DN.starts[GAME.settings.time]) GAME.settings.time = 'morning'; if (!DN.rates[GAME.settings.cycle]) GAME.settings.cycle = 'x30'; }
 GAME.needNewTrain = function () { const t = GAME.train, g = GAME.settings, j = JOB.wanted(); return !t || MP.needSpawn || t.locoKey !== g.loco || (!t.elec && t.consistKey !== JOB.consist()) || (j ? j.id : '') !== JOB.activeId() || (t.diesel && !t.elec && t.nUnits !== (+g.units || 1)); };
 function buildWhistleIfReady() { if (!AU.on) return; buildWhistle(WHISTLES[LOCO_SPEC[GAME.settings.loco].whistle]); }
 
@@ -302,8 +302,9 @@ function buildMenu() {
   for (const id of ['cBody', 'cAccent', 'cLetter', 'cNum']) $(id).addEventListener('input', onCustom);
   refreshMenuGroups();
   segButtons('optTrain', Object.fromEntries(Object.entries(CONSISTS).filter(([, c]) => !c.hidden)), 'consist', () => { GAME.swapLive(); startLabel(); saveSettings(); });
-  segButtons('optTime', PRESETS, 'time', k => { if (GAME.ready) applyLook(k, GAME.settings.weather, renderer, scene); });
-  segButtons('optWeather', WEATHER, 'weather', k => { if (GAME.ready) { applyLook(GAME.settings.time, k, renderer, scene); FX.snow.visible = SKY.snow; } });
+  segButtons('optTime', DN.starts, 'time', k => { if (GAME.ready) applyLook(k, null); saveSettings(); });
+  segButtons('optCycle', DN.rates, 'cycle', () => saveSettings());
+  segButtons('optWeather', WEATHER, 'weather', k => { if (GAME.ready) { applyLook(null, k); FX.snow.visible = SKY.snow; } });
   segButtons('optFire', { auto: { name: 'Fireman', sub: 'Stoker & water handled' }, hand: { name: 'Hand fired', sub: 'You run the boiler' } }, 'fire', k => { S.autoFire = k === 'auto'; GAME.refreshKeys(); saveSettings(); });
   segButtons('optTraffic', { on: { name: 'Timetable', sub: 'No. 5, No. 12 and freights on the road' }, off: { name: 'Clear road', sub: 'Just you and the signals' } }, 'traffic', () => { if (GAME.ready && GAME.train) AI.setup(); saveSettings(); });
   specGrid();
@@ -530,6 +531,7 @@ function updateHUD(dt) {
   const dir = Math.abs(S.v) > 0.2 ? Math.sign(S.v) : (Math.sign(S.reverser) || 1);
   const gp = S.grade * dir * 100;
   $('gradeTxt').textContent = Math.abs(gp) < 0.1 ? 'Level' : (gp > 0 ? '▲ ' : '▼ ') + Math.abs(gp).toFixed(1) + '%';
+  const tod = JOB.run ? '' : dnFmt(SKY.hour), te = $('todTxt'); if (te.textContent !== tod) te.textContent = tod;
   const sc = scanAhead(GAME.train, dir); GAME.scan = sc;
   const lamp = $('swLamp'), txt = $('swText'), lm = $('swLampMini');
   if (sc.sw && sc.sw.d < 3500) {
@@ -646,10 +648,9 @@ function renderStep(dt, T) {
   AI.render(dt);
   MP.frame(dt);
   if (GAME.running && !S.paused && !S.derailed) MP.contact(T);
-  // headlight & glows
-  const night = SKY.night;
-  const darkH = night || SKY.boreK > 0.5;   // in a tunnel the headlight works as it does at night
-  T.head.intensity = S.light === 0 ? 0 : (S.light === 1 ? (darkH ? 1.6 : 0.4) : (darkH ? 6 : 1.4));
+  // headlight & glows, brightening through dusk
+  const night = SKY.dark, darkH = Math.max(night, smooth(0.3, 0.7, SKY.boreK || 0));   // in a tunnel the headlight works as it does at night
+  T.head.intensity = S.light === 0 ? 0 : (S.light === 1 ? lerp(0.4, 1.6, darkH) : lerp(1.4, 6, darkH));
   RMAT.lens.color.setScalar(S.light === 0 ? 0.25 : (S.light === 1 ? 0.75 : 1.0));
   const flick = 0.85 + 0.15 * Math.sin(S.time * 23) * Math.sin(S.time * 7.3);
   if (T.diesel) {
@@ -658,16 +659,16 @@ function renderStep(dt, T) {
     S.ditchFlash = Math.max(0, S.ditchFlash - dt);
     const ph = Math.floor(S.time * 2.6) % 2, on = S.ditch && S.light > 0;
     const lv = (k) => !on ? 0.12 : (S.ditchFlash > 0 ? (ph === k ? 1 : 0.15) : 0.85);
-    T.loco.ditch.forEach((d, k) => { const b = lv(k); d.lens.material.color.setScalar(0.25 + 0.75 * b); d.halo.material.opacity = b * (night ? 1 : 0.45); });
-  } else T.fireLight.intensity = S.fire * (night ? 2.4 : 0.18) * flick * (CAM.mode === 'cab' ? 1 : 0.6);
-  T.loco.beam.material.opacity = S.light === 0 ? 0 : (night ? (S.light === 2 ? 0.075 : 0.035) : (SKY.weather !== 'clear' ? 0.02 : 0));
-  T.loco.halo.material.opacity = S.light === 0 ? 0 : (night ? 1 : 0.35) * (S.light === 2 ? 1 : 0.6);
+    T.loco.ditch.forEach((d, k) => { const b = lv(k); d.lens.material.color.setScalar(0.25 + 0.75 * b); d.halo.material.opacity = b * lerp(0.45, 1, night); });
+  } else T.fireLight.intensity = S.fire * lerp(0.18, 2.4, night) * flick * (CAM.mode === 'cab' ? 1 : 0.6);
+  T.loco.beam.material.opacity = S.light === 0 ? 0 : Math.max(night * (S.light === 2 ? 0.075 : 0.035), SKY.weather !== 'clear' ? 0.02 : 0);
+  T.loco.halo.material.opacity = S.light === 0 ? 0 : lerp(0.35, 1, night) * (S.light === 2 ? 1 : 0.6);
   if (!T.diesel) {
     T.loco.fire.material.color.setRGB(1 * flick, 0.45 * S.fire * flick + 0.1, 0.1);
-    T.loco.ash.material.opacity = night ? 0.35 * S.fire * flick : 0;
+    T.loco.ash.material.opacity = night * 0.35 * S.fire * flick;
   }
   const pb = $('btnWhistle').querySelector('.pull i'), pw = Math.round(S.whistle * 100) + '%'; if (pb.style.width !== pw) pb.style.width = pw;
-  T.cabLight.intensity = night ? 0.6 : 0;
+  T.cabLight.intensity = night * 0.6;
   // camera
   slideFeel(dt, T);
   if (PLACE.on) PLACE.camera(camera, dt); else updateCamera(camera, MP.view() || T, dt);
@@ -676,12 +677,10 @@ function renderStep(dt, T) {
     CAM.yaw = -0.95 + Math.sin(S.time * 0.05 + performance.now() * 0.00005) * 0.55; CAM.mode = 'chase'; CAM.dist = 21; CAM.pitch = 0.09;
   }
   // sky follows camera
-  SKY.dome.position.copy(camera.position); SKY.stars.position.copy(camera.position);
-  SKY.clouds.position.set(camera.position.x, camera.position.y + 1600, camera.position.z);
+  skyTick(dt);
   SKY.clouds.material.map.offset.x += dt * 0.0006; SKY.clouds.material.map.offset.y += dt * 0.0003;
-  SKY.moon.position.copy(SKY.sunDir).multiplyScalar(7000).add(camera.position);
-  const lp = PLACE.on ? PLACE.focus() : (MP.view() || T).lead.pos;
-  SKY.sun.target.position.copy(lp); SKY.sun.position.copy(lp).addScaledVector(SKY.sunDir, 300);
+  skyFollow(camera, PLACE.on ? PLACE.focus() : (MP.view() || T).lead.pos);
+  lampsFrame(camera);
   updateTrackLOD(camera); updateDetailLOD(camera, scene, dt); mtUpdate(camera, scene);
   WORLD.waterT.value += dt;
   // effects & sound
@@ -781,7 +780,7 @@ function effectsAndSound(dt, T) {
 GAME.snapshot = function () {
   const T = GAME.train; if (!T) return {};
   const f = T.frontTP();
-  return { running: GAME.running, settings: { ...GAME.settings }, sw: NET.switches.map(s => s.state), front: { e: f.e.id, s: f.s, o: f.o }, S: { v: S.v, P: S.P, W: S.W, water: S.water, coal: S.coal, throttle: S.throttle, reverser: S.reverser, brakeH: S.brakeH, indH: S.indH }, cam: CAM.mode };
+  return { running: GAME.running, settings: { ...GAME.settings }, sw: NET.switches.map(s => s.state), front: { e: f.e.id, s: f.s, o: f.o }, S: { v: S.v, P: S.P, W: S.W, water: S.water, coal: S.coal, throttle: S.throttle, reverser: S.reverser, brakeH: S.brakeH, indH: S.indH }, cam: CAM.mode, hour: SKY.hour };
 };
 GAME.restore = function (d) {
   try {
@@ -791,10 +790,10 @@ GAME.restore = function (d) {
     const e = NET.edges.find(x => x.id === d.front.e);
     if (e) GAME.train.place(new TrackPos(e, d.front.s, d.front.o));
     Object.assign(S, d.S); S.vw = S.v;
-    applyLook(GAME.settings.time, GAME.settings.weather, renderer, scene);
+    applyLook(null, GAME.settings.weather); if (d.hour !== undefined) { SKY.hour = d.hour; skyLight(true); }
     cycleCamera(d.cam);
     GAME.running = true; $('menu').hidden = true; $('hud').hidden = false;
-    const keyOf = { optLoco: 'loco', optTrain: 'consist', optTime: 'time', optWeather: 'weather', optFire: 'fire', optTraffic: 'traffic', optLivery: 'livery', optUnits: 'units', optFinish: 'finish' };
+    const keyOf = { optLoco: 'loco', optTrain: 'consist', optTime: 'time', optCycle: 'cycle', optWeather: 'weather', optFire: 'fire', optTraffic: 'traffic', optLivery: 'livery', optUnits: 'units', optFinish: 'finish' };
     for (const k in keyOf) [...$(k).children].forEach(c => c.setAttribute('aria-pressed', String(c.id === k + '_' + GAME.settings[keyOf[k]])));
     [...$('optMix').children].forEach(c => c.setAttribute('aria-pressed', String(c.id === 'optMix_' + (GAME.settings.mix ? 'mixed' : 'matched'))));
     refreshMenuGroups(); specGrid();

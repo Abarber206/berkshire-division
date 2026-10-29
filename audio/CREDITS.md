@@ -22,6 +22,8 @@ show exactly which seconds of each recording became which take; the cut files ke
 | chuff_hard | [Steam departure from Swanage](https://archive.org/details/aporee_37801_43260) (radio aporee ::: maps) | Richard Bentley | [Public Domain Mark 1.0](https://creativecommons.org/publicdomain/mark/1.0/) |
 | crickets | [Late night summer insects, Meaford, Ontario](https://archive.org/details/aporee_32988_37901) (radio aporee ::: maps) | Matt Rogalsky | [Public Domain Mark 1.0](https://creativecommons.org/publicdomain/mark/1.0/) |
 | bell | [An old metal level crossing bell, Braunschweig](https://archive.org/details/aporee_60444_69429) (radio aporee ::: maps), struck strokes slowed to a locomotive bell's pitch | Peter Cusack | [Public Domain Mark 1.0](https://creativecommons.org/publicdomain/mark/1.0/) |
+| dawn | [Dawn Chorus near Mammoth Hot Springs - Sound Library, Yellowstone National Park](https://archive.org/details/nps-yell-sounds-dawn-chorus) | United States National Park Service | [Public Domain Mark 1.0](https://creativecommons.org/publicdomain/mark/1.0/) |
+| frogs | [Frogs (boreal chorus) - Sound Library, Yellowstone National Park](https://archive.org/details/nps-yell-sounds-chorusfrogs) | United States National Park Service | [Public Domain Mark 1.0](https://creativecommons.org/publicdomain/mark/1.0/) |
 
 The source recordings are kept in the project's sound library (`sound-sources/`, with `sources.json` listing each licence);
 `recipe.json` names each by its path there.

@@ -531,6 +531,7 @@ details.keys kbd{color:var(--brass)}
       <div class="lbl">Speed</div>
       <div id="speedNum">0<small>MPH</small></div>
       <div class="row"><span id="limitBadge">70</span><span class="lbl" id="gradeTxt">Level</span></div>
+      <div class="lbl" id="todTxt"></div>
     </div>
     <div id="routeBox" class="hud-box">
       <div id="swCard"><span id="swLamp" class="none"></span><div id="swText"><b>No switch ahead</b></div>
@@ -721,6 +722,7 @@ details.keys kbd{color:var(--brass)}
       <div class="fgroup" id="grpFinish"><span class="lbl">Finish</span><div class="seg" id="optFinish"></div></div>
       <div class="fgroup"><span class="lbl">Train</span><div class="seg" id="optTrain"></div></div>
       <div class="fgroup"><span class="lbl">Time of day</span><div class="seg" id="optTime"></div></div>
+      <div class="fgroup"><span class="lbl">Day &amp; night</span><div class="seg" id="optCycle"></div></div>
       <div class="fgroup"><span class="lbl">Weather</span><div class="seg" id="optWeather"></div></div>
       <div class="fgroup"><span class="lbl">Firing</span><div class="seg" id="optFire"></div></div>
       <div class="fgroup"><span class="lbl">Other trains</span><div class="seg" id="optTraffic"></div></div>
@@ -3001,7 +3003,13 @@ function sceneryMaterials() {
   SMAT.silver = new THREE.MeshLambertMaterial({ color: 0xc8ccd0 });
   SMAT.platform = new THREE.MeshLambertMaterial({ color: 0x8e8a80, map: TEX.ground });
   SMAT.win = new THREE.MeshLambertMaterial({ color: 0x1c2228, emissive: 0xffbe6a, emissiveIntensity: 0 });
-  SCN.winMats.push(SMAT.win);
+  // three sets of house and depot windows, so a town lights up over a few minutes at dusk rather
+  // than all at once, and some rooms stay dark (win3: a hall lamp or a television, bluer and dim)
+  SMAT.win2 = SMAT.win.clone(); SMAT.win2.emissive.set(0xffcf8a);
+  SMAT.win3 = SMAT.win.clone(); SMAT.win3.emissive.set(0xc8d4ff);
+  SMAT.win.userData = { litAt: 0.2, litI: 0.95 }; SMAT.win2.userData = { litAt: 0.45, litI: 0.8 }; SMAT.win3.userData = { litAt: 0.7, litI: 0.3 };
+  SCN.winMats.push(SMAT.win, SMAT.win2, SMAT.win3);
+  SMAT.lampGlass = new THREE.MeshLambertMaterial({ color: 0x4a4436, emissive: 0xffc27a, emissiveIntensity: 0 });
   SMAT.road = new THREE.MeshLambertMaterial({ color: 0x55534f, map: TEX.ground });
   SMAT.gravel = new THREE.MeshLambertMaterial({ color: 0x9f927a, map: TEX.ballast });
   SMAT.line = new THREE.MeshBasicMaterial({ color: 0xd9c56a });
@@ -3114,11 +3122,27 @@ function clearPlace(line, sLine, lat, gap = 3.4) {
   for (let k = 0; k < 80; k++, lat += d * 0.5) { const pl = linePlace(line, sLine, lat); if (trackGap(pl.X, pl.N) >= gap) return pl; }
   return linePlace(line, sLine, lat);
 }
+const WIN_SETS = ['win', 'win', 'win2', 'win2', 'win3'];
 function windowsRow(gb, base, x0, x1, y, z, w, h, n, face = 1) {
-  for (let i = 0; i < n; i++) { const x = n === 1 ? (x0 + x1) / 2 : lerp(x0, x1, i / (n - 1)); gb.add('win', new THREE.BoxGeometry(w, h, 0.06), P(base, x, y, z + face * 0.03)); gb.add('trim', new THREE.BoxGeometry(w + 0.16, 0.1, 0.1), P(base, x, y - h / 2 - 0.05, z + face * 0.05)); }
+  const e = base.elements, seed = Math.abs(Math.round(e[12] * 7.3 + e[14] * 3.1 + y * 11 + z * 5));
+  for (let i = 0; i < n; i++) { const x = n === 1 ? (x0 + x1) / 2 : lerp(x0, x1, i / (n - 1)); gb.add(WIN_SETS[(seed + i * 3) % 5], new THREE.BoxGeometry(w, h, 0.06), P(base, x, y, z + face * 0.03)); gb.add('trim', new THREE.BoxGeometry(w + 0.16, 0.1, 0.1), P(base, x, y - h / 2 - 0.05, z + face * 0.05)); }
 }
 
 /* -------- buildings -------- */
+const LAMPS = { plat: [], sig: [], pools: [] };   // lit after dark by 10c_lamps.js
+/* a platform lamp post on a depot's platform: cast iron plinth and post, a glazed lantern and its cap.
+   x, z are in the depot's own frame, whose platform top is at y = 0.16. */
+function platformLamp(gb, base, x, z, pool) {
+  gb.add('black', new THREE.CylinderGeometry(0.15, 0.19, 0.36, 10), P(base, x, 0.16 + 0.18 - 0.01, z));   // sits 1 cm into the boards
+  gb.add('black', new THREE.CylinderGeometry(0.055, 0.075, 3.12, 8), P(base, x, 0.5 + 1.56, z));
+  gb.add('black', new THREE.BoxGeometry(0.36, 0.05, 0.36), P(base, x, 3.6, z));
+  gb.add('lampGlass', new THREE.BoxGeometry(0.3, 0.38, 0.3), P(base, x, 3.6 + 0.02 + 0.19, z));
+  gb.add('black', new THREE.ConeGeometry(0.27, 0.22, 4, 1).rotateY(Math.PI / 4), P(base, x, 4.0 + 0.11 - 0.005, z));
+  gb.add('black', new THREE.SphereGeometry(0.05, 8, 6), P(base, x, 4.24, z));
+  LAMPS.plat.push({ p: new THREE.Vector3().setFromMatrixPosition(P(base, x, 3.81, z)), c: [1.0, 0.72, 0.42] });
+  if (pool) LAMPS.pools.push({ base, ...pool });
+}
+
 function depot(pl, name, big) {
   const L = big ? 26 : 16, W = big ? 8 : 6.5, H = 4.1;
   const off = pl.lat;
@@ -3146,6 +3170,9 @@ function depot(pl, name, big) {
   // platform along the track
   gb.add('platform', boxT(L + 50, 0.32, 5.2, 3), P(base, 0, 0.0, W / 2 + 2.7));
   footing(gb, 'concrete', base, 0, W / 2 + 2.7, L + 50, 5.2, -0.16);
+  // lamp posts along the back of the platform, beyond the depot's ends
+  const plat = { px0: -(L + 50) / 2 + 0.05, px1: (L + 50) / 2 - 0.05, pz0: W / 2 + 0.15, pz1: W / 2 + 5.25 };
+  for (const lx of [-(L / 2 + 20), -(L / 2 + 9), L / 2 + 11, L / 2 + 20]) platformLamp(gb, base, lx, W / 2 + 0.9, { ...plat, x: lx, z: W / 2 + 0.9 });
   // name boards on both ends + track side
   const nb = nameBoard(name);
   const mat = 'nb_' + name;
@@ -3636,7 +3663,8 @@ function buildSignals(scene) {
     const base = baseM(pl.X, y, pl.N, yaw);
     const gb = binAt(pl.X, pl.N);
     const heads = [];
-    const lamp = (x, hy, r) => { const lens = new THREE.Mesh(new THREE.CircleGeometry(r, 16), SMAT.lampOff); lens.matrixAutoUpdate = false; lens.matrix.copy(P(base, x, hy, 0, 0, Math.PI / 2, 0)); scene.add(lens); heads.push(lens); };
+    const lamp = (x, hy, r) => { const lens = new THREE.Mesh(new THREE.CircleGeometry(r, 16), SMAT.lampOff); lens.matrixAutoUpdate = false; lens.matrix.copy(P(base, x, hy, 0, 0, Math.PI / 2, 0)); scene.add(lens); heads.push(lens);
+      lens.userData.glowAt = new THREE.Vector3().setFromMatrixPosition(P(base, x + 0.1, hy, 0)); };
     if (dwarf) {
       // a dwarf: two lamps in a low cast housing on a short pedestal
       footing(gb, 'concrete', base, 0, 0, 0.7, 0.7, 0.3);
@@ -3673,13 +3701,16 @@ let sigT = 0;
 function updateSignals(dt = 0) {
   if ((sigT -= dt) > 0) return;
   sigT = 0.25;
+  let changed = false;
   for (const s of SCN.signals) {
     const a = signalAspect(s);
     if (a === s.aspect) continue;
     s.aspect = a;
     const L = ASPECT_LAMPS[a];
     s.heads[0].material = SMAT[L[0]]; s.heads[1].material = SMAT[L[1]];
+    changed = true;
   }
+  if (changed) lampsSignals();
 }
 function buildSigns() {
   for (const mp of ROUTE.mileposts) {
@@ -7254,7 +7285,7 @@ CAB.frame = function (dt, T) {
   }
   const lvl = glassLevel(S.W), bob = Math.sin(S.time * 9) * 0.004 * Math.min(1, Math.abs(S.v) / 8);
   for (const gl of cab.glasses) gl.mesh.scale.y = Math.max(0.001, gl.h * clamp(lvl + bob, 0, 1));
-  const lamp = SKY.night ? 0.55 : 0;
+  const lamp = smooth(0.2, 0.6, SKY.dark) * 0.55;
   for (const m of CAB.lamps) m.emissiveIntensity = lamp;
   if (CAB.lookTo) {
     const lk = CAB.lookTo, a = 1 - Math.exp(-dt * 6);
@@ -9708,6 +9739,8 @@ const SND_FILES = {
   birds: ['birds_0.mp3'],
   night: ['night_0.mp3'],
   crickets: ['crickets_0.mp3'],
+  dawn: ['dawn_0.mp3'],
+  frogs: ['frogs_0.mp3'],
   roll: ['roll_0.mp3'],
   flange: ['flange_0.mp3'],
   squeal: ['squeal_0.mp3'],
@@ -9722,7 +9755,7 @@ const SND_FILES = {
   bell: ['bell_0.mp3', 'bell_1.mp3', 'bell_2.mp3', 'bell_3.mp3', 'bell_4.mp3', 'bell_5.mp3', 'bell_6.mp3', 'bell_7.mp3', 'bell_8.mp3', 'bell_9.mp3', 'bell_10.mp3', 'bell_11.mp3'],
 };
 // end SND_FILES (written by audio/tools/prepare.py)
-const SND_GAIN = { chuff: 1, chuff_hard: 0.9, fire: 0.6, comp: 0.5, purge: 0.6, dump: 0.8, squeal: 0.5, bell: 0.8, crickets: 0.45, joint: 0.9, roll: 0.7, flange: 0.35, wind: 0.8, birds: 0.5, night: 0.5, blower: 0.5, safety: 0.9, pump: 0.6, cocks: 0.6, bpx: 0.7, injector: 0.5, dz: 1, wh_deep6: 1, wh_chime6: 1, wh_k5: 1 };
+const SND_GAIN = { chuff: 1, chuff_hard: 0.9, fire: 0.6, comp: 0.5, purge: 0.6, dump: 0.8, squeal: 0.5, bell: 0.8, crickets: 0.45, dawn: 0.5, frogs: 0.3, joint: 0.9, roll: 0.7, flange: 0.35, wind: 0.8, birds: 0.5, night: 0.5, blower: 0.5, safety: 0.9, pump: 0.6, cocks: 0.6, bpx: 0.7, injector: 0.5, dz: 1, wh_deep6: 1, wh_chime6: 1, wh_k5: 1 };
 // idle (a freight engine in Houston), mid throttle (a CSX freight at a crawl) and full throttle
 // (a UP freight drawing near); notching up crossfades between them (see dieselRec)
 const SND_DZ = [{ rpm: 300 }, { rpm: 650, load: 0.6 }, { rpm: 1050, load: 1 }];
@@ -9912,6 +9945,7 @@ SND.init = function () {
     turbo: new Bed('turbo', L), dyn: new Bed('dyn', L), comp: new Bed('comp', L), motor: new Bed('motor', L),
     roll: new Bed('roll', W, { seg: [2, 4], xf: 0.9 }), flange: new Bed('flange', W, { seg: [1.2, 2.6], xf: 0.5, vary: 0.05 }), squeal: new Bed('squeal', W, { seg: [1, 2], xf: 0.4, vary: 0.04 }),
     wind: new Bed('wind', A, { seg: [3, 6], xf: 1.2 }), crickets: new Bed('crickets', A, { seg: [6, 11], xf: 1.8 }), birds: new Bed('birds', A, { seg: [6, 11], xf: 1.8 }), night: new Bed('night', A, { seg: [6, 11], xf: 1.8 }),
+    dawn: new Bed('dawn', A, { seg: [6, 11], xf: 1.8 }), frogs: new Bed('frogs', A, { seg: [6, 11], xf: 1.8 }),
   };
   SND.dz = (SND_DZ || []).map((r, i) => ({ rpm: r.rpm, load: r.load || 0, bed: new Bed('dz', L, { i, seg: [1.6, 3.2], xf: 0.6 }) }));
   SND.whistle = null; SND.whKey = null;
@@ -10011,17 +10045,20 @@ function whistleMix(T, tv, inCab) {
   AU.whistle.lp.frequency.setTargetAtTime(inCab ? 3200 : clamp(11000 / (1 + dist / 160), 1800, 7000), now, 0.1);
 }
 
-/* the countryside: wind (rising past the cab windows with speed), birds by day,
-   crickets at night, all hushed by snow */
+/* the countryside: wind (rising past the cab windows with speed), a dawn chorus at first light,
+   birds by day, chorus frogs from dusk, wind in the trees and crickets at night, all hushed by snow */
 let sndChirpT = 2;
 function ambience(dt, inCab, v) {
   const Vv = SND.v, snow = SKY.snow, night = SKY.night, wet = SKY.weather === 'overcast';
   const draught = inCab ? 0.9 * Math.min(1, (v / 30) ** 2) : 0;
   duo(Vv.wind, AU.wind, inCab ? 0.32 * Math.min(1, (v / 30) ** 2) + 0.02 : 0.03, (snow ? 0.32 : wet ? 0.24 : 0.16) * (inCab ? 0.5 : 1) + draught, 1 + (inCab ? 0.25 * Math.min(1, v / 30) : 0), 0.4);
   const out = inCab ? 0.35 : 1;
-  Vv.birds.set(!night && !snow ? (wet ? 0.5 : 1) * out * (SND_GAIN.birds || 1) : 0, 1, 1.5);
-  Vv.night.set(night && !snow ? out * (SND_GAIN.night || 1) : 0, 1, 1.5);
-  Vv.crickets.set(night && !snow ? out * (SND_GAIN.crickets || 1) : 0, 1, 2);
+  const dark = SKY.dark, h = SKY.hour, chorus = dnChorus(h, SKY.sunEl), still = snow ? 0 : out, G = k => SND_GAIN[k] || 1;
+  Vv.birds.set(still * (1 - dark) * (1 - 0.5 * chorus) * (wet ? 0.5 : 1) * G('birds'), 1, 3);
+  Vv.dawn.set(still * chorus * (wet ? 0.6 : 1) * G('dawn'), 1, 3);
+  Vv.night.set(still * dark * G('night'), 1, 3);
+  Vv.crickets.set(still * smooth(0.3, 0.8, dark) * G('crickets'), 1, 3);
+  Vv.frogs.set(still * smooth(0.35, 0.85, dark) * (h > 16 || h < 1 ? 1 : 0.35) * G('frogs'), 1, 3);
   if (Vv.birds.ok) return;
   sndChirpT -= dt; if (sndChirpT < 0) { sndChirpT = 1.5 + Math.random() * (night ? 2 : 5); if (!inCab && !snow) sndChirp(night); }
 }
@@ -10153,32 +10190,59 @@ function remoteSound(R, dt, st, d, cam) {
 }
 
 /* ============================================================================
-   Sky, light presets, weather, smoke & steam particles, snow
+   Sky, sun and moon on the clock, weather, smoke & steam particles, snow
    ========================================================================== */
-const SKY = {};
-const PRESETS = {
-  morning: { name: 'Morning', sub: 'Low sun, long shadows', elev: 13, az: 118, top: 0x5f93d6, hor: 0xe9d3b4, sun: 0xffdcae, sunI: 2.7, hemiS: 0xb9cde8, hemiG: 0x4f4836, hemiI: 0.8, fog: 0xd9cfbe, fogD: 0.00017, exp: 1.0, night: false },
-  noon: { name: 'Midday', sub: 'High sun, clear air', elev: 56, az: 170, top: 0x3e7dcf, hor: 0xbcd4ea, sun: 0xfff4e4, sunI: 2.6, hemiS: 0xc4d8f0, hemiG: 0x5d5845, hemiI: 0.6, fog: 0xc6d5e2, fogD: 0.00013, exp: 0.95, night: false },
-  golden: { name: 'Golden hour', sub: 'Sun on the drivers', elev: 6.5, az: 252, top: 0x4c6ea6, hor: 0xf3ae6e, sun: 0xffad63, sunI: 2.3, hemiS: 0x9fb2d6, hemiG: 0x584430, hemiI: 0.8, fog: 0xe2b58e, fogD: 0.0002, exp: 1.05, night: false },
-  night: { name: 'Night', sub: 'Headlight & firebox', elev: 28, az: 210, top: 0x03070f, hor: 0x162236, sun: 0x8ea6d6, sunI: 0.22, hemiS: 0x304060, hemiG: 0x141210, hemiI: 0.16, fog: 0x0a0f18, fogD: 0.00036, exp: 1.25, night: true },
-};
+const SKY = { hour: 6 + 40 / 60, weather: 'clear', dark: 0, night: false, look: {}, envKey: '', envAt: -1e9,
+  // shared by every fogged material (see the fog chunks below): the sun's glow in the haze, and how
+  // the haze thins with height. Plain objects, so each material's copy of the uniform is this one
+  fogSun: { x: 0, y: 1, z: 0 }, fogSunC: { x: 0, y: 0, z: 0 }, fogHaze: { x: 0, y: 260, z: 1 } };   // haze base height, thinning scale (m), on
 const WEATHER = {
   clear: { name: 'Clear', sub: 'Dry rail', mu: 0.27, fogK: 1, sunK: 1, cloud: 0.25, snow: 0, gray: 0 },
   overcast: { name: 'Overcast', sub: 'Damp rail', mu: 0.2, fogK: 1.9, sunK: 0.32, cloud: 0.95, snow: 0, gray: 0.55 },
   snow: { name: 'Snow', sub: 'Slippery, low visibility', mu: 0.15, fogK: 3.4, sunK: 0.25, cloud: 1, snow: 1, gray: 0.7 },
 };
 
+/* Haze that behaves like air: brighter and warmer looking toward the sun (light scattered forward
+   by the haze, strongest at golden hour and twilight), and thinner higher up, so valleys hold
+   more haze than ridge tops. Without these uniforms a material falls back to plain FogExp2. */
+(function hazeChunks() {
+  const C = THREE.ShaderChunk;
+  C.fog_pars_vertex = C.fog_pars_vertex.replace('varying float fogDepth;', 'varying float fogDepth; varying vec3 vFogWorld;');
+  C.fog_vertex = C.fog_vertex.replace('fogDepth = - mvPosition.z;', 'fogDepth = - mvPosition.z; vFogWorld = ( vec4( mvPosition.xyz, 0.0 ) * viewMatrix ).xyz;');
+  C.fog_pars_fragment = C.fog_pars_fragment.replace('varying float fogDepth;', 'varying float fogDepth; varying vec3 vFogWorld; uniform vec3 fogSunDir; uniform vec3 fogSunColor; uniform vec3 fogHaze;');
+  C.fog_fragment = `#ifdef USE_FOG
+  #ifdef FOG_EXP2
+    float fogH = max( 0.0, cameraPosition.y + vFogWorld.y * 0.5 - fogHaze.x );
+    float fogD = fogDensity * mix( 1.0, 0.4 + 0.6 * exp( - fogH / max( fogHaze.y, 1.0 ) ), fogHaze.z );
+    float fogFactor = 1.0 - exp( - fogD * fogD * fogDepth * fogDepth );
+    float fogS = max( dot( normalize( vFogWorld ), fogSunDir ), 0.0 );
+    vec3 fogC = fogColor + fogSunColor * ( pow( fogS, 10.0 ) * 0.55 + pow( fogS, 2.5 ) * 0.14 );
+    gl_FragColor.rgb = mix( gl_FragColor.rgb, fogC, fogFactor );
+  #else
+    float fogFactor = smoothstep( fogNear, fogFar, fogDepth );
+    gl_FragColor.rgb = mix( gl_FragColor.rgb, fogColor, fogFactor );
+  #endif
+#endif`;
+  const add = u => { if (u && u.fogColor) Object.assign(u, { fogSunDir: { value: SKY.fogSun }, fogSunColor: { value: SKY.fogSunC }, fogHaze: { value: SKY.fogHaze } }); };
+  add(THREE.UniformsLib.fog);
+  for (const k in THREE.ShaderLib) add(THREE.ShaderLib[k].uniforms);
+})();
+
 function buildSky(scene, renderer) {
-  const uni = { uTop: { value: new THREE.Color() }, uHor: { value: new THREE.Color() }, uSun: { value: new THREE.Vector3(0, 1, 0) }, uSunC: { value: new THREE.Color() }, uGray: { value: 0 }, uNight: { value: 0 } };
+  const uni = { uTop: { value: new THREE.Color() }, uHor: { value: new THREE.Color() }, uSun: { value: new THREE.Vector3(0, 1, 0) }, uSunC: { value: new THREE.Color() },
+    uMoon: { value: new THREE.Vector3(0, -1, 0) }, uMoonC: { value: new THREE.Color() }, uGray: { value: 0 }, uNight: { value: 0 } };
   const mat = new THREE.ShaderMaterial({
     uniforms: uni, side: THREE.BackSide, depthWrite: false, depthTest: false, fog: false,
     vertexShader: `varying vec3 vDir; void main(){ vDir = normalize(position); vec4 p = projectionMatrix * modelViewMatrix * vec4(position,1.0); gl_Position = p.xyww; }`,
-    fragmentShader: `uniform vec3 uTop,uHor,uSunC; uniform vec3 uSun; uniform float uGray,uNight; varying vec3 vDir;
+    // the sun's disc only above the horizon; its glow carries on below it through twilight
+    fragmentShader: `uniform vec3 uTop,uHor,uSunC,uMoonC; uniform vec3 uSun,uMoon; uniform float uGray,uNight; varying vec3 vDir;
       void main(){ vec3 d = normalize(vDir); float h = max(d.y, 0.0);
         vec3 c = mix(uHor, uTop, pow(h, 0.55));
         c = mix(c, uHor*0.55, smoothstep(0.0,-0.25,d.y));
-        float s = max(dot(d, normalize(uSun)), 0.0);
-        c += uSunC * (pow(s, 900.0)*6.0*(1.0-uGray) + pow(s, 12.0)*0.35*(1.0-uGray*0.7) + pow(s,3.0)*0.12);
+        float s = max(dot(d, normalize(uSun)), 0.0), up = smoothstep(-0.01, 0.006, d.y);
+        c += uSunC * (pow(s, 900.0)*6.0*(1.0-uGray)*up + pow(s, 12.0)*0.35*(1.0-uGray*0.7) + pow(s,3.0)*0.12);
+        float m = max(dot(d, normalize(uMoon)), 0.0);
+        c += uMoonC * (pow(m, 900.0)*6.0*(1.0-uGray) + pow(m, 12.0)*0.35*(1.0-uGray*0.7) + pow(m,3.0)*0.12);
         vec3 g = vec3(dot(c, vec3(0.3,0.5,0.2)));
         c = mix(c, g*vec3(0.95,0.98,1.03), uGray);
         gl_FragColor = vec4(c, 1.0); }`,
@@ -10201,16 +10265,37 @@ function buildSky(scene, renderer) {
   const cm = new THREE.MeshBasicMaterial({ map: ct, transparent: true, depthWrite: false, fog: false, opacity: 0.6 });
   const clouds = new THREE.Mesh(new THREE.PlaneGeometry(30000, 30000), cm); clouds.rotation.x = Math.PI / 2; clouds.position.y = 1600; clouds.renderOrder = -9; clouds.frustumCulled = false;
   scene.add(clouds); SKY.clouds = clouds;
-  // stars
-  const sp = []; const r = rng(9);
-  for (let i = 0; i < 2600; i++) { const u = r() * 2 - 1, a = r() * TAU, s = Math.sqrt(1 - u * u); const y = Math.abs(u); sp.push(Math.cos(a) * s * 8000, y * 8000 + 200, Math.sin(a) * s * 8000); }
-  const sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.Float32BufferAttribute(sp, 3));
-  SKY.stars = new THREE.Points(sg, new THREE.PointsMaterial({ color: 0xdfe8ff, size: 1.6, sizeAttenuation: false, fog: false, transparent: true, opacity: 0.85, depthWrite: false }));
+  // stars over the whole sphere, turning about the pole star through the night; those near the
+  // horizon dim out as starlight does through the thick air there
+  const sp = [], mag = []; const r = rng(9);
+  for (let i = 0; i < 3400; i++) { const u = r() * 2 - 1, a = r() * TAU, s = Math.sqrt(1 - u * u); sp.push(Math.cos(a) * s * 8000, u * 8000, Math.sin(a) * s * 8000); mag.push(Math.pow(r(), 3)); }
+  const sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.Float32BufferAttribute(sp, 3)); sg.setAttribute('aMag', new THREE.Float32BufferAttribute(mag, 1));
+  SKY.starU = { uAlpha: { value: 0 }, uPx: { value: Math.min(devicePixelRatio, 2) }, uCol: { value: new THREE.Color(0xdfe8ff) } };
+  SKY.stars = new THREE.Points(sg, new THREE.ShaderMaterial({
+    uniforms: SKY.starU, transparent: true, depthWrite: false, fog: false,
+    vertexShader: `#include <common>
+      #include <logdepthbuf_pars_vertex>
+      attribute float aMag; uniform float uAlpha, uPx; varying float vA;
+      void main(){ vec4 wp = modelMatrix * vec4(position, 1.0); float alt = normalize(wp.xyz - cameraPosition).y;
+        vA = uAlpha * (0.35 + 0.65 * aMag) * smoothstep(-0.005, 0.14, alt);
+        gl_PointSize = uPx * (1.1 + 1.6 * aMag); vec4 mvPosition = viewMatrix * wp; gl_Position = projectionMatrix * mvPosition;
+        #include <logdepthbuf_vertex>
+      }`,
+    fragmentShader: `#include <common>
+      #include <logdepthbuf_pars_fragment>
+      uniform vec3 uCol; varying float vA;
+      void main(){
+        #include <logdepthbuf_fragment>
+        vec2 q = gl_PointCoord - 0.5; float a = vA * smoothstep(0.5, 0.15, length(q)); if (a < 0.004) discard;
+        gl_FragColor = vec4(uCol, a); }`,
+  }));
   SKY.stars.renderOrder = -9; SKY.stars.frustumCulled = false; scene.add(SKY.stars);
+  SKY.pole = new THREE.Vector3(0, Math.sin(DN.lat * Math.PI / 180), -Math.cos(DN.lat * Math.PI / 180));
   // moon
   const mt = canvasTex(128, 128, (g) => { const gr = g.createRadialGradient(64, 64, 10, 64, 64, 64); gr.addColorStop(0, 'rgba(255,250,235,1)'); gr.addColorStop(0.35, 'rgba(240,238,225,1)'); gr.addColorStop(0.42, 'rgba(200,210,235,0.35)'); gr.addColorStop(1, 'rgba(160,180,220,0)'); g.fillStyle = gr; g.fillRect(0, 0, 128, 128); });
   SKY.moon = new THREE.Sprite(new THREE.SpriteMaterial({ map: mt, fog: false, depthWrite: false, transparent: true })); SKY.moon.scale.set(520, 520, 1); SKY.moon.renderOrder = -8; scene.add(SKY.moon);
-  // lights
+  // lights: one directional key light that is the sun by day and the moon by night (they swap
+  // at sunset, when both are too faint to see), and the sky's fill
   SKY.hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 0.7); scene.add(SKY.hemi);
   SKY.sun = new THREE.DirectionalLight(0xffffff, 2.5);
   SKY.sun.castShadow = true;
@@ -10220,45 +10305,86 @@ function buildSky(scene, renderer) {
   SKY.sun.shadow.bias = -0.0006; SKY.sun.shadow.normalBias = 0.04;
   scene.add(SKY.sun); scene.add(SKY.sun.target);
   scene.fog = new THREE.FogExp2(0xcccccc, 0.0002);
-  SKY.pmrem = new THREE.PMREMGenerator(renderer);
-  SKY.envScene = new THREE.Scene();
-  SKY.envDome = new THREE.Mesh(new THREE.SphereGeometry(50, 32, 16), mat.clone());
-  SKY.envDome.material.depthTest = true;
-  SKY.envScene.add(SKY.envDome);
-  SKY.envGround = new THREE.Mesh(new THREE.CircleGeometry(48, 24), new THREE.MeshBasicMaterial({ color: 0x4a4636 })); SKY.envGround.rotation.x = -Math.PI / 2; SKY.envGround.position.y = -2; SKY.envScene.add(SKY.envGround);
+  SKY.sunDir = new THREE.Vector3(0, 1, 0); SKY.moonDir = new THREE.Vector3(0, -1, 0); SKY.keyDir = new THREE.Vector3(0, 1, 0);
 }
-function applyLook(timeKey, weatherKey, renderer, scene) {
-  const P = PRESETS[timeKey], W = WEATHER[weatherKey];
-  const el = P.elev * Math.PI / 180, az = P.az * Math.PI / 180;
-  const sd = new THREE.Vector3(Math.sin(az) * Math.cos(el), Math.sin(el), -Math.cos(az) * Math.cos(el));
-  SKY.sunDir = sd;
-  const gray = W.gray * (P.night ? 0.4 : 1);
-  SKY.uni.uTop.value.set(P.top); SKY.uni.uHor.value.set(P.hor); SKY.uni.uSun.value.copy(sd); SKY.uni.uSunC.value.set(P.sun).multiplyScalar(P.night ? 0.25 : 1); SKY.uni.uGray.value = gray; SKY.uni.uNight.value = P.night ? 1 : 0;
-  if (W.gray) { SKY.uni.uTop.value.lerp(new THREE.Color(P.night ? 0x0b0f16 : 0x8e98a3), W.gray * 0.8); SKY.uni.uHor.value.lerp(new THREE.Color(P.night ? 0x121820 : 0xb9bec2), W.gray * 0.8); }
-  SKY.sun.color.set(P.sun); SKY.sun.intensity = P.sunI * W.sunK;
-  SKY.hemi.color.set(P.hemiS); SKY.hemi.groundColor.set(P.hemiG); SKY.hemi.intensity = P.hemiI * (W.gray ? 1.25 : 1);
-  SKY.sunBase = SKY.sun.intensity; SKY.hemiBase = SKY.hemi.intensity;
-  const fogC = new THREE.Color(P.fog); if (W.gray) fogC.lerp(new THREE.Color(P.night ? 0x0d1218 : 0xb3b8bc), W.gray);
-  scene.fog.color.copy(fogC).convertSRGBToLinear(); scene.fog.density = P.fogD * W.fogK;
-  SKY.sun.color.convertSRGBToLinear(); SKY.hemi.color.convertSRGBToLinear(); SKY.hemi.groundColor.convertSRGBToLinear();
-  renderer.toneMappingExposure = P.exp;
-  SKY.clouds.material.opacity = W.cloud * (P.night ? 0.25 : 1); SKY.clouds.material.color.set(P.night ? 0x1a2030 : (W.gray ? 0xb8bcc0 : 0xffffff));
-  SKY.stars.visible = P.night && !W.gray;
-  SKY.moon.visible = P.night && !W.gray;
-  SKY.moon.position.copy(sd).multiplyScalar(7000);
-  SKY.sun.castShadow = !P.night;
-  WORLD.snowU.value = W.snow;
-  ENV.mu = W.mu * (P.night && !W.gray ? 0.92 : 1);
-  SKY.night = P.night; SKY.snow = W.snow > 0; SKY.weather = weatherKey; SKY.time = timeKey;
-  for (const m of SCN.winMats) m.emissiveIntensity = P.night ? 0.95 : (W.gray ? 0.15 : 0);
-  RMAT.coachWin.emissiveIntensity = P.night ? 1.2 : (W.gray ? 0.25 : 0);
-  // environment map: a small canvas cube painted with the same sky (robust on every GPU)
-  if (SKY.envCube) SKY.envCube.dispose();
-  SKY.envCube = makeEnvCube(SKY.uni.uTop.value, SKY.uni.uHor.value, sd, SKY.uni.uSunC.value, gray, P.night ? 0x070707 : (W.snow ? 0xc3c7cb : 0x55503e));
-  scene.environment = SKY.envCube;
-  const smokeK = P.night ? 0.25 : (W.gray ? 0.75 : 1);
-  FX.light.setRGB(smokeK, smokeK * 0.98, smokeK * 0.95);
-  if (timeKey === 'golden') FX.light.setRGB(1.05, 0.86, 0.7); if (timeKey === 'morning') FX.light.setRGB(1, 0.93, 0.84);
+
+/* Set the clock to one of the menu's start times (timeKey), and/or the weather. Either may be null
+   to leave it as it is. */
+function applyLook(timeKey, weatherKey) {
+  if (timeKey && DN.starts[timeKey]) SKY.hour = DN.starts[timeKey].h;
+  if (weatherKey && WEATHER[weatherKey]) SKY.weather = weatherKey;
+  const W = WEATHER[SKY.weather];
+  SKY.snow = W.snow > 0; WORLD.snowU.value = W.snow;
+  skyLight(true);
+}
+/* the clock: a job runs on its own railroad clock; otherwise time passes at the chosen rate */
+function skyTick(dt) {
+  if (JOB.run && !JOB.run.over) SKY.hour = dnWrap(JOB.clock() / 3600);
+  else if (GAME.running && !S.paused) SKY.hour = dnWrap(SKY.hour + dt * ((DN.rates[GAME.settings.cycle] || DN.rates.x30).k) / 3600);
+  skyLight(false);
+}
+
+const _skC = new THREE.Color(), _skC2 = new THREE.Color(), _skQ = new THREE.Quaternion();
+/* everything the hour and weather decide: sky, sun or moon light, fog, exposure, stars, lit windows */
+function skyLight(force) {
+  const W = WEATHER[SKY.weather], h = SKY.hour;
+  const sb = dnSun(h), mb = dnMoon(h);
+  dnDir(sb, SKY.sunDir); dnDir(mb, SKY.moonDir);
+  const L = dnLook(sb.el, SKY.look);
+  const dark = dnDark(sb.el), gray = W.gray * lerp(1, 0.4, dark);
+  Object.assign(SKY, { sunEl: sb.el, sunAz: sb.az, moonEl: mb.el, dark, night: dark > 0.5, gray });
+  const u = SKY.uni;
+  u.uTop.value.setHex(L.top); u.uHor.value.setHex(L.hor);
+  if (W.gray) { u.uTop.value.lerp(_skC.setHex(mixHex(0x8e98a3, 0x0b0f16, dark)), W.gray * 0.8); u.uHor.value.lerp(_skC.setHex(mixHex(0xb9bec2, 0x121820, dark)), W.gray * 0.8); }
+  u.uSun.value.copy(SKY.sunDir); u.uSunC.value.setHex(L.sun).multiplyScalar(smooth(-12, -1, sb.el));
+  const mk = dnMoonK(sb.el, mb.el);
+  u.uMoon.value.copy(SKY.moonDir); u.uMoonC.value.setHex(0x8ea6d6).multiplyScalar(0.25 * mk);
+  u.uGray.value = gray; u.uNight.value = dark;
+  // the key light
+  const bySun = sb.el > -1.5;
+  SKY.keyDir.copy(bySun ? SKY.sunDir : SKY.moonDir);
+  SKY.sun.color.setHex(bySun ? L.sun : 0x8ea6d6).convertSRGBToLinear();
+  SKY.sun.intensity = SKY.sunBase = (bySun ? L.sunI : 0.22 * mk) * W.sunK;
+  SKY.hemi.color.setHex(L.hemiS).convertSRGBToLinear(); SKY.hemi.groundColor.setHex(L.hemiG).convertSRGBToLinear();
+  SKY.hemi.intensity = SKY.hemiBase = L.hemiI * (W.gray ? 1.25 : 1);
+  // haze
+  _skC.setHex(L.fog); if (W.gray) _skC.lerp(_skC2.setHex(mixHex(0xb3b8bc, 0x0d1218, dark)), W.gray);
+  scene.fog.color.copy(_skC).convertSRGBToLinear(); scene.fog.density = L.fogD * W.fogK;
+  const glowDir = sb.el > -8 ? SKY.sunDir : SKY.moonDir;
+  const glowK = (sb.el > -8 ? smooth(-8, -1, sb.el) * (1 - 0.6 * smooth(10, 40, sb.el)) : mk * 0.2) * (1 - gray * 0.85);
+  _skC.setHex(sb.el > -8 ? L.sun : 0x8ea6d6).convertSRGBToLinear().multiplyScalar(glowK);
+  Object.assign(SKY.fogSun, { x: glowDir.x, y: glowDir.y, z: glowDir.z }); Object.assign(SKY.fogSunC, { x: _skC.r, y: _skC.g, z: _skC.b });
+  renderer.toneMappingExposure = L.exp;
+  SKY.clouds.material.opacity = W.cloud * lerp(1, 0.25, dark); SKY.clouds.material.color.setHex(W.gray ? mixHex(0xb8bcc0, 0x1a2030, dark) : L.cloud);
+  SKY.starU.uAlpha.value = W.gray ? 0 : 0.85 * dnStars(sb.el); SKY.stars.visible = SKY.starU.uAlpha.value > 0.003;
+  SKY.stars.quaternion.copy(_skQ.setFromAxisAngle(SKY.pole, -h / 24 * TAU));
+  SKY.moon.visible = mb.el > -1 && !W.gray; SKY.moon.material.opacity = 1 - 0.8 * smooth(-4, 8, sb.el);
+  ENV.mu = W.mu * (SKY.night && !W.gray ? 0.92 : 1);
+  // windows light up through dusk: not all at once, each material at its own darkness
+  for (const m of SCN.winMats) { const a = m.userData.litAt !== undefined ? m.userData.litAt : 0.3; m.emissiveIntensity = Math.max(smooth(a, a + 0.1, dark) * (m.userData.litI || 0.95), W.gray ? 0.15 : 0); }
+  RMAT.coachWin.emissiveIntensity = Math.max(smooth(0.15, 0.3, dark) * 1.2, W.gray ? 0.25 : 0);
+  lampsLight(dark);
+  const sm = L.smoke, gk = W.gray ? lerp(0.75, 1, dark) : 1;
+  FX.light.setRGB(sm[0] * gk, sm[1] * gk, sm[2] * gk);
+  // the environment map (a small canvas cube painted with the same sky): repainted only when the
+  // light has moved enough to show, as it costs a few milliseconds
+  const key = `${Math.round(sb.el * 1.5)}|${Math.round(sb.az / 5)}|${SKY.weather}|${bySun}`;
+  const now = performance.now();
+  if (force || (key !== SKY.envKey && now - SKY.envAt > 900)) {
+    SKY.envKey = key; SKY.envAt = now;
+    if (SKY.envCube) SKY.envCube.dispose();
+    const kc = bySun ? u.uSunC.value : u.uMoonC.value;
+    SKY.envCube = makeEnvCube(u.uTop.value, u.uHor.value, SKY.keyDir, kc, gray, mixHex(W.snow ? 0xc3c7cb : 0x55503e, 0x070707, dark));
+    scene.environment = SKY.envCube;
+  }
+}
+/* sky things that follow the camera, and the key light's shadow box over what we are looking at */
+function skyFollow(cam, focus) {
+  const c = cam.position;
+  SKY.dome.position.copy(c); SKY.stars.position.copy(c);
+  SKY.clouds.position.set(c.x, c.y + 1600, c.z);
+  SKY.moon.position.copy(SKY.moonDir).multiplyScalar(7000).add(c);
+  SKY.sun.target.position.copy(focus); SKY.sun.position.copy(focus).addScaledVector(SKY.keyDir, 300);
 }
 
 function makeEnvCube(top, hor, sun, sunC, gray, ground) {
@@ -10361,6 +10487,102 @@ function updateFX(dt, cam) {
     }
     p.needsUpdate = true;
   }
+}
+
+/* ============================================================================
+   Day and night: where the sun and moon are at a given hour, and what the sky,
+   light, fog and lamps look like for that height of the sun. Plain numbers only,
+   so the clock can be checked without a page (tests/daynight.test.js).
+   ========================================================================== */
+const DN = {
+  lat: 41,     // Ohio and the Laurel Highlands both sit near 41 N (Fort Wayne 41.1, Altoona 40.5)
+  dec: 8,      // late April or mid August: a 13 h 6 min day, 57 degree noon sun
+  // the clock starts here for each choice in the menu (hours). Morning, Midday, Golden hour and
+  // Night put the sun (or moon) where the old fixed looks had it, so jobs and photos keep their light
+  starts: {
+    dawn: { name: 'Dawn', sub: 'First light, 5:15', h: 5.25 },
+    morning: { name: 'Morning', sub: 'Low sun, 6:40', h: 6 + 40 / 60 },
+    noon: { name: 'Midday', sub: 'High sun, noon', h: 12 },
+    golden: { name: 'Golden hour', sub: 'Sun on the drivers, 5:55', h: 17 + 55 / 60 },
+    dusk: { name: 'Dusk', sub: 'Lamps lit, 6:50', h: 18 + 50 / 60 },
+    night: { name: 'Night', sub: 'Headlight & firebox, 10:30', h: 22.5 },
+  },
+  // how fast the clock runs (game seconds per real second)
+  rates: {
+    hold: { name: 'Hold', sub: 'Time stands still', k: 0 },
+    real: { name: 'Real time', sub: '24 hours a day', k: 1 },
+    x30: { name: 'Fast', sub: 'A day in 48 min', k: 30 },
+    x120: { name: 'Faster', sub: 'A day in 12 min', k: 120 },
+  },
+};
+const D2R = Math.PI / 180;
+
+/* elevation and azimuth (degrees; azimuth from north through east) of a body with declination dec
+   at local solar hour h. Hour angle 0 is due south at noon. */
+function dnBody(h, dec) {
+  const H = (h - 12) * 15 * D2R, f = DN.lat * D2R, d = dec * D2R;
+  const el = Math.asin(clamp(Math.sin(f) * Math.sin(d) + Math.cos(f) * Math.cos(d) * Math.cos(H), -1, 1));
+  let az = Math.atan2(-Math.sin(H), Math.tan(d) * Math.cos(f) - Math.sin(f) * Math.cos(H)) / D2R;
+  if (az < 0) az += 360;
+  return { el: el / D2R, az };
+}
+const dnSun = h => dnBody(h, DN.dec);
+// a full moon: opposite the sun, rising at sunset and setting at sunrise, so every night is moonlit
+const dnMoon = h => dnBody(h + 12, -DN.dec);
+/* unit vector toward a body: x east, y up, -z north (the world's own axes) */
+function dnDir(b, out) {
+  const el = b.el * D2R, az = b.az * D2R;
+  out.x = Math.sin(az) * Math.cos(el); out.y = Math.sin(el); out.z = -Math.cos(az) * Math.cos(el);
+  return out;
+}
+/* the hour (0-24) the sun stands at elevation el, morning or evening */
+function dnHourAt(el, evening) {
+  const f = DN.lat * D2R, d = DN.dec * D2R;
+  const c = (Math.sin(el * D2R) - Math.sin(f) * Math.sin(d)) / (Math.cos(f) * Math.cos(d));
+  const H = Math.acos(clamp(c, -1, 1)) / D2R / 15;
+  return evening ? 12 + H : 12 - H;
+}
+
+/* The look of the sky by the sun's elevation (degrees). Colours are sRGB. The 6.5, 13 and 56 degree
+   keys are the old Golden hour, Morning and Midday looks; -18 is the old Night. Twilight is filled in
+   between: blue hour, then the orange band and red sun at the horizon. */
+const DN_KEYS = [
+  { el: -18, top: 0x03070f, hor: 0x162236, sun: 0x8ea6d6, sunI: 0, hemiS: 0x304060, hemiG: 0x141210, hemiI: 0.16, fog: 0x0a0f18, fogD: 0.00036, exp: 1.25, cloud: 0x1a2030, smoke: [0.25, 0.245, 0.24] },
+  { el: -10, top: 0x050c1c, hor: 0x1c2c48, sun: 0x6a5a8a, sunI: 0, hemiS: 0x324464, hemiG: 0x151311, hemiI: 0.17, fog: 0x101826, fogD: 0.00034, exp: 1.25, cloud: 0x1e2436, smoke: [0.28, 0.275, 0.27] },
+  { el: -5, top: 0x10264c, hor: 0x5c5c78, sun: 0xd0603a, sunI: 0, hemiS: 0x48587e, hemiG: 0x1c1915, hemiI: 0.24, fog: 0x30354a, fogD: 0.0003, exp: 1.22, cloud: 0x4a3e56, smoke: [0.38, 0.36, 0.36] },
+  { el: -1.5, top: 0x23457a, hor: 0xb08070, sun: 0xff6a30, sunI: 0, hemiS: 0x7584aa, hemiG: 0x2e2a22, hemiI: 0.4, fog: 0x8a7470, fogD: 0.00025, exp: 1.15, cloud: 0xc08878, smoke: [0.62, 0.52, 0.48] },
+  { el: 1.5, top: 0x3a5a90, hor: 0xe69c62, sun: 0xff8a40, sunI: 1.1, hemiS: 0x8e9cc4, hemiG: 0x4a3c2a, hemiI: 0.65, fog: 0xc8987a, fogD: 0.00022, exp: 1.1, cloud: 0xffb48a, smoke: [0.95, 0.75, 0.6] },
+  { el: 6.5, top: 0x4c6ea6, hor: 0xf3ae6e, sun: 0xffad63, sunI: 2.3, hemiS: 0x9fb2d6, hemiG: 0x584430, hemiI: 0.8, fog: 0xe2b58e, fogD: 0.0002, exp: 1.05, cloud: 0xffe0c0, smoke: [1.05, 0.86, 0.7] },
+  { el: 13, top: 0x5f93d6, hor: 0xe9d3b4, sun: 0xffdcae, sunI: 2.7, hemiS: 0xb9cde8, hemiG: 0x4f4836, hemiI: 0.8, fog: 0xd9cfbe, fogD: 0.00017, exp: 1.0, cloud: 0xfff6ea, smoke: [1, 0.93, 0.84] },
+  { el: 56, top: 0x3e7dcf, hor: 0xbcd4ea, sun: 0xfff4e4, sunI: 2.6, hemiS: 0xc4d8f0, hemiG: 0x5d5845, hemiI: 0.6, fog: 0xc6d5e2, fogD: 0.00013, exp: 0.95, cloud: 0xffffff, smoke: [1, 1, 1] },
+];
+const DN_COLS = ['top', 'hor', 'sun', 'hemiS', 'hemiG', 'fog', 'cloud'], DN_NUMS = ['sunI', 'hemiI', 'fogD', 'exp'];
+const mixHex = (a, b, t) => {
+  const r = Math.round(lerp((a >> 16) & 255, (b >> 16) & 255, t)), g = Math.round(lerp((a >> 8) & 255, (b >> 8) & 255, t)), bl = Math.round(lerp(a & 255, b & 255, t));
+  return (r << 16) | (g << 8) | bl;
+};
+function dnLook(el, out = {}) {
+  const K = DN_KEYS;
+  let i = 0; while (i < K.length - 2 && el > K[i + 1].el) i++;
+  const a = K[i], b = K[i + 1], t = smooth(0, 1, clamp((el - a.el) / (b.el - a.el), 0, 1));
+  for (const k of DN_COLS) out[k] = mixHex(a[k], b[k], t);
+  for (const k of DN_NUMS) out[k] = lerp(a[k], b[k], t);
+  out.smoke = [0, 1, 2].map(j => lerp(a.smoke[j], b.smoke[j], t));
+  return out;
+}
+/* 0 by day, 1 at night: when lamps, windows and the headlight's full beam come on. House lights
+   go on around sunset and are all lit by the end of civil twilight. */
+const dnDark = el => 1 - smooth(-7, 2, el);
+/* how much starlight shows (0-1) */
+const dnStars = el => 1 - smooth(-15, -6, el);
+/* moonlight strength, 0-1: the moon has to be up and the sky dark */
+const dnMoonK = (sunEl, moonEl) => smooth(-1, 10, moonEl) * (1 - smooth(-10, -1.5, sunEl));
+/* dawn chorus: birds at their loudest from first light until the sun is a few degrees up, in the morning only */
+const dnChorus = (h, el) => (h < 12 ? smooth(-10, -4, el) * (1 - smooth(4, 14, el)) : 0);
+const dnWrap = h => ((h % 24) + 24) % 24;
+function dnFmt(h) {
+  h = dnWrap(h); const H = Math.floor(h), m = Math.floor((h - H) * 60);
+  return `${H % 12 || 12}:${String(m).padStart(2, '0')} ${H < 12 ? 'AM' : 'PM'}`;
 }
 
 /* ============================================================================
@@ -10524,6 +10746,102 @@ function slideCam(cam, T, inCab) {
   _sq.set(0, 0, -1).applyQuaternion(cam.quaternion);
   const nod = sg * 0.5 * (f.x * _sq.x + f.z * _sq.z), ang = j * Math.sin(t * 71) * 0.0025 + nod;
   cam.rotateX(-ang); cam.rotateZ(j * Math.sin(t * 59 + 1.3) * 0.002);
+}
+
+/* ============================================================================
+   Lamps after dark: the glow round platform lamps and signal lenses, and the
+   pool of light each platform lamp throws on the boards. Glows are point
+   sprites that keep a few pixels' size far away, as a lit signal does at night.
+   ========================================================================== */
+
+function glowMaterial() {
+  return new THREE.ShaderMaterial({
+    uniforms: { uScale: { value: 800 }, uMin: { value: 2.5 }, uK: { value: 0 }, uFogD: { value: 0 } },
+    vertexShader: `#include <common>
+      #include <logdepthbuf_pars_vertex>
+      attribute vec3 aCol; attribute float aSize; uniform float uScale, uMin, uK, uFogD; varying vec3 vC;
+      void main(){ vec4 mvPosition = modelViewMatrix * vec4(position, 1.0); float z = -mvPosition.z;
+        float px = aSize * uScale / max(0.2, z);
+        gl_PointSize = max(px, uMin);
+        // the haze swallows a far lamp slowly: its glow is thinned by about the square root of the fog
+        vC = aCol * uK * mix(0.25, 1.0, exp(-0.5 * uFogD * uFogD * z * z));
+        gl_Position = projectionMatrix * mvPosition;
+        #include <logdepthbuf_vertex>
+      }`,
+    fragmentShader: `#include <common>
+      #include <logdepthbuf_pars_fragment>
+      varying vec3 vC;
+      void main(){
+        #include <logdepthbuf_fragment>
+        float r = length(gl_PointCoord - 0.5) * 2.0; if (r > 1.0) discard;
+        float a = pow(1.0 - r, 2.2) * 0.85 + pow(max(0.0, 1.0 - r * 3.0), 2.0) * 0.6;
+        gl_FragColor = vec4(vC * a, 1.0); }`,
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+  });
+}
+function glowPoints(list, size, scene) {
+  const n = list.length, pos = new Float32Array(n * 3), col = new Float32Array(n * 3), sz = new Float32Array(n).fill(size);
+  list.forEach((l, i) => { pos.set([l.p.x, l.p.y, l.p.z], i * 3); col.set(l.c || [0, 0, 0], i * 3); l.i = i; });
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('aCol', new THREE.BufferAttribute(col, 3)); g.setAttribute('aSize', new THREE.BufferAttribute(sz, 1));
+  const pts = new THREE.Points(g, glowMaterial()); pts.frustumCulled = false; pts.renderOrder = 4; pts.visible = false;
+  scene.add(pts);
+  return pts;
+}
+
+/* the pools of lamplight: one quad per lamp lying 2 cm over the platform, cut to the platform's edges,
+   its texture a soft ellipse centred under the lantern */
+function buildLampPools(scene) {
+  if (!LAMPS.pools.length) return;
+  const tex = canvasTex(128, 128, g => { const gr = g.createRadialGradient(64, 64, 0, 64, 64, 64); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.3, 'rgba(255,255,255,0.55)'); gr.addColorStop(0.7, 'rgba(255,255,255,0.12)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(0, 0, 128, 128); }, { srgb: false });
+  const pos = [], uv = [], idx = [], R = 4.2, v = new THREE.Vector3();
+  for (const q of LAMPS.pools) {
+    const x0 = Math.max(q.x - R, q.px0), x1 = Math.min(q.x + R, q.px1), z0 = Math.max(q.z - R, q.pz0), z1 = Math.min(q.z + R, q.pz1);
+    const k = pos.length / 3;
+    for (const [x, z] of [[x0, z0], [x1, z0], [x1, z1], [x0, z1]]) {
+      v.set(x, 0.18, z).applyMatrix4(q.base); pos.push(v.x, v.y, v.z);
+      uv.push(0.5 + (x - q.x) / (2 * R), 0.5 + (z - q.z) / (2 * R));
+    }
+    idx.push(k, k + 2, k + 1, k, k + 3, k + 2);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setIndex(idx);
+  const m = new THREE.MeshBasicMaterial({ map: tex, color: 0xffc27a, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false });
+  LAMPS.pool = new THREE.Mesh(g, m); LAMPS.pool.renderOrder = 2; LAMPS.pool.visible = false; LAMPS.pool.frustumCulled = false;
+  scene.add(LAMPS.pool);
+}
+
+function buildLamps(scene) {
+  buildLampPools(scene);
+  LAMPS.platPts = glowPoints(LAMPS.plat, 1.5, scene);
+  // signal lenses: their colour comes from the aspect each one shows
+  LAMPS.sig = [];
+  for (const s of SCN.signals) for (const lens of s.heads) LAMPS.sig.push({ p: lens.userData.glowAt, lens });
+  LAMPS.sigPts = glowPoints(LAMPS.sig, 0.9, scene);
+  lampsSignals();
+}
+/* recolour the signal glows after an aspect change */
+function lampsSignals() {
+  if (!LAMPS.sigPts) return;
+  const a = LAMPS.sigPts.geometry.attributes.aCol;
+  for (const l of LAMPS.sig) {
+    const m = l.lens.material, c = m === SMAT.lampOff ? null : m.color;
+    a.setXYZ(l.i, c ? c.r : 0, c ? c.g : 0, c ? c.b : 0);
+  }
+  a.needsUpdate = true;
+}
+/* how bright the lamps are for the darkness (0 day, 1 night) */
+function lampsLight(dark) {
+  if (SMAT.lampGlass) SMAT.lampGlass.emissiveIntensity = smooth(0.2, 0.35, dark) * 1.6;
+  const on = smooth(0.2, 0.45, dark);
+  if (LAMPS.pool) { LAMPS.pool.material.opacity = 0.6 * on; LAMPS.pool.visible = on > 0.01; }
+  if (LAMPS.platPts) { LAMPS.platPts.material.uniforms.uK.value = 0.9 * on; LAMPS.platPts.visible = on > 0.01; }
+  // by day a signal shows only its lens; the glow comes up as the light goes
+  if (LAMPS.sigPts) { const k = smooth(0.05, 0.6, dark); LAMPS.sigPts.material.uniforms.uK.value = k; LAMPS.sigPts.visible = k > 0.01; }
+}
+function lampsFrame(cam) {
+  const sc = innerHeight * Math.min(devicePixelRatio, 2) * 0.5 / Math.tan(cam.fov * Math.PI / 360);
+  for (const p of [LAMPS.platPts, LAMPS.sigPts]) if (p) { const u = p.material.uniforms; u.uScale.value = sc; u.uFogD.value = scene.fog.density; u.uMin.value = Math.min(devicePixelRatio, 2) * 2; }
 }
 
 /* ============================================================================
@@ -11653,19 +11971,19 @@ class RemoteTrain {
   }
   fx(dt, st, cam) {
     if (!this.placed || !this.visible) return;
-    const T = this.train, L = T.loco, night = SKY.night;
+    const T = this.train, L = T.loco, night = SKY.dark;
     const head = T.lead.pos, d = head.distanceTo(cam);
     this.tv.copy(T.lead.fwd).multiplyScalar(this.v);
     // lamps
     const hl = st.hl;
-    L.beam.material.opacity = hl === 0 ? 0 : (night ? (hl === 2 ? 0.075 : 0.035) : (SKY.weather !== 'clear' ? 0.02 : 0));
-    L.halo.material.opacity = hl === 0 ? 0 : (night ? 1 : 0.35) * (hl === 2 ? 1 : 0.6);
+    L.beam.material.opacity = hl === 0 ? 0 : Math.max(night * (hl === 2 ? 0.075 : 0.035), SKY.weather !== 'clear' ? 0.02 : 0);
+    L.halo.material.opacity = hl === 0 ? 0 : lerp(0.35, 1, night) * (hl === 2 ? 1 : 0.6);
     if (T.diesel) {
       const ph = Math.floor(performance.now() / 385) % 2, flash = st.wh > 0.05 || st.bl, on = st.dl && hl > 0;
-      L.ditch.forEach((dd, k) => { const b = !on ? 0.12 : (flash ? (ph === k ? 1 : 0.15) : 0.85); dd.lens.material.color.setScalar(0.25 + 0.75 * b); dd.halo.material.opacity = b * (night ? 1 : 0.45); });
+      L.ditch.forEach((dd, k) => { const b = !on ? 0.12 : (flash ? (ph === k ? 1 : 0.15) : 0.85); dd.lens.material.color.setScalar(0.25 + 0.75 * b); dd.halo.material.opacity = b * lerp(0.45, 1, night); });
     } else {
       const fl = 0.85 + 0.15 * Math.sin(performance.now() * 0.023);
-      L.fire.material.color.setRGB(fl, 0.4 * fl + 0.1, 0.1); L.ash.material.opacity = night ? 0.3 * fl : 0;
+      L.fire.material.color.setRGB(fl, 0.4 * fl + 0.1, 0.1); L.ash.material.opacity = night * 0.3 * fl;
     }
     // exhaust
     if (d < 1500) {
@@ -12369,7 +12687,8 @@ JOB.begin = function (def) {
   JOB.closeUI();
   const R = JOB.run = { def, t0: S.time, steps: def.steps.map(s => ({ ...s, state: 'todo' })), i: 0, items: [], over: false, failed: null, cars: [],
     ep: {}, moveAt: null, lastStop: 0, score: 100 };
-  GAME.settings.time = def.look; applyLook(def.look, GAME.settings.weather, renderer, scene);
+  // the sky runs on the job's railroad clock
+  GAME.settings.time = def.look; SKY.hour = def.start / 3600; skyLight(true);
   [...$('optTime').children].forEach(c => c.setAttribute('aria-pressed', String(c.id === 'optTime_' + def.look)));
   // waybill the cars this job moves
   for (const st of R.steps) if (st.type === 'pickup') {
@@ -12745,7 +13064,7 @@ function jobBrief() {
 /* a job picks the train and the time of day itself */
 function refreshJobGroups() {
   const j = JOB.wanted();
-  $('optTrain').parentElement.hidden = !!j; $('optTime').parentElement.hidden = !!j;
+  $('optTrain').parentElement.hidden = !!j; $('optTime').parentElement.hidden = !!j; $('optCycle').parentElement.hidden = !!j;
 }
 
 function jobSetup() {
@@ -13762,7 +14081,7 @@ PLACE.key = function (e) {
    Game: boot, world loading, main loop, rules, HUD
    ========================================================================== */
 const GAME = {
-  settings: { traffic: 'on', loco: '765', consist: 'passenger', time: 'morning', weather: 'clear', fire: 'auto', units: 1, livery: 'ss', mix: false, finish: 'standard', job: '', custom: { body: 0x2c5f8a, roof: 0x24384a, accent: 0xf0f0ea, letter: 0xf0f0ea, rail: 0xf0f0ea }, number: 4401 },
+  settings: { traffic: 'on', loco: '765', consist: 'passenger', time: 'morning', cycle: 'x30', weather: 'clear', fire: 'auto', units: 1, livery: 'ss', mix: false, finish: 'standard', job: '', custom: { body: 0x2c5f8a, roof: 0x24384a, accent: 0xf0f0ea, letter: 0xf0f0ea, rail: 0xf0f0ea }, number: 4401 },
   train: null, running: false, ready: false, stats: { runThrough: 0 },
   events: {}, stopped: 0, lastStation: null, filling: null,
 };
@@ -13826,7 +14145,7 @@ async function loadWorld() {
   if (WORLD.mtn) mtBuildForest(scene); else buildTrees(scene);
   finalizeScenery(scene);
   prog(0.92, 'Lighting the fire…'); await frame();
-  buildSky(scene, renderer); buildFX(scene); buildSparks(scene);
+  buildSky(scene, renderer); buildFX(scene); buildSparks(scene); buildLamps(scene);
   for (const st of ROUTE.stations) { st.edge.pose(st.s, FR); st.p = FR.p.clone(); }
   for (const w of ROUTE.water) { w.edge.pose(w.s, FR); w.p = FR.p.clone(); }
   if (ROUTE.coal) { const c = ROUTE.coal; c.edge.pose(c.s, FR); c.p = FR.p.clone(); }
@@ -14017,9 +14336,9 @@ function applyLiveriesLive() {
   const o = dieselOpts();
   t.units.forEach((m, u) => { const lv = dieselLiveryFor(o, u); applyLivery(m, lv, (o.number || lv.num) + u); });
 }
-const SAVE_KEYS = ['job', 'traffic', 'loco', 'consist', 'time', 'weather', 'fire', 'units', 'livery', 'mix', 'finish', 'custom', 'number'];
+const SAVE_KEYS = ['job', 'traffic', 'loco', 'consist', 'time', 'cycle', 'weather', 'fire', 'units', 'livery', 'mix', 'finish', 'custom', 'number'];
 function saveSettings() { try { const o = {}; for (const k of SAVE_KEYS) o[k] = GAME.settings[k]; localStorage.setItem('bd_settings', JSON.stringify(o)); } catch (e) {} }
-function loadSettings() { try { const o = JSON.parse(localStorage.getItem('bd_settings') || 'null'); if (o) for (const k of SAVE_KEYS) if (o[k] !== undefined) GAME.settings[k] = o[k]; } catch (e) {} if (!LOCO_SPEC[GAME.settings.loco]) GAME.settings.loco = '765'; if (!LIVERIES[GAME.settings.livery]) GAME.settings.livery = 'ss'; }
+function loadSettings() { try { const o = JSON.parse(localStorage.getItem('bd_settings') || 'null'); if (o) for (const k of SAVE_KEYS) if (o[k] !== undefined) GAME.settings[k] = o[k]; } catch (e) {} if (!LOCO_SPEC[GAME.settings.loco]) GAME.settings.loco = '765'; if (!LIVERIES[GAME.settings.livery]) GAME.settings.livery = 'ss'; if (!DN.starts[GAME.settings.time]) GAME.settings.time = 'morning'; if (!DN.rates[GAME.settings.cycle]) GAME.settings.cycle = 'x30'; }
 GAME.needNewTrain = function () { const t = GAME.train, g = GAME.settings, j = JOB.wanted(); return !t || MP.needSpawn || t.locoKey !== g.loco || (!t.elec && t.consistKey !== JOB.consist()) || (j ? j.id : '') !== JOB.activeId() || (t.diesel && !t.elec && t.nUnits !== (+g.units || 1)); };
 function buildWhistleIfReady() { if (!AU.on) return; buildWhistle(WHISTLES[LOCO_SPEC[GAME.settings.loco].whistle]); }
 
@@ -14062,8 +14381,9 @@ function buildMenu() {
   for (const id of ['cBody', 'cAccent', 'cLetter', 'cNum']) $(id).addEventListener('input', onCustom);
   refreshMenuGroups();
   segButtons('optTrain', Object.fromEntries(Object.entries(CONSISTS).filter(([, c]) => !c.hidden)), 'consist', () => { GAME.swapLive(); startLabel(); saveSettings(); });
-  segButtons('optTime', PRESETS, 'time', k => { if (GAME.ready) applyLook(k, GAME.settings.weather, renderer, scene); });
-  segButtons('optWeather', WEATHER, 'weather', k => { if (GAME.ready) { applyLook(GAME.settings.time, k, renderer, scene); FX.snow.visible = SKY.snow; } });
+  segButtons('optTime', DN.starts, 'time', k => { if (GAME.ready) applyLook(k, null); saveSettings(); });
+  segButtons('optCycle', DN.rates, 'cycle', () => saveSettings());
+  segButtons('optWeather', WEATHER, 'weather', k => { if (GAME.ready) { applyLook(null, k); FX.snow.visible = SKY.snow; } });
   segButtons('optFire', { auto: { name: 'Fireman', sub: 'Stoker & water handled' }, hand: { name: 'Hand fired', sub: 'You run the boiler' } }, 'fire', k => { S.autoFire = k === 'auto'; GAME.refreshKeys(); saveSettings(); });
   segButtons('optTraffic', { on: { name: 'Timetable', sub: 'No. 5, No. 12 and freights on the road' }, off: { name: 'Clear road', sub: 'Just you and the signals' } }, 'traffic', () => { if (GAME.ready && GAME.train) AI.setup(); saveSettings(); });
   specGrid();
@@ -14290,6 +14610,7 @@ function updateHUD(dt) {
   const dir = Math.abs(S.v) > 0.2 ? Math.sign(S.v) : (Math.sign(S.reverser) || 1);
   const gp = S.grade * dir * 100;
   $('gradeTxt').textContent = Math.abs(gp) < 0.1 ? 'Level' : (gp > 0 ? '▲ ' : '▼ ') + Math.abs(gp).toFixed(1) + '%';
+  const tod = JOB.run ? '' : dnFmt(SKY.hour), te = $('todTxt'); if (te.textContent !== tod) te.textContent = tod;
   const sc = scanAhead(GAME.train, dir); GAME.scan = sc;
   const lamp = $('swLamp'), txt = $('swText'), lm = $('swLampMini');
   if (sc.sw && sc.sw.d < 3500) {
@@ -14406,10 +14727,9 @@ function renderStep(dt, T) {
   AI.render(dt);
   MP.frame(dt);
   if (GAME.running && !S.paused && !S.derailed) MP.contact(T);
-  // headlight & glows
-  const night = SKY.night;
-  const darkH = night || SKY.boreK > 0.5;   // in a tunnel the headlight works as it does at night
-  T.head.intensity = S.light === 0 ? 0 : (S.light === 1 ? (darkH ? 1.6 : 0.4) : (darkH ? 6 : 1.4));
+  // headlight & glows, brightening through dusk
+  const night = SKY.dark, darkH = Math.max(night, smooth(0.3, 0.7, SKY.boreK || 0));   // in a tunnel the headlight works as it does at night
+  T.head.intensity = S.light === 0 ? 0 : (S.light === 1 ? lerp(0.4, 1.6, darkH) : lerp(1.4, 6, darkH));
   RMAT.lens.color.setScalar(S.light === 0 ? 0.25 : (S.light === 1 ? 0.75 : 1.0));
   const flick = 0.85 + 0.15 * Math.sin(S.time * 23) * Math.sin(S.time * 7.3);
   if (T.diesel) {
@@ -14418,16 +14738,16 @@ function renderStep(dt, T) {
     S.ditchFlash = Math.max(0, S.ditchFlash - dt);
     const ph = Math.floor(S.time * 2.6) % 2, on = S.ditch && S.light > 0;
     const lv = (k) => !on ? 0.12 : (S.ditchFlash > 0 ? (ph === k ? 1 : 0.15) : 0.85);
-    T.loco.ditch.forEach((d, k) => { const b = lv(k); d.lens.material.color.setScalar(0.25 + 0.75 * b); d.halo.material.opacity = b * (night ? 1 : 0.45); });
-  } else T.fireLight.intensity = S.fire * (night ? 2.4 : 0.18) * flick * (CAM.mode === 'cab' ? 1 : 0.6);
-  T.loco.beam.material.opacity = S.light === 0 ? 0 : (night ? (S.light === 2 ? 0.075 : 0.035) : (SKY.weather !== 'clear' ? 0.02 : 0));
-  T.loco.halo.material.opacity = S.light === 0 ? 0 : (night ? 1 : 0.35) * (S.light === 2 ? 1 : 0.6);
+    T.loco.ditch.forEach((d, k) => { const b = lv(k); d.lens.material.color.setScalar(0.25 + 0.75 * b); d.halo.material.opacity = b * lerp(0.45, 1, night); });
+  } else T.fireLight.intensity = S.fire * lerp(0.18, 2.4, night) * flick * (CAM.mode === 'cab' ? 1 : 0.6);
+  T.loco.beam.material.opacity = S.light === 0 ? 0 : Math.max(night * (S.light === 2 ? 0.075 : 0.035), SKY.weather !== 'clear' ? 0.02 : 0);
+  T.loco.halo.material.opacity = S.light === 0 ? 0 : lerp(0.35, 1, night) * (S.light === 2 ? 1 : 0.6);
   if (!T.diesel) {
     T.loco.fire.material.color.setRGB(1 * flick, 0.45 * S.fire * flick + 0.1, 0.1);
-    T.loco.ash.material.opacity = night ? 0.35 * S.fire * flick : 0;
+    T.loco.ash.material.opacity = night * 0.35 * S.fire * flick;
   }
   const pb = $('btnWhistle').querySelector('.pull i'), pw = Math.round(S.whistle * 100) + '%'; if (pb.style.width !== pw) pb.style.width = pw;
-  T.cabLight.intensity = night ? 0.6 : 0;
+  T.cabLight.intensity = night * 0.6;
   // camera
   slideFeel(dt, T);
   if (PLACE.on) PLACE.camera(camera, dt); else updateCamera(camera, MP.view() || T, dt);
@@ -14436,12 +14756,10 @@ function renderStep(dt, T) {
     CAM.yaw = -0.95 + Math.sin(S.time * 0.05 + performance.now() * 0.00005) * 0.55; CAM.mode = 'chase'; CAM.dist = 21; CAM.pitch = 0.09;
   }
   // sky follows camera
-  SKY.dome.position.copy(camera.position); SKY.stars.position.copy(camera.position);
-  SKY.clouds.position.set(camera.position.x, camera.position.y + 1600, camera.position.z);
+  skyTick(dt);
   SKY.clouds.material.map.offset.x += dt * 0.0006; SKY.clouds.material.map.offset.y += dt * 0.0003;
-  SKY.moon.position.copy(SKY.sunDir).multiplyScalar(7000).add(camera.position);
-  const lp = PLACE.on ? PLACE.focus() : (MP.view() || T).lead.pos;
-  SKY.sun.target.position.copy(lp); SKY.sun.position.copy(lp).addScaledVector(SKY.sunDir, 300);
+  skyFollow(camera, PLACE.on ? PLACE.focus() : (MP.view() || T).lead.pos);
+  lampsFrame(camera);
   updateTrackLOD(camera); updateDetailLOD(camera, scene, dt); mtUpdate(camera, scene);
   WORLD.waterT.value += dt;
   // effects & sound
@@ -14541,7 +14859,7 @@ function effectsAndSound(dt, T) {
 GAME.snapshot = function () {
   const T = GAME.train; if (!T) return {};
   const f = T.frontTP();
-  return { running: GAME.running, settings: { ...GAME.settings }, sw: NET.switches.map(s => s.state), front: { e: f.e.id, s: f.s, o: f.o }, S: { v: S.v, P: S.P, W: S.W, water: S.water, coal: S.coal, throttle: S.throttle, reverser: S.reverser, brakeH: S.brakeH, indH: S.indH }, cam: CAM.mode };
+  return { running: GAME.running, settings: { ...GAME.settings }, sw: NET.switches.map(s => s.state), front: { e: f.e.id, s: f.s, o: f.o }, S: { v: S.v, P: S.P, W: S.W, water: S.water, coal: S.coal, throttle: S.throttle, reverser: S.reverser, brakeH: S.brakeH, indH: S.indH }, cam: CAM.mode, hour: SKY.hour };
 };
 GAME.restore = function (d) {
   try {
@@ -14551,10 +14869,10 @@ GAME.restore = function (d) {
     const e = NET.edges.find(x => x.id === d.front.e);
     if (e) GAME.train.place(new TrackPos(e, d.front.s, d.front.o));
     Object.assign(S, d.S); S.vw = S.v;
-    applyLook(GAME.settings.time, GAME.settings.weather, renderer, scene);
+    applyLook(null, GAME.settings.weather); if (d.hour !== undefined) { SKY.hour = d.hour; skyLight(true); }
     cycleCamera(d.cam);
     GAME.running = true; $('menu').hidden = true; $('hud').hidden = false;
-    const keyOf = { optLoco: 'loco', optTrain: 'consist', optTime: 'time', optWeather: 'weather', optFire: 'fire', optTraffic: 'traffic', optLivery: 'livery', optUnits: 'units', optFinish: 'finish' };
+    const keyOf = { optLoco: 'loco', optTrain: 'consist', optTime: 'time', optCycle: 'cycle', optWeather: 'weather', optFire: 'fire', optTraffic: 'traffic', optLivery: 'livery', optUnits: 'units', optFinish: 'finish' };
     for (const k in keyOf) [...$(k).children].forEach(c => c.setAttribute('aria-pressed', String(c.id === k + '_' + GAME.settings[keyOf[k]])));
     [...$('optMix').children].forEach(c => c.setAttribute('aria-pressed', String(c.id === 'optMix_' + (GAME.settings.mix ? 'mixed' : 'matched'))));
     refreshMenuGroups(); specGrid();

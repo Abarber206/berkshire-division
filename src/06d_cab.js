@@ -761,7 +761,7 @@ CAB.frame = function (dt, T) {
   }
   const lvl = glassLevel(S.W), bob = Math.sin(S.time * 9) * 0.004 * Math.min(1, Math.abs(S.v) / 8);
   for (const gl of cab.glasses) gl.mesh.scale.y = Math.max(0.001, gl.h * clamp(lvl + bob, 0, 1));
-  const lamp = SKY.night ? 0.55 : 0;
+  const lamp = smooth(0.2, 0.6, SKY.dark) * 0.55;
   for (const m of CAB.lamps) m.emissiveIntensity = lamp;
   if (CAB.lookTo) {
     const lk = CAB.lookTo, a = 1 - Math.exp(-dt * 6);
