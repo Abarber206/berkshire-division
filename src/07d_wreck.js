@@ -129,6 +129,8 @@ class WreckSim {
   }
   force(b, P, F) {
     // linear and angular impulse over one step, applied to the body's accumulators
+    // a car that has come to rest stays put unless something hits it properly
+    if (b.sleep) { if (F.lengthSq() < 9 * (WK.G * b.m) ** 2) return; b.sleep = false; b.restT = 0; }
     b.F.add(F); b.tq.add(_wd.subVectors(P, b.p).cross(F));
   }
   /* kin: the part of the train still on the rails = { v: m/s along the train, mass: kg, force: N along the train } */
@@ -144,6 +146,7 @@ class WreckSim {
       kin.force = 0;
       // ground and roadbed
       for (const b of this.bodies) {
+        if (b.sleep) continue;
         for (const s of b.pts) {
           const P = _wa.copy(s).applyQuaternion(b.q), r = P.clone(); P.add(b.p);
           const pen = this.ground(b, P) - P.y; if (pen <= 0) continue;
@@ -160,6 +163,7 @@ class WreckSim {
         const A = V[x]; if (!A.rb) continue;
         for (let y = Math.max(0, x - 6); y < Math.min(V.length, x + 7); y++) {
           if (y === x || (V[y].rb && y < x)) continue;
+          if (A.rb.sleep && (V[y].rb ? V[y].rb.sleep : Math.abs(this.kinV()) < 0.05)) continue;
           this.touch(A, V[y], kin);
         }
       }
@@ -185,6 +189,7 @@ class WreckSim {
       // integrate
       let moving = false;
       for (const b of this.bodies) {
+        if (b.sleep) continue;
         b.lv.addScaledVector(b.F, h / b.m);
         // angular: world inverse inertia from the body axes
         const tq = b.tq, ax = b.ax;
@@ -194,7 +199,10 @@ class WreckSim {
         const w = b.av; _wq.set(w.x * h * 0.5, w.y * h * 0.5, w.z * h * 0.5, 0).multiply(b.q);
         b.q.set(b.q.x + _wq.x, b.q.y + _wq.y, b.q.z + _wq.z, b.q.w + _wq.w).normalize();
         this.pose(b);
-        if (b.lv.lengthSq() > 0.01 || b.av.lengthSq() > 0.01) moving = true;
+        // settled: slow for half a second puts it to sleep
+        if (b.lv.lengthSq() < 0.04 && b.av.lengthSq() < 0.04) { if ((b.restT = (b.restT || 0) + h) > 0.5) { b.sleep = true; b.lv.set(0, 0, 0); b.av.set(0, 0, 0); continue; } }
+        else b.restT = 0;
+        moving = true;
       }
       // the cars still on the rails: emergency brakes plus whatever the wreck pushes or pulls on them
       if (kin.mass > 0 && kin.v !== 0) {
