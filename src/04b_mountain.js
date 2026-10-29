@@ -57,7 +57,7 @@ function mtPrepare() {
     const east = [[pBr.X + 900, pBr.N + 200], [pBr.X + 2600, pBr.N + 700], [700, 1900], [3600, 2050], [6400, 2500], [8700, 2800], [10600, 3300]];
     // it meets the bridge square on, so the approach banks never lie across the water
     const nx = -Math.sin(pBr.h), nn = Math.cos(pBr.h), sq = d => [pBr.X + nx * d, pBr.N + nn * d];
-    const pts = mtSpline([...west, sq(170), sq(80), [pBr.X, pBr.N], sq(-80), sq(-170), ...east], 12).reverse();   // upstream first, so the bed falls along the list
+    const pts = mtSpline([...west, sq(230), [pBr.X, pBr.N], sq(-230), ...east], 12).reverse();   // upstream first, so the bed falls along the list
     const L = pts.reduce((a, p, i) => a + (i ? Math.hypot(p[0] - pts[i - 1][0], p[1] - pts[i - 1][1]) : 0), 0);
     let sBrR = 0; { let best = Infinity, s = 0; pts.forEach((p, i) => { if (i) s += Math.hypot(p[0] - pts[i - 1][0], p[1] - pts[i - 1][1]); const d = Math.hypot(p[0] - pBr.X, p[1] - pBr.N); if (d < best) { best = d; sBrR = s; } }); }
     // above the bridge it climbs steadily to its head (about 300 m); below it, it falls gently toward Riverton
@@ -242,7 +242,7 @@ function mtBuildWater(scene) {
    cinder and ballast shoulders by the track and gravel bars along the water */
 function mtGroundColor(X, N, h, lat, out) {
   const wood = (0.55 + 0.5 * Noise.fbm(X / 420 + 9, N / 420 - 4, 3)) * (1 - 0.55 * smooth(700, 2600, mtField(MT.dT, X, N)));
-  const k0 = smooth(0.35, 0.75, wood);
+  const k0 = typeof mtClearing === 'function' && mtClearing(X, N, 6) ? 0 : smooth(0.35, 0.75, wood);   // the yards are cleared meadow
   // under the woods: dark leaf litter and the canopy's shade, rust and olive in patches so a wooded hillside reads as autumn woods from afar
   const rust = smooth(-0.1, 0.5, Noise.fbm(X / 160 + 3, N / 160 - 7, 2));
   let r = lerp(0.40, lerp(0.25, 0.34, rust), k0), g = lerp(0.47, lerp(0.27, 0.24, rust), k0), b = lerp(0.24, lerp(0.14, 0.12, rust), k0);
