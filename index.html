@@ -4976,7 +4976,7 @@ function rodGeo(L, h0, h1, t, boss0, boss1) {
 const LOCO_SPEC = {   // front: 'nkp' headlight on top with number-board wings, bell on the door; 'pm' lamp in the door, bell on top, pumps on the pilot
   '765': { road: 'NICKEL PLATE ROAD', num: '765', short: 'NKP', cls: 'S-2', built: 'Lima, Sept 1944', weight: 440800, adhesive: 264300, te: 64135, fw: 'Worthington', whistle: 'deep6', front: 'nkp', leadR: 0.457, cylR: 0.3175, wheels: 'spoked' },
   'diesel': { road: 'SANDUSKY & SCIOTO', num: '4401', short: 'S&S', cls: 'AC44', built: '2026', weight: 420000, adhesive: 420000, te: 183000, diesel: true, whistle: 'k5' },
-  '1225': { road: 'PERE MARQUETTE', num: '1225', short: 'PM', cls: 'N-1', built: 'Lima, Oct 1941', weight: 442500, adhesive: 277600, te: 69350, fw: 'Worthington', whistle: 'bright3', front: 'pm', leadR: 0.419, cylR: 0.330, wheels: 'boxpok' },
+  '1225': { road: 'PERE MARQUETTE', num: '1225', short: 'PM', cls: 'N-1', built: 'Lima, Oct 1941', weight: 442500, adhesive: 277600, te: 69350, fw: 'Worthington', whistle: 'chime6', front: 'pm', leadR: 0.419, cylR: 0.330, wheels: 'boxpok' },
 };
 /* Engine geometry, a = metres back from the front coupler face, heights above the rail. Taken from an NKP
    Berkshire erecting drawing whose wheelbases match the published figures: 42 ft engine wheelbase, 18 ft 3 in
@@ -9464,13 +9464,13 @@ function audioInit() {
 }
 /* Whistles and horns. Each locomotive gets its own chord and its own tone colour:
    - a deep, mellow six-chime (minor voicing) with a long quill,
-   - a bright three-chime major triad, breathier and higher,
+   - a bigger, higher six-chime (E, F#, A, B, D#, G#, the Pere Marquette's), brighter on top,
    - a brassy five-chime air horn (B major 6th: D#, F#, G#, B, D#) with chorus and a hard attack.
    Partials are built with PeriodicWave so the tone is set per voice, and a presence lift
    keeps every one of them audible on a phone speaker. */
 const WHISTLES = {
   deep6: { kind: 'steam', notes: [164.8, 196.0, 220.0, 246.9, 293.7, 329.6], harm: [1, 0.56, 0.36, 0.24, 0.15, 0.09, 0.05], breath: 0.13, breathF: 1400, vib: [4.8, 0.0025], quill: 0.06, attack: 0.06, beat: 1.0018, pres: 2200 },
-  bright3: { kind: 'steam', notes: [349.2, 440.0, 523.3], harm: [1, 0.7, 0.42, 0.3, 0.18, 0.12, 0.07], breath: 0.17, breathF: 2900, vib: [6.2, 0.0035], quill: 0.04, attack: 0.045, beat: 1.0025, pres: 2600 },
+  chime6: { kind: 'steam', notes: [335.0, 375.4, 444.6, 505.4, 632.3, 825.8], harm: [1, 0.62, 0.38, 0.26, 0.16, 0.1, 0.06], breath: 0.14, breathF: 2200, vib: [5.4, 0.003], quill: 0.05, attack: 0.05, beat: 1.0025, pres: 2600 },
   /* Shinkansen air horn: a bright two-tone (A5 over F#5) with few upper partials */
   shin: { kind: 'horn', notes: [740.0, 880.0], harm: [1, 0.75, 0.5, 0.34, 0.22, 0.14, 0.08], breath: 0.025, breathF: 2400, vib: [0, 0], quill: 0, attack: 0.012, beat: 1.003, pres: 2400 },
   k5: { kind: 'horn', notes: [311.1, 370.0, 415.3, 493.9, 622.3], harm: [1, 0.92, 0.8, 0.7, 0.6, 0.52, 0.45, 0.38, 0.32, 0.27, 0.22, 0.18, 0.15, 0.12], breath: 0.035, breathF: 1300, vib: [0, 0], quill: 0, attack: 0.015, beat: 1.004, pres: 1500 },
@@ -9661,8 +9661,8 @@ const SND_FILES = {
   flange: ['flange_0.mp3'],
   squeal: ['squeal_0.mp3'],
   joint: ['joint_0.mp3', 'joint_1.mp3', 'joint_2.mp3', 'joint_3.mp3', 'joint_4.mp3', 'joint_5.mp3', 'joint_6.mp3', 'joint_7.mp3', 'joint_8.mp3', 'joint_9.mp3', 'joint_10.mp3', 'joint_11.mp3', 'joint_12.mp3', 'joint_13.mp3', 'joint_14.mp3', 'joint_15.mp3', 'joint_16.mp3', 'joint_17.mp3', 'joint_18.mp3', 'joint_19.mp3'],
-  wh_bright3: ['wh_bright3_0.wav'],
-  wh_bright3_on: ['wh_bright3_on_0.mp3'],
+  wh_chime6: ['wh_chime6_0.wav'],
+  wh_chime6_on: ['wh_chime6_on_0.mp3'],
   wh_k5: ['wh_k5_0.wav'],
   wh_k5_on: ['wh_k5_on_0.mp3'],
   cocks: ['cocks_0.mp3'],
@@ -9671,14 +9671,14 @@ const SND_FILES = {
   bell: ['bell_0.mp3', 'bell_1.mp3', 'bell_2.mp3', 'bell_3.mp3', 'bell_4.mp3', 'bell_5.mp3', 'bell_6.mp3', 'bell_7.mp3', 'bell_8.mp3', 'bell_9.mp3', 'bell_10.mp3', 'bell_11.mp3'],
 };
 // end SND_FILES (written by audio/tools/prepare.py)
-const SND_GAIN = { chuff: 1, chuff_hard: 0.9, fire: 0.6, comp: 0.5, purge: 0.6, dump: 0.8, squeal: 0.5, bell: 0.8, crickets: 0.45, joint: 0.9, roll: 0.7, flange: 0.35, wind: 0.8, birds: 0.5, night: 0.5, blower: 0.5, safety: 0.9, pump: 0.6, cocks: 0.6, bpx: 0.7, injector: 0.5, dz: 1, wh_deep6: 1, wh_bright3: 1, wh_k5: 1 };
+const SND_GAIN = { chuff: 1, chuff_hard: 0.9, fire: 0.6, comp: 0.5, purge: 0.6, dump: 0.8, squeal: 0.5, bell: 0.8, crickets: 0.45, joint: 0.9, roll: 0.7, flange: 0.35, wind: 0.8, birds: 0.5, night: 0.5, blower: 0.5, safety: 0.9, pump: 0.6, cocks: 0.6, bpx: 0.7, injector: 0.5, dz: 1, wh_deep6: 1, wh_chime6: 1, wh_k5: 1 };
 // idle (a freight engine in Houston), mid throttle (a CSX freight at a crawl) and full throttle
 // (a UP freight drawing near); notching up crossfades between them (see dieselRec)
 const SND_DZ = [{ rpm: 300 }, { rpm: 650, load: 0.6 }, { rpm: 1050, load: 1 }];
 // quill: how far a part-open valve drops the pitch; attack/release: how fast it opens and closes (s); on: length of the opening take (s)
 const WHISTLE_REC = {
   deep6: { quill: 0.05, attack: 0.05, release: 0.12, on: 1.2 },
-  bright3: { quill: 0.04, attack: 0.04, release: 0.1, on: 0.7 },
+  chime6: { quill: 0.05, attack: 0.05, release: 0.12, on: 1.2 },
   k5: { quill: 0, attack: 0.02, release: 0.08, on: 1.2 },
 };
 
