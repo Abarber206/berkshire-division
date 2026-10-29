@@ -46,6 +46,7 @@ class Edge {
     this.limit = opt.limit || 70;          // mph
     this.cantOK = opt.cant !== false && this.kind === 'main';
     this.bridges = opt.bridges || [];      // [[s0,s1],...]
+    this.tunnels = opt.tunnels || [];      // [[s0,s1],...] bored through the hill: no ground is graded over them
     this.noTies = false;
     const total = pts[pts.length - 1].s - pts[0].s;
     this.len = total;
@@ -72,6 +73,7 @@ class Edge {
     }
   }
   isBridge(s) { for (const b of this.bridges) if (s >= b[0] && s <= b[1]) return true; return false; }
+  isTunnel(s) { for (const b of this.tunnels) if (s >= b[0] && s <= b[1]) return true; return false; }
   _idx(s) { const f = clamp(s, 0, this.len) / this.ds; let i = Math.floor(f); if (i >= this.n - 1) i = this.n - 2; return [i, f - i]; }
   heading(s) { const [i, t] = this._idx(s); return lerp(this.H[i], this.H[i + 1], t); }
   curv(s) { const [i, t] = this._idx(s); return lerp(this.K[i], this.K[i + 1], t); }
@@ -106,7 +108,7 @@ class Node {
       const sw = this.sw;
       if (sw.trunk.edge === edge && sw.trunk.end === end) return sw.legs[sw.state];
       const li = sw.legs[0].edge === edge && sw.legs[0].end === end ? 0 : 1;
-      if (li !== sw.state && ctx && ctx.commit) { sw.state = li; sw.anim = li; if (ctx.onRunThrough) ctx.onRunThrough(sw); }
+      if (li !== sw.state && ctx && ctx.commit && !sw.spring) { sw.state = li; sw.anim = li; if (ctx.onRunThrough) ctx.onRunThrough(sw); }
       return sw.trunk;
     }
     if (this.att.length === 2) { const a = this.att[0]; return (a.edge === edge && a.end === end) ? this.att[1] : a; }

@@ -389,7 +389,7 @@ function farmstead(X, N, yaw, r) {
 /* -------- bridge (two through-truss Pratt spans) -------- */
 function buildBridge(scene) {
   // one double-track truss carries both main tracks: track 1 at z = +h2, track 2 at -h2
-  const b = ROUTE.bridge, main = ROUTE.main, h2 = (ROUTE.spacing || 0) / 2, tracks = h2 ? [h2, -h2] : [0];
+  const b = ROUTE.bridge, main = b.line || ROUTE.main, h2 = (ROUTE.spacing || 0) / 2, tracks = h2 ? [h2, -h2] : [0];
   const c = linePlace(main, b.s, -h2);
   const base = baseM(c.X, c.y, c.N, c.yaw);
   const gb = new GeoBin();
@@ -426,7 +426,7 @@ function buildBridge(scene) {
       const lean = Math.atan2(pw, H + 0.75), px = sOff + s * (span / 2 - pw / 2 - (H / 2 - 0.9) * pw / (H + 0.75));
       const pm = P(base, px, H - 1.1, 0, 0, 0, s * lean);
       gb.add('steel', new THREE.BoxGeometry(0.3, 1.4, 2 * W), pm);
-      const nm = nameBoard('NICKEL PLATE · SANDUSKY RIVER'); SMAT.nbBridge = nm;
+      const nm = nameBoard(b.name || 'NICKEL PLATE · SANDUSKY RIVER'); SMAT.nbBridge = nm;
       gb.add('nbBridge', new THREE.PlaneGeometry(4.8, 0.62), pm.clone().multiply(M(s * 0.157, 0, 0, 0, s * Math.PI / 2, 0)));
     }
   }
@@ -434,7 +434,7 @@ function buildBridge(scene) {
   for (const x of [-span, 0, span]) {
     const top = -1.3;
     const g = groundAt(c.X + Math.cos(c.yaw) * x, c.N + Math.sin(c.yaw) * x);
-    const h = top - (Math.min(g, -5.6) - 1);
+    const h = top - (Math.min(WORLD.mtn ? g - c.y : g, -5.6) - 1);   // the mountain's river runs well below the rails
     gb.add('concrete', boxT(x === 0 ? 3.2 : 5, h, 8.4 + 2 * h2, 2), P(base, x, top - h / 2, 0));
     if (x !== 0) {
       // abutment backwall, then the ballasted approach fill out to the end of the bridge limits (±72),
@@ -589,6 +589,11 @@ function buildRoads(scene) {
 }
 
 /* -------- pole line along the main -------- */
+/* no poles through a tunnel or across the trestle: the line leaves the track there and rejoins beyond */
+function offPoles(line, s) {
+  for (const T of ROUTE.tunnels || []) if (T.line === line && s > T.s0 - 40 && s < T.s1 + 40) return true;
+  const V = ROUTE.viaduct; return !!(V && V.line === line && Math.abs(s - V.s) < V.half + 30);
+}
 function buildPoleLine(scene) {
   const main = ROUTE.main;
   const pole = (() => {
@@ -623,7 +628,7 @@ function buildPoleLine(scene) {
   let prev = null;
   for (let s = 20; s < main.len; s += 48) {
     const pl = clearPlace(main, s, -14.5, 3.5);   // swings out round the passing sidings
-    if (kept(pl.X, pl.N, 2) || riverDist(pl.X, pl.N) < 32) { prev = null; continue; }
+    if (kept(pl.X, pl.N, 2) || riverDist(pl.X, pl.N) < 32 || offPoles(main, s)) { prev = null; continue; }
     const y = groundAt(pl.X, pl.N) - 0.3;
     const p = new THREE.Vector3(pl.X, y, -pl.N);
     const cur = { p, yaw: pl.yaw };
@@ -708,6 +713,7 @@ function updateSignals(dt = 0) {
 }
 function buildSigns() {
   for (const mp of ROUTE.mileposts) {
+    if ((ROUTE.tunnels || []).some(T => T.line === mp.line && mp.sLine > T.s0 - 15 && mp.sLine < T.s1 + 15)) continue;
     const pl = clearPlace(mp.line, mp.sLine, -3.6 - (ROUTE.spacing || 0));   // beyond track 2 and any siding off it
     const y = groundAt(pl.X, pl.N);
     const base = baseM(pl.X, y, pl.N, pl.yaw + Math.PI / 2);
@@ -717,8 +723,8 @@ function buildSigns() {
     gb.add(k, new THREE.BoxGeometry(0.24, 0.75, 0.24), P(base, 0, 1.1, 0));
   }
   // yard limit boards
-  for (const [s, d] of [[300, 1], [1980, -1]]) {
-    const pl = clearPlace(ROUTE.main, s, d > 0 ? 3.6 : -3.6 - ROUTE.spacing);
+  for (const [s, d] of ROUTE.yardLimits || [[300, 1], [1980, -1]]) {
+    const pl = clearPlace(ROUTE.main, s, d > 0 ? 3.6 : -3.6 - (ROUTE.spacing || 0));
     const y = groundAt(pl.X, pl.N);
     const base = baseM(pl.X, y, pl.N, pl.yaw + (d > 0 ? Math.PI : 0));
     const gb = binAt(pl.X, pl.N);
@@ -741,6 +747,7 @@ function buildStations() {
       // spout reaches over the track: modelled in waterTower toward -z of base (which faces track)
     }
   }
+  if (WORLD.mtn) { mtFacilities(); return; }
   if (WORLD.custom) return;   // the rest is the Berkshire Division's own terminal
   const eng = ROUTE.features.engine;
   coalingTower(linePlace(eng, ROUTE.coal.sLine, 0));

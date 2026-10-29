@@ -83,6 +83,7 @@ function applyLook(timeKey, weatherKey, renderer, scene) {
   if (W.gray) { SKY.uni.uTop.value.lerp(new THREE.Color(P.night ? 0x0b0f16 : 0x8e98a3), W.gray * 0.8); SKY.uni.uHor.value.lerp(new THREE.Color(P.night ? 0x121820 : 0xb9bec2), W.gray * 0.8); }
   SKY.sun.color.set(P.sun); SKY.sun.intensity = P.sunI * W.sunK;
   SKY.hemi.color.set(P.hemiS); SKY.hemi.groundColor.set(P.hemiG); SKY.hemi.intensity = P.hemiI * (W.gray ? 1.25 : 1);
+  SKY.sunBase = SKY.sun.intensity; SKY.hemiBase = SKY.hemi.intensity;
   const fogC = new THREE.Color(P.fog); if (W.gray) fogC.lerp(new THREE.Color(P.night ? 0x0d1218 : 0xb3b8bc), W.gray);
   scene.fog.color.copy(fogC).convertSRGBToLinear(); scene.fog.density = P.fogD * W.fogK;
   SKY.sun.color.convertSRGBToLinear(); SKY.hemi.color.convertSRGBToLinear(); SKY.hemi.groundColor.convertSRGBToLinear();

@@ -387,7 +387,7 @@ function genGrass(piece, scene) {
   const r = rng(e.id * 131 + Math.floor(U.s0 * 7));
   const L = { grass: [], goldenrod: [], aster: [], bush: [] };
   for (let s = U.s0; s < U.s1; s += 1.15) {
-    if (e.isBridge(s)) continue;
+    if (e.isBridge(s) || e.isTunnel(s)) continue;
     e.pose(s, FR);
     for (const side of [-1, 1]) {
       const n = 2 + (r() < 0.55 ? 1 : 0);

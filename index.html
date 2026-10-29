@@ -925,6 +925,7 @@ class Edge {
     this.limit = opt.limit || 70;          // mph
     this.cantOK = opt.cant !== false && this.kind === 'main';
     this.bridges = opt.bridges || [];      // [[s0,s1],...]
+    this.tunnels = opt.tunnels || [];      // [[s0,s1],...] bored through the hill: no ground is graded over them
     this.noTies = false;
     const total = pts[pts.length - 1].s - pts[0].s;
     this.len = total;
@@ -951,6 +952,7 @@ class Edge {
     }
   }
   isBridge(s) { for (const b of this.bridges) if (s >= b[0] && s <= b[1]) return true; return false; }
+  isTunnel(s) { for (const b of this.tunnels) if (s >= b[0] && s <= b[1]) return true; return false; }
   _idx(s) { const f = clamp(s, 0, this.len) / this.ds; let i = Math.floor(f); if (i >= this.n - 1) i = this.n - 2; return [i, f - i]; }
   heading(s) { const [i, t] = this._idx(s); return lerp(this.H[i], this.H[i + 1], t); }
   curv(s) { const [i, t] = this._idx(s); return lerp(this.K[i], this.K[i + 1], t); }
@@ -985,7 +987,7 @@ class Node {
       const sw = this.sw;
       if (sw.trunk.edge === edge && sw.trunk.end === end) return sw.legs[sw.state];
       const li = sw.legs[0].edge === edge && sw.legs[0].end === end ? 0 : 1;
-      if (li !== sw.state && ctx && ctx.commit) { sw.state = li; sw.anim = li; if (ctx.onRunThrough) ctx.onRunThrough(sw); }
+      if (li !== sw.state && ctx && ctx.commit && !sw.spring) { sw.state = li; sw.anim = li; if (ctx.onRunThrough) ctx.onRunThrough(sw); }
       return sw.trunk;
     }
     if (this.att.length === 2) { const a = this.att[0]; return (a.edge === edge && a.end === end) ? this.att[1] : a; }
@@ -1091,6 +1093,8 @@ class Line {
     this.name = name; this.pts = pts; this.opt = opt; this.cuts = []; this.loop = !!opt.loop;
     this.len = pts[pts.length - 1].s; this.startNode = opt.startNode || null; this.endNode = opt.endNode || null;
     this.edges = []; this.map = new Map();
+    // a track laid alongside another carries, point by point, the distance on the main line it stands against
+    if (pts[0].sm !== undefined) { const S = pts.map(p => p.s), SM = pts.map(p => p.sm); this.mainS = s => { s = clamp(s, 0, this.len); const i = this._find(s), j = Math.min(i + 1, S.length - 1); return SM[i] + (SM[j] - SM[i]) * ((s - S[i]) / ((S[j] - S[i]) || 1)); }; }
     ROUTE.lines[name] = this;
   }
   _find(s) { let lo = 0, hi = this.pts.length - 1; while (hi - lo > 1) { const m = (lo + hi) >> 1; if (this.pts[m].s <= s) lo = m; else hi = m; } return lo; }
@@ -1141,8 +1145,9 @@ class Line {
     }
     for (const sg of segs) {
       const pts = this.slice(sg.s0, sg.s1);
-      const bridges = (opt.bridges || []).map(b => [b[0] - sg.s0, b[1] - sg.s0]).filter(b => b[1] > 0 && b[0] < sg.s1 - sg.s0);
-      const e = NET.edge(pts, { kind: opt.kind, name: this.name, limit: opt.limit, cant: opt.cant, bridges });
+      const local = R => (R || []).map(b => [b[0] - sg.s0, b[1] - sg.s0]).filter(b => b[1] > 0 && b[0] < sg.s1 - sg.s0);
+      const limit = opt.limitAt ? opt.limitAt((sg.s0 + sg.s1) / 2) : opt.limit;
+      const e = NET.edge(pts, { kind: opt.kind, name: this.name, limit, cant: opt.cant, bridges: local(opt.bridges), tunnels: local(opt.tunnels) });
       e.line = this; e.lineS0 = sg.s0;
       e.setProfile((s, X, N) => profile(sg.s0 + s, X, N));
       NET.attach(e, 0, sg.na); NET.attach(e, 1, sg.nb);
@@ -1685,6 +1690,203 @@ const LAYOUTS = {
 const PLAY_LAYOUT = (() => { try { const id = new URLSearchParams(location.search).get('layout'); const m = id && LAYOUTS.get(id); return m && m.pieces && m.pieces.length ? m : null; } catch (e) { return null; } })();
 
 /* ============================================================================
+   Laurel Mountain: the second railroad. A single-track mountain division,
+   35 miles from Riverton Yard up the river, round the Laurel Run horseshoe,
+   along the valley wall to Summit tunnel and down Pine Creek to Ashby. A
+   turning loop at each end; the ruling grade is 1.9 per cent eastward.
+   ========================================================================== */
+const ROUTES = {
+  ohio: { name: 'Berkshire Division', sub: 'Ohio farm country · 13.8 mi double-track loop' },
+  laurel: { name: 'Laurel Mountain', sub: 'Mountain grades · 35.6 mi single track, horseshoe curve, tunnel' },
+};
+/* ?route= picks the railroad; without it, the one last driven. A layout from the editor overrides both. */
+const ROUTE_KEY = (() => {
+  try {
+    const q = new URLSearchParams(location.search).get('route');
+    if (q && ROUTES[q]) return q;
+    const s = localStorage.getItem('bd_route');
+    return ROUTES[s] ? s : 'ohio';
+  } catch (e) { return 'ohio'; }
+})();
+
+/* A track beside `line` from sA to sB, `off` metres to its left (+) or right (-), easing out to the full
+   spread and back over L metres each end on a quintic reverse curve, so it leaves and rejoins tangent with
+   no kink. The points carry sm, the distance on `line` they stand against. */
+function alongside(line, sA, sB, off, L, out = true, back = true) {
+  const f = t => t * t * t * (10 + t * (-15 + 6 * t)), f1 = t => 30 * t * t * (1 - t) * (1 - t), f2 = t => 60 * t * (1 - t) * (1 - 2 * t);
+  const pts = [];
+  for (let s = sA; ; s = Math.min(sB, s + 1.5)) {
+    let lat = off, d1 = 0, d2 = 0;
+    if (out && s < sA + L) { const t = (s - sA) / L; lat = off * f(t); d1 = off * f1(t) / L; d2 = off * f2(t) / (L * L); }
+    else if (back && s > sB - L) { const t = (sB - s) / L; lat = off * f(t); d1 = -off * f1(t) / L; d2 = off * f2(t) / (L * L); }
+    const p = line.poseAt(s), X = p.X - Math.sin(p.h) * lat, N = p.N + Math.cos(p.h) * lat;
+    const q = pts[pts.length - 1];
+    pts.push({ X, N, h: p.h + Math.atan2(d1, 1 - p.k * lat), k: p.k / (1 - p.k * lat) + d2, sm: line.mainS(s), s: q ? q.s + Math.hypot(X - q.X, N - q.N) : 0 });
+    if (s >= sB) break;
+  }
+  return pts;
+}
+
+/* A turning loop at a dead end: from the switch the normal leg runs straight on, swings right, sweeps
+   left round the balloon and runs back on a straight that curves into the switch on the reverse leg, off
+   to the left of the normal one. The swing b and the return straight c are solved so the loop closes. */
+function balloonPts(X, N, h, R = 215, R1 = 320, Rt = 260, dDeg = 9, a = 140) {
+  const make = (b, c) => {
+    const pb = new PathBuilder(X, N, h);
+    pb.straight(a); pb.curve(-R1, b, 40); pb.curve(R, 180 + b + dDeg, 60); pb.straight(c); pb.arc(-Rt, dDeg);
+    return pb;
+  };
+  let b = 60, c = 300;
+  for (let it = 0; it < 40; it++) {
+    const e = pb => [pb.X - X, pb.N - N], f0 = e(make(b, c)), fb = e(make(b + 0.05, c)), fc = e(make(b, c + 0.5));
+    if (Math.hypot(f0[0], f0[1]) < 1e-4) break;
+    const J = [[(fb[0] - f0[0]) / 0.05, (fc[0] - f0[0]) / 0.5], [(fb[1] - f0[1]) / 0.05, (fc[1] - f0[1]) / 0.5]];
+    const det = J[0][0] * J[1][1] - J[0][1] * J[1][0];
+    b = clamp(b - (J[1][1] * f0[0] - J[0][1] * f0[1]) / det, 5, 120);
+    c = clamp(c - (-J[1][0] * f0[0] + J[0][0] * f0[1]) / det, 20, 2000);
+  }
+  const pb = make(b, c), pts = pb.pts, L = pts[pts.length - 1];
+  // what little is left over is spread along the loop so it closes exactly
+  const ex = L.X - X, en = L.N - N, n = pts.length;
+  for (let i = 0; i < n; i++) { const t = i / (n - 1); pts[i].X -= ex * t * t; pts[i].N -= en * t * t; }
+  return pts;
+}
+
+function buildMountainRoute() {
+  WORLD.mtn = true;
+  /* ---------- the main line, west to east ---------- */
+  const pb = new PathBuilder(-15000, 0, 0), at = {};
+  const mark = k => (at[k] = pb.s);
+  pb.straight(2600); mark('yardEnd');
+  pb.curve(2200, 14, 150); pb.straight(1400); pb.curve(-1600, 22, 150); pb.straight(1600); pb.curve(1800, 8, 120);
+  mark('hollins'); pb.straight(1900);
+  pb.curve(900, 55, 150); mark('bridge'); pb.straight(520); pb.curve(1100, 30, 140);
+  mark('climb'); pb.straight(1200); pb.curve(-1300, 18, 140); pb.straight(1100); pb.curve(1000, 30, 140); pb.straight(600); pb.curve(-1100, 24, 140);
+  mark('bigLaurel'); pb.straight(1700); pb.curve(1200, 22, 140); pb.straight(900); pb.curve(-900, 15, 120); pb.straight(600);
+  mark('horseshoe'); pb.curve(-330, 165, 120); mark('horseshoeEnd');
+  pb.straight(1400); pb.curve(1000, 20, 140); pb.straight(1000); pb.curve(-1100, 25, 140); pb.straight(1200);
+  pb.curve(800, 70, 140); pb.straight(1500); pb.curve(1500, 25, 140);
+  mark('glenIron'); pb.straight(2000); pb.curve(-1200, 20, 140); pb.straight(1600); pb.curve(1000, 30, 140); pb.straight(1400); pb.curve(-1300, 20, 140); pb.straight(1200); pb.curve(1100, 20, 140);
+  mark('summit'); pb.straight(1500); mark('tunnel'); pb.straight(1100); mark('tunnelEnd');
+  pb.curve(-1400, 30, 140); pb.straight(2200); pb.curve(1600, 25, 140); pb.straight(1800); pb.curve(-1500, 25, 140); pb.straight(1500); pb.curve(1200, 15, 140);
+  mark('pineFlats'); pb.straight(2400); pb.curve(-1800, 15, 140); pb.straight(2900); pb.curve(2000, 10, 140);
+  mark('ashby'); pb.straight(1700);
+  const F = at;
+  /* ---------- profile: the climb from the river to Summit and the drop down Pine Creek ----------
+     [where the grade starts, rise per metre]. Sidings stand on easier grades so a train can start
+     again after a meet; vertical curves round every change over 180 m. */
+  const grades = [[0, 0], [2650, 0.0035], [11500, 0.019], [16100, 0.010], [18000, 0.019], [20400, 0.015], [21550, 0.019],
+    [29500, 0.010], [31400, 0.0195], [38100, 0.006], [39700, 0.003], [40220, -0.003], [40800, -0.016], [49100, -0.005], [51000, -0.013], [55500, 0]];
+  const LEN = pb.s, MY = new Float32Array(Math.ceil(LEN) + 2);
+  const gAt = s => { let g = grades[0][1]; for (let i = 1; i < grades.length; i++) g = lerp(g, grades[i][1], smooth(grades[i][0] - 90, grades[i][0] + 90, s)); return g; };
+  { let y = 0; for (let i = 0; i < MY.length; i++) { MY[i] = y; y += gAt(i + 0.5); } }
+  const mainY = s => { s = clamp(s, 0, LEN); const i = Math.min(Math.floor(s), MY.length - 2), t = s - i; return lerp(MY[i], MY[i + 1], t); };
+  ROUTE.mainY = mainY; ROUTE.grades = grades;
+
+  /* ---------- structures on the main ---------- */
+  const sBridge = F.bridge + 260;                    // two through-truss spans over the river
+  const sViaduct = F.horseshoeEnd + 760, VH = 120;   // steel trestle over Bear Run, below the horseshoe
+  const tunnel = [F.tunnel, F.tunnelEnd];
+  // speed limits: yard limits at both terminals, 30 round the horseshoe, 35 through the bore
+  const limits = [[0, 30], [2650, 50], [11400, 40], [20300, 30], [21650, 40], [39550, 35], [40900, 40], [55400, 30]];
+  const limitAt = s => { let v = limits[0][1]; for (const [a, l] of limits) if (s >= a) v = l; return v; };
+  const main = new Line('Main', pb.pts, { kind: 'main', limitAt, bridges: [[sBridge - 72, sBridge + 72], [sViaduct - VH, sViaduct + VH]], tunnels: [tunnel] });
+  main.mainS = s => s;
+  ROUTE.mainLen = main.len; ROUTE.main = main; ROUTE.features = F;
+  ROUTE.bridge = { line: main, s: sBridge, half: 64, name: 'LAUREL MTN · CONEMAUGH RIVER' };
+  ROUTE.viaduct = { line: main, s: sViaduct, half: VH };
+  ROUTE.tunnels = [{ line: main, s0: tunnel[0], s1: tunnel[1], name: 'SUMMIT' }];
+  for (const [a] of limits.slice(1)) main.cut(a);
+
+  /* ---------- sidings, yards and terminals ---------- */
+  const lines = [];
+  const side = (name, parent, sA, sB, off, opt, back = true, L = 90) => {
+    const nA = parent.cut(sA), nB = back ? parent.cut(sB) : null;
+    const ln = new Line(name, alongside(parent, sA, sB, off, L, true, back), Object.assign({ startNode: nA, endNode: nB || undefined }, opt));
+    lines.push(ln); return ln;
+  };
+  const SIDING = { kind: 'siding', limit: 30 }, YARD = { kind: 'yard', limit: 15 };
+  // Riverton Yard: four tracks on the river's far side of the main, each laddered off the one before
+  const yards = [side('Riverton 1', main, 420, 2420, -4.5, YARD)];
+  for (let k = 2; k <= 4; k++) { const p = yards[k - 2]; yards.push(side('Riverton ' + k, p, 125, p.len - 125, -4.5, YARD)); }
+  const eng = side('Riverton Engine Track', yards[3], 140, 700, -9, { kind: 'yard', limit: 10 }, false, 110);
+  ROUTE.features.engine = eng;
+  // passing sidings: [name, from, to, which side]
+  const sid = {};
+  for (const [nm, a, b, o] of [['Hollins', F.hollins + 200, F.hollins + 1900, 4.5], ['Big Laurel', 16200, 17950, 4.5], ['Glen Iron', 29600, 31350, 4.5], ['Summit', 38150, 39480, 4.5], ['Pine Flats', 49150, 50950, -4.5]])
+    sid[nm] = side(nm + ' Siding', main, a, b, o, SIDING);
+  const ashby = side('Ashby 1', main, F.ashby + 120, main.len - 330, -4.5, YARD);
+  const ashby2 = side('Ashby 2', ashby, 125, ashby.len - 125, -4.5, YARD);
+  // turning loops beyond each terminal
+  const p0 = main.poseAt(0), pE = main.poseAt(main.len);
+  const nLW = main.startNode = NET.node(), nLE = main.endNode = NET.node();
+  const loopW = new Line('Riverton Loop', balloonPts(p0.X, p0.N, p0.h + Math.PI), { kind: 'yard', limit: 15, startNode: nLW, endNode: nLW });
+  const loopE = new Line('Ashby Loop', balloonPts(pE.X, pE.N, pE.h), { kind: 'yard', limit: 15, startNode: nLE, endNode: nLE });
+
+  /* ---------- build edges ---------- */
+  main.build(s => mainY(s));
+  for (const l of lines) l.build(s => mainY(l.mainS(s)));
+  loopW.build(() => 0); loopE.build(() => mainY(main.len));
+
+  /* ---------- switches ---------- */
+  const SW = (name, node, line, divLine, atStart, legNames) => {
+    const lm = line.map.get(node), d = atStart ? divLine.first() : divLine.last();
+    return NET.addSwitch(node, atStart ? lm.before : lm.after, atStart ? lm.after : lm.before, d, name, legNames);
+  };
+  SW('Riverton West', yards[0].startNode, main, yards[0], true, ['Main', 'Riverton 1']);
+  SW('Riverton East', yards[0].endNode, main, yards[0], false, ['Main', 'Riverton 1']);
+  for (let k = 1; k < 4; k++) {
+    SW('Riverton ladder W' + (k + 1), yards[k].startNode, yards[k - 1], yards[k], true, ['Riverton ' + k, 'Riverton ' + (k + 1)]);
+    SW('Riverton ladder E' + (k + 1), yards[k].endNode, yards[k - 1], yards[k], false, ['Riverton ' + k, 'Riverton ' + (k + 1)]);
+  }
+  SW('Riverton Engine Terminal', eng.startNode, yards[3], eng, true, ['Riverton 4', 'Engine track']);
+  for (const nm in sid) { SW(nm + ' West', sid[nm].startNode, main, sid[nm], true, ['Main', 'Siding']); SW(nm + ' East', sid[nm].endNode, main, sid[nm], false, ['Main', 'Siding']); }
+  SW('Ashby West', ashby.startNode, main, ashby, true, ['Main', 'Ashby 1']); SW('Ashby East', ashby.endNode, main, ashby, false, ['Main', 'Ashby 1']);
+  SW('Ashby ladder W', ashby2.startNode, ashby, ashby2, true, ['Ashby 1', 'Ashby 2']); SW('Ashby ladder E', ashby2.endNode, ashby, ashby2, false, ['Ashby 1', 'Ashby 2']);
+  // the loops' switches are sprung: a train coming round trails through without being thrown
+  for (const [nm, node, loop, trunk] of [['Riverton Loop', nLW, loopW, main.first()], ['Ashby Loop', nLE, loopE, main.last()]])
+    NET.addSwitch(node, trunk, loop.first(), loop.last(), nm, ['Loop', 'Loop return']).spring = true;
+  for (const sw of NET.switches) { const dk = sw.legs[1].edge.kind; sw.divLimit = dk === 'siding' ? 30 : 15; }
+  for (const nd of NET.nodes) if (nd.att.length === 1) ROUTE.bumpers.push(nd);
+
+  /* ---------- stations, water, signals, mileposts ---------- */
+  const st = (name, line, s, side, kind, across = 0) => { const loc = line.locate(s); ROUTE.stations.push({ name, line, sLine: s, edge: loc.edge, s: loc.s, side, kind, across }); };
+  st('Riverton', main, 1500, -1, 'depot');
+  st('Hollins', main, F.hollins + 1100, -1, 'depot', 4.5);   // beyond the siding
+  st('Big Laurel', main, 17000, -1, 'small', 4.5);
+  st('Glen Iron', main, 30400, 1, 'small', 4.5);
+  st('Summit', main, 38800, -1, 'small', 4.5);
+  st('Pine Flats', main, 50000, 1, 'depot', 4.5);
+  st('Ashby', main, F.ashby + 700, -1, 'depot');
+  const wc = (line, s, side, kind) => { const loc = line.locate(s); ROUTE.water.push({ line, sLine: s, edge: loc.edge, s: loc.s, side, kind }); };
+  wc(main, 17500, 1, 'column'); wc(main, 39100, 1, 'column'); wc(main, 50400, -1, 'column');   // on the side away from the siding
+  wc(eng, 160, 1, 'tower'); wc(main, F.ashby + 1000, -1, 'column');
+  ROUTE.coal = { line: eng, sLine: 260, edge: eng.locate(260).edge, s: eng.locate(260).s };
+  /* Single track, signalled both ways: a home signal 400 m out from each end of every siding and
+     automatic block signals in between, staggered. Dwarfs govern moves off the sidings and Riverton 1. */
+  const sig = (line, sLine, dir, kind = 'mast') => ROUTE.signals.push({ line, sLine, dir, kind });
+  const ends = [[2420, 2420], ...Object.values(sid).map(l => [l.mainS(0), l.mainS(l.len)]), [F.ashby + 120, F.ashby + 120]];
+  for (let i = 0; i < ends.length; i++) {
+    const [a, b] = ends[i];
+    if (i > 0) sig(main, a - 420, 1);
+    if (i < ends.length - 1) sig(main, b + 420, -1);
+    if (i < ends.length - 1) {   // automatic signals between this siding and the next, about every 3 km
+      const g0 = b + 420, g1 = ends[i + 1][0] - 420, n = Math.floor((g1 - g0) / 3000);
+      for (let k = 1; k <= n; k++) { const s = g0 + (g1 - g0) * k / (n + 1); sig(main, s - 40, 1); sig(main, s + 40, -1); }
+    }
+  }
+  for (const l of [...Object.values(sid), yards[0], ashby]) { sig(l, 80, -1, 'dwarf'); sig(l, l.len - 80, 1, 'dwarf'); }
+  for (let m = 1; m * MILE < main.len; m++) ROUTE.mileposts.push({ line: main, sLine: m * MILE, num: m });
+  ROUTE.yardLimits = [[2700, -1], [F.ashby - 50, 1]];
+  ROUTE.startLine = yards[1]; ROUTE.startS = 260;
+  ROUTE.sidings = sid; ROUTE.yards = yards; ROUTE.loops = [loopW, loopE];
+  return { main, at: F };
+}
+/* where a new train is made up in a multiplayer room on the mountain (negative = from the end of the track) */
+const MTN_SPAWNS = [['Riverton 2', -175], ['Riverton 3', -140], ['Riverton 4', -112], ['Riverton 1', -200], ['Ashby 2', -150], ['Hollins Siding', -320], ['Pine Flats Siding', -320], ['Main', 5200], ['Main', 52000]];
+const MTN_SPAWN_NAMES = { 'Riverton 1': 'Riverton 1, Riverton Yard', 'Riverton 2': 'Riverton 2, Riverton Yard', 'Riverton 3': 'Riverton 3, Riverton Yard', 'Riverton 4': 'Riverton 4, Riverton Yard', 'Ashby 2': 'Ashby 2, Ashby', 'Hollins Siding': 'the Hollins siding', 'Pine Flats Siding': 'the Pine Flats siding', 'Main': 'the main line' };
+
+/* ============================================================================
    World: terrain, river, track meshes (rails, ties, ballast, turnouts)
    ========================================================================== */
 const MAT = {};
@@ -1823,6 +2025,7 @@ const INNER = { x0: -6000, x1: 6000, n0: -2000, n1: 7000, step: 20 };
 function riverX(N) { const A = n => 170 * Math.sin(n / 700) + 70 * Math.sin(n / 230 + 1); return -1203 + A(N) - A(2402); }
 function naturalH(X, N) {
   if (WORLD.custom) return layoutH(X, N);
+  if (WORLD.mtn) return mtNaturalH(X, N);
   let h = 6.5 * Noise.fbm(X / 1600 + 3.1, N / 1600 - 1.7, 4) + 2.2 * Noise.fbm(X / 320, N / 320, 3);
   // Kenton Hill (track crest at +13.5)
   h += 15.5 * Math.exp(-(((X - 1900) / 1150) ** 2 + ((N - 2400) / 820) ** 2));
@@ -1834,6 +2037,7 @@ function naturalH(X, N) {
 }
 function riverDist(X, N) {
   if (WORLD.custom) return 1e9;
+  if (WORLD.mtn) return mtRiverDist(X, N);
   let d = 1e9;
   if (N > 2402 - 40) d = Math.abs(X - riverX(N));
   else if (N > WORLD.lake.N) { const t = (N - WORLD.lake.N) / (2402 - WORLD.lake.N); const x = lerp(WORLD.lake.X, riverX(2402), smooth(0, 1, t)); d = Math.abs(X - x); }
@@ -1849,6 +2053,7 @@ function layoutH(X, N) {
 }
 function heightRaw(X, N) {
   let h = naturalH(X, N);
+  if (WORLD.mtn) return h;   // the mountain streams cut their own beds
   const dr = riverDist(X, N);
   if (dr < 130) h = lerp(-5.6, h, smooth(15, 110, dr));
   return h;
@@ -1857,11 +2062,11 @@ function heightRaw(X, N) {
 /* Lattice of track proximity over the inner region (one cell per terrain vertex). */
 function buildLattice() {
   const L = INNER, nx = Math.round((L.x1 - L.x0) / L.step) + 1, nn = Math.round((L.n1 - L.n0) / L.step) + 1;
-  const d = new Float32Array(nx * nn).fill(1e9), y = new Float32Array(nx * nn), roadY = new Float32Array(nx * nn).fill(NaN);
+  const d = new Float32Array(nx * nn).fill(1e9), y = new Float32Array(nx * nn);
   const R = 80, rc = Math.ceil(R / L.step);
   for (const e of NET.edges) {
     for (let s = 0; s <= e.len; s += 3) {
-      if (e.isBridge(s)) continue;
+      if (e.isBridge(s) || e.isTunnel(s)) continue;
       const [X, N] = e.xz(s), ty = e.elev(s);
       const ci = Math.round((X - L.x0) / L.step), cj = Math.round((N - L.n0) / L.step);
       for (let j = cj - rc; j <= cj + rc; j++) {
@@ -1876,7 +2081,7 @@ function buildLattice() {
     }
   }
   WORLD.lattice = { nx, nn, d, y };
-  WORLD.hgrid = { nx, nn, h: new Float32Array(nx * nn), ready: false };
+  WORLD.hgrid = { nx, nn, h: new Float32Array(nx * nn).fill(NaN), ready: false };
 }
 function latticeAt(X, N) {
   const L = INNER, W = WORLD.lattice;
@@ -1890,17 +2095,22 @@ function groundH(X, N, lat) {
   if (lat && lat.d < 80) {
     const w = 1 - smooth(14, 76, lat.d);
     h = lerp(h, lat.y - 0.95, w);
+    // a mountain stream beyond the embankment's foot keeps its bed under the grading's edge
+    if (WORLD.mtn && lat.d > 22) h = mtCarve(X, N, h);
   }
   return h;
 }
 function groundAt(X, N) { // continuous sampler; exact terrain triangles once the grid is filled
   const L = INNER;
+  if (WORLD.patches) { const p = patchAt(X, N); if (p !== null) return p; }
   if (X < L.x0 || X > L.x1 || N < L.n0 || N > L.n1) return heightRaw(X, N);
   const HG = WORLD.hgrid;
-  if (HG && HG.ready) {
+  if (HG && (HG.ready || WORLD.mtn)) {
     const fx = (X - L.x0) / L.step, fn = (N - L.n0) / L.step;
     let i = Math.floor(fx), j = Math.floor(fn); if (i >= HG.nx - 1) i = HG.nx - 2; if (j >= HG.nn - 1) j = HG.nn - 2;
     const tx = fx - i, tn = fn - j, k = j * HG.nx + i, H = HG.h;
+    // the mountain's terrain is built as the camera nears it, so its grid heights are worked out when first asked for
+    if (WORLD.mtn) for (const q of [k, k + 1, k + HG.nx, k + HG.nx + 1]) if (H[q] !== H[q]) { const vx = L.x0 + (q % HG.nx) * L.step, vn = L.n0 + Math.floor(q / HG.nx) * L.step; H[q] = groundH(vx, vn, latticeAt(vx, vn)); }
     const a = H[k], b = H[k + 1], d = H[k + HG.nx], e = H[k + HG.nx + 1];
     return tx + tn <= 1 ? a + (b - a) * tx + (d - a) * tn : e + (d - e) * (1 - tx) + (b - e) * (1 - tn);
   }
@@ -1930,6 +2140,7 @@ function fieldAt(X, N) {
 /* Vertex colour carries everything that is not crop (verges, ballast shoulders, banks, roads, hills).
    out[3] is the crop weight; the ground shader paints the crop pattern itself, per pixel. */
 function groundColor(X, N, h, lat, out) {
+  if (WORLD.mtn) return mtGroundColor(X, N, h, lat, out);
   let r = 0.37, g = 0.49, b = 0.22, w = 1;
   if (lat && lat.d < 30) {
     const k = 1 - smooth(6, 30, lat.d); r = lerp(r, 0.34, k); g = lerp(g, 0.45, k); b = lerp(b, 0.21, k); w *= 1 - k;
@@ -1998,13 +2209,21 @@ const CROP_GLSL = `
   }`;
 
 /* ---------------- terrain tiles ---------------- */
-function buildTerrainTile(x0, n0, size, step, scene) {
-  const hi = terrainGeo(x0, n0, size, step), lo = terrainGeo(x0, n0, size, 75);
-  const mh = new THREE.Mesh(hi, MAT.ground), ml = new THREE.Mesh(lo, MAT.ground);
-  mh.receiveShadow = true; ml.receiveShadow = false; ml.visible = false;
-  scene.add(mh); scene.add(ml);
-  WORLD.tiles.push({ hi: mh, lo: ml, c: new THREE.Vector3(x0 + size / 2, 0, -(n0 + size / 2)), r: size * 0.72 });
+function buildTerrainTile(x0, n0, size, step, scene, lazy = false) {
+  const ml = new THREE.Mesh(terrainGeo(x0, n0, size, 75), MAT.ground);
+  ml.receiveShadow = false; ml.visible = lazy;
+  scene.add(ml);
+  const t = { hi: null, lo: ml, x0, n0, size, step, c: new THREE.Vector3(x0 + size / 2, 0, -(n0 + size / 2)), r: size * 0.72 };
+  if (!lazy) tileHi(t, scene);
+  WORLD.tiles.push(t);
 }
+/* the full-detail mesh of a tile; a huge world builds these only round the camera and lets far ones go */
+function tileHi(t, scene) {
+  const mh = new THREE.Mesh(terrainGeo(t.x0, t.n0, t.size, t.step), MAT.ground);
+  mh.receiveShadow = true; scene.add(mh); t.hi = mh;
+  if (WORLD.portalHoles) WORLD.portalHoles(t);
+}
+function tileDrop(t) { scene.remove(t.hi); t.hi.geometry.dispose(); t.hi = null; }
 function terrainGeo(x0, n0, size, step) {
   const n = Math.round(size / step) + 1;
   const verts = n * n, skirt = 4 * (n - 1) * 2;
@@ -2046,11 +2265,12 @@ function terrainGeo(x0, n0, size, step) {
   geo.setAttribute('aCrop', new THREE.BufferAttribute(crop, 1));
   geo.setIndex(idx);
   geo.computeVertexNormals();
+  if (WORLD.mtn) mtRockColors(geo);
   geo.computeBoundingSphere();
   return geo;
 }
 function buildFarTerrain(scene) {
-  const x0 = -22000, x1 = 22000, n0 = -18000, n1 = 24000, st = 250;
+  const st = 250, [x0, x1, n0, n1] = WORLD.mtn ? [INNER.x0 - 15000, INNER.x1 + 15000, INNER.n0 - 15000, INNER.n1 + 15000] : [-22000, 22000, -18000, 24000];
   const nx = Math.round((x1 - x0) / st) + 1, nn = Math.round((n1 - n0) / st) + 1;
   const pos = new Float32Array(nx * nn * 3), col = new Float32Array(nx * nn * 3), uv = new Float32Array(nx * nn * 2), crop = new Float32Array(nx * nn), c = [0, 0, 0, 0];
   for (let j = 0; j < nn; j++) for (let i = 0; i < nx; i++) {
@@ -2071,6 +2291,7 @@ function buildFarTerrain(scene) {
 
 /* ---------------- water ---------------- */
 function buildWater(scene) {
+  if (WORLD.mtn) { mtBuildWater(scene); return; }
   const pts = [];
   for (let N = 8600; N >= 2402; N -= 25) pts.push([riverX(N), N]);
   for (let t = 1; t >= 0; t -= 0.04) { const N = lerp(WORLD.lake.N, 2402, t); pts.push([lerp(WORLD.lake.X, riverX(2402), smooth(0, 1, t)), N]); }
@@ -2420,13 +2641,280 @@ function updateTrackLOD(cam) {
   updateWire(cp);
   for (const b of WORLD.binGroups || []) b.visible = b.userData.c.distanceTo(cp) - b.userData.r < Math.max(3400, far);
   for (const sg of SCN.signals) { const d = Math.hypot(sg.X - cp.x, -sg.N - cp.z); for (const h of sg.heads) h.visible = d < Math.max(3500, far); }
-  for (const t of WORLD.tiles) { const d = t.c.distanceTo(cp) - t.r; const near = d < 2300; t.hi.visible = near; t.lo.visible = !near; }
+  let hiBudget = 1;
+  for (const t of WORLD.tiles) {
+    const d = t.c.distanceTo(cp) - t.r; let near = d < 2300;
+    if (near && !t.hi) { if (hiBudget-- > 0) tileHi(t, scene); else near = false; }
+    else if (!near && t.hi && WORLD.mtn && d > 3800) tileDrop(t);
+    if (t.hi) t.hi.visible = near; t.lo.visible = !near;
+  }
   const tN = LOD.treeNear.value, tF = LOD.treeFar.value;
   tF.w = fogFar(7000); tF.z = tF.w * 0.65;
   for (const t of WORLD.treeTiles || []) {
     const dc = t.c.distanceTo(cp), near = dc - t.r < tN.w, farOn = dc + t.r > tF.x && dc - t.r < tF.w;
     t.hi.forEach(m => m.visible = near); t.lo.forEach(m => m.visible = farOn);
   }
+}
+
+/* ============================================================================
+   Laurel Mountain country: the ground the mountain division runs through.
+   The land is shaped first as a drainage system (the Stony River, Laurel Run,
+   Bear Run and Pine Creek, with the mountains rising away from them), then
+   warped gently so it meets the railroad where the railroad was laid, then
+   cut by the creeks, levelled for the towns, and finally graded to the track
+   by the same cut-and-fill blend the Ohio division uses.
+   ========================================================================== */
+const MT = { rivers: [], flats: [], ridges: [] };
+
+/* a polyline through control points, resampled every `step` metres (centripetal-ish Catmull-Rom) */
+function mtSpline(ctrl, step = 10) {
+  const out = [];
+  for (let i = 0; i < ctrl.length - 1; i++) {
+    const p0 = ctrl[Math.max(0, i - 1)], p1 = ctrl[i], p2 = ctrl[i + 1], p3 = ctrl[Math.min(ctrl.length - 1, i + 2)];
+    const n = Math.max(1, Math.ceil(Math.hypot(p2[0] - p1[0], p2[1] - p1[1]) / step));
+    for (let k = 0; k < n; k++) {
+      const t = k / n, t2 = t * t, t3 = t2 * t;
+      const c = (a, b, c_, d) => 0.5 * (2 * b + (-a + c_) * t + (2 * a - 5 * b + 4 * c_ - d) * t2 + (-a + 3 * b - 3 * c_ + d) * t3);
+      out.push([c(p0[0], p1[0], p2[0], p3[0]), c(p0[1], p1[1], p2[1], p3[1])]);
+    }
+  }
+  out.push(ctrl[ctrl.length - 1].slice(0, 2));
+  return out;
+}
+/* a river: plan points with a bed elevation that only ever falls downstream (from the first point) */
+function mtRiver(name, pts, bedAt, opt) {
+  const P = []; let s = 0, prev = null;
+  for (const [X, N] of pts) { if (prev) s += Math.hypot(X - prev[0], N - prev[1]); P.push({ X, N, s }); prev = [X, N]; }
+  P.forEach((p, i) => { p.y = bedAt(p, i, P); });
+  for (let i = 1; i < P.length; i++) P[i].y = Math.min(P[i].y, P[i - 1].y - 0.0005 * (P[i].s - P[i - 1].s));   // never uphill going downstream
+  const r = Object.assign({ name, pts: P, halfW: 4, bank: 0.42, depth: 0.5, water: true }, opt);
+  MT.rivers.push(r);
+  return r;
+}
+/* points beside the main line: off metres to the left, from sA to sB (or as far as the line goes) */
+function mtBeside(sA, sB, off, step = 60) {
+  const m = ROUTE.main, out = [], dir = Math.sign(sB - sA);
+  for (let s = sA; dir > 0 ? s <= sB : s >= sB; s += dir * step) { const o = typeof off === 'function' ? off(s) : off, p = m.poseAt(clamp(s, 0, m.len)), ex = s < 0 ? s : s > m.len ? s - m.len : 0; out.push([p.X - Math.sin(p.h) * o + Math.cos(p.h) * ex, p.N + Math.cos(p.h) * o + Math.sin(p.h) * ex]); }
+  return out;
+}
+
+function mtPrepare() {
+  const F = ROUTE.features, m = ROUTE.main, Y = ROUTE.mainY;
+  MT.rivers = []; MT.flats = []; MT.ridges = [];
+  // the world box: the railroad and three kilometres round it, on 1.5 km tile lines
+  let x0 = Infinity, x1 = -Infinity, n0 = Infinity, n1 = -Infinity;
+  for (const e of NET.edges) for (let i = 0; i < e.n; i += 10) { x0 = Math.min(x0, e.X[i]); x1 = Math.max(x1, e.X[i]); n0 = Math.min(n0, e.N[i]); n1 = Math.max(n1, e.N[i]); }
+  Object.assign(INNER, { x0: Math.floor((x0 - 3000) / 1500) * 1500, x1: Math.ceil((x1 + 3000) / 1500) * 1500, n0: Math.floor((n0 - 3000) / 1500) * 1500, n1: Math.ceil((n1 + 3000) / 1500) * 1500 });
+
+  /* ---------- the rivers ---------- */
+  const sB = ROUTE.bridge.s, pBr = m.poseAt(sB), yBr = Y(sB) - 10.5;
+  // Stony River: past Riverton and Hollins on the north side, under the bridge, then up its own valley east to
+  // its head below Summit. Its bed falls about 1 m a kilometre below the bridge.
+  {
+    const west = mtBeside(-9000, 9300, s => lerp(330, 150, smooth(1500, 6000, s)), 120);
+    const east = [[pBr.X + 900, pBr.N + 200], [pBr.X + 2600, pBr.N + 700], [700, 1900], [3600, 2050], [6400, 2500], [8700, 2800], [10600, 3300]];
+    // it meets the bridge square on, so the approach banks never lie across the water
+    const nx = -Math.sin(pBr.h), nn = Math.cos(pBr.h), sq = d => [pBr.X + nx * d, pBr.N + nn * d];
+    const pts = mtSpline([...west, sq(230), [pBr.X, pBr.N], sq(-230), ...east], 12).reverse();   // upstream first, so the bed falls along the list
+    const L = pts.reduce((a, p, i) => a + (i ? Math.hypot(p[0] - pts[i - 1][0], p[1] - pts[i - 1][1]) : 0), 0);
+    let sBrR = 0; { let best = Infinity, s = 0; pts.forEach((p, i) => { if (i) s += Math.hypot(p[0] - pts[i - 1][0], p[1] - pts[i - 1][1]); const d = Math.hypot(p[0] - pBr.X, p[1] - pBr.N); if (d < best) { best = d; sBrR = s; } }); }
+    // above the bridge it climbs steadily to its head (about 300 m); below it, it falls gently toward Riverton
+    mtRiver('Stony River', pts, p => p.s < sBrR ? yBr + (sBrR - p.s) / sBrR * (300 - yBr) * (0.35 + 0.65 * (sBrR - p.s) / sBrR) : yBr - (p.s - sBrR) * 0.0011,
+      { halfW: 24, bank: 0.2, depth: 1.6 });
+    MT.riverLen = L;
+  }
+  // Laurel Run: from a spring inside the horseshoe down the valley beside the climb, into the river above the bridge
+  const lr = (() => {
+    const pts = mtSpline([...mtBeside(F.horseshoe + 250, sB + 260, s => s > F.horseshoe - 300 ? lerp(-70, -330, smooth(F.horseshoe - 300, F.horseshoe + 250, s)) : -70, 60)], 10);
+    return mtRiver('Laurel Run', pts, p => { const s = clamp(F.horseshoe + 250 - p.s, sB, m.len); return Y(s) - 9 - 24 * smooth(F.horseshoe - 1500, F.horseshoe + 250, s); }, { halfW: 3.5, bank: 0.45 });
+  })();
+  // Bear Run: down a ravine from the east, under the trestle and into Laurel Run
+  {
+    const v = ROUTE.viaduct, pv = m.poseAt(v.s), lrAt = (() => { let best = null, bd = Infinity; for (const p of lr.pts) { const d = Math.hypot(p.X - (pv.X - 760), p.N - pv.N); if (d < bd) { bd = d; best = p; } } return best; })();
+    const pts = mtSpline([[pv.X + 2100, pv.N - 500], [pv.X + 1100, pv.N - 150], [pv.X, pv.N], [pv.X - 400, pv.N + 20], [lrAt.X, lrAt.N]], 10);
+    const yv = Y(v.s) - 48;
+    let sv = 0; { let s = 0, bd = Infinity; pts.forEach((p, i) => { if (i) s += Math.hypot(p[0] - pts[i - 1][0], p[1] - pts[i - 1][1]); const d = Math.hypot(p[0] - pv.X, p[1] - pv.N); if (d < bd) { bd = d; sv = s; } }); }
+    mtRiver('Bear Run', pts, (p, i, P) => { const tot = P[P.length - 1].s; return p.s < sv ? yv + (sv - p.s) * 0.045 : lerp(yv, lrAt.y + 0.3, (p.s - sv) / (tot - sv)); }, { halfW: 2.5, bank: 0.42 });
+  }
+  // Pine Creek: rises east of the tunnel and falls beside the line all the way past Ashby
+  {
+    // past Ashby it turns away south, clear of the turning loop
+    const pts = mtSpline(mtBeside(F.tunnelEnd + 2200, m.len + 3000, s => -95 - 1400 * smooth(m.len - 700, m.len + 2200, s), 80), 10);
+    mtRiver('Pine Creek', pts, p => { const s = F.tunnelEnd + 2200 + p.s; return Y(Math.min(s, m.len)) - 11 - 0.004 * p.s; }, { halfW: 4, bank: 0.4 });
+  }
+  // the summit ridge the tunnel goes through: a crest across the line at the bore's middle
+  { const sm = (F.tunnel + F.tunnelEnd) / 2, p = m.poseAt(sm); MT.ridges.push({ X: p.X, N: p.N, h: p.h, y: Y(sm), top: 95, half: (F.tunnelEnd - F.tunnel) / 2, len: 5200 }); }
+
+  /* ---------- level ground for the towns ---------- */
+  for (const st of ROUTE.stations) {
+    if (st.kind !== 'depot') continue;
+    const loc = st.line.locate(st.sLine); loc.edge.pose(loc.s, FR);
+    MT.flats.push({ X: FR.p.x, N: -FR.p.z, h: Math.atan2(-FR.f.z, FR.f.x), side: st.side, y: FR.p.y - 0.75, U: 330, V: 270 });
+  }
+
+  /* ---------- fields on coarse grids ---------- */
+  const G = (step) => { const nx = Math.ceil((INNER.x1 - INNER.x0) / step) + 1, nn = Math.ceil((INNER.n1 - INNER.n0) / step) + 1; return { step, nx, nn, a: new Float32Array(nx * nn) }; };
+  // river samples hashed for exact distances near the water
+  MT.rh = new Map();
+  for (const r of MT.rivers) for (let i = 0; i < r.pts.length; i++) {
+    const p = r.pts[i], k = Math.floor(p.X / 100) + ',' + Math.floor(p.N / 100);
+    let a = MT.rh.get(k); if (!a) MT.rh.set(k, a = []); a.push(p, r, i);
+  }
+  // distance to the nearest water, by a chamfer sweep on a 100 m grid (good to a few per cent, which is all the uplift needs)
+  const chamfer = (seeds) => {
+  const dV = G(100), near = new Int32Array(dV.nx * dV.nn).fill(-1);
+  dV.a.fill(1e9);
+  for (let q = 0; q < seeds.length; q++) { const p = seeds[q], i = Math.round((p.X - INNER.x0) / 100), j = Math.round((p.N - INNER.n0) / 100); if (i < 0 || j < 0 || i >= dV.nx || j >= dV.nn) continue; const k = j * dV.nx + i, d = Math.hypot(INNER.x0 + i * 100 - p.X, INNER.n0 + j * 100 - p.N); if (d < dV.a[k]) { dV.a[k] = d; near[k] = q; } }
+  const relax = (i, j, ii, jj) => { if (ii < 0 || jj < 0 || ii >= dV.nx || jj >= dV.nn) return; const kk = jj * dV.nx + ii, q = near[kk]; if (q < 0) return; const p = seeds[q], k = j * dV.nx + i, d = Math.hypot(INNER.x0 + i * 100 - p.X, INNER.n0 + j * 100 - p.N); if (d < dV.a[k]) { dV.a[k] = d; near[k] = q; } };
+  for (let pass = 0; pass < 2; pass++) {
+    for (let j = 0; j < dV.nn; j++) for (let i = 0; i < dV.nx; i++) { relax(i, j, i - 1, j); relax(i, j, i, j - 1); relax(i, j, i - 1, j - 1); relax(i, j, i + 1, j - 1); }
+    for (let j = dV.nn - 1; j >= 0; j--) for (let i = dV.nx - 1; i >= 0; i--) { relax(i, j, i + 1, j); relax(i, j, i, j + 1); relax(i, j, i + 1, j + 1); relax(i, j, i - 1, j + 1); }
+  }
+  return dV;
+  };
+  const wet = [];
+  for (const r of MT.rivers) for (let i = 0; i < r.pts.length; i += 3) wet.push(r.pts[i]);
+  MT.dV = chamfer(wet);
+  // and to the nearest track (the forest and the far scenery thin out with it)
+  const rails = [];
+  for (const e of NET.edges) for (let s = 0; s <= e.len; s += 40) { const [X, N] = e.xz(s); rails.push({ X, N }); }
+  MT.dT = chamfer(rails);
+  // the valley floor: river elevations spread out by a wide Gaussian (and a still wider one beyond it)
+  const fl = G(250), fw = 1400, smp = [];
+  for (const r of MT.rivers) for (let i = 0; i < r.pts.length; i += 10) smp.push(r.pts[i]);
+  for (let j = 0; j < fl.nn; j++) for (let i = 0; i < fl.nx; i++) {
+    const X = INNER.x0 + i * fl.step, N = INNER.n0 + j * fl.step;
+    let sw = 0, sy = 0, sw2 = 0, sy2 = 0;
+    for (const p of smp) { const d2 = (p.X - X) ** 2 + (p.N - N) ** 2, w2 = Math.exp(-d2 / (2 * 4200 * 4200)); sw2 += w2; sy2 += w2 * p.y; if (d2 < 25e6) { const w = Math.exp(-d2 / (2 * fw * fw)); sw += w; sy += w * p.y; } }
+    fl.a[j * fl.nx + i] = (sy + (sy2 / sw2) * 0.02) / (sw + 0.02);
+  }
+  MT.fl = fl;
+  // the railroad's correction: how far the drainage-shaped land is from the grade the track was laid on,
+  // spread round each piece of track (not the tunnel or the trestle, which leave the land alone)
+  const C = G(50), cw = 210, ch = new Map();
+  for (const e of NET.edges) for (let s = 0; s <= e.len; s += 12) {
+    if (e.isTunnel(s) || (e.isBridge(s) && e.line === m && Math.abs(e.lineS0 + s - ROUTE.viaduct.s) < ROUTE.viaduct.half + 5)) continue;
+    const [X, N] = e.xz(s), k = Math.floor(X / 500) + ',' + Math.floor(N / 500);
+    let a = ch.get(k); if (!a) ch.set(k, a = []); a.push(X, N, e.elev(s) - mtValley(X, N));
+  }
+  for (let j = 0; j < C.nn; j++) for (let i = 0; i < C.nx; i++) {
+    const X = INNER.x0 + i * 50, N = INNER.n0 + j * 50, ci = Math.floor(X / 500), cj = Math.floor(N / 500);
+    let sw = 0, sr = 0, dm = 1e18;
+    for (let b = cj - 2; b <= cj + 2; b++) for (let a = ci - 2; a <= ci + 2; a++) { const l = ch.get(a + ',' + b); if (!l) continue; for (let q = 0; q < l.length; q += 3) { const d2 = (l[q] - X) ** 2 + (l[q + 1] - N) ** 2; if (d2 < dm) dm = d2; if (d2 > 9 * cw * cw) continue; const w = Math.exp(-d2 / (2 * cw * cw)); sw += w; sr += w * l[q + 2]; } }
+    // the nearest track's own correction, eased out over the half kilometre beyond it
+    C.a[j * C.nx + i] = sw > 0 ? sr / sw * (1 - smooth(120, 640, Math.sqrt(dm))) : 0;
+  }
+  MT.C = C;
+  WORLD.riverPts = [];
+}
+/* bilinear sample of a coarse field, clamped at the box edges */
+function mtField(F, X, N) {
+  const fx = clamp((X - INNER.x0) / F.step, 0, F.nx - 1.001), fn = clamp((N - INNER.n0) / F.step, 0, F.nn - 1.001);
+  const i = Math.floor(fx), j = Math.floor(fn), tx = fx - i, tn = fn - j, k = j * F.nx + i, a = F.a;
+  return (a[k] * (1 - tx) + a[k + 1] * tx) * (1 - tn) + (a[k + F.nx] * (1 - tx) + a[k + F.nx + 1] * tx) * tn;
+}
+/* ridged noise in 0..1: sharp crests, rounded hollows */
+function mtRidged(x, y, oct) {
+  let s = 0, a = 0.5, f = 1, w = 1, n = 0;
+  for (let i = 0; i < oct; i++) { let v = 1 - Math.abs(Noise.n2(x * f + i * 31.7, y * f - i * 17.9) * 1.4); v *= v; v *= w; w = clamp(v * 1.6, 0, 1); s += v * a; n += a; a *= 0.5; f *= 2.07; }
+  return s / n;
+}
+/* the land as the water shaped it: valley floors at the rivers, mountains rising away from them */
+function mtValley(X, N) {
+  const dv = mtField(MT.dV, X, N), fl = mtField(MT.fl, X, N);
+  const up = 520 * Math.pow(smooth(60, 3000, dv), 0.8);
+  const amp = 20 + 210 * smooth(150, 1600, dv);
+  let h = fl + up + amp * (mtRidged(X / 2300 + 7.1, N / 2300 - 3.3, 5) - 0.42) + 6 * Noise.fbm(X / 260, N / 260, 3);
+  return h;
+}
+/* the summit ridge: a dome over the bore, 95 m over the rails at the middle and 14 m at the portals (a little
+   over the headwalls), dying away within 250 m beyond them */
+function mtRidge(X, N, h) {
+  for (const r of MT.ridges) {
+    const dx = X - r.X, dn = N - r.N, c = Math.cos(r.h), s = Math.sin(r.h), a = Math.abs(dx * c + dn * s), across = -dx * s + dn * c;
+    const rise = a < r.half ? 14 + (r.top - 14) * (1 - (a / r.half) ** 2) : 14 * (1 - smooth(r.half, r.half + 250, a));
+    if (rise <= 0) continue;
+    const T = r.y + rise * (1 + 0.4 * Noise.fbm(X / 700, N / 700, 3));
+    h = Math.max(h, lerp(h, T, 1 - smooth(r.len * 0.35, r.len * 0.5, Math.abs(across))));
+  }
+  return h;
+}
+/* the nearest bit of water: its bed height, how far, and which river; null beyond 250 m */
+function mtWaterNear(X, N) {
+  if (mtField(MT.dV, X, N) > 420) return null;   // the coarse distance field rules out most of the map at once
+  const ci = Math.floor(X / 100), cj = Math.floor(N / 100); let best = null, bd = 250;
+  for (let b = cj - 3; b <= cj + 3; b++) for (let a = ci - 3; a <= ci + 3; a++) {
+    const l = MT.rh.get(a + ',' + b); if (!l) continue;
+    for (let q = 0; q < l.length; q += 3) {
+      const p = l[q], r = l[q + 1], i = l[q + 2], nb = r.pts[Math.min(i + 1, r.pts.length - 1)];
+      // distance to the segment p..nb, and the bed height there
+      const ux = nb.X - p.X, un = nb.N - p.N, L2 = ux * ux + un * un || 1, t = clamp(((X - p.X) * ux + (N - p.N) * un) / L2, 0, 1);
+      const d = Math.hypot(X - p.X - ux * t, N - p.N - un * t) - r.halfW;
+      if (d < bd) { bd = d; best = { d, y: lerp(p.y, nb.y, t), r }; }
+    }
+  }
+  return best;
+}
+/* the natural ground before the track is graded in */
+function mtNaturalH(X, N) {
+  // the ridge goes on after the railroad's correction, which would otherwise pull it down to the approach cuts
+  let h = mtRidge(X, N, mtValley(X, N) + mtField(MT.C, X, N));
+  // town sites are levelled to the depot
+  for (const f of MT.flats) {
+    const dx = X - f.X, dn = N - f.N; if (dx * dx + dn * dn > 700 * 700) continue;
+    const u = dx * Math.cos(f.h) + dn * Math.sin(f.h), v = (dx * Math.sin(f.h) - dn * Math.cos(f.h)) * f.side;
+    const k = (1 - smooth(f.U, f.U + 160, Math.abs(u))) * (1 - smooth(-20, 20, -v)) * (1 - smooth(f.V, f.V + 160, v));
+    if (k > 0) h = lerp(h, f.y + 0.4 * Noise.fbm(X / 90, N / 90, 2), k);
+  }
+  return mtCarve(X, N, h);
+}
+/* the water cuts its own bed, through the town flats too: flat across the stream, banks rising away */
+function mtCarve(X, N, h) {
+  const w = mtWaterNear(X, N);
+  if (w) {
+    const bed = w.y - 0.6 * (1 - smooth(-w.r.halfW, 0, w.d));
+    h = Math.min(h, bed + Math.max(0, w.d + w.r.halfW * 0.55) * w.r.bank + 0.25 * smooth(0, 30, w.d) * Noise.n2(X / 23, N / 23));
+    // and never lies below its own surface beyond the banks, where the water would stand over dry land
+    if (w.d > 0) { const lip = w.y + w.r.depth + 0.35 + w.d * 0.03; if (h < lip) h = lerp(h, lip, 1 - smooth(40, 240, w.d)); }
+  }
+  return h;
+}
+/* how far from the water's edge (the Ohio code reads its river distance from the centre of an 84 m wide river) */
+function mtRiverDist(X, N) { const w = mtWaterNear(X, N); return w ? w.d + 21 : 1e9; }
+/* the streams' surfaces: a ribbon a little wider than the water, its edges tucked under the banks */
+function mtBuildWater(scene) {
+  for (const r of MT.rivers) {
+    const P = r.pts, pos = [], idx = [], w = r.halfW + 2.5;
+    for (let i = 0; i < P.length; i++) {
+      const a = P[Math.max(0, i - 1)], b = P[Math.min(P.length - 1, i + 1)], dx = b.X - a.X, dn = b.N - a.N, L = Math.hypot(dx, dn) || 1, nx = -dn / L, nn = dx / L, y = P[i].y + r.depth;
+      pos.push(P[i].X + nx * w, y, -(P[i].N + nn * w), P[i].X - nx * w, y, -(P[i].N - nn * w));
+      if (i > 0) { const k = (i - 1) * 2; idx.push(k, k + 2, k + 1, k + 1, k + 2, k + 3); }
+    }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals(); g.computeBoundingSphere();
+    const m = new THREE.Mesh(g, MAT.water); m.renderOrder = 1; scene.add(m);
+    WORLD.riverPts.push(...P.filter((p, i) => i % 4 === 0).map(p => [p.X, p.N]));
+  }
+}
+
+/* the mountain's ground: no crops, leaf litter and moss under the woods, rough meadow where the woods thin,
+   cinder and ballast shoulders by the track and gravel bars along the water */
+function mtGroundColor(X, N, h, lat, out) {
+  const wood = (0.55 + 0.5 * Noise.fbm(X / 420 + 9, N / 420 - 4, 3)) * (1 - 0.55 * smooth(700, 2600, mtField(MT.dT, X, N)));
+  const k0 = typeof mtClearing === 'function' && mtClearing(X, N, 6) ? 0 : smooth(0.35, 0.75, wood);   // the yards are cleared meadow
+  // under the woods: dark leaf litter and the canopy's shade, rust and olive in patches so a wooded hillside reads as autumn woods from afar
+  const rust = smooth(-0.1, 0.5, Noise.fbm(X / 160 + 3, N / 160 - 7, 2));
+  let r = lerp(0.40, lerp(0.25, 0.34, rust), k0), g = lerp(0.47, lerp(0.27, 0.24, rust), k0), b = lerp(0.24, lerp(0.14, 0.12, rust), k0);
+  // hemlock needles darken the high ground
+  const hk = smooth(300, 560, h) * k0; r = lerp(r, 0.24, hk * 0.5); g = lerp(g, 0.27, hk * 0.5); b = lerp(b, 0.18, hk * 0.5);
+  if (lat && lat.d < 30) {
+    const k = 1 - smooth(8, 30, lat.d); r = lerp(r, 0.38, k); g = lerp(g, 0.44, k); b = lerp(b, 0.23, k);
+    if (lat.d < 7) { const k2 = 1 - smooth(3, 7, lat.d); r = lerp(r, 0.33, k2); g = lerp(g, 0.31, k2); b = lerp(b, 0.28, k2); }
+  }
+  const dr = mtRiverDist(X, N);
+  if (dr < 50) { const k = 1 - smooth(14, 50, dr); r = lerp(r, 0.42, k); g = lerp(g, 0.40, k); b = lerp(b, 0.33, k); }
+  if (WORLD.townMask && inTown(X, N)) { r = 0.36; g = 0.45; b = 0.22; }
+  const n = 0.86 + 0.28 * (Noise.n2(X / 37, N / 37) * 0.5 + 0.5);
+  out[0] = r * n; out[1] = g * n; out[2] = b * n; out[3] = 0;
 }
 
 /* ============================================================================
@@ -2820,7 +3308,7 @@ function farmstead(X, N, yaw, r) {
 /* -------- bridge (two through-truss Pratt spans) -------- */
 function buildBridge(scene) {
   // one double-track truss carries both main tracks: track 1 at z = +h2, track 2 at -h2
-  const b = ROUTE.bridge, main = ROUTE.main, h2 = (ROUTE.spacing || 0) / 2, tracks = h2 ? [h2, -h2] : [0];
+  const b = ROUTE.bridge, main = b.line || ROUTE.main, h2 = (ROUTE.spacing || 0) / 2, tracks = h2 ? [h2, -h2] : [0];
   const c = linePlace(main, b.s, -h2);
   const base = baseM(c.X, c.y, c.N, c.yaw);
   const gb = new GeoBin();
@@ -2857,7 +3345,7 @@ function buildBridge(scene) {
       const lean = Math.atan2(pw, H + 0.75), px = sOff + s * (span / 2 - pw / 2 - (H / 2 - 0.9) * pw / (H + 0.75));
       const pm = P(base, px, H - 1.1, 0, 0, 0, s * lean);
       gb.add('steel', new THREE.BoxGeometry(0.3, 1.4, 2 * W), pm);
-      const nm = nameBoard('NICKEL PLATE · SANDUSKY RIVER'); SMAT.nbBridge = nm;
+      const nm = nameBoard(b.name || 'NICKEL PLATE · SANDUSKY RIVER'); SMAT.nbBridge = nm;
       gb.add('nbBridge', new THREE.PlaneGeometry(4.8, 0.62), pm.clone().multiply(M(s * 0.157, 0, 0, 0, s * Math.PI / 2, 0)));
     }
   }
@@ -2865,7 +3353,7 @@ function buildBridge(scene) {
   for (const x of [-span, 0, span]) {
     const top = -1.3;
     const g = groundAt(c.X + Math.cos(c.yaw) * x, c.N + Math.sin(c.yaw) * x);
-    const h = top - (Math.min(g, -5.6) - 1);
+    const h = top - (Math.min(WORLD.mtn ? g - c.y : g, -5.6) - 1);   // the mountain's river runs well below the rails
     gb.add('concrete', boxT(x === 0 ? 3.2 : 5, h, 8.4 + 2 * h2, 2), P(base, x, top - h / 2, 0));
     if (x !== 0) {
       // abutment backwall, then the ballasted approach fill out to the end of the bridge limits (±72),
@@ -3020,6 +3508,11 @@ function buildRoads(scene) {
 }
 
 /* -------- pole line along the main -------- */
+/* no poles through a tunnel or across the trestle: the line leaves the track there and rejoins beyond */
+function offPoles(line, s) {
+  for (const T of ROUTE.tunnels || []) if (T.line === line && s > T.s0 - 40 && s < T.s1 + 40) return true;
+  const V = ROUTE.viaduct; return !!(V && V.line === line && Math.abs(s - V.s) < V.half + 30);
+}
 function buildPoleLine(scene) {
   const main = ROUTE.main;
   const pole = (() => {
@@ -3054,7 +3547,7 @@ function buildPoleLine(scene) {
   let prev = null;
   for (let s = 20; s < main.len; s += 48) {
     const pl = clearPlace(main, s, -14.5, 3.5);   // swings out round the passing sidings
-    if (kept(pl.X, pl.N, 2) || riverDist(pl.X, pl.N) < 32) { prev = null; continue; }
+    if (kept(pl.X, pl.N, 2) || riverDist(pl.X, pl.N) < 32 || offPoles(main, s)) { prev = null; continue; }
     const y = groundAt(pl.X, pl.N) - 0.3;
     const p = new THREE.Vector3(pl.X, y, -pl.N);
     const cur = { p, yaw: pl.yaw };
@@ -3139,6 +3632,7 @@ function updateSignals(dt = 0) {
 }
 function buildSigns() {
   for (const mp of ROUTE.mileposts) {
+    if ((ROUTE.tunnels || []).some(T => T.line === mp.line && mp.sLine > T.s0 - 15 && mp.sLine < T.s1 + 15)) continue;
     const pl = clearPlace(mp.line, mp.sLine, -3.6 - (ROUTE.spacing || 0));   // beyond track 2 and any siding off it
     const y = groundAt(pl.X, pl.N);
     const base = baseM(pl.X, y, pl.N, pl.yaw + Math.PI / 2);
@@ -3148,8 +3642,8 @@ function buildSigns() {
     gb.add(k, new THREE.BoxGeometry(0.24, 0.75, 0.24), P(base, 0, 1.1, 0));
   }
   // yard limit boards
-  for (const [s, d] of [[300, 1], [1980, -1]]) {
-    const pl = clearPlace(ROUTE.main, s, d > 0 ? 3.6 : -3.6 - ROUTE.spacing);
+  for (const [s, d] of ROUTE.yardLimits || [[300, 1], [1980, -1]]) {
+    const pl = clearPlace(ROUTE.main, s, d > 0 ? 3.6 : -3.6 - (ROUTE.spacing || 0));
     const y = groundAt(pl.X, pl.N);
     const base = baseM(pl.X, y, pl.N, pl.yaw + (d > 0 ? Math.PI : 0));
     const gb = binAt(pl.X, pl.N);
@@ -3172,6 +3666,7 @@ function buildStations() {
       // spout reaches over the track: modelled in waterTower toward -z of base (which faces track)
     }
   }
+  if (WORLD.mtn) { mtFacilities(); return; }
   if (WORLD.custom) return;   // the rest is the Berkshire Division's own terminal
   const eng = ROUTE.features.engine;
   coalingTower(linePlace(eng, ROUTE.coal.sLine, 0));
@@ -3743,7 +4238,7 @@ function genGrass(piece, scene) {
   const r = rng(e.id * 131 + Math.floor(U.s0 * 7));
   const L = { grass: [], goldenrod: [], aster: [], bush: [] };
   for (let s = U.s0; s < U.s1; s += 1.15) {
-    if (e.isBridge(s)) continue;
+    if (e.isBridge(s) || e.isTunnel(s)) continue;
     e.pose(s, FR);
     for (const side of [-1, 1]) {
       const n = 2 + (r() < 0.55 ? 1 : 0);
@@ -3977,6 +4472,391 @@ function updateWire(cp) {
   const want = !!(GAME.train && GAME.train.elec) || (MP.on && [...MP.peers.values()].some(p => p.rt && p.rt.train.elec));
   if (want && !WIRE.built) buildWire(scene);
   for (const g of WIRE.groups) g.visible = want && g.userData.c.distanceTo(cp) - g.userData.r < 3400;
+}
+
+/* ============================================================================
+   Laurel Mountain structures and forest: the Riverton engine terminal, the
+   Bear Run trestle, Summit tunnel (portals, lining and the hillside graded
+   round them), and the forest, grown tile by tile round the camera.
+   ========================================================================== */
+
+/* ---------------- Riverton engine terminal ---------------- */
+function mtFacilities() {
+  const eng = ROUTE.features.engine;
+  coalingTower(linePlace(eng, ROUTE.coal.sLine, 0));
+  sandHouse(linePlace(eng, 360, 0));
+  engineHouse(linePlace(eng, eng.len - 24, 0));
+  yardOffice(clearPlace(ROUTE.main, 2300, 10, 6));
+}
+
+/* ---------------- Bear Run trestle ----------------
+   A steel deck-girder viaduct: tower spans of 9 m and 18 m intermediate spans alternate on battered
+   four-legged towers standing on concrete pedestals. Two plate girders under the ties carry the track. */
+function mtBuildViaduct(scene) {
+  const V = ROUTE.viaduct, line = V.line, gb = new GeoBin();
+  const s0 = V.s - V.half, s1 = V.s + V.half;
+  const frameAt = (s, F) => { const loc = line.locate(s); loc.edge.pose(loc.s, F); return F; };
+  const at = (F, x, y, z) => new THREE.Vector3().copy(F.p).addScaledVector(F.f, x).addScaledVector(_cU0, y).addScaledVector(F.r, z);
+  const strut = (key, a, b, w, d) => {   // a box from point a to point b
+    const L = a.distanceTo(b), g = new THREE.BoxGeometry(w, L, d), m = new THREE.Matrix4();
+    const dir = _v3.subVectors(b, a).normalize(), q = new THREE.Quaternion().setFromUnitVectors(_cU0, dir);
+    m.compose(_v2.addVectors(a, b).multiplyScalar(0.5), q, _v1.set(1, 1, 1));
+    gb.add(key, g, m);
+  };
+  const GD = 1.9, GZ = 1.05;                    // girder depth below the tie bottoms, girder centres either side
+  const yTop = -0.364, yBot = yTop - GD;          // relative to the railhead
+  // abutments at each end: a concrete seat and backwall, with the ballasted fill sloping down to the ground
+  for (const [s, dir] of [[s0, -1], [s1, 1]]) {
+    const F = frameAt(s, newFrame()), base = frameMatrix(F, new THREE.Matrix4());
+    const gl = Math.min(...[-3, 0, 3].map(z => groundAt(at(F, 0, 0, z).x, -at(F, 0, 0, z).z))) - F.p.y;
+    // the body under the approach fill, the bridge seat the girder ends bear on, and the backwall between them,
+    // which stops under the ties so the track runs straight over it
+    const h = -0.5 - gl + 1.5, hs = yBot - gl + 1.5;
+    gb.add('concrete', boxT(3.7, h, 6.6, 2), base.clone().multiply(M(dir * 1.85, -0.5 - h / 2, 0)));
+    gb.add('concrete', boxT(1.4, hs, 6.6, 2), base.clone().multiply(M(-dir * 0.7, yBot - hs / 2, 0)));
+    gb.add('concrete', boxT(0.5, -0.42 - yBot, 6.6), base.clone().multiply(M(-dir * 0.25, (yBot - 0.42) / 2, 0)));
+  }
+  // the towers: every 27 m, a 9 m tower span then an 18 m girder span
+  const towers = [];
+  for (let s = s0 + 18; s + 9 <= s1 - 17.9; s += 27) towers.push([s, s + 9]);
+  for (const [ta, tb] of towers) {
+    const bents = [ta, tb].map(s => {
+      const F = frameAt(s, newFrame()), legs = [];
+      for (const z of [-1, 1]) {
+        const top = at(F, 0, yBot - 0.2, z * 1.55);
+        // battered 1 in 6 outward; follow the ground down to the pedestal
+        let len = 0, foot = null;
+        for (let k = 0; k < 4; k++) { const d = top.y - (foot ? foot.gy : top.y - 20); foot = at(F, 0, yBot - 0.2 - d, z * (1.55 + d / 6)); foot.gy = groundAt(foot.x, -foot.z) + 0.5; len = d; }
+        const bot = at(F, 0, 0, 0); bot.copy(F.p).addScaledVector(_cU0, yBot - 0.2 - (top.y - foot.gy)).addScaledVector(F.r, z * (1.55 + (top.y - foot.gy) / 6));
+        legs.push({ top, bot, z });
+        strut('steel', top, bot, 0.42, 0.42);
+        // pedestal under each leg, down past the lowest ground round it
+        const pm = new THREE.Matrix4().makeRotationY(Math.atan2(-F.f.z, F.f.x)).setPosition(bot.x, bot.y, bot.z);
+        let lo = Infinity; for (const [dx, dz] of [[-0.9, -0.9], [0.9, -0.9], [0.9, 0.9], [-0.9, 0.9]]) lo = Math.min(lo, groundAt(bot.x + dx, -(bot.z + dz)));
+        const ph = bot.y - lo + 0.6;
+        gb.add('concrete', boxT(1.5, ph, 1.5), pm.multiply(M(0, -ph / 2 + 0.15, 0)));
+      }
+      // cap beam across the bent under the girders
+      strut('steel', at(F, 0, yBot - 0.2, -1.9), at(F, 0, yBot - 0.2, 1.9), 0.5, 0.45);
+      return { F, legs };
+    });
+    // bracing: struts every 8 m down each bent and between the two bents, with X braces in each panel
+    const H = bents[0].legs[0].top.y - bents[0].legs[0].bot.y, nPanel = Math.max(1, Math.round(H / 8));
+    const P = (leg, t) => new THREE.Vector3().lerpVectors(leg.top, leg.bot, t);
+    for (let i = 0; i <= nPanel; i++) {
+      const t = i / nPanel, t2 = (i + 1) / nPanel;
+      for (const b of bents) {
+        if (i > 0) strut('steel', P(b.legs[0], t), P(b.legs[1], t), 0.22, 0.22);
+        if (i < nPanel) { strut('steel', P(b.legs[0], t), P(b.legs[1], t2), 0.12, 0.12); strut('steel', P(b.legs[1], t), P(b.legs[0], t2), 0.12, 0.12); }
+      }
+      for (let z = 0; z < 2; z++) {
+        const a = bents[0].legs[z], c = bents[1].legs[z];
+        if (i > 0) strut('steel', P(a, t), P(c, t), 0.22, 0.22);
+        if (i < nPanel) { strut('steel', P(a, t), P(c, t2), 0.12, 0.12); strut('steel', P(c, t), P(a, t2), 0.12, 0.12); }
+      }
+    }
+  }
+  // plate girders end to end, with stiffeners, bearing on the cap beams and abutment seats
+  const stops = [s0 + 0.6, ...towers.flat(), s1 - 0.6];
+  for (let i = 0; i < stops.length - 1; i++) {
+    const a = stops[i], b = stops[i + 1];
+    for (const z of [-GZ, GZ]) {
+      const Fa = frameAt(a + 0.05, newFrame()), Fb = frameAt(b - 0.05, newFrame());
+      strut('steel', at(Fa, 0, (yTop + yBot) / 2, z), at(Fb, 0, (yTop + yBot) / 2, z), 0.06, GD);   // web
+      for (const y of [yTop - 0.03, yBot + 0.03]) strut('steel', at(Fa, 0, y, z), at(Fb, 0, y, z), 0.46, 0.06);   // flanges (box lies along the strut)
+      for (let s = a + 1.5; s < b - 1; s += 1.5) { const F = frameAt(s, FR2); strut('steel', at(F, 0, yTop - 0.05, z + 0.12), at(F, 0, yBot + 0.05, z + 0.12), 0.1, 0.02); strut('steel', at(F, 0, yTop - 0.05, z - 0.12), at(F, 0, yBot + 0.05, z - 0.12), 0.1, 0.02); }
+    }
+    // cross frames between the girders
+    for (let s = a + 3; s < b - 2; s += 4.5) { const F = frameAt(s, FR2); strut('steel', at(F, 0, yTop - 0.1, -GZ), at(F, 0, yBot + 0.1, GZ), 0.1, 0.1); strut('steel', at(F, 0, yBot + 0.1, -GZ), at(F, 0, yTop - 0.1, GZ), 0.1, 0.1); }
+  }
+  // open deck: ties, guard timbers, a walkway with a pipe railing on one side
+  const r = rng(51);
+  for (let s = s0 - 1; s <= s1 + 1; s += 0.42) {
+    const F = frameAt(s, FR2), m = frameMatrix(F, new THREE.Matrix4());
+    const geo = new THREE.BoxGeometry(0.24, 0.24, (Math.round(s / 0.42) % 4 ? 3.1 : 4.6)); geo.translate(0, -0.3, Math.round(s / 0.42) % 4 ? 0 : 0.75);
+    const v = 0.7 + r() * 0.3, col = new Float32Array(geo.attributes.position.count * 3);
+    for (let i = 0; i < col.length; i += 3) { col[i] = 0.42 * v; col[i + 1] = 0.36 * v; col[i + 2] = 0.29 * v; }
+    geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    gb.add('tie', geo, m);
+  }
+  for (let s = s0 - 1; s < s1 + 1; s += 6) {
+    const Fa = frameAt(s, newFrame()), Fb = frameAt(Math.min(s + 6, s1 + 1), newFrame());
+    for (const z of [-1.42, 1.42]) strut('wood', at(Fa, 0, -0.1, z), at(Fb, 0, -0.1, z), 0.2, 0.2);
+    strut('wood', at(Fa, 0, -0.2, 2.45), at(Fb, 0, -0.2, 2.45), 0.66, 0.06);
+    strut('steel', at(Fa, 0, 0.85, 2.75), at(Fb, 0, 0.85, 2.75), 0.06, 0.06);
+    strut('steel', at(Fa, 0, -0.2, 2.75), at(Fa, 0, 0.85, 2.75), 0.06, 0.06);
+  }
+  const vis = gb.build({ steel: MAT.bridge, concrete: SMAT.concrete, tie: MAT.tie, wood: SMAT.wood });
+  vis.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  scene.add(vis);
+  // keep the woods off the towers, and from under the deck where it runs low near the ends
+  for (const [ta, tb] of towers) { const p = line.poseAt((ta + tb) / 2); keep(p.X, p.N, 16); }
+  for (let s = s0 - 10; s <= s1 + 10; s += 8) { const p = line.poseAt(s), F = frameAt(s, FR2); if (F.p.y - groundAt(p.X, p.N) < 24) keep(p.X, p.N, 9); }
+}
+const _cU0 = new THREE.Vector3(0, 1, 0);
+
+/* ---------------- Summit tunnel ----------------
+   The bore is lined in concrete: walls 3.0 m either side of the centre line up to the springing at 4.6 m,
+   then a semicircular arch to the crown at 7.6 m. At each end a concrete headwall stands across the cut,
+   and the hillside round it is graded on a fine patch of ground that replaces the terrain there. */
+const BORE = { half: 3.0, spring: 4.6, crown: 7.6, wallH: 11.2, wallHalf: 13.2, wallT: 2.4, cutHalf: 4.5, cutSlope: 1.5 };
+function boreProfile(n = 16) {   // the inside of the lining, from the left foot round the arch to the right foot
+  const p = [[-BORE.half, -1.6], [-BORE.half, BORE.spring]];
+  for (let i = 1; i < n; i++) { const a = Math.PI - Math.PI * i / n; p.push([Math.cos(a) * BORE.half, BORE.spring + Math.sin(a) * BORE.half]); }
+  p.push([BORE.half, BORE.spring], [BORE.half, -1.6]);
+  return p;
+}
+function mtBuildTunnels(scene) {
+  WORLD.portals = []; WORLD.patches = [];
+  for (const T of ROUTE.tunnels) {
+    const line = T.line, prof = boreProfile();
+    // the lining, darkening toward the middle of the bore where daylight never reaches
+    const pos = [], col = [], idx = [], F = newFrame();
+    const nS = Math.ceil((T.s1 - T.s0) / 4);
+    for (let i = 0; i <= nS; i++) {
+      const s = T.s0 + (T.s1 - T.s0) * i / nS, loc = line.locate(s); loc.edge.pose(loc.s, F);
+      const depth = Math.min(s - T.s0, T.s1 - s), k = 0.1 + 0.9 * Math.exp(-depth / 35);
+      for (const [x, y] of prof) {
+        pos.push(F.p.x + F.r.x * x + F.u.x * y, F.p.y + F.r.y * x + F.u.y * y, F.p.z + F.r.z * x + F.u.z * y);
+        const v = (0.55 + 0.1 * Noise.hash(i, Math.round(y * 3))) * k; col.push(v, v * 0.97, v * 0.92);
+      }
+      if (i) { const n = prof.length, a = (i - 1) * n, b = i * n; for (let q = 0; q < n - 1; q++) idx.push(a + q, b + q, a + q + 1, a + q + 1, b + q, b + q + 1); }
+    }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); g.setIndex(idx);
+    g.computeVertexNormals(); g.computeBoundingSphere();
+    const lining = new THREE.Mesh(g, SMAT.lining || (SMAT.lining = new THREE.MeshLambertMaterial({ vertexColors: true, map: TEX.ground })));
+    lining.castShadow = true; lining.receiveShadow = true; scene.add(lining);
+    if (g.attributes.normal.getY(prof.length * 3 + 8) > 0) throw new Error('tunnel lining wound outward');
+    for (const [s, dir] of [[T.s0, 1], [T.s1, -1]]) mtPortal(scene, T, s, dir);
+  }
+}
+/* a portal at s on line, dir +1 when the bore runs on toward +s */
+function mtPortal(scene, T, s, dir) {
+  const line = T.line, loc = line.locate(s), F = newFrame(); loc.edge.pose(loc.s, F);
+  if (dir < 0) { F.f.negate(); F.r.negate(); }
+  const rail = F.p.y, yaw = Math.atan2(-F.f.z, F.f.x);
+  const P = { X: F.p.x, N: -F.p.z, y: rail, yaw, c: Math.cos(yaw), sn: Math.sin(yaw), name: T.name };
+  WORLD.portals.push(P);
+  // the headwall: a slab across the cut with the arch opening through it, a coping, and pilasters each side
+  const gb = binAt(P.X, P.N), base = new THREE.Matrix4().makeRotationY(yaw).setPosition(F.p.x, rail, F.p.z);
+  const sh = new THREE.Shape();
+  sh.moveTo(-BORE.wallHalf, -2.8); sh.lineTo(BORE.wallHalf, -2.8); sh.lineTo(BORE.wallHalf, BORE.wallH); sh.lineTo(-BORE.wallHalf, BORE.wallH); sh.lineTo(-BORE.wallHalf, -2.8);
+  const hole = new THREE.Path(); const pr = boreProfile(24); hole.moveTo(pr[0][0], -2.8);
+  for (const [x, y] of pr) hole.lineTo(x, Math.max(y, -2.8)); hole.lineTo(pr[0][0], -2.8);
+  sh.holes.push(hole);
+  const wall = new THREE.ExtrudeGeometry(sh, { depth: BORE.wallT, bevelEnabled: false, curveSegments: 24 });
+  // extruded along +z; turn so the slab lies across the track (local z) with its face toward the approach
+  wall.applyMatrix4(new THREE.Matrix4().makeRotationY(-Math.PI / 2)); wall.translate(-0.8, 0, 0);
+  { const uv = wall.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) / 2.5, uv.getY(i) / 2.5); }
+  gb.add('concrete', wall, base.clone());
+  gb.add('concrete', boxT(BORE.wallT + 0.9, 0.7, 2 * BORE.wallHalf + 0.6), base.clone().multiply(M(-0.8 + BORE.wallT / 2 - 0.2, BORE.wallH + 0.35, 0)));   // coping
+  for (const z of [-1, 1]) gb.add('concrete', boxT(0.5, BORE.wallH + 2.6, 1.6), base.clone().multiply(M(-1.05, BORE.wallH / 2 - 1.4, z * (BORE.half + 1.6))));   // pilasters
+  gb.add('concrete', boxT(0.4, 0.9, 2 * BORE.half + 4.4), base.clone().multiply(M(-1.0, BORE.crown + 0.95, 0)));   // band over the arch
+  // the name stone above the arch
+  const k = 'tn' + T.name; SMAT[k] = SMAT[k] || nameBoard(T.name + ' · 1913');
+  gb.add(k, new THREE.PlaneGeometry(4.6, 0.75), base.clone().multiply(M(-1.21, BORE.crown + 2.2, 0, 0, -Math.PI / 2, 0)));
+  keep(P.X, P.N, 26);
+  mtPortalPatch(scene, P);
+}
+/* the portal's coordinates: a = metres into the hill from the headwall face, l = metres to the left */
+const portalAL = (P, X, N) => { const dx = X - P.X, dn = N - P.N; return [dx * P.c + dn * P.sn, -dx * P.sn + dn * P.c]; };
+/* the graded ground round a portal: the cut runs up to the headwall, the hill comes down to its top behind it */
+function portalShape(P, X, N, nat) {
+  const [a, l] = portalAL(P, X, N), y0 = P.y - 0.95;
+  const cut = y0 + Math.max(0, Math.abs(l) - BORE.cutHalf) * BORE.cutSlope;
+  if (a < 0) return Math.min(nat, cut);
+  return Math.min(nat, Math.max(cut, P.y + BORE.wallH + 0.62 + Math.max(0, a - 2) * 0.9));   // just under the coping top, then up the hill
+}
+function mtPortalPatch(scene, P) {
+  // a box on the 20 m terrain grid round the portal, wide enough to hold all the grading
+  const R = 110, L = INNER, st = L.step;
+  let x0 = Infinity, x1 = -Infinity, n0 = Infinity, n1 = -Infinity;
+  for (const [a, l] of [[-R, -R], [-R, R], [R, -R], [R, R]]) { const X = P.X + a * P.c - l * P.sn, N = P.N + a * P.sn + l * P.c; x0 = Math.min(x0, X); x1 = Math.max(x1, X); n0 = Math.min(n0, N); n1 = Math.max(n1, N); }
+  const i0 = Math.floor((x0 - L.x0) / st), i1 = Math.ceil((x1 - L.x0) / st), j0 = Math.floor((n0 - L.n0) / st), j1 = Math.ceil((n1 - L.n0) / st);
+  const patch = { P, i0, i1, j0, j1, X0: L.x0 + i0 * st, X1: L.x0 + i1 * st, N0: L.n0 + j0 * st, N1: L.n0 + j1 * st, res: 1, mesh: null };
+  const main = (X, N) => groundAtGrid(X, N);
+  // height inside the patch: the terrain grid's own surface at its edges, the portal grading inside
+  patch.h = (X, N) => {
+    const [a, l] = portalAL(P, X, N);
+    const edge = Math.min(X - patch.X0, patch.X1 - X, N - patch.N0, patch.N1 - N);
+    const w = smooth(0, 18, edge) * (1 - smooth(R - 30, R - 5, Math.max(Math.abs(a), Math.abs(l))));
+    const g = main(X, N);
+    if (w <= 0) return g;
+    return lerp(g, portalShape(P, X, N, naturalH(X, N)), w);
+  };
+  // the mesh: 1 m squares, with the ground right under the track at the opening left out (the ballast covers it)
+  const nx = Math.round((patch.X1 - patch.X0) / patch.res), nn = Math.round((patch.N1 - patch.N0) / patch.res);
+  const H = new Float32Array((nx + 1) * (nn + 1)); patch.H = H; patch.nx = nx; patch.nn = nn;
+  const pos = new Float32Array((nx + 1) * (nn + 1) * 3), col = new Float32Array((nx + 1) * (nn + 1) * 3), uv = new Float32Array((nx + 1) * (nn + 1) * 2), crop = new Float32Array((nx + 1) * (nn + 1)), c = [0, 0, 0, 0];
+  for (let j = 0; j <= nn; j++) for (let i = 0; i <= nx; i++) {
+    const X = patch.X0 + i * patch.res, N = patch.N0 + j * patch.res, k = j * (nx + 1) + i, h = patch.h(X, N);
+    H[k] = h; pos[k * 3] = X; pos[k * 3 + 1] = h; pos[k * 3 + 2] = -N;
+    groundColor(X, N, h, latticeAt(X, N), c);
+    const [a, l] = portalAL(P, X, N); if (Math.abs(l) < BORE.wallHalf + 6 && a > -40 && a < 6) { const q = 1 - smooth(BORE.cutHalf + 1, BORE.wallHalf + 6, Math.abs(l)); c[0] = lerp(c[0], 0.42, q * 0.7); c[1] = lerp(c[1], 0.40, q * 0.7); c[2] = lerp(c[2], 0.36, q * 0.7); }
+    col[k * 3] = c[0]; col[k * 3 + 1] = c[1]; col[k * 3 + 2] = c[2]; crop[k] = c[3];
+    uv[k * 2] = X / 14; uv[k * 2 + 1] = N / 14;
+  }
+  const idx = [];
+  for (let j = 0; j < nn; j++) for (let i = 0; i < nx; i++) {
+    const X = patch.X0 + (i + 0.5) * patch.res, N = patch.N0 + (j + 0.5) * patch.res, [a, l] = portalAL(P, X, N);
+    // the track bed in front of the opening (under the ballast) and the step up to the hill inside the headwall;
+    // behind the coping the hill's surface carries on over the bore
+    if (Math.abs(l) < BORE.half + 0.6 && a > -9 && a < 0.9) continue;   // a 1 m cell reaches 0.71 m either way of its centre
+    const A = j * (nx + 1) + i, B = A + 1, D = A + nx + 1, E = D + 1;
+    idx.push(A, B, D, B, E, D);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.BufferAttribute(col, 3)); g.setAttribute('uv', new THREE.BufferAttribute(uv, 2)); g.setAttribute('aCrop', new THREE.BufferAttribute(crop, 1));
+  g.setIndex(idx); g.computeVertexNormals(); mtRockColors(g); g.computeBoundingSphere();
+  patch.mesh = new THREE.Mesh(g, MAT.ground); patch.mesh.receiveShadow = true; scene.add(patch.mesh);
+  WORLD.patches.push(patch);
+}
+/* the terrain grid's own surface (its triangles), whatever patches lie over it */
+function groundAtGrid(X, N) { const p = WORLD.patches; WORLD.patches = null; const h = groundAt(X, N); WORLD.patches = p; return h; }
+/* a patch's surface: its 1 m triangles, split the way the mesh splits them */
+function patchAt(X, N) {
+  for (const p of WORLD.patches || []) {
+    if (X < p.X0 || X > p.X1 || N < p.N0 || N > p.N1) continue;
+    const fx = (X - p.X0) / p.res, fn = (N - p.N0) / p.res; let i = Math.floor(fx), j = Math.floor(fn); if (i >= p.nx) i = p.nx - 1; if (j >= p.nn) j = p.nn - 1;
+    const tx = fx - i, tn = fn - j, k = j * (p.nx + 1) + i, H = p.H, a = H[k], b = H[k + 1], d = H[k + p.nx + 1], e = H[k + p.nx + 2];
+    return tx + tn <= 1 ? a + (b - a) * tx + (d - a) * tn : e + (d - e) * (1 - tx) + (b - e) * (1 - tn);
+  }
+  return null;
+}
+/* terrain triangles under a patch are dropped from a tile's detailed mesh */
+WORLD.portalHoles = function (t) {
+  if (!WORLD.patches || !WORLD.patches.length) return;
+  const g = t.hi.geometry, n = Math.round(t.size / t.step) + 1, ix = g.index.array, keepI = [];
+  const ti0 = Math.round((t.x0 - INNER.x0) / INNER.step), tj0 = Math.round((t.n0 - INNER.n0) / INNER.step);
+  const cells = (n - 1) * (n - 1);
+  for (let c = 0; c < ix.length / 6; c++) {
+    if (c < cells) {
+      const i = ti0 + (c % (n - 1)), j = tj0 + Math.floor(c / (n - 1));
+      if (WORLD.patches.some(p => i >= p.i0 && i < p.i1 && j >= p.j0 && j < p.j1)) continue;
+    }
+    for (let q = 0; q < 6; q++) keepI.push(ix[c * 6 + q]);
+  }
+  g.setIndex(keepI);
+};
+/* steep ground shows rock: grey where the slope passes about 45 degrees (the woods cling to anything less) */
+function mtRockColors(g) {
+  const n = g.attributes.normal, c = g.attributes.color, cr = g.attributes.aCrop;
+  for (let i = 0; i < n.count; i++) {
+    const k = smooth(0.7, 0.5, n.getY(i)); if (k <= 0) continue;
+    const v = 0.9 + 0.2 * Noise.hash(i, 7);
+    c.setXYZ(i, lerp(c.getX(i), 0.36 * v, k), lerp(c.getY(i), 0.35 * v, k), lerp(c.getZ(i), 0.32 * v, k));
+    if (cr) cr.setX(i, cr.getX(i) * (1 - k));
+  }
+}
+/* inside a bore: the rail height there and how far in, or null */
+function mtInBore(x, z, pad = 0) {
+  for (const T of ROUTE.tunnels || []) {
+    const P0 = WORLD.portals[ROUTE.tunnels.indexOf(T) * 2], P1 = WORLD.portals[ROUTE.tunnels.indexOf(T) * 2 + 1];
+    if (!P0) continue;
+    const [a, l] = portalAL(P0, x, -z), len = portalAL(P0, P1.X, P1.N)[0];
+    if (a < -0.8 || a > len + 0.8 || Math.abs(l) > BORE.half + pad) continue;
+    const top = BORE.spring + Math.sqrt(Math.max(0, BORE.half * BORE.half - l * l));   // the lining's height over the rail here
+    return { rail: lerp(P0.y, P1.y, clamp(a / len, 0, 1)), depth: Math.min(a, len - a), l, top, P: P0 };
+  }
+  return null;
+}
+
+/* ---------------- the forest ----------------
+   Grown a 1.5 km tile at a time when the camera comes within reach of it and cleared again when it
+   leaves: hemlock and spruce on the high ground and in the hollows, autumn hardwoods on the slopes. */
+const FOREST = { tiles: new Map(), geos: null };
+function mtForestTile(key, scene) {
+  const [ti, tj] = key.split(',').map(Number), X0 = INNER.x0 + ti * 1500, N0 = INNER.n0 + tj * 1500;
+  const G = FOREST.geos || (FOREST.geos = treeGeos());
+  const r = rng(ti * 7919 + tj * 104729 + 13), L = { dec: [], con: [] };
+  const sp = 10.5;
+  for (let y = N0 + sp / 2; y < N0 + 1500; y += sp) for (let x = X0 + sp / 2; x < X0 + 1500; x += sp) {
+    const X = x + (r() - 0.5) * sp * 0.9, N = y + (r() - 0.5) * sp * 0.9, rr = r();
+    const dT = mtField(MT.dT, X, N);
+    let p = (0.55 + 0.5 * Noise.fbm(X / 420 + 9, N / 420 - 4, 3)) * (1 - 0.55 * smooth(700, 2600, dT));
+    if (rr > p) continue;
+    const lat = latticeAt(X, N); if (lat && lat.d < 17 + r() * 8) continue;
+    if (mtClearing(X, N, r() * 12)) continue;
+    if (mtRiverDist(X, N) < 24) continue;
+    if (inTown(X, N) || kept(X, N, 2) || inFoot(X, N, 5)) continue;
+    const gy = groundAt(X, N);
+    // the woods thin out on rock steeper than about 45 degrees
+    const sl = Math.hypot(groundAt(X + 3, N) - groundAt(X - 3, N), groundAt(X, N + 3) - groundAt(X, N - 3)) / 6;
+    if (sl > 1 && r() < 0.75) continue;
+    const conK = clamp(0.18 + 0.55 * smooth(260, 560, gy) + 0.35 * Noise.fbm(X / 300 - 2, N / 300 + 5, 2), 0.05, 0.9);
+    if (r() < conK) L.con.push([X, gy - 0.3, N, 0.95 + r() * 0.8, [0.12 + r() * 0.05, 0.22 + r() * 0.07, 0.13 + r() * 0.03]]);
+    else { const x2 = r(); L.dec.push([X, gy - 0.3, N, 0.85 + r() * 0.6, x2 < 0.45 ? [0.28 + r() * 0.1, 0.40 + r() * 0.12, 0.16] : x2 < 0.72 ? [0.74 + r() * 0.14, 0.52 + r() * 0.16, 0.15] : x2 < 0.9 ? [0.68 + r() * 0.1, 0.26 + r() * 0.1, 0.11] : [0.55, 0.40, 0.2]]); }
+  }
+  const tt = { hi: [], lo: [], c: null, r: 0, solids: [], key };
+  const pts = [];
+  for (const type of ['dec', 'con']) {
+    const list = L[type]; if (!list.length) continue;
+    const hi = new THREE.InstancedMesh(G[type], MAT.treeNear, list.length), lo = new THREE.InstancedMesh(G[type + 'Lo'], MAT.treeFar, list.length);
+    list.forEach((q, i) => {
+      const s = q[3];
+      _m4.compose(_v1.set(q[0], q[1], -q[2]), _q.setFromEuler(_e.set(0, (q[0] * 13.1 + q[2]) % TAU, 0)), _v2.set(s, s * (0.9 + ((q[0] * 7 + q[2] * 3) % 1) * 0.25), s));
+      hi.setMatrixAt(i, _m4); hi.setColorAt(i, _tc.setRGB(q[4][0], q[4][1], q[4][2]));
+      pts.push(new THREE.Vector3(q[0], q[1], -q[2]));
+      const cell = Math.floor(q[0] / 40) + ',' + Math.floor(-q[2] / 40), e = type === 'dec' ? [q[0], -q[2], 3.7 * s, q[1] + 2.4 * s, q[1] + 9.9 * s] : [q[0], -q[2], 2.6 * s, q[1] + 1.5 * s, q[1] + 10 * s];
+      let l = SCN.solids.get(cell); if (!l) SCN.solids.set(cell, l = []); l.push(e); tt.solids.push([cell, e]);
+    });
+    lo.instanceMatrix = hi.instanceMatrix; lo.instanceColor = hi.instanceColor;   // one copy of the placements serves both
+    for (const m of [hi, lo]) { m.castShadow = false; m.receiveShadow = false; m.visible = false; scene.add(m); }
+    tt.hi.push(hi); tt.lo.push(lo);
+  }
+  if (pts.length) { const s = new THREE.Sphere().setFromPoints(pts); for (const m of [...tt.hi, ...tt.lo]) m.geometry = m.geometry.clone(), m.geometry.boundingSphere = s.clone(); tt.c = s.center; tt.r = s.radius + 12; }
+  else { tt.c = new THREE.Vector3(X0 + 750, 0, -(N0 + 750)); tt.r = 1100; }
+  tt.n = L.dec.length + L.con.length;
+  FOREST.tiles.set(key, tt); WORLD.treeTiles.push(tt);
+  return tt;
+}
+/* yards and sidings stand in open ground: woods kept 50 m back from yard tracks and 28 m from sidings */
+function mtClearing(X, N, jit) {
+  if (!FOREST.clear) {
+    FOREST.clear = new Map();
+    for (const e of NET.edges) {
+      const r = e.kind === 'yard' ? 50 : e.kind === 'siding' ? 28 : 0; if (!r) continue;
+      for (let s = 0; s <= e.len; s += 15) { const [x, n] = e.xz(s), k = Math.floor(x / 100) + ',' + Math.floor(n / 100); let l = FOREST.clear.get(k); if (!l) FOREST.clear.set(k, l = []); l.push(x, n, r); }
+    }
+  }
+  const ci = Math.floor(X / 100), cj = Math.floor(N / 100);
+  for (let b = cj - 1; b <= cj + 1; b++) for (let a = ci - 1; a <= ci + 1; a++) {
+    const l = FOREST.clear.get(a + ',' + b); if (!l) continue;
+    for (let q = 0; q < l.length; q += 3) if (Math.hypot(l[q] - X, l[q + 1] - N) < l[q + 2] + jit) return true;
+  }
+  return false;
+}
+function mtForestDrop(tt) {
+  for (const m of [...tt.hi, ...tt.lo]) { scene.remove(m); m.geometry.dispose(); }
+  for (const [cell, e] of tt.solids) { const l = SCN.solids.get(cell); if (l) { const i = l.indexOf(e); if (i >= 0) l.splice(i, 1); } }
+  FOREST.tiles.delete(tt.key); WORLD.treeTiles.splice(WORLD.treeTiles.indexOf(tt), 1);
+}
+/* grow what the camera can see from where it is: everything within reach at once (for the start), or one tile a frame */
+function mtForestUpdate(cp, scene, all = false) {
+  const reach = Math.max(4000, Math.min(7500, fogFar(7500))), nx = Math.round((INNER.x1 - INNER.x0) / 1500), nn = Math.round((INNER.n1 - INNER.n0) / 1500);
+  let best = null, bd = Infinity;
+  for (let tj = 0; tj < nn; tj++) for (let ti = 0; ti < nx; ti++) {
+    const cx = INNER.x0 + ti * 1500 + 750, cn = INNER.n0 + tj * 1500 + 750, d = Math.hypot(cx - cp.x, -cn - cp.z) - 1060, key = ti + ',' + tj, tt = FOREST.tiles.get(key);
+    if (tt && d > reach + 1500) mtForestDrop(tt);
+    else if (!tt && d < reach && mtField(MT.dT, cx, cn) < 2600) { if (all) mtForestTile(key, scene); else if (d < bd) { bd = d; best = key; } }
+  }
+  if (best) mtForestTile(best, scene);
+  WORLD.treeCount = [...FOREST.tiles.values()].reduce((a, t) => a + t.n, 0);
+}
+function mtBuildForest(scene) {
+  WORLD.treeTiles = [];
+  const st = ROUTE.startLine.poseAt(ROUTE.startS);
+  mtForestUpdate(new THREE.Vector3(st.X, 0, -st.N), scene, true);
+}
+
+/* every frame on the mountain: forest round the camera, and the daylight going as the camera goes into a bore */
+function mtUpdate(cam, scene) {
+  if (!WORLD.mtn) return;
+  mtForestUpdate(cam.position, scene);
+  const b = mtInBore(cam.position.x, cam.position.z, 1);
+  const k = b && cam.position.y < b.rail + BORE.crown + 0.5 ? smooth(4, 60, b.depth) : 0;
+  SKY.boreK = k;
+  if (SKY.sun && SKY.sunBase !== undefined) { SKY.sun.intensity = SKY.sunBase * (1 - 0.94 * k); SKY.hemi.intensity = SKY.hemiBase * (1 - 0.85 * k); }
 }
 
 /* ============================================================================
@@ -8066,6 +8946,7 @@ class WreckSim {
   /* height of whatever a point is resting on: the ground, or the roadbed the car came off */
   ground(b, P) {
     let g = groundAt(P.x, -P.z);
+    if (WORLD.mtn && P.y < g) { const t = mtInBore(P.x, P.z, 0.5); if (t) g = t.rail - 0.3; }   // in a tunnel: the bore's floor, not the hill over it
     const B = b.bed; _we.subVectors(P, B.o);
     if (Math.abs(_we.dot(B.f)) < B.len * 1.5) {
       const lat = Math.abs(_we.dot(B.r));
@@ -9305,6 +10186,7 @@ function applyLook(timeKey, weatherKey, renderer, scene) {
   if (W.gray) { SKY.uni.uTop.value.lerp(new THREE.Color(P.night ? 0x0b0f16 : 0x8e98a3), W.gray * 0.8); SKY.uni.uHor.value.lerp(new THREE.Color(P.night ? 0x121820 : 0xb9bec2), W.gray * 0.8); }
   SKY.sun.color.set(P.sun); SKY.sun.intensity = P.sunI * W.sunK;
   SKY.hemi.color.set(P.hemiS); SKY.hemi.groundColor.set(P.hemiG); SKY.hemi.intensity = P.hemiI * (W.gray ? 1.25 : 1);
+  SKY.sunBase = SKY.sun.intensity; SKY.hemiBase = SKY.hemi.intensity;
   const fogC = new THREE.Color(P.fog); if (W.gray) fogC.lerp(new THREE.Color(P.night ? 0x0d1218 : 0xb3b8bc), W.gray);
   scene.fog.color.copy(fogC).convertSRGBToLinear(); scene.fog.density = P.fogD * W.fogK;
   SKY.sun.color.convertSRGBToLinear(); SKY.hemi.color.convertSRGBToLinear(); SKY.hemi.groundColor.convertSRGBToLinear();
@@ -9858,7 +10740,8 @@ function drawNet(g, W, H, cx, cn, sc, opt) {
     g.beginPath(); L.pts.forEach((p, i) => { const x = tx(p[0]), y = ty(p[1]); i ? g.lineTo(x, y) : g.moveTo(x, y); }); g.stroke();
   }
   // river
-  if (opt.river) { g.strokeStyle = 'rgba(70,120,140,0.55)'; g.lineWidth = Math.max(2, 50 * sc); g.beginPath(); WORLD.riverPts.forEach((p, i) => { const x = tx(p[0]), y = ty(p[1]); i ? g.lineTo(x, y) : g.moveTo(x, y); }); g.stroke(); g.fillStyle = 'rgba(70,120,140,0.55)'; g.beginPath(); g.arc(tx(WORLD.lake.X), ty(WORLD.lake.N), WORLD.lake.r * sc, 0, TAU); g.fill(); }
+  if (opt.river && WORLD.mtn) for (const r of MT.rivers) { g.strokeStyle = 'rgba(70,120,140,0.6)'; g.lineWidth = Math.max(1.5, 2 * r.halfW * sc); g.beginPath(); r.pts.forEach((p, i) => { if (i % 4 && i < r.pts.length - 1) return; const x = tx(p.X), y = ty(p.N); i ? g.lineTo(x, y) : g.moveTo(x, y); }); g.stroke(); }
+  else if (opt.river) { g.strokeStyle = 'rgba(70,120,140,0.55)'; g.lineWidth = Math.max(2, 50 * sc); g.beginPath(); WORLD.riverPts.forEach((p, i) => { const x = tx(p[0]), y = ty(p[1]); i ? g.lineTo(x, y) : g.moveTo(x, y); }); g.stroke(); g.fillStyle = 'rgba(70,120,140,0.55)'; g.beginPath(); g.arc(tx(WORLD.lake.X), ty(WORLD.lake.N), WORLD.lake.r * sc, 0, TAU); g.fill(); }
   // stations
   if (opt.labels) {
     g.font = `600 ${opt.fs}px "IBM Plex Sans Condensed", sans-serif`; g.textAlign = 'center';
@@ -9898,7 +10781,7 @@ MAP.open = function () {
   MAP.visible = true; $('mapView').hidden = false;
   const p = GAME.train ? GAME.train.lead.pos : { x: 0, z: -2400 };
   MAP.cx = 0; MAP.cn = 2700; MAP.scale = Math.min(innerWidth / 11000, innerHeight / 7600);
-  if (WORLD.custom) { // frame the whole layout
+  if (WORLD.custom || WORLD.mtn) { // frame the whole layout
     let x0 = Infinity, x1 = -Infinity, n0 = Infinity, n1 = -Infinity;
     for (const L of MAP.lines) for (const q of L.pts) { x0 = Math.min(x0, q[0]); x1 = Math.max(x1, q[0]); n0 = Math.min(n0, q[1]); n1 = Math.max(n1, q[1]); }
     MAP.cx = (x0 + x1) / 2; MAP.cn = (n0 + n1) / 2; MAP.scale = clamp(Math.min(innerWidth / (x1 - x0 + 200), innerHeight / (n1 - n0 + 200)) * 0.85, 0.04, 3);
@@ -10084,13 +10967,19 @@ function footsNear(x, z, r) {
   return out;
 }
 const inFootXZ = (f, x, z, pad) => { const dx = x - f[0], dz = z - f[1]; return Math.abs(dx * f[2] + dz * f[3]) < f[6] + pad && Math.abs(dx * f[4] + dz * f[5]) < f[7] + pad; };
+/* inside the ground, or inside the rock round a tunnel bore (the bore itself is open) */
+function camRock(x, y, z) {
+  const g = groundAt(x, -z);
+  if (WORLD.mtn && y < g) { const b = mtInBore(x, z, 0); if (b) return y < b.rail + 0.45 || y > b.rail + b.top - 0.45; }
+  return y < g + 0.45;
+}
 /* how far along tgt + dir*d the view is clear of the ground and buildings (trees are left to the push-out) */
 function camClear(tgt, dir, d, minD = 3, feet = null) {
   const n = Math.max(8, Math.ceil(d / 4));
   feet = feet || footsNear(tgt.x, tgt.z, d).filter(f => !inFootXZ(f, tgt.x, tgt.z, 0.3));
   for (let k = 1; k <= n; k++) {
     const f = k / n, x = tgt.x + dir.x * d * f, y = tgt.y + dir.y * d * f, z = tgt.z + dir.z * d * f;
-    let hit = y < groundAt(x, -z) + 0.45;
+    let hit = camRock(x, y, z);
     if (!hit) for (const fp of feet) if (inFootXZ(fp, x, z, 0.6) && y < footTop(fp) + 0.6) { hit = true; break; }
     if (hit) return Math.max(minD, d * (k - 1) / n);
   }
@@ -10131,7 +11020,12 @@ function camSolid(p, lift = 0.9) {
     else if (pSide <= pEnd) { const s = Math.sign(lat) || 1, m = s * pSide / fl; p.x += fz * m; p.z -= fx * m; }
     else { const s = Math.sign(along) || 1, m = s * pEnd / fl; p.x += fx * m; p.z += fz * m; }
   }
-  const g = groundAt(p.x, -p.z) + lift; if (isFinite(g) && p.y < g) p.y = g;
+  const g = groundAt(p.x, -p.z) + lift, b = WORLD.mtn && p.y < g - lift ? mtInBore(p.x, p.z, 1.2) : null;
+  if (b) {   // in the bore: kept off the lining, under the arch and above the rails
+    const w = BORE.half - 0.5, dl = clamp(b.l, -w, w) - b.l; p.x -= b.P.sn * dl; p.z -= b.P.c * dl;
+    const top = BORE.spring + Math.sqrt(Math.max(0, BORE.half * BORE.half - (b.l + dl) ** 2));
+    p.y = clamp(p.y, b.rail + Math.min(lift, 1.2), b.rail + top - 0.5);
+  } else if (isFinite(g) && p.y < g) p.y = g;
   return Math.hypot(p.x - x0, p.y - y0, p.z - z0);
 }
 const treesNear = (x, z) => {
@@ -10800,7 +11694,7 @@ MP.worldReady = function () {
   MP.ready = true;
   MP.edges = new Map(NET.edges.map(e => [e.id, e]));
   MP.ui();
-  MP.ly = WORLD.custom ? layoutHash(PLAY_LAYOUT) : '';
+  MP.ly = WORLD.custom ? layoutHash(PLAY_LAYOUT) : WORLD.mtn ? 'route:laurel' : '';
   if (MP.autoJoin) MP.join(MP.autoJoin);
 };
 MP.create = function () {
@@ -11025,11 +11919,11 @@ MP.spawnSlot = function (T) {
     }
     return true;
   };
-  for (const [name, off] of MP_SPAWNS) {
+  for (const [name, off] of (WORLD.mtn ? MTN_SPAWNS : MP_SPAWNS)) {
     const line = ROUTE.lines[name]; if (!line) continue;
     const sF = off < 0 ? line.len + off : off;
     if (!line.loop && sF - T.length < 5) continue;
-    if (clear(line, sF)) return { line, s: sF, name: MP_SPAWN_NAMES[name] || name };
+    if (clear(line, sF)) return { line, s: sF, name: (WORLD.mtn ? MTN_SPAWN_NAMES : MP_SPAWN_NAMES)[name] || name };
   }
   // every usual place is taken: anywhere on either main
   for (const name of ['Main', 'Main 2']) {
@@ -11261,7 +12155,7 @@ MP.pubWorld = function (txt, retain) { for (const l of MP.links) l.publish(MP.to
 MP.sendWorld = function (retain) {
   if (!MP.on || !MP.world || MP.world.ly !== MP.ly) return;
   const lay = WORLD.custom ? layoutCanon(PLAY_LAYOUT) : '';
-  MP.pubWorld(JSON.stringify({ id: MP.world.id, at: MP.world.at, cr: MP.world.cr, ly: MP.ly, nm: WORLD.custom ? PLAY_LAYOUT.name : 'Berkshire Division', lay }), retain);
+  MP.pubWorld(JSON.stringify({ id: MP.world.id, at: MP.world.at, cr: MP.world.cr, ly: MP.ly, nm: WORLD.custom ? PLAY_LAYOUT.name : ROUTES[WORLD.mtn ? 'laurel' : 'ohio'].name, lay }), retain);
 };
 MP.onWorldText = function (txt) {
   if (!MP.on || txt.length > 2e6) return;
@@ -11276,8 +12170,9 @@ MP.onWorldText = function (txt) {
   if (r.ly !== MP.ly) MP.adoptWorld(r);
 };
 MP.adoptWorld = function (r) {
-  let id = '';
-  if (r.ly) {
+  let id = '', route = '';
+  if (/^route:/.test(r.ly)) { route = r.ly.slice(6); if (!ROUTES[route]) return; }
+  else if (r.ly) {
     let m = null; try { m = edValidImport(JSON.parse(r.lay)); } catch (e) { m = null; }
     if (!m || layoutHash(m) !== r.ly) return;
     m.id = 'R' + r.ly; m.from = 'room';
@@ -11293,7 +12188,8 @@ MP.adoptWorld = function (r) {
   } catch (e) {}
   const name = mpText(r.nm, 32) || 'the room\'s railroad';
   MP.say(`This room runs on ${name}. Loading it…`); toast(`This room runs on ${name}. Loading it…`, '', 4000);
-  const q = new URLSearchParams(); if (id) q.set('layout', id); q.set('room', MP.code);
+  // a room on a built-in railroad names it, so a browser that last drove the other one doesn't load that
+  const q = new URLSearchParams(); if (id) q.set('layout', id); else q.set('route', route || 'ohio'); q.set('room', MP.code);
   setTimeout(() => { location.href = location.pathname + '?' + q.toString(); }, 1200);
 };
 
@@ -11391,7 +12287,7 @@ const stationNamed = n => ROUTE.stations.find(s => s.name === n);
 JOB.load = function () { try { JOB.best = JSON.parse(localStorage.getItem('bd_jobs') || '{}') || {}; } catch (e) { JOB.best = {}; } };
 JOB.save = function () { try { localStorage.setItem('bd_jobs', JSON.stringify(JOB.best)); } catch (e) {} };
 /* jobs are written for the built-in railroad, single player */
-JOB.available = () => !MP.on && !PLAY_LAYOUT && !LOCO_SPEC[GAME.settings.loco].set;
+JOB.available = () => !MP.on && !PLAY_LAYOUT && !WORLD.mtn && !LOCO_SPEC[GAME.settings.loco].set;
 JOB.def = id => JOBS.find(j => j.id === id) || null;
 JOB.wanted = () => JOB.available() ? JOB.def(GAME.settings.job) : null;
 JOB.activeId = () => JOB.run && !JOB.run.over ? JOB.run.def.id : '';
@@ -12315,7 +13211,7 @@ AI.gone = function (a, T, memo) {
 };
 
 /* ---------------- the traffic on the railroad ---------------- */
-AI.enabled = () => !MP.on && !WORLD.custom && GAME.settings.traffic !== 'off';
+AI.enabled = () => !MP.on && !WORLD.custom && !WORLD.mtn && GAME.settings.traffic !== 'off';
 AI.clear = function () {
   for (const a of AI.trains) a.dispose();
   AI.trains = []; IX.clear();
@@ -12847,30 +13743,37 @@ async function loadWorld() {
   prog(0.02, 'Surveying the line…'); await frame();
   makeMaterials(); sceneryMaterials(); rollingMaterials();
   WORLD.custom = !!PLAY_LAYOUT;
-  if (WORLD.custom) { WORLD.roadsX = []; WORLD.roadN = 1e7; buildLayoutRoute(PLAY_LAYOUT); } else buildRoute();
+  if (WORLD.custom) { WORLD.roadsX = []; WORLD.roadN = 1e7; buildLayoutRoute(PLAY_LAYOUT); }
+  else if (ROUTE_KEY === 'laurel') { WORLD.roadsX = []; WORLD.roadN = 1e7; buildMountainRoute(); mtPrepare(); }
+  else buildRoute();
   mapPrepare();
   prog(0.06, 'Grading the right of way…'); await frame();
   buildLattice();
   detailTextures(); planTowns();
   const T = 1500; let k = 0; const tot = ((INNER.x1 - INNER.x0) / T) * ((INNER.n1 - INNER.n0) / T);
   for (let x = INNER.x0; x < INNER.x1; x += T) for (let n = INNER.n0; n < INNER.n1; n += T) {
-    buildTerrainTile(x, n, T, INNER.step, scene); k++;
-    if (k % 3 === 0) { prog(0.08 + 0.42 * k / tot, `Shaping farm country… ${k}/${tot}`); await frame(); }
+    buildTerrainTile(x, n, T, INNER.step, scene, !!WORLD.mtn); k++;
+    if (k % (WORLD.mtn ? 24 : 3) === 0) { prog(0.08 + 0.42 * k / tot, WORLD.mtn ? `Raising the mountains… ${k}/${tot}` : `Shaping farm country… ${k}/${tot}`); await frame(); }
   }
   WORLD.hgrid.ready = true;
   buildFarTerrain(scene); if (!WORLD.custom) buildWater(scene);
-  prog(0.52, WORLD.custom ? `Laying ${fmtMi(ROUTE.mainLen)} of track on ${PLAY_LAYOUT.name || 'your layout'}…` : 'Laying 13.8 miles of jointed rail…'); await frame();
+  prog(0.52, WORLD.custom ? `Laying ${fmtMi(ROUTE.mainLen)} of track on ${PLAY_LAYOUT.name || 'your layout'}…` : `Laying ${(ROUTE.mainLen / MILE).toFixed(1)} miles of jointed rail…`); await frame();
   buildTrack(scene); buildTrackHash();
-  prog(0.68, 'Raising depots, towers and the river bridge…'); await frame();
+  prog(0.68, WORLD.mtn ? 'Boring Summit tunnel and raising the Bear Run trestle…' : 'Raising depots, towers and the river bridge…'); await frame();
   if (WORLD.custom) { buildStations(); buildSignals(scene); }
+  else if (WORLD.mtn) { buildStations(); buildBridge(scene); mtBuildViaduct(scene); mtBuildTunnels(scene); buildSignals(scene); buildSigns(); }
   else { buildStations(); buildBridge(scene); buildRoads(scene); buildSignals(scene); buildSigns(); }
   prog(0.78, 'Stringing the pole line…'); await frame();
   if (WORLD.custom) { SCN.farms = []; buildTowns(scene); }
+  else if (WORLD.mtn) { SCN.farms = []; buildTowns(scene); buildPoleLine(scene); }
   else { buildFarms(); buildTowns(scene); buildPoleLine(scene); }
-  prog(0.82, 'Planting corn and fencing pastures…'); await frame();
-  buildCorn(scene); buildPastureLife(scene);
-  prog(0.86, 'Planting woodlots…'); await frame();
-  buildTrees(scene); finalizeScenery(scene);
+  if (!WORLD.mtn) {
+    prog(0.82, 'Planting corn and fencing pastures…'); await frame();
+    buildCorn(scene); buildPastureLife(scene);
+  }
+  prog(0.86, WORLD.mtn ? 'Growing the forest…' : 'Planting woodlots…'); await frame();
+  if (WORLD.mtn) mtBuildForest(scene); else buildTrees(scene);
+  finalizeScenery(scene);
   prog(0.92, 'Lighting the fire…'); await frame();
   buildSky(scene, renderer); buildFX(scene); buildSparks(scene);
   for (const st of ROUTE.stations) { st.edge.pose(st.s, FR); st.p = FR.p.clone(); }
@@ -12906,8 +13809,8 @@ function makeTrain() {
   const t = new Train(scene, GAME.settings.loco, JOB.consist(), dieselOpts());
   GAME.train = t;
   if (WORLD.custom) { placeOnLayout(t); return; }
-  let line = ROUTE.lines['Yard 2'], sFront = line.len - 175, o = 1;
-  GAME.spawnName = 'Yard 2, Bellevue';
+  let line = ROUTE.startLine, sFront = line.len - 175, o = 1;
+  GAME.spawnName = WORLD.mtn ? 'Riverton 2, Riverton Yard' : 'Yard 2, Bellevue';
   const job = JOB.wanted(), sp = job && JOB.spawn(job);
   if (MP.on) {
     // in a room the switches belong to everyone, so leave them alone and find an empty track
@@ -12918,7 +13821,7 @@ function makeTrain() {
     const sw = name => NET.switches.find(s => s.name === name);
     for (const s of NET.switches) { s.state = 0; s.anim = 0; }
     // a job says where its train is made up and how the switches are lined
-    for (const n of sp ? sp.lined : ['Yard ladder E2', 'Bellevue East']) sw(n).state = sw(n).anim = 1;
+    for (const n of sp ? sp.lined : WORLD.mtn ? ['Riverton ladder E2', 'Riverton East'] : ['Yard ladder E2', 'Bellevue East']) sw(n).state = sw(n).anim = 1;
     if (sp) { line = sp.line; sFront = sp.s; o = sp.o; GAME.spawnName = sp.name; }
   }
   const loc = line.locate(sFront);
@@ -13085,6 +13988,8 @@ function buildMenu() {
   MP.init();
   const locoOpts = { '765': { name: 'NKP 765', sub: 'S-2 · Lima 1944' }, '1225': { name: 'PM 1225', sub: 'N-1 · Lima 1941' }, 'diesel': { name: 'Wide-cab diesel', sub: 'AC · 4,400 hp' },
     'e5': { name: 'E5 Shinkansen', sub: 'Bullet train · 200 mph' }, 'acela': { name: 'Acela Express', sub: 'High speed · 150 mph' } };
+  // the mountain has no wires up for the high-speed sets
+  if (ROUTE_KEY === 'laurel' && !PLAY_LAYOUT) { delete locoOpts.e5; delete locoOpts.acela; if (LOCO_SPEC[GAME.settings.loco].hs) GAME.settings.loco = '765'; }
   segButtons('optLoco', locoOpts, 'loco', () => { GAME.swapLive(); jobMenu(); specGrid(); startLabel(); refreshMenuGroups(); saveSettings(); });
   const livOpts = {}; for (const k in LIVERIES) { const L = LIVERIES[k]; livOpts[k] = { name: L.name, sub: L.sub, swatch: `linear-gradient(90deg, ${hexCss(k === 'custom' ? GAME.settings.custom.body : L.body)} 0 64%, ${hexCss(k === 'custom' ? GAME.settings.custom.accent : L.accent)} 64% 100%)` }; }
   segButtons('optLivery', livOpts, 'livery', () => { applyLiveriesLive(); refreshMenuGroups(); specGrid(); saveSettings(); });
@@ -13152,7 +14057,7 @@ GAME.start = function () {
     if (JOB.run) JOB.end();
     makeTrain();
     if (job) JOB.begin(job);
-    else if (GAME.running) toast(`New train made up on ${WORLD.custom ? GAME.spawnName : 'Yard 2'}.`, 'good');
+    else if (GAME.running) toast(`New train made up on ${WORLD.custom || WORLD.mtn ? GAME.spawnName : 'Yard 2'}.`, 'good');
     GAME.intro();
   }
   GAME.running = true; S.paused = false; S.autoFire = GAME.settings.fire === 'auto';
@@ -13167,6 +14072,7 @@ GAME.intro = function () {
   if (JOB.run) JOB.intro();
   else if (MP.on) setTimeout(() => toast(`Made up on ${GAME.spawnName}. The switches are shared with everyone in the room.`, '', 5600), 600);
   else if (WORLD.custom) setTimeout(() => toast(`On ${GAME.spawnName}. Every switch is lined straight: tap one or use Throw to change it.`, '', 5000), 600);
+  else if (WORLD.mtn) setTimeout(() => toast('Riverton Yard, at the foot of Laurel Mountain. The ladder is lined out to the main; the climb starts past Hollins and runs 1.9 per cent to Summit.', '', 6500), 600);
   else setTimeout(() => toast('Yard 2, Bellevue. The ladder is lined out to the main.', '', 5000), 600);
   if (!MP.on && !JOB.run && CARS.cuts.length) setTimeout(() => toast('Cars are waiting on Yard 3, Yard 4, the elevator track and quarry storage. Back in gently to couple; tap a coupler on the cars, or open Couplers (U), to work the knuckles and cut them off.', '', 7000, 'carsIntro'), 11500);
   if (GAME.train && GAME.train.elec) setTimeout(() => toast('Brake off, reverser forward, then notch the power controller. The set stays together: it cannot pick up cars.', '', 6500), 5200);
@@ -13451,7 +14357,8 @@ function renderStep(dt, T) {
   if (GAME.running && !S.paused && !S.derailed) MP.contact(T);
   // headlight & glows
   const night = SKY.night;
-  T.head.intensity = S.light === 0 ? 0 : (S.light === 1 ? (night ? 1.6 : 0.4) : (night ? 6 : 1.4));
+  const darkH = night || SKY.boreK > 0.5;   // in a tunnel the headlight works as it does at night
+  T.head.intensity = S.light === 0 ? 0 : (S.light === 1 ? (darkH ? 1.6 : 0.4) : (darkH ? 6 : 1.4));
   RMAT.lens.color.setScalar(S.light === 0 ? 0.25 : (S.light === 1 ? 0.75 : 1.0));
   const flick = 0.85 + 0.15 * Math.sin(S.time * 23) * Math.sin(S.time * 7.3);
   if (T.diesel) {
@@ -13484,7 +14391,7 @@ function renderStep(dt, T) {
   SKY.moon.position.copy(SKY.sunDir).multiplyScalar(7000).add(camera.position);
   const lp = PLACE.on ? PLACE.focus() : (MP.view() || T).lead.pos;
   SKY.sun.target.position.copy(lp); SKY.sun.position.copy(lp).addScaledVector(SKY.sunDir, 300);
-  updateTrackLOD(camera); updateDetailLOD(camera, scene, dt);
+  updateTrackLOD(camera); updateDetailLOD(camera, scene, dt); mtUpdate(camera, scene);
   // effects & sound
   effectsAndSound(dt, T);
   MP.post(dt);
@@ -14204,18 +15111,19 @@ function edDrive() {
 function railMenu() {
   const host = $('optRail'); if (!host) return;
   host.innerHTML = '';
-  const cur = PLAY_LAYOUT ? PLAY_LAYOUT.id : '';
-  const opts = [['', 'Berkshire Division', '13.8 mi · built in']];
+  const cur = PLAY_LAYOUT ? PLAY_LAYOUT.id : 'route:' + ROUTE_KEY;
+  const opts = Object.entries(ROUTES).map(([k, r]) => ['route:' + k, r.name, r.sub]);
   for (const m of Object.values(LAYOUTS.all()).filter(m => (m.pieces || []).length).sort((a, b) => (b.saved || 0) - (a.saved || 0)).slice(0, 5)) opts.push([m.id, m.name || 'Untitled', `${(m.pieces || []).length} pieces · yours`]);
   for (const [id, name, sub] of opts) {
     const b = document.createElement('button'); b.type = 'button'; b.setAttribute('aria-pressed', String(id === cur));
     b.innerHTML = '<span></span><small></small>'; b.firstChild.textContent = name; b.lastChild.textContent = sub;
-    const changed = id && id === cur && (LAYOUTS.get(id) || {}).saved !== PLAY_LAYOUT.saved;
+    const changed = !id.startsWith('route:') && id === cur && (LAYOUTS.get(id) || {}).saved !== PLAY_LAYOUT.saved;
     if (changed) b.lastChild.textContent = 'Edited · tap to reload';
     b.addEventListener('click', () => {
       if (id === cur && !changed) return;
-      if (id && !((LAYOUTS.get(id) || {}).pieces || []).length) return;
-      location.href = location.pathname + (id ? '?layout=' + encodeURIComponent(id) : '');
+      if (id.startsWith('route:')) { const k = id.slice(6); try { localStorage.setItem('bd_route', k); } catch (e) {} location.href = location.pathname + '?route=' + k; return; }
+      if (!((LAYOUTS.get(id) || {}).pieces || []).length) return;
+      location.href = location.pathname + '?layout=' + encodeURIComponent(id);
     });
     host.appendChild(b);
   }

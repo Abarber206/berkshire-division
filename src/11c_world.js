@@ -43,7 +43,7 @@ MP.pubWorld = function (txt, retain) { for (const l of MP.links) l.publish(MP.to
 MP.sendWorld = function (retain) {
   if (!MP.on || !MP.world || MP.world.ly !== MP.ly) return;
   const lay = WORLD.custom ? layoutCanon(PLAY_LAYOUT) : '';
-  MP.pubWorld(JSON.stringify({ id: MP.world.id, at: MP.world.at, cr: MP.world.cr, ly: MP.ly, nm: WORLD.custom ? PLAY_LAYOUT.name : 'Berkshire Division', lay }), retain);
+  MP.pubWorld(JSON.stringify({ id: MP.world.id, at: MP.world.at, cr: MP.world.cr, ly: MP.ly, nm: WORLD.custom ? PLAY_LAYOUT.name : ROUTES[WORLD.mtn ? 'laurel' : 'ohio'].name, lay }), retain);
 };
 MP.onWorldText = function (txt) {
   if (!MP.on || txt.length > 2e6) return;
@@ -58,8 +58,9 @@ MP.onWorldText = function (txt) {
   if (r.ly !== MP.ly) MP.adoptWorld(r);
 };
 MP.adoptWorld = function (r) {
-  let id = '';
-  if (r.ly) {
+  let id = '', route = '';
+  if (/^route:/.test(r.ly)) { route = r.ly.slice(6); if (!ROUTES[route]) return; }
+  else if (r.ly) {
     let m = null; try { m = edValidImport(JSON.parse(r.lay)); } catch (e) { m = null; }
     if (!m || layoutHash(m) !== r.ly) return;
     m.id = 'R' + r.ly; m.from = 'room';
@@ -75,7 +76,8 @@ MP.adoptWorld = function (r) {
   } catch (e) {}
   const name = mpText(r.nm, 32) || 'the room\'s railroad';
   MP.say(`This room runs on ${name}. Loading it…`); toast(`This room runs on ${name}. Loading it…`, '', 4000);
-  const q = new URLSearchParams(); if (id) q.set('layout', id); q.set('room', MP.code);
+  // a room on a built-in railroad names it, so a browser that last drove the other one doesn't load that
+  const q = new URLSearchParams(); if (id) q.set('layout', id); else q.set('route', route || 'ohio'); q.set('room', MP.code);
   setTimeout(() => { location.href = location.pathname + '?' + q.toString(); }, 1200);
 };
 

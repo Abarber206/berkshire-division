@@ -137,6 +137,7 @@ const INNER = { x0: -6000, x1: 6000, n0: -2000, n1: 7000, step: 20 };
 function riverX(N) { const A = n => 170 * Math.sin(n / 700) + 70 * Math.sin(n / 230 + 1); return -1203 + A(N) - A(2402); }
 function naturalH(X, N) {
   if (WORLD.custom) return layoutH(X, N);
+  if (WORLD.mtn) return mtNaturalH(X, N);
   let h = 6.5 * Noise.fbm(X / 1600 + 3.1, N / 1600 - 1.7, 4) + 2.2 * Noise.fbm(X / 320, N / 320, 3);
   // Kenton Hill (track crest at +13.5)
   h += 15.5 * Math.exp(-(((X - 1900) / 1150) ** 2 + ((N - 2400) / 820) ** 2));
@@ -148,6 +149,7 @@ function naturalH(X, N) {
 }
 function riverDist(X, N) {
   if (WORLD.custom) return 1e9;
+  if (WORLD.mtn) return mtRiverDist(X, N);
   let d = 1e9;
   if (N > 2402 - 40) d = Math.abs(X - riverX(N));
   else if (N > WORLD.lake.N) { const t = (N - WORLD.lake.N) / (2402 - WORLD.lake.N); const x = lerp(WORLD.lake.X, riverX(2402), smooth(0, 1, t)); d = Math.abs(X - x); }
@@ -163,6 +165,7 @@ function layoutH(X, N) {
 }
 function heightRaw(X, N) {
   let h = naturalH(X, N);
+  if (WORLD.mtn) return h;   // the mountain streams cut their own beds
   const dr = riverDist(X, N);
   if (dr < 130) h = lerp(-5.6, h, smooth(15, 110, dr));
   return h;
@@ -171,11 +174,11 @@ function heightRaw(X, N) {
 /* Lattice of track proximity over the inner region (one cell per terrain vertex). */
 function buildLattice() {
   const L = INNER, nx = Math.round((L.x1 - L.x0) / L.step) + 1, nn = Math.round((L.n1 - L.n0) / L.step) + 1;
-  const d = new Float32Array(nx * nn).fill(1e9), y = new Float32Array(nx * nn), roadY = new Float32Array(nx * nn).fill(NaN);
+  const d = new Float32Array(nx * nn).fill(1e9), y = new Float32Array(nx * nn);
   const R = 80, rc = Math.ceil(R / L.step);
   for (const e of NET.edges) {
     for (let s = 0; s <= e.len; s += 3) {
-      if (e.isBridge(s)) continue;
+      if (e.isBridge(s) || e.isTunnel(s)) continue;
       const [X, N] = e.xz(s), ty = e.elev(s);
       const ci = Math.round((X - L.x0) / L.step), cj = Math.round((N - L.n0) / L.step);
       for (let j = cj - rc; j <= cj + rc; j++) {
@@ -190,7 +193,7 @@ function buildLattice() {
     }
   }
   WORLD.lattice = { nx, nn, d, y };
-  WORLD.hgrid = { nx, nn, h: new Float32Array(nx * nn), ready: false };
+  WORLD.hgrid = { nx, nn, h: new Float32Array(nx * nn).fill(NaN), ready: false };
 }
 function latticeAt(X, N) {
   const L = INNER, W = WORLD.lattice;
@@ -204,17 +207,22 @@ function groundH(X, N, lat) {
   if (lat && lat.d < 80) {
     const w = 1 - smooth(14, 76, lat.d);
     h = lerp(h, lat.y - 0.95, w);
+    // a mountain stream beyond the embankment's foot keeps its bed under the grading's edge
+    if (WORLD.mtn && lat.d > 22) h = mtCarve(X, N, h);
   }
   return h;
 }
 function groundAt(X, N) { // continuous sampler; exact terrain triangles once the grid is filled
   const L = INNER;
+  if (WORLD.patches) { const p = patchAt(X, N); if (p !== null) return p; }
   if (X < L.x0 || X > L.x1 || N < L.n0 || N > L.n1) return heightRaw(X, N);
   const HG = WORLD.hgrid;
-  if (HG && HG.ready) {
+  if (HG && (HG.ready || WORLD.mtn)) {
     const fx = (X - L.x0) / L.step, fn = (N - L.n0) / L.step;
     let i = Math.floor(fx), j = Math.floor(fn); if (i >= HG.nx - 1) i = HG.nx - 2; if (j >= HG.nn - 1) j = HG.nn - 2;
     const tx = fx - i, tn = fn - j, k = j * HG.nx + i, H = HG.h;
+    // the mountain's terrain is built as the camera nears it, so its grid heights are worked out when first asked for
+    if (WORLD.mtn) for (const q of [k, k + 1, k + HG.nx, k + HG.nx + 1]) if (H[q] !== H[q]) { const vx = L.x0 + (q % HG.nx) * L.step, vn = L.n0 + Math.floor(q / HG.nx) * L.step; H[q] = groundH(vx, vn, latticeAt(vx, vn)); }
     const a = H[k], b = H[k + 1], d = H[k + HG.nx], e = H[k + HG.nx + 1];
     return tx + tn <= 1 ? a + (b - a) * tx + (d - a) * tn : e + (d - e) * (1 - tx) + (b - e) * (1 - tn);
   }
@@ -244,6 +252,7 @@ function fieldAt(X, N) {
 /* Vertex colour carries everything that is not crop (verges, ballast shoulders, banks, roads, hills).
    out[3] is the crop weight; the ground shader paints the crop pattern itself, per pixel. */
 function groundColor(X, N, h, lat, out) {
+  if (WORLD.mtn) return mtGroundColor(X, N, h, lat, out);
   let r = 0.37, g = 0.49, b = 0.22, w = 1;
   if (lat && lat.d < 30) {
     const k = 1 - smooth(6, 30, lat.d); r = lerp(r, 0.34, k); g = lerp(g, 0.45, k); b = lerp(b, 0.21, k); w *= 1 - k;
@@ -312,13 +321,21 @@ const CROP_GLSL = `
   }`;
 
 /* ---------------- terrain tiles ---------------- */
-function buildTerrainTile(x0, n0, size, step, scene) {
-  const hi = terrainGeo(x0, n0, size, step), lo = terrainGeo(x0, n0, size, 75);
-  const mh = new THREE.Mesh(hi, MAT.ground), ml = new THREE.Mesh(lo, MAT.ground);
-  mh.receiveShadow = true; ml.receiveShadow = false; ml.visible = false;
-  scene.add(mh); scene.add(ml);
-  WORLD.tiles.push({ hi: mh, lo: ml, c: new THREE.Vector3(x0 + size / 2, 0, -(n0 + size / 2)), r: size * 0.72 });
+function buildTerrainTile(x0, n0, size, step, scene, lazy = false) {
+  const ml = new THREE.Mesh(terrainGeo(x0, n0, size, 75), MAT.ground);
+  ml.receiveShadow = false; ml.visible = lazy;
+  scene.add(ml);
+  const t = { hi: null, lo: ml, x0, n0, size, step, c: new THREE.Vector3(x0 + size / 2, 0, -(n0 + size / 2)), r: size * 0.72 };
+  if (!lazy) tileHi(t, scene);
+  WORLD.tiles.push(t);
 }
+/* the full-detail mesh of a tile; a huge world builds these only round the camera and lets far ones go */
+function tileHi(t, scene) {
+  const mh = new THREE.Mesh(terrainGeo(t.x0, t.n0, t.size, t.step), MAT.ground);
+  mh.receiveShadow = true; scene.add(mh); t.hi = mh;
+  if (WORLD.portalHoles) WORLD.portalHoles(t);
+}
+function tileDrop(t) { scene.remove(t.hi); t.hi.geometry.dispose(); t.hi = null; }
 function terrainGeo(x0, n0, size, step) {
   const n = Math.round(size / step) + 1;
   const verts = n * n, skirt = 4 * (n - 1) * 2;
@@ -360,11 +377,12 @@ function terrainGeo(x0, n0, size, step) {
   geo.setAttribute('aCrop', new THREE.BufferAttribute(crop, 1));
   geo.setIndex(idx);
   geo.computeVertexNormals();
+  if (WORLD.mtn) mtRockColors(geo);
   geo.computeBoundingSphere();
   return geo;
 }
 function buildFarTerrain(scene) {
-  const x0 = -22000, x1 = 22000, n0 = -18000, n1 = 24000, st = 250;
+  const st = 250, [x0, x1, n0, n1] = WORLD.mtn ? [INNER.x0 - 15000, INNER.x1 + 15000, INNER.n0 - 15000, INNER.n1 + 15000] : [-22000, 22000, -18000, 24000];
   const nx = Math.round((x1 - x0) / st) + 1, nn = Math.round((n1 - n0) / st) + 1;
   const pos = new Float32Array(nx * nn * 3), col = new Float32Array(nx * nn * 3), uv = new Float32Array(nx * nn * 2), crop = new Float32Array(nx * nn), c = [0, 0, 0, 0];
   for (let j = 0; j < nn; j++) for (let i = 0; i < nx; i++) {
@@ -385,6 +403,7 @@ function buildFarTerrain(scene) {
 
 /* ---------------- water ---------------- */
 function buildWater(scene) {
+  if (WORLD.mtn) { mtBuildWater(scene); return; }
   const pts = [];
   for (let N = 8600; N >= 2402; N -= 25) pts.push([riverX(N), N]);
   for (let t = 1; t >= 0; t -= 0.04) { const N = lerp(WORLD.lake.N, 2402, t); pts.push([lerp(WORLD.lake.X, riverX(2402), smooth(0, 1, t)), N]); }
@@ -734,7 +753,13 @@ function updateTrackLOD(cam) {
   updateWire(cp);
   for (const b of WORLD.binGroups || []) b.visible = b.userData.c.distanceTo(cp) - b.userData.r < Math.max(3400, far);
   for (const sg of SCN.signals) { const d = Math.hypot(sg.X - cp.x, -sg.N - cp.z); for (const h of sg.heads) h.visible = d < Math.max(3500, far); }
-  for (const t of WORLD.tiles) { const d = t.c.distanceTo(cp) - t.r; const near = d < 2300; t.hi.visible = near; t.lo.visible = !near; }
+  let hiBudget = 1;
+  for (const t of WORLD.tiles) {
+    const d = t.c.distanceTo(cp) - t.r; let near = d < 2300;
+    if (near && !t.hi) { if (hiBudget-- > 0) tileHi(t, scene); else near = false; }
+    else if (!near && t.hi && WORLD.mtn && d > 3800) tileDrop(t);
+    if (t.hi) t.hi.visible = near; t.lo.visible = !near;
+  }
   const tN = LOD.treeNear.value, tF = LOD.treeFar.value;
   tF.w = fogFar(7000); tF.z = tF.w * 0.65;
   for (const t of WORLD.treeTiles || []) {

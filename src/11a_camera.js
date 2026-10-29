@@ -33,13 +33,19 @@ function footsNear(x, z, r) {
   return out;
 }
 const inFootXZ = (f, x, z, pad) => { const dx = x - f[0], dz = z - f[1]; return Math.abs(dx * f[2] + dz * f[3]) < f[6] + pad && Math.abs(dx * f[4] + dz * f[5]) < f[7] + pad; };
+/* inside the ground, or inside the rock round a tunnel bore (the bore itself is open) */
+function camRock(x, y, z) {
+  const g = groundAt(x, -z);
+  if (WORLD.mtn && y < g) { const b = mtInBore(x, z, 0); if (b) return y < b.rail + 0.45 || y > b.rail + b.top - 0.45; }
+  return y < g + 0.45;
+}
 /* how far along tgt + dir*d the view is clear of the ground and buildings (trees are left to the push-out) */
 function camClear(tgt, dir, d, minD = 3, feet = null) {
   const n = Math.max(8, Math.ceil(d / 4));
   feet = feet || footsNear(tgt.x, tgt.z, d).filter(f => !inFootXZ(f, tgt.x, tgt.z, 0.3));
   for (let k = 1; k <= n; k++) {
     const f = k / n, x = tgt.x + dir.x * d * f, y = tgt.y + dir.y * d * f, z = tgt.z + dir.z * d * f;
-    let hit = y < groundAt(x, -z) + 0.45;
+    let hit = camRock(x, y, z);
     if (!hit) for (const fp of feet) if (inFootXZ(fp, x, z, 0.6) && y < footTop(fp) + 0.6) { hit = true; break; }
     if (hit) return Math.max(minD, d * (k - 1) / n);
   }
@@ -80,7 +86,12 @@ function camSolid(p, lift = 0.9) {
     else if (pSide <= pEnd) { const s = Math.sign(lat) || 1, m = s * pSide / fl; p.x += fz * m; p.z -= fx * m; }
     else { const s = Math.sign(along) || 1, m = s * pEnd / fl; p.x += fx * m; p.z += fz * m; }
   }
-  const g = groundAt(p.x, -p.z) + lift; if (isFinite(g) && p.y < g) p.y = g;
+  const g = groundAt(p.x, -p.z) + lift, b = WORLD.mtn && p.y < g - lift ? mtInBore(p.x, p.z, 1.2) : null;
+  if (b) {   // in the bore: kept off the lining, under the arch and above the rails
+    const w = BORE.half - 0.5, dl = clamp(b.l, -w, w) - b.l; p.x -= b.P.sn * dl; p.z -= b.P.c * dl;
+    const top = BORE.spring + Math.sqrt(Math.max(0, BORE.half * BORE.half - (b.l + dl) ** 2));
+    p.y = clamp(p.y, b.rail + Math.min(lift, 1.2), b.rail + top - 0.5);
+  } else if (isFinite(g) && p.y < g) p.y = g;
   return Math.hypot(p.x - x0, p.y - y0, p.z - z0);
 }
 const treesNear = (x, z) => {

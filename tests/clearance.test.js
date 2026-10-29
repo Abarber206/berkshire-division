@@ -12,6 +12,14 @@ const vm = require('vm');
 const SRC = path.join(__dirname, '..', 'src');
 const THREE_JS = path.join(__dirname, 'vendor', 'three.min.js');
 const FILES = ['01_util.js', '02_track.js', '03_route.js', '04_world.js', '05_scenery.js'];
+const MTN_FILES = ['01_util.js', '02_track.js', '03_route.js', '03c_mountain.js', '04_world.js', '04b_mountain.js', '05_scenery.js', '05b_detail.js', '05d_mountain.js'];
+const BUILD = {
+  ohio: `WORLD.custom = false; buildRoute(); buildLattice();
+    buildStations(); buildBridge(scene); buildRoads(scene); buildSignals(scene); buildSigns(); buildPoleLine(scene);`,
+  // the mountain: its terrain fields first (the portals grade the ground round them), then everything by the track
+  laurel: `WORLD.custom = false; WORLD.roadsX = []; WORLD.roadN = 1e7; buildMountainRoute(); mtPrepare(); buildLattice();
+    buildStations(); buildBridge(scene); mtBuildViaduct(scene); mtBuildTunnels(scene); buildSignals(scene); buildSigns(); buildPoleLine(scene);`,
+};
 
 // the swept envelope: a car body is 1.63 m either side of centre; structures above 4.9 m (coal chutes,
 // water spouts, engine house door heads) are meant to reach over the train
@@ -24,18 +32,17 @@ function Anything() {
   return proxy;
 }
 
-function world() {
-  const ctx = { console, Math, performance: { now: () => 0 }, self: {}, window: {},
+function world(route = 'ohio') {
+  const ctx = { console, Math, performance: { now: () => 0 }, self: {}, window: {}, location: { search: '?route=' + route },
     document: { createElement: () => ({ width: 0, height: 0, getContext: () => Anything(), style: {} }), getElementById: () => Anything() },
     localStorage: { getItem: () => null, setItem() {} } };
   vm.createContext(ctx);
   vm.runInContext(fs.readFileSync(THREE_JS, 'utf8'), ctx, { filename: 'three.min.js' });
-  const code = FILES.map(f => fs.readFileSync(path.join(SRC, f), 'utf8')).join('\n') + `
+  const code = (route === 'ohio' ? FILES : MTN_FILES).map(f => fs.readFileSync(path.join(SRC, f), 'utf8')).join('\n') + `
     const __parts = [], __add = GeoBin.prototype.add;
     GeoBin.prototype.add = function (k, g, m) { __add.call(this, k, g, m); __parts.push({ bin: this, g, who: (new Error().stack.split('\\n')[2].match(/at (\\S+)/) || [])[1] }); return g; };
     const scene = new THREE.Group();
-    WORLD.custom = false; buildRoute(); buildLattice();
-    buildStations(); buildBridge(scene); buildRoads(scene); buildSignals(scene); buildSigns(); buildPoleLine(scene);
+    ${BUILD[route]}
     const bins = new Set(SCN.bins.values()), parts = __parts.filter(p => bins.has(p.bin));
     scene.updateMatrixWorld(true);
     const _m = new THREE.Matrix4();
@@ -66,8 +73,9 @@ function trackIndex(W) {
   };
 }
 
-test('nothing lineside fouls a track', { skip: !fs.existsSync(THREE_JS) && !process.env.CI && 'tests/vendor/three.min.js missing (npm pack three@0.128.0)' }, () => {
-  const W = world(), near = trackIndex(W), fouls = new Map();
+const SKIP = !fs.existsSync(THREE_JS) && !process.env.CI && 'tests/vendor/three.min.js missing (npm pack three@0.128.0)';
+for (const route of ['ohio', 'laurel']) test(`nothing lineside fouls a track (${route})`, { skip: SKIP }, () => {
+  const W = world(route), near = trackIndex(W), fouls = new Map();
   assert.ok(W.parts.length > 1000, `only ${W.parts.length} scenery parts were built`);
   const p = [0, 0, 0];
   for (const part of W.parts) {

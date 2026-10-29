@@ -22,6 +22,8 @@ class Line {
     this.name = name; this.pts = pts; this.opt = opt; this.cuts = []; this.loop = !!opt.loop;
     this.len = pts[pts.length - 1].s; this.startNode = opt.startNode || null; this.endNode = opt.endNode || null;
     this.edges = []; this.map = new Map();
+    // a track laid alongside another carries, point by point, the distance on the main line it stands against
+    if (pts[0].sm !== undefined) { const S = pts.map(p => p.s), SM = pts.map(p => p.sm); this.mainS = s => { s = clamp(s, 0, this.len); const i = this._find(s), j = Math.min(i + 1, S.length - 1); return SM[i] + (SM[j] - SM[i]) * ((s - S[i]) / ((S[j] - S[i]) || 1)); }; }
     ROUTE.lines[name] = this;
   }
   _find(s) { let lo = 0, hi = this.pts.length - 1; while (hi - lo > 1) { const m = (lo + hi) >> 1; if (this.pts[m].s <= s) lo = m; else hi = m; } return lo; }
@@ -72,8 +74,9 @@ class Line {
     }
     for (const sg of segs) {
       const pts = this.slice(sg.s0, sg.s1);
-      const bridges = (opt.bridges || []).map(b => [b[0] - sg.s0, b[1] - sg.s0]).filter(b => b[1] > 0 && b[0] < sg.s1 - sg.s0);
-      const e = NET.edge(pts, { kind: opt.kind, name: this.name, limit: opt.limit, cant: opt.cant, bridges });
+      const local = R => (R || []).map(b => [b[0] - sg.s0, b[1] - sg.s0]).filter(b => b[1] > 0 && b[0] < sg.s1 - sg.s0);
+      const limit = opt.limitAt ? opt.limitAt((sg.s0 + sg.s1) / 2) : opt.limit;
+      const e = NET.edge(pts, { kind: opt.kind, name: this.name, limit, cant: opt.cant, bridges: local(opt.bridges), tunnels: local(opt.tunnels) });
       e.line = this; e.lineS0 = sg.s0;
       e.setProfile((s, X, N) => profile(sg.s0 + s, X, N));
       NET.attach(e, 0, sg.na); NET.attach(e, 1, sg.nb);
