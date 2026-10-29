@@ -430,3 +430,18 @@ test('releasing the brakes mid-slide lets the wheels roll again', () => {
   assert.ok(!S.slide && S.v > 0, 'rolling again while still moving');
   assert.equal(S.vw, S.v);
 });
+
+test('curves: superelevation carries part of v²/R, and only a clear overspeed is enough to tip a car', () => {
+  const sim = h.load(), net = new sim.Network();
+  const edge = (kind, R) => { const e = net.edge(new sim.PathBuilder(0, 0, 0).straight(50).arc(R, 60).pts, { kind, limit: 40 }); e.setProfile(() => 0); return e; };
+  const main = edge('main', 300), yard = edge('yard', 150);
+  const tipMph = e => { const tp = { e, s: 50 + 300 * Math.PI / 6 * (e === main ? 1 : 0.5) }; let v = 0; while (sim.curveUnbalanced(tp, v) < sim.CURVE_TIP) v += 0.05; return v / sim.MPH; };
+  // a 300 m main-line curve has the full 4 in of cant: the 0.65 m/s² it carries is subtracted
+  const tp = { e: main, s: 200 };
+  assert.ok(Math.abs(main.cant(200) - Math.asin(0.1 / 1.5)) < 1e-6);
+  assert.ok(Math.abs(sim.curveUnbalanced(tp, 20) - (400 / 300 - 9.81 * 0.1 / 1.5)) < 0.01);
+  assert.ok(sim.curveUnbalanced(tp, 0) < sim.CURVE_WARN, 'standing on the cant is no warning');
+  between(tipMph(main), 78, 86, 'tips on a 300 m canted curve (mph)');
+  between(tipMph(yard), 50, 56, 'tips on a 150 m uncanted yard curve (mph)');
+  assert.ok(sim.CURVE_HOLD >= 0.5);
+});

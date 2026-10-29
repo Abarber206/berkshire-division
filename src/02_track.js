@@ -75,6 +75,7 @@ class Edge {
   _idx(s) { const f = clamp(s, 0, this.len) / this.ds; let i = Math.floor(f); if (i >= this.n - 1) i = this.n - 2; return [i, f - i]; }
   heading(s) { const [i, t] = this._idx(s); return lerp(this.H[i], this.H[i + 1], t); }
   curv(s) { const [i, t] = this._idx(s); return lerp(this.K[i], this.K[i + 1], t); }
+  cant(s) { const [i, t] = this._idx(s); return lerp(this.C[i], this.C[i + 1], t); }
   grade(s) { const [i] = this._idx(s); return (this.Y[i + 1] - this.Y[i]) / this.ds; }
   elev(s) { const [i, t] = this._idx(s); return lerp(this.Y[i], this.Y[i + 1], t); }
   xz(s) { const [i, t] = this._idx(s); return [lerp(this.X[i], this.X[i + 1], t), lerp(this.N[i], this.N[i + 1], t)]; }

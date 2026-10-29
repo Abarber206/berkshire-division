@@ -228,6 +228,16 @@ function physicsStep(dt, train) {
   return S.v * dt;
 }
 
+/* Curve overturning. What pushes a car over is the part of v²k the superelevation does not carry (g sin of the
+   cant). A car with its centre of gravity about 2 m above the rail and wheels 1.5 m apart starts to lift its
+   inner wheels at roughly 0.4 g of that, and it takes a moment to roll right over, so only a clear overspeed
+   held for over half a second tips the train. */
+const CURVE_WARN = 1.6, CURVE_TIP = 3.9, CURVE_HOLD = 0.6;
+function curveUnbalanced(tp, v) {
+  const e = tp.e, c = e.cant ? e.cant(tp.s) : 0;
+  return Math.abs(v * v * e.curv(tp.s) - 9.81 * Math.sin(c));
+}
+
 /* A high-speed set runs at its own top speed on main track (and straight through the turnouts there), with
    each curve posted for 1.5 m/s2 of lateral acceleration, rounded down to 5 mph. Everything else (yards,
    sidings, crossovers) keeps its own limit. */

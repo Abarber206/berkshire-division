@@ -12,7 +12,7 @@ const SRC = path.join(__dirname, '..', 'src');
 const FILES = ['01_util.js', '02_track.js', '06_models.js', '06d_cab.js', '06e_hsr.js', '07_train.js', '07b_cars.js', '07c_place.js', '08_physics.js', '11d_jobs.js', '11e_traffic.js'];
 const EXPORTS = ['S', 'ENV', 'GAME', 'CARS', 'JOB', 'LOCO_SPEC', 'HSR', 'HS_AERO', 'setVehicle', 'hsLimit', 'Consist', 'Cut', 'physicsStep', 'brakeZone', 'brakeLabel', 'consistMass',
   'COUPLE_OK', 'COUPLE_HARD', 'COUPLE_DAMAGE', 'COUPLE_WRECK', 'KN_CLOSED', 'KN_OPEN', 'KN_LIFTED', 'HANDBRAKE', 'MPH', 'LBF', 'STON', 'PSI',
-  'PathBuilder', 'Network', 'TrackPos', 'FOUL_LEN', 'POINTS_CLEAR',
+  'curveUnbalanced', 'CURVE_WARN', 'CURVE_TIP', 'CURVE_HOLD', 'PathBuilder', 'Network', 'TrackPos', 'FOUL_LEN', 'POINTS_CLEAR',
   'IX', 'AI', 'routeWalk', 'PLACE', 'PLACE_SNAP', 'PLACE_CLEAR', 'endCoupler', 'carVehicle', 'signalRoute', 'signalAspect', 'swPair',
   'CTL', 'ctlTravel', 'ctlSetTravel', 'pullToWhistle', 'whistleToPull', 'dialAngle', 'glassLevel', 'stokerNext', 'CAB_READ', 'DIALS'];
 
