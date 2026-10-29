@@ -113,7 +113,9 @@ function mtBuildViaduct(scene) {
   const vis = gb.build({ steel: MAT.bridge, concrete: SMAT.concrete, tie: MAT.tie, wood: SMAT.wood });
   vis.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
   scene.add(vis);
-  const pc = line.poseAt(V.s); keep(pc.X, pc.N, V.half + 10);
+  // keep the woods off the towers, and from under the deck where it runs low near the ends
+  for (const [ta, tb] of towers) { const p = line.poseAt((ta + tb) / 2); keep(p.X, p.N, 16); }
+  for (let s = s0 - 10; s <= s1 + 10; s += 8) { const p = line.poseAt(s), F = frameAt(s, FR2); if (F.p.y - groundAt(p.X, p.N) < 24) keep(p.X, p.N, 9); }
 }
 const _cU0 = new THREE.Vector3(0, 1, 0);
 
@@ -187,7 +189,7 @@ function portalShape(P, X, N, nat) {
   const [a, l] = portalAL(P, X, N), y0 = P.y - 0.95;
   const cut = y0 + Math.max(0, Math.abs(l) - BORE.cutHalf) * BORE.cutSlope;
   if (a < 0) return Math.min(nat, cut);
-  return Math.min(nat, Math.max(cut, P.y + BORE.wallH + 0.35 + a * 0.9));
+  return Math.min(nat, Math.max(cut, P.y + BORE.wallH + 0.62 + Math.max(0, a - 2) * 0.9));   // just under the coping top, then up the hill
 }
 function mtPortalPatch(scene, P) {
   // a box on the 20 m terrain grid round the portal, wide enough to hold all the grading
@@ -221,8 +223,9 @@ function mtPortalPatch(scene, P) {
   const idx = [];
   for (let j = 0; j < nn; j++) for (let i = 0; i < nx; i++) {
     const X = patch.X0 + (i + 0.5) * patch.res, N = patch.N0 + (j + 0.5) * patch.res, [a, l] = portalAL(P, X, N);
-    if (Math.abs(l) < BORE.half + 0.6 && a > -9 && a < BORE.wallT + 2) continue;   // the opening and the track bed in front of it
-    if (Math.abs(l) < BORE.half && a >= BORE.wallT + 2) continue;                   // inside the bore
+    // the track bed in front of the opening (under the ballast) and the step up to the hill inside the headwall;
+    // behind the coping the hill's surface carries on over the bore
+    if (Math.abs(l) < BORE.half + 0.6 && a > -9 && a < 0.9) continue;   // a 1 m cell reaches 0.71 m either way of its centre
     const A = j * (nx + 1) + i, B = A + 1, D = A + nx + 1, E = D + 1;
     idx.push(A, B, D, B, E, D);
   }
@@ -359,5 +362,6 @@ function mtUpdate(cam, scene) {
   mtForestUpdate(cam.position, scene);
   const b = mtInBore(cam.position.x, cam.position.z, 1);
   const k = b && cam.position.y < b.rail + BORE.crown + 0.5 ? smooth(4, 60, b.depth) : 0;
+  SKY.boreK = k;
   if (SKY.sun && SKY.sunBase !== undefined) { SKY.sun.intensity = SKY.sunBase * (1 - 0.94 * k); SKY.hemi.intensity = SKY.hemiBase * (1 - 0.85 * k); }
 }

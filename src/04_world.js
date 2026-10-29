@@ -207,6 +207,8 @@ function groundH(X, N, lat) {
   if (lat && lat.d < 80) {
     const w = 1 - smooth(14, 76, lat.d);
     h = lerp(h, lat.y - 0.95, w);
+    // a mountain stream beyond the embankment's foot keeps its bed under the grading's edge
+    if (WORLD.mtn && lat.d > 22) h = mtCarve(X, N, h);
   }
   return h;
 }

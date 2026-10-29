@@ -2095,6 +2095,8 @@ function groundH(X, N, lat) {
   if (lat && lat.d < 80) {
     const w = 1 - smooth(14, 76, lat.d);
     h = lerp(h, lat.y - 0.95, w);
+    // a mountain stream beyond the embankment's foot keeps its bed under the grading's edge
+    if (WORLD.mtn && lat.d > 22) h = mtCarve(X, N, h);
   }
   return h;
 }
@@ -2711,7 +2713,9 @@ function mtPrepare() {
   {
     const west = mtBeside(-9000, 9300, s => lerp(330, 150, smooth(1500, 6000, s)), 120);
     const east = [[pBr.X + 900, pBr.N + 200], [pBr.X + 2600, pBr.N + 700], [700, 1900], [3600, 2050], [6400, 2500], [8700, 2800], [10600, 3300]];
-    const pts = mtSpline([...west, [pBr.X, pBr.N], ...east], 12).reverse();   // upstream first, so the bed falls along the list
+    // it meets the bridge square on, so the approach banks never lie across the water
+    const nx = -Math.sin(pBr.h), nn = Math.cos(pBr.h), sq = d => [pBr.X + nx * d, pBr.N + nn * d];
+    const pts = mtSpline([...west, sq(170), sq(80), [pBr.X, pBr.N], sq(-80), sq(-170), ...east], 12).reverse();   // upstream first, so the bed falls along the list
     const L = pts.reduce((a, p, i) => a + (i ? Math.hypot(p[0] - pts[i - 1][0], p[1] - pts[i - 1][1]) : 0), 0);
     let sBrR = 0; { let best = Infinity, s = 0; pts.forEach((p, i) => { if (i) s += Math.hypot(p[0] - pts[i - 1][0], p[1] - pts[i - 1][1]); const d = Math.hypot(p[0] - pBr.X, p[1] - pBr.N); if (d < best) { best = d; sBrR = s; } }); }
     // above the bridge it climbs steadily to its head (about 300 m); below it, it falls gently toward Riverton
@@ -2728,17 +2732,18 @@ function mtPrepare() {
   {
     const v = ROUTE.viaduct, pv = m.poseAt(v.s), lrAt = (() => { let best = null, bd = Infinity; for (const p of lr.pts) { const d = Math.hypot(p.X - (pv.X - 760), p.N - pv.N); if (d < bd) { bd = d; best = p; } } return best; })();
     const pts = mtSpline([[pv.X + 2100, pv.N - 500], [pv.X + 1100, pv.N - 150], [pv.X, pv.N], [pv.X - 400, pv.N + 20], [lrAt.X, lrAt.N]], 10);
-    const yv = Y(v.s) - 40;
+    const yv = Y(v.s) - 48;
     let sv = 0; { let s = 0, bd = Infinity; pts.forEach((p, i) => { if (i) s += Math.hypot(p[0] - pts[i - 1][0], p[1] - pts[i - 1][1]); const d = Math.hypot(p[0] - pv.X, p[1] - pv.N); if (d < bd) { bd = d; sv = s; } }); }
-    mtRiver('Bear Run', pts, (p, i, P) => { const tot = P[P.length - 1].s; return p.s < sv ? yv + (sv - p.s) * 0.045 : lerp(yv, lrAt.y + 0.3, (p.s - sv) / (tot - sv)); }, { halfW: 2.5, bank: 0.34 });
+    mtRiver('Bear Run', pts, (p, i, P) => { const tot = P[P.length - 1].s; return p.s < sv ? yv + (sv - p.s) * 0.045 : lerp(yv, lrAt.y + 0.3, (p.s - sv) / (tot - sv)); }, { halfW: 2.5, bank: 0.42 });
   }
   // Pine Creek: rises east of the tunnel and falls beside the line all the way past Ashby
   {
-    const pts = mtSpline(mtBeside(F.tunnelEnd + 2200, m.len + 6000, -95, 80), 10);
+    // past Ashby it turns away south, clear of the turning loop
+    const pts = mtSpline(mtBeside(F.tunnelEnd + 2200, m.len + 3000, s => -95 - 1400 * smooth(m.len - 700, m.len + 2200, s), 80), 10);
     mtRiver('Pine Creek', pts, p => { const s = F.tunnelEnd + 2200 + p.s; return Y(Math.min(s, m.len)) - 11 - 0.004 * p.s; }, { halfW: 4, bank: 0.4 });
   }
   // the summit ridge the tunnel goes through: a crest across the line at the bore's middle
-  { const sm = (F.tunnel + F.tunnelEnd) / 2, p = m.poseAt(sm); MT.ridges.push({ X: p.X, N: p.N, h: p.h, top: Y(sm) + 95, w: (F.tunnelEnd - F.tunnel) / 2 - 80, len: 5200 }); }
+  { const sm = (F.tunnel + F.tunnelEnd) / 2, p = m.poseAt(sm); MT.ridges.push({ X: p.X, N: p.N, h: p.h, y: Y(sm), top: 95, half: (F.tunnelEnd - F.tunnel) / 2, len: 5200 }); }
 
   /* ---------- level ground for the towns ---------- */
   for (const st of ROUTE.stations) {
@@ -2817,16 +2822,20 @@ function mtRidged(x, y, oct) {
 /* the land as the water shaped it: valley floors at the rivers, mountains rising away from them */
 function mtValley(X, N) {
   const dv = mtField(MT.dV, X, N), fl = mtField(MT.fl, X, N);
-  const up = 430 * Math.pow(smooth(60, 3800, dv), 0.85);
-  const amp = 18 + 150 * smooth(150, 1800, dv);
+  const up = 520 * Math.pow(smooth(60, 3000, dv), 0.8);
+  const amp = 20 + 210 * smooth(150, 1600, dv);
   let h = fl + up + amp * (mtRidged(X / 2300 + 7.1, N / 2300 - 3.3, 5) - 0.42) + 6 * Noise.fbm(X / 260, N / 260, 3);
   return h;
 }
-/* the summit ridge: full height over the whole bore, falling away beyond the portals */
+/* the summit ridge: a dome over the bore, 95 m over the rails at the middle and 14 m at the portals (a little
+   over the headwalls), dying away within 250 m beyond them */
 function mtRidge(X, N, h) {
   for (const r of MT.ridges) {
-    const dx = X - r.X, dn = N - r.N, c = Math.cos(r.h), s = Math.sin(r.h), along = dx * c + dn * s, across = -dx * s + dn * c;
-    h = Math.max(h, lerp(h, r.top + 40 * Noise.fbm(X / 700, N / 700, 3), (1 - smooth(r.w, r.w + 450, Math.abs(along))) * (1 - smooth(r.len * 0.35, r.len * 0.5, Math.abs(across)))));
+    const dx = X - r.X, dn = N - r.N, c = Math.cos(r.h), s = Math.sin(r.h), a = Math.abs(dx * c + dn * s), across = -dx * s + dn * c;
+    const rise = a < r.half ? 14 + (r.top - 14) * (1 - (a / r.half) ** 2) : 14 * (1 - smooth(r.half, r.half + 250, a));
+    if (rise <= 0) continue;
+    const T = r.y + rise * (1 + 0.4 * Noise.fbm(X / 700, N / 700, 3));
+    h = Math.max(h, lerp(h, T, 1 - smooth(r.len * 0.35, r.len * 0.5, Math.abs(across))));
   }
   return h;
 }
@@ -2850,18 +2859,23 @@ function mtWaterNear(X, N) {
 function mtNaturalH(X, N) {
   // the ridge goes on after the railroad's correction, which would otherwise pull it down to the approach cuts
   let h = mtRidge(X, N, mtValley(X, N) + mtField(MT.C, X, N));
-  // the water cuts its own bed: flat across the stream, banks rising away
-  const w = mtWaterNear(X, N);
-  if (w) {
-    const bed = w.y - 0.6 * (1 - smooth(-w.r.halfW, 0, w.d));
-    h = Math.min(h, bed + Math.max(0, w.d + w.r.halfW * 0.55) * w.r.bank + 0.25 * smooth(0, 30, w.d) * Noise.n2(X / 23, N / 23));
-  }
   // town sites are levelled to the depot
   for (const f of MT.flats) {
     const dx = X - f.X, dn = N - f.N; if (dx * dx + dn * dn > 700 * 700) continue;
     const u = dx * Math.cos(f.h) + dn * Math.sin(f.h), v = (dx * Math.sin(f.h) - dn * Math.cos(f.h)) * f.side;
     const k = (1 - smooth(f.U, f.U + 160, Math.abs(u))) * (1 - smooth(-20, 20, -v)) * (1 - smooth(f.V, f.V + 160, v));
     if (k > 0) h = lerp(h, f.y + 0.4 * Noise.fbm(X / 90, N / 90, 2), k);
+  }
+  return mtCarve(X, N, h);
+}
+/* the water cuts its own bed, through the town flats too: flat across the stream, banks rising away */
+function mtCarve(X, N, h) {
+  const w = mtWaterNear(X, N);
+  if (w) {
+    const bed = w.y - 0.6 * (1 - smooth(-w.r.halfW, 0, w.d));
+    h = Math.min(h, bed + Math.max(0, w.d + w.r.halfW * 0.55) * w.r.bank + 0.25 * smooth(0, 30, w.d) * Noise.n2(X / 23, N / 23));
+    // and never lies below its own surface beyond the banks, where the water would stand over dry land
+    if (w.d > 0) { const lip = w.y + w.r.depth + 0.35 + w.d * 0.03; if (h < lip) h = lerp(h, lip, 1 - smooth(40, 240, w.d)); }
   }
   return h;
 }
@@ -2887,7 +2901,9 @@ function mtBuildWater(scene) {
 function mtGroundColor(X, N, h, lat, out) {
   const wood = (0.55 + 0.5 * Noise.fbm(X / 420 + 9, N / 420 - 4, 3)) * (1 - 0.55 * smooth(700, 2600, mtField(MT.dT, X, N)));
   const k0 = smooth(0.35, 0.75, wood);
-  let r = lerp(0.40, 0.31, k0), g = lerp(0.47, 0.30, k0), b = lerp(0.24, 0.18, k0);
+  // under the woods: dark leaf litter and the canopy's shade, rust and olive in patches so a wooded hillside reads as autumn woods from afar
+  const rust = smooth(-0.1, 0.5, Noise.fbm(X / 160 + 3, N / 160 - 7, 2));
+  let r = lerp(0.40, lerp(0.25, 0.34, rust), k0), g = lerp(0.47, lerp(0.27, 0.24, rust), k0), b = lerp(0.24, lerp(0.14, 0.12, rust), k0);
   // hemlock needles darken the high ground
   const hk = smooth(300, 560, h) * k0; r = lerp(r, 0.24, hk * 0.5); g = lerp(g, 0.27, hk * 0.5); b = lerp(b, 0.18, hk * 0.5);
   if (lat && lat.d < 30) {
@@ -4573,7 +4589,9 @@ function mtBuildViaduct(scene) {
   const vis = gb.build({ steel: MAT.bridge, concrete: SMAT.concrete, tie: MAT.tie, wood: SMAT.wood });
   vis.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
   scene.add(vis);
-  const pc = line.poseAt(V.s); keep(pc.X, pc.N, V.half + 10);
+  // keep the woods off the towers, and from under the deck where it runs low near the ends
+  for (const [ta, tb] of towers) { const p = line.poseAt((ta + tb) / 2); keep(p.X, p.N, 16); }
+  for (let s = s0 - 10; s <= s1 + 10; s += 8) { const p = line.poseAt(s), F = frameAt(s, FR2); if (F.p.y - groundAt(p.X, p.N) < 24) keep(p.X, p.N, 9); }
 }
 const _cU0 = new THREE.Vector3(0, 1, 0);
 
@@ -4647,7 +4665,7 @@ function portalShape(P, X, N, nat) {
   const [a, l] = portalAL(P, X, N), y0 = P.y - 0.95;
   const cut = y0 + Math.max(0, Math.abs(l) - BORE.cutHalf) * BORE.cutSlope;
   if (a < 0) return Math.min(nat, cut);
-  return Math.min(nat, Math.max(cut, P.y + BORE.wallH + 0.35 + a * 0.9));
+  return Math.min(nat, Math.max(cut, P.y + BORE.wallH + 0.62 + Math.max(0, a - 2) * 0.9));   // just under the coping top, then up the hill
 }
 function mtPortalPatch(scene, P) {
   // a box on the 20 m terrain grid round the portal, wide enough to hold all the grading
@@ -4681,8 +4699,9 @@ function mtPortalPatch(scene, P) {
   const idx = [];
   for (let j = 0; j < nn; j++) for (let i = 0; i < nx; i++) {
     const X = patch.X0 + (i + 0.5) * patch.res, N = patch.N0 + (j + 0.5) * patch.res, [a, l] = portalAL(P, X, N);
-    if (Math.abs(l) < BORE.half + 0.6 && a > -9 && a < BORE.wallT + 2) continue;   // the opening and the track bed in front of it
-    if (Math.abs(l) < BORE.half && a >= BORE.wallT + 2) continue;                   // inside the bore
+    // the track bed in front of the opening (under the ballast) and the step up to the hill inside the headwall;
+    // behind the coping the hill's surface carries on over the bore
+    if (Math.abs(l) < BORE.half + 0.6 && a > -9 && a < 0.9) continue;   // a 1 m cell reaches 0.71 m either way of its centre
     const A = j * (nx + 1) + i, B = A + 1, D = A + nx + 1, E = D + 1;
     idx.push(A, B, D, B, E, D);
   }
@@ -4819,6 +4838,7 @@ function mtUpdate(cam, scene) {
   mtForestUpdate(cam.position, scene);
   const b = mtInBore(cam.position.x, cam.position.z, 1);
   const k = b && cam.position.y < b.rail + BORE.crown + 0.5 ? smooth(4, 60, b.depth) : 0;
+  SKY.boreK = k;
   if (SKY.sun && SKY.sunBase !== undefined) { SKY.sun.intensity = SKY.sunBase * (1 - 0.94 * k); SKY.hemi.intensity = SKY.hemiBase * (1 - 0.85 * k); }
 }
 
@@ -14319,7 +14339,8 @@ function renderStep(dt, T) {
   if (GAME.running && !S.paused && !S.derailed) MP.contact(T);
   // headlight & glows
   const night = SKY.night;
-  T.head.intensity = S.light === 0 ? 0 : (S.light === 1 ? (night ? 1.6 : 0.4) : (night ? 6 : 1.4));
+  const darkH = night || SKY.boreK > 0.5;   // in a tunnel the headlight works as it does at night
+  T.head.intensity = S.light === 0 ? 0 : (S.light === 1 ? (darkH ? 1.6 : 0.4) : (darkH ? 6 : 1.4));
   RMAT.lens.color.setScalar(S.light === 0 ? 0.25 : (S.light === 1 ? 0.75 : 1.0));
   const flick = 0.85 + 0.15 * Math.sin(S.time * 23) * Math.sin(S.time * 7.3);
   if (T.diesel) {

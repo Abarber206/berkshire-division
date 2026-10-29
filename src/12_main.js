@@ -648,7 +648,8 @@ function renderStep(dt, T) {
   if (GAME.running && !S.paused && !S.derailed) MP.contact(T);
   // headlight & glows
   const night = SKY.night;
-  T.head.intensity = S.light === 0 ? 0 : (S.light === 1 ? (night ? 1.6 : 0.4) : (night ? 6 : 1.4));
+  const darkH = night || SKY.boreK > 0.5;   // in a tunnel the headlight works as it does at night
+  T.head.intensity = S.light === 0 ? 0 : (S.light === 1 ? (darkH ? 1.6 : 0.4) : (darkH ? 6 : 1.4));
   RMAT.lens.color.setScalar(S.light === 0 ? 0.25 : (S.light === 1 ? 0.75 : 1.0));
   const flick = 0.85 + 0.15 * Math.sin(S.time * 23) * Math.sin(S.time * 7.3);
   if (T.diesel) {

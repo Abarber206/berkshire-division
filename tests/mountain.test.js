@@ -77,6 +77,15 @@ test('the trestle and the river bridge span real gaps, and Summit tunnel has roc
   assert.ok(least > 15, `only ${least.toFixed(1)} m of cover over the bore`);
 });
 
+test('no water is buried: the graded ground lies under the surface all along every stream', { skip: SKIP }, () => {
+  const { MT, groundH, latticeAt } = mountain(), bad = [];
+  for (const r of MT.rivers) for (let i = 0; i < r.pts.length; i += 3) {
+    const p = r.pts[i], g = groundH(p.X, p.N, latticeAt(p.X, p.N));
+    if (g > p.y + r.depth - 0.1) bad.push(`${r.name} at point ${i} (X ${Math.round(p.X)} N ${Math.round(p.N)}): ground ${(g - p.y - r.depth).toFixed(2)} m over the water`);
+  }
+  assert.deepEqual(bad.slice(0, 8), [], `${bad.length} buried points`);
+});
+
 test('every creek and river runs downhill', { skip: SKIP }, () => {
   const { MT } = mountain();
   for (const r of MT.rivers) for (let i = 1; i < r.pts.length; i++) assert.ok(r.pts[i].y <= r.pts[i - 1].y + 1e-6, `${r.name} climbs at point ${i}`);
