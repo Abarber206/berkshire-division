@@ -770,7 +770,7 @@ CAB.frame = function (dt, T) {
   }
   if (cab.screens.length && CAM.mode === 'cab') {
     CAB.scrT -= dt;
-    if (CAB.scrT <= 0) { CAB.scrT = 0.15; for (const sc of cab.screens) drawCabScreen(sc, T); }
+    if (CAB.scrT <= 0) { CAB.scrT = 0.15; for (const sc of cab.screens) (sc.draw || drawCabScreen)(sc, T); }
   }
   if (CAB.hover && CAB.tipAt && !$('cplTip').hidden) CAB.tip(CAB.hover);
 };

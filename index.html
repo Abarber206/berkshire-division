@@ -7294,7 +7294,7 @@ CAB.frame = function (dt, T) {
   }
   if (cab.screens.length && CAM.mode === 'cab') {
     CAB.scrT -= dt;
-    if (CAB.scrT <= 0) { CAB.scrT = 0.15; for (const sc of cab.screens) drawCabScreen(sc, T); }
+    if (CAB.scrT <= 0) { CAB.scrT = 0.15; for (const sc of cab.screens) (sc.draw || drawCabScreen)(sc, T); }
   }
   if (CAB.hover && CAB.tipAt && !$('cplTip').hidden) CAB.tip(CAB.hover);
 };
@@ -7360,7 +7360,7 @@ Object.assign(LOCO_SPEC, {
 function hsMaterials() {
   if (RMAT.hsGlass) return;
   const mk = (c, m, r, extra = {}) => new THREE.MeshStandardMaterial({ color: c, metalness: m, roughness: r, ...extra });
-  RMAT.hsGlass = mk(0x0d1418, 0.6, 0.06, { side: THREE.DoubleSide });
+  RMAT.hsGlass = mk(0x0d1418, 0.6, 0.06, { side: THREE.DoubleSide, transparent: true, opacity: 0.4, depthWrite: false });
   RMAT.hsWin = new THREE.MeshStandardMaterial({ color: 0x141b20, metalness: 0.4, roughness: 0.08, emissive: 0xeaf1ff, emissiveIntensity: 0 });
   SCN.winMats.push(RMAT.hsWin);
   RMAT.hsUnder = mk(0x2b2e30, 0.4, 0.7, { side: THREE.DoubleSide });
@@ -7380,7 +7380,8 @@ function hsMaterials() {
    A half section runs from the bottom centre round the right side to the roof centre:
    flat bottom, rounded bottom corner (radius ch), a side from yb + ch to the shoulder ys (leaning in by
    tum at the top), then a superellipse (exponent n) over to the roof at yt. Point CUT_I lies on the side
-   at height cut, where the body is cut away over the bogies. */
+   at height cut, where the body is cut away over the bogies. When the section carries window heights wy = [y0, y1],
+   the two side points between the cut and the shoulder sit on them, so a window is one strip of the ring (WIN_J). */
 const HS_HALF = 24, CUT_I = 6;
 function hsHalf(p, cut) {
   const pts = [[0, p.yb], [(p.w - p.ch) * 0.5, p.yb], [p.w - p.ch, p.yb]];
@@ -7388,7 +7389,8 @@ function hsHalf(p, cut) {
   const y0 = p.yb + p.ch, tum = p.tum || 0, zs = y => p.w - tum * clamp((y - y0) / Math.max(0.01, p.ys - y0), 0, 1) ** 1.6;
   const yc = clamp(cut, y0 + 0.002, p.ys - 0.002);
   pts.push([zs(yc), yc]);
-  for (let i = 1; i <= 3; i++) { const y = lerp(yc, p.ys, i / 3); pts.push([zs(y), y]); }
+  const wy = p.wy && p.wy[0] > yc + 0.05 && p.wy[1] < p.ys - 0.005 ? p.wy : null;
+  for (let i = 1; i <= 3; i++) { const y = wy && i < 3 ? wy[i - 1] : lerp(yc, p.ys, i / 3); pts.push([zs(y), y]); }
   const ws = p.w - tum;
   for (let i = 1; i <= 14; i++) { const t = i / 14 * Math.PI / 2; pts.push([ws * Math.pow(Math.cos(t), 2 / p.n), p.ys + (p.yt - p.ys) * Math.pow(Math.sin(t), 2 / p.n)]); }
   pts[pts.length - 1][0] = 0;
@@ -7401,6 +7403,8 @@ function hsRing(p, cut) {
   return R;
 }
 const RING_N = 2 * HS_HALF - 1, CUT_L = RING_N - 1 - CUT_I;   // 47 points; the left cut point
+const WIN_J = CUT_I + 1, ROOF_J = CUT_I + 3;                      // window bottom (top is the next point); the shoulder, where the roof starts
+const mirJ = j => RING_N - 1 - j;                                 // the same point on the left
 /* the half width of the body at height y on station ring R (right side) */
 function ringZ(R, y) {
   for (let i = 0; i < HS_HALF - 1; i++) {
@@ -7418,8 +7422,9 @@ function ringTop(R, z) {
   }
   return R[HS_HALF - 1][1];
 }
-/* Triangles from stations (each {a, R}) over ring indices idx, with UVs planar in (a, y) */
-function loftInto(acc, st, idx, ref, uvL, uvH, out = 0) {
+/* Triangles from stations (each {a, R}) over ring indices idx, with UVs planar in (a, y);
+   skip(a0, a1, j0, j1) leaves a quad out (a window or windscreen opening) */
+function loftInto(acc, st, idx, ref, uvL, uvH, out = 0, skip = null) {
   const base = acc.pos.length / 3;
   for (const s of st) for (const j of idx) {
     const [z, y] = s.R[j], k = out ? 1 + out / Math.max(0.3, Math.hypot(z, y - 1.6)) : 1;
@@ -7428,6 +7433,7 @@ function loftInto(acc, st, idx, ref, uvL, uvH, out = 0) {
   }
   const n = idx.length;
   for (let i = 0; i < st.length - 1; i++) for (let j = 0; j < n - 1; j++) {
+    if (skip && skip(st[i].a, st[i + 1].a, idx[j], idx[j + 1])) continue;
     const A = base + i * n + j, B = A + 1, C = A + n + 1, D = A + n;
     acc.idx.push(A, B, C, A, C, D);
   }
@@ -7462,18 +7468,27 @@ function rrectGeo(w, h, r, seg = 4) {
 
 /* Build the body of one car. B describes the body:
    sect(a) -> section params at a; len; ends: [front, rear] each 'nose' | 'joint'; cut: bogie well height;
-   wells: [[a0, a1], ...] cut away for the bogies; skin: material key; uvL/uvH texture size in metres. */
+   wells: [[a0, a1], ...] cut away for the bogies; skin: material key; uvL/uvH texture size in metres.
+   holes: [[a0, a1], ...] window openings, both sides, on the ring's window strip (the section's wy);
+   canopy: { A0, A1, th0(a) } a windscreen over the roof (see hsCanopy). Returns the stations. */
 function hsBody(gb, B, ref) {
-  const L = B.len, st = [];
+  const L = B.len, st = [], holes = B.holes || [], cn = B.canopy;
   const grid = new Set([...B.stations]);
   for (const [w0, w1] of B.wells) { grid.add(w0); grid.add(w1); for (let a = w0; a < w1; a += 0.5) grid.add(a); }
+  for (const [h0, h1] of holes) { grid.add(h0); grid.add(h1); }
+  for (const a of B.extra || []) grid.add(a);
+  if (cn) for (let k = 0; k <= 16; k++) grid.add(lerp(cn.A0, cn.A1, k / 16));
   const as = [...grid].filter(a => a >= B.a0 - 1e-6 && a <= B.a1 + 1e-6).sort((x, y) => x - y);
-  for (const a of as) st.push({ a, R: hsRing(B.sect(a), B.cut) });
+  for (const a of as) { const p = B.sect(a); st.push({ a, p, R: hsRing(p, B.cut) }); }
   const skin = newMesh(), under = newMesh();
   const upper = []; for (let j = CUT_I; j <= CUT_L; j++) upper.push(j);
   const lower = []; for (let j = CUT_L; j < RING_N; j++) lower.push(j); for (let j = 1; j <= CUT_I; j++) lower.push(j);
   lower[lower.indexOf(RING_N - 1)] = 0;
-  loftInto(skin, st, upper, ref, B.uvL, B.uvH);
+  const within = (a0, a1, h0, h1) => a0 >= h0 - 1e-6 && a1 <= h1 + 1e-6;
+  const skip = (a0, a1, j0, j1) => (cn && j0 >= ROOF_J && j1 <= mirJ(ROOF_J) && within(a0, a1, cn.A0, cn.A1))
+    || (((j0 === WIN_J && j1 === WIN_J + 1) || (j1 === mirJ(WIN_J) && j0 === mirJ(WIN_J + 1))) && holes.some(([h0, h1]) => within(a0, a1, h0, h1)));
+  loftInto(skin, st, upper, ref, B.uvL, B.uvH, 0, skip);
+  if (cn) hsCanopy(gb, B, st.filter(s => within(s.a, s.a, cn.A0, cn.A1)), ref);
   // below the cut: everywhere except over the bogies, where the well roof and its end walls close the body
   const inWell = (a0, a1) => B.wells.some(([w0, w1]) => a0 >= w0 - 1e-6 && a1 <= w1 + 1e-6);
   let run = [];
@@ -7503,6 +7518,27 @@ function hsBody(gb, B, ref) {
   gb.add(B.skin, meshGeo(skin));
   gb.add('hsUnder', meshGeo(under));
   return st;
+}
+/* The windscreen over a cab: between A0 and A1 the roof is a frame of skin either side of the glass, which runs
+   from angle th0(a) on the right to pi - th0 on the left. The angle is the roof's own parameter (hsSup), so frame,
+   rubber and glass share their edges, and at A0 and A1 (th0 = pi / 2) the frame is the roof itself. */
+function hsCanopy(gb, B, cst, ref) {
+  const fr = newMesh(), rb = newMesh(), gl = newMesh(), F = [], Rb = [], G = [];
+  const mir = R => R.map(([z, y]) => [-z, y]);
+  for (const s of cst) {
+    const p = s.p, th0 = B.canopy.th0(s.a), d = 0.025 * clamp((Math.PI / 2 - th0) / 0.1, 0, 1);
+    const R = []; for (let i = 0; i <= 14; i++) R.push(hsSup(p, (th0 - d) * i / 14));
+    F.push({ a: s.a, R });
+    Rb.push({ a: s.a, R: [hsSup(p, th0 - d), hsSup(p, th0)] });
+    const ws = p.w - (p.tum || 0), Gr = [];
+    for (let j = 0; j <= 10; j++) { const th = lerp(th0, Math.PI - th0, j / 10), c = Math.cos(th); Gr.push([Math.sign(c) * ws * Math.pow(Math.abs(c), 2 / p.n), p.ys + (p.yt - p.ys) * Math.pow(Math.sin(th), 2 / p.n)]); }
+    G.push({ a: s.a, R: Gr });
+  }
+  const i15 = [...Array(15).keys()];
+  loftInto(fr, F, i15, ref, B.uvL, B.uvH); loftInto(fr, F.map(f => ({ a: f.a, R: mir(f.R) })), i15, ref, B.uvL, B.uvH);
+  loftInto(rb, Rb, [0, 1], ref, 1, 1); loftInto(rb, Rb.map(f => ({ a: f.a, R: mir(f.R) })), [0, 1], ref, 1, 1);
+  loftInto(gl, G, [...Array(11).keys()], ref, 1, 1);
+  gb.add(B.skin, meshGeo(fr)); gb.add('hsRubber', meshGeo(rb)); gb.add('hsGlass', meshGeo(gl));
 }
 /* Full-section rubber gangway cover from the body end out to the car end (a0 -> a1), a little inside the body */
 function hsGangway(gb, sect, a0, a1, ref, k = 0.975) {
@@ -7567,24 +7603,32 @@ function e5Skin(nose) {
 }
 /* E5 car: def from HSR.e5.cars. Built nose forward (a = 0 at the nose tip or the joint at car 1's end) */
 function buildE5Car(def, idx) {
-  hsMaterials();
-  const nose = def.type === 'nose', L = def.len;
+  hsMaterials(); hsIntMaterials();
+  const nose = def.type === 'nose', L = def.len, rev = idx === HSR.e5.cars.length - 1;
   const t0 = nose ? L - E5.OV - E5.BOG : E5.OV, t1 = L - E5.OV, ref = (t0 + t1) / 2, x = a => ref - a;
   const root = new THREE.Group(), body = new THREE.Group(); root.add(body);
   const gb = new GeoBin();
   const skinKey = nose ? 'e5SkinNose' : 'e5SkinMid'; e5Skin(nose);
-  const sect = a => e5Sect(a, nose);
+  // the side windows sit on the constant body behind the nose: put two ring points on their sill and head
+  const WY = [2.08, 2.58], sect = a => Object.assign(e5Sect(a, nose), !nose || a >= E5.LN ? { wy: WY } : {});
+  const pitch = def.cls === 'gran' ? 1.3 : def.cls === 'green' ? 1.16 : 1.04, wW = def.cls === 'ord' ? 0.62 : 0.78;
+  // seating saloon between the vestibules, a window to each row of seats; car 1 and car 10 lose the front of the car to the nose and cab
+  const s0 = nose ? E5.LN + 1.2 : 3.4, s1 = L - 3.1, door1 = L - 1.85;
+  const n = Math.floor((s1 - s0) / pitch), wins = [];
+  for (let i = 0; i < n; i++) wins.push(s0 + (s1 - s0 - (n - 1) * pitch) / 2 + i * pitch);
+  const holes = wins.map(a => [a - wW / 2, a + wW / 2]), S0 = s0 - 0.5, S1 = s1 + 0.5;
+  const CB = { A0: 7.8, A1: 12.5, yF: 1.95 };
+  const canopy = nose ? { A0: 8.0, A1: 11.6, th0: a => Math.PI / 2 - (Math.PI / 2 - 0.55) * Math.pow(Math.sin(Math.PI * clamp((a - 8.0) / 3.6, 0, 1)), 0.45) } : null;
   const stations = [];
   if (nose) { for (const a of [0, 0.01, 0.03, 0.06, 0.1, 0.16, 0.24, 0.34, 0.47, 0.62, 0.8, 1.0, 1.25]) stations.push(a); for (let a = 1.5; a < E5.LN; a += 0.35) stations.push(a); }
   for (const a of [nose ? E5.LN : E5.GW, L - E5.GW]) stations.push(a);
   const wells = [[t0 - 1.75, t0 + 1.75], [t1 - 1.75, t1 + 1.75]];
-  hsBody(gb, { len: L, a0: nose ? 0 : E5.GW, a1: L - E5.GW, stations, wells, cut: E5.CUT, sect, skin: skinKey, uvL: L, uvH: 4 }, ref);
+  const st = hsBody(gb, { len: L, a0: nose ? 0 : E5.GW, a1: L - E5.GW, stations, wells, cut: E5.CUT, sect, skin: skinKey, uvL: L, uvH: 4, holes, canopy, extra: nose ? [S0, S1, CB.A0, CB.A1] : [S0, S1] }, ref);
   if (!nose) hsGangway(gb, sect, E5.GW, 0.0, ref);
   hsGangway(gb, sect, L - E5.GW, L, ref);
 
   /* ---- windows, doors, lettering ---- */
   const HW = E5.HW, side = s => s * (HW + 0.004);
-  const win = (a, y, w, h, k = 'hsWin') => { for (const s of [-1, 1]) gb.add(k, rrectGeo(w, h, Math.min(w, h) * 0.22), M(x(a), y, side(s), 0, s > 0 ? 0 : Math.PI, 0)); };
   const door = (a, w = 1.0) => {
     for (const s of [-1, 1]) {
       const z = s * (HW + 0.003);
@@ -7594,11 +7638,6 @@ function buildE5Car(def, idx) {
       gb.box('hsSeam', w * 0.9, 0.05, 0.08, x(a), 0.93, s * (HW - 0.01));   // step plate in the doorway sill
     }
   };
-  const pitch = def.cls === 'gran' ? 1.3 : def.cls === 'green' ? 1.16 : 1.04, wW = def.cls === 'ord' ? 0.62 : 0.78;
-  // seating saloon between the vestibules; car 1 and car 10 lose the front of the car to the nose and cab
-  const s0 = nose ? E5.LN + 1.2 : 3.4, s1 = L - 3.1, door1 = L - 1.85;
-  const n = Math.floor((s1 - s0) / pitch);
-  for (let i = 0; i < n; i++) win(s0 + (s1 - s0 - (n - 1) * pitch) / 2 + i * pitch, 2.33, wW, 0.5);
   door(door1);
   if (!nose) door(1.85);
   else {
@@ -7620,18 +7659,6 @@ function buildE5Car(def, idx) {
   /* ---- the cab: windscreen over the canopy, headlights low on the nose ---- */
   let lens = null, lenses = [], beam = null, halo = null;
   if (nose) {
-    // windscreen: the top of the canopy between a = 8.5 and 11.5, a superellipse patch over the roof centre
-    const acc = newMesh(), st = [];
-    const A0 = 8.4, A1 = 11.6;
-    for (let k = 0; k <= 16; k++) {
-      const a = lerp(A0, A1, k / 16), p = sect(a), gq = Math.sin(Math.PI * k / 16) ** 0.45, th0 = Math.PI / 2 - (Math.PI / 2 - 0.55) * gq, R = [];
-      const ws = p.w - (p.tum || 0);
-      for (let j = 0; j <= 10; j++) { const th = lerp(th0, Math.PI - th0, j / 10), c = Math.cos(th); R.push([Math.sign(c) * ws * Math.pow(Math.abs(c), 2 / p.n), p.ys + (p.yt - p.ys) * Math.pow(Math.sin(th), 2 / p.n)]); }
-      st.push({ a, R });
-    }
-    const idx = []; for (let j = 0; j <= 10; j++) idx.push(j);
-    loftInto(acc, st, idx, ref, 1, 1, 0.006);
-    gb.add('hsGlass', meshGeo(acc));
     // headlights: a slim lamp each side on the white just under the line, about 3 m back from the tip
     for (const s of [-1, 1]) {
       const a0 = 2.3, a1 = 4.1, la = newMesh(), st2 = [];
@@ -7653,6 +7680,20 @@ function buildE5Car(def, idx) {
     // obstacle deflector (snow plough) under the tip
     gb.add('hsUnder', plowGeo(x(0.5), x(2.4), 1.15, 0.16, 0.8));
   }
+  /* ---- inside: the saloon behind the windows, and the cab under the canopy ---- */
+  const ib = new GeoBin(), nIn = body.children.length;
+  const inside = (a0, a1) => st.filter(s => s.a >= a0 - 1e-6 && s.a <= a1 + 1e-6);
+  const face = rev ? -1 : 1;
+  hsSaloon(gb, ib, { st: inside(S0, S1), ref, yF: 1.25, holes, r: Math.min(wW, 0.5) * 0.22, skin: skinKey, uvL: L, uvH: 4, cls: def.cls, face, rows: wins.map(a => x(a)),
+    layout: { ord: [3, 2], green: [2, 2], gran: [2, 1] }[def.cls], rackY: 2.82 });
+  let cab = null;
+  if (nose) {
+    const gW = a => a > canopy.A0 && a < canopy.A1 ? hsSup(sect(a), canopy.th0(a))[1] : Infinity;
+    cab = hsCab(gb, body, ib, { st: inside(CB.A0, CB.A1), ref, yF: CB.yF, th0: a => a >= canopy.A0 && a <= canopy.A1 ? canopy.th0(a) : Math.PI / 2, dx: x,
+      eye: new THREE.Vector3(x(10.35), 3.18, -0.3), drv: -0.3, seats: [-0.3], seatA: 10.2, door: 0.5, sect, cut: E5.CUT, gW,
+      prof: [[7.8, 2.5], [9.0, 2.8], [9.32, 2.68]], screen: [1, 2], desk: [9.3, 9.85, 2.68, 2.61], kind: 'e5', lead: idx === 0, uid: 'e5' + idx });
+  }
+  const cabParts = body.children.slice(nIn);
   /* ---- roof: pantograph on cars 3 and 7, roof fairing at the gangways ---- */
   const pans = [];
   if (def.pan) pans.push(hsPantograph(gb, body, { a: def.pan, ref, roofAt: z => ringTop(hsRing(sect(def.pan), E5.CUT), z), roof: E5.ROOF, w: 1.45, L1: 1.42, L2: 1.52, raised: !!def.raised, rise: HSR.e5.wireH }));
@@ -7660,12 +7701,16 @@ function buildE5Car(def, idx) {
   const trucks = [], wheels = [];
   for (const ta of [t0, t1]) { const B = hsBogie({ wb: E5.WB, R: E5.R, motor: def.motor, top: E5.CUT, w: 1.03 }); trucks.push(B.grp); wheels.push(...B.wheels); }
   body.add(gb.build({ ...RMAT }));
+  const inner = ib.build({ ...RMAT }, { cast: false }); body.add(inner);
   const hit = new THREE.Mesh(new THREE.BoxGeometry(L, 3.2, 3.3), RMAT.hit); hit.position.set(x(L / 2), 2.1, 0); body.add(hit);
   root.traverse(o => { if (o.isMesh && o.material !== RMAT.hsGlass && o.material !== RMAT.hit) { o.castShadow = true; o.receiveShadow = true; } });
+  hsNoCast([...cabParts, inner]);
   if (beam) beam.castShadow = false;
   return {
     root, body, trucks, wheels, rW: E5.R, wb: E5.WB, len: L, frame: [t0, t1], ref, pans, lens, lenses, beam, halo, ditch: [], set: 'e5', nose, motor: def.motor, mass: def.t * 1000, num: def.num,
-    headlightPos: new THREE.Vector3(x(0.6), 1.25, 0), cabEye: new THREE.Vector3(x(10.6), 3.05, 0.42), hornPos: new THREE.Vector3(x(2.0), 1.0, 0), cabLightPos: new THREE.Vector3(x(11.0), 2.9, 0),
+    cab, cabEye: cab ? cab.eye : new THREE.Vector3(x(10.35), 3.18, -0.3),
+    inner, shell: { sect, cut: E5.CUT, yF: 1.25, saloon: [S0, S1], cabA: nose ? [CB.A0, CB.A1] : null, holes },
+    headlightPos: new THREE.Vector3(x(0.6), 1.25, 0), hornPos: new THREE.Vector3(x(2.0), 1.0, 0), cabLightPos: new THREE.Vector3(x(11.0), 2.9, 0),
     enginePos: new THREE.Vector3(x(L / 2), 0.8, 0), skin: {},
   };
 }
@@ -7837,20 +7882,27 @@ function acSkin(power) {
   }, { metal: 0.55, rough: 0.33 });
 }
 function buildAcelaCar(def, idx) {
-  hsMaterials();
+  hsMaterials(); hsIntMaterials();
   const power = def.type === 'power', L = def.len, bog = power ? AC.PBOG : AC.CBOG;
   const t0 = (L - bog) / 2, t1 = t0 + bog, ref = (t0 + t1) / 2, x = a => ref - a;
   const root = new THREE.Group(), body = new THREE.Group(); root.add(body);
   const gb = new GeoBin();
   const skinKey = power ? 'acSkinPower' : 'acSkinCoach'; acSkin(power);
-  const sect = power ? acPowerSect : acCoachSect, cut = power ? AC.PCUT : AC.CCUT, hw = power ? AC.PW : AC.CW;
+  const cut = power ? AC.PCUT : AC.CCUT, hw = power ? AC.PW : AC.CW;
+  // window sill and head as ring points: the coaches' window band, and the cab side window of a power car
+  const sect = power ? a => Object.assign(acPowerSect(a), a >= 2.5 ? { wy: [2.345, 2.895] } : {}) : () => Object.assign(acCoachSect(), { wy: [2.31, 2.93] });
+  const pitch = def.cls === 'first' ? 1.36 : 1.17, s0 = 3.0, s1 = L - 2.4, n = Math.floor((s1 - s0) / pitch), wins = [];
+  if (!power) for (let i = 0; i < n; i++) wins.push(s0 + (s1 - s0 - (n - 1) * pitch) / 2 + i * pitch);
+  const holes = power ? [[3.55 - 0.475, 3.55 + 0.475]] : wins.map(a => [a - 0.5, a + 0.5]), S0 = s0 - 0.5, S1 = s1 + 0.5;
+  const CB = { A0: 0.9, A1: 4.45, yF: 2.02 };
+  const canopy = power ? { A0: 1.0, A1: 3.7, th0: a => Math.PI / 2 - (Math.PI / 2 - 0.62) * Math.pow(Math.sin(Math.PI * clamp((a - 1.0) / 2.7, 0, 1)), 0.35) } : null;
   const stations = [];
   if (power) { for (const a of [0, 0.01, 0.03, 0.06, 0.1, 0.16, 0.24, 0.35, 0.5]) stations.push(a); for (let a = 0.7; a < AC.LN; a += 0.25) stations.push(a); stations.push(AC.LN); }
   else stations.push(AC.GW);
   stations.push(L - AC.GW);
   const half = power ? 1.85 : 1.6;
   const wells = [[t0 - half, t0 + half], [t1 - half, t1 + half]];
-  hsBody(gb, { len: L, a0: power ? 0 : AC.GW, a1: L - AC.GW, stations, wells, cut, sect, skin: skinKey, uvL: L, uvH: 4.4 }, ref);
+  const st = hsBody(gb, { len: L, a0: power ? 0 : AC.GW, a1: L - AC.GW, stations, wells, cut, sect, skin: skinKey, uvL: L, uvH: 4.4, holes, canopy, extra: power ? [CB.A0, CB.A1] : [S0, S1] }, ref);
   if (!power) hsGangway(gb, () => AC_GANG(), AC.GW, 0, ref, 1);
   hsGangway(gb, () => AC_GANG(), L - AC.GW, L, ref, 1);
   const R0 = hsRing(sect(L / 2), cut);
@@ -7865,16 +7917,13 @@ function buildAcelaCar(def, idx) {
     onSide('hsWin', rrectGeo(0.4, 0.62, 0.07), a, 2.5, 0.005);
   };
   if (power) {
-    // cab side window and crew door, cooling grilles, the name on the side
-    onSide('hsWin', rrectGeo(0.95, 0.55, 0.1), 3.55, 2.62, 0.006);
+    // crew door behind the cab (its side window is cut through, below), cooling grilles, the name on the side
     door(5.0, 0.7);
     for (const [a0, a1] of [[13.6, 16.3], [16.8, 19.5]]) onSide('acGrille', new THREE.PlaneGeometry(a1 - a0, 0.78), (a0 + a1) / 2, 1.62, 0.005);
     RMAT.acGrille = RMAT.acGrille || new THREE.MeshStandardMaterial({ color: 0x9aa0a5, metalness: 0.6, roughness: 0.45, map: louverTex() });
     RMAT.acLogo = RMAT.acLogo || decalMat(1024, 256, (g, w, h) => { g.fillStyle = ACC.logo; g.font = 'italic 600 170px "Helvetica Neue", Arial, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; if (g.letterSpacing !== undefined) g.letterSpacing = '6px'; g.fillText('Acela', w / 2, h / 2 + 10); });
     for (const s of [-1, 1]) gb.add('acLogo', new THREE.PlaneGeometry(4.0, 1.0), M(x(10.2), 1.62, s * (ringZ(R0, 1.62) + 0.006), 0, s > 0 ? 0 : Math.PI, 0));
   } else {
-    const pitch = def.cls === 'first' ? 1.36 : 1.17, s0 = 3.0, s1 = L - 2.4, n = Math.floor((s1 - s0) / pitch);
-    for (let i = 0; i < n; i++) onSide('hsWin', rrectGeo(1.0, 0.62, 0.1), s0 + (s1 - s0 - (n - 1) * pitch) / 2 + i * pitch, 2.62, 0.005);
     door(1.55);
   }
   const nk = 'acn_' + def.num; RMAT[nk] = RMAT[nk] || textDecal(def.num, 256, 96, '#2c3238', 'sans', 60);
@@ -7882,16 +7931,7 @@ function buildAcelaCar(def, idx) {
 
   let lens = null, lenses = [], beam = null, halo = null; const ditch = [];
   if (power) {
-    // big raked windscreen, two headlights low in the nose with ditch lights out at the corners, a pilot
-    const acc = newMesh(), st = [], A0 = 1.0, A1 = 3.7;
-    for (let k = 0; k <= 16; k++) {
-      const a = lerp(A0, A1, k / 16), p = sect(a), gq = Math.sin(Math.PI * k / 16) ** 0.35, th0 = Math.PI / 2 - (Math.PI / 2 - 0.62) * gq, R = [];
-      const ws = p.w - (p.tum || 0);
-      for (let j = 0; j <= 10; j++) { const th = lerp(th0, Math.PI - th0, j / 10), c = Math.cos(th); R.push([Math.sign(c) * ws * Math.pow(Math.abs(c), 2 / p.n), p.ys + (p.yt - p.ys) * Math.pow(Math.sin(th), 2 / p.n)]); }
-      st.push({ a, R });
-    }
-    const idw = []; for (let j = 0; j <= 10; j++) idw.push(j);
-    loftInto(acc, st, idw, ref, 1, 1, 0.006); gb.add('hsGlass', meshGeo(acc));
+    // two headlights low in the nose with ditch lights out at the corners, a pilot (the windscreen is cut in by hsBody)
     for (const s of [-1, 1]) {
       // lamps let into the nose: find where the lamp's axis meets the skin, face the lens along the skin's normal there
       // and run the housing back through the skin into the body
@@ -7924,6 +7964,27 @@ function buildAcelaCar(def, idx) {
     // pilot and snow plow below the nose
     gb.add('hsUnder', plowGeo(x(0.7), x(2.6), 1.2, 0.16, 0.75));
   }
+  /* ---- inside: a coach's saloon, or a power car's cab ---- */
+  const ib = new GeoBin(), nIn = body.children.length;
+  const inside = (a0, a1) => st.filter(s => s.a >= a0 - 1e-6 && s.a <= a1 + 1e-6);
+  let cab = null;
+  if (power) {
+    const gW = a => a > canopy.A0 && a < canopy.A1 ? hsSup(sect(a), canopy.th0(a))[1] : Infinity;
+    cab = hsCab(gb, body, ib, { st: inside(CB.A0, CB.A1), ref, yF: CB.yF, th0: a => a >= canopy.A0 && a <= canopy.A1 ? canopy.th0(a) : Math.PI / 2, dx: x,
+      holes, r: 0.1, skin: skinKey, uvL: L, uvH: 4.4,
+      eye: new THREE.Vector3(x(2.9), 3.25, 0.62), drv: 0.62, seats: [0.62, -0.62], seatA: 2.75, door: 0, sect, cut, gW,
+      prof: [[0.9, 2.3], [2.0, 2.86], [2.27, 2.77]], screen: [1, 2], desk: [2.25, 2.7, 2.77, 2.69], kind: 'acela', lead: idx === 0, uid: 'ac' + idx });
+  } else {
+    const cafe = def.cls === 'cafe', half = Math.ceil(wins.length / 2), rows = cafe ? wins.slice(half) : wins;
+    const faces = def.cls === 'bus' ? rows.map((_, i) => i < rows.length / 2 ? -1 : 1) : null;
+    const mid = faces ? rows.length / 2 : -1;
+    const tables = cafe ? rows.slice(0, -1).map((a, i) => i % 2 ? null : [x(a), x(rows[i + 1])]).filter(Boolean)
+      : faces && mid >= 1 ? [[x(rows[mid - 1]), x(rows[mid])]] : [];
+    hsSaloon(gb, ib, { st: inside(S0, S1), ref, yF: 1.27, holes, r: 0.1, skin: skinKey, uvL: L, uvH: 4.4, cls: def.cls, rows: rows.map(a => x(a)), face: 1,
+      faces: cafe ? rows.map((_, i) => i % 2 ? 1 : -1) : faces, tables, counter: cafe ? [S0 + 0.6, wins[half - 1] + 0.5] : null,
+      layout: def.cls === 'first' ? [2, 1] : [2, 2], rackY: 3.2 });
+  }
+  const cabParts = body.children.slice(nIn);
   const pans = [];
   if (power) {
     const roofAt = z => ringTop(hsRing(sect(15), cut), z);
@@ -7933,16 +7994,23 @@ function buildAcelaCar(def, idx) {
   const trucks = [], wheels = [];
   for (const ta of [t0, t1]) { const B = hsBogie({ wb: power ? AC.PWB : AC.CWB, R: power ? AC.PR : AC.CR, motor: power, top: cut, w: 1.03 }); trucks.push(B.grp); wheels.push(...B.wheels); }
   body.add(gb.build({ ...RMAT }));
+  const inner = ib.build({ ...RMAT }, { cast: false }); body.add(inner);
   const hit = new THREE.Mesh(new THREE.BoxGeometry(L, 3.8, 3.2), RMAT.hit); hit.position.set(x(L / 2), 2.4, 0); body.add(hit);
   root.traverse(o => { if (o.isMesh && o.material !== RMAT.hsGlass && o.material !== RMAT.hit) { o.castShadow = true; o.receiveShadow = true; } });
+  hsNoCast([...cabParts, inner]);
   if (beam) beam.castShadow = false;
   return {
     root, body, trucks, wheels, rW: power ? AC.PR : AC.CR, wb: power ? AC.PWB : AC.CWB, len: L, frame: [t0, t1], ref, pans, lens, lenses, beam, halo, ditch, set: 'acela', nose: power, motor: power, mass: def.t * 1000, num: def.num,
     tilt: !power, tiltY: 1.3,
-    headlightPos: new THREE.Vector3(x(0.4), 1.12, 0), cabEye: new THREE.Vector3(x(2.9), 3.25, 0.62), hornPos: new THREE.Vector3(x(6), AC.PROOF + 0.1, 0), cabLightPos: new THREE.Vector3(x(3.2), 3.6, 0),
+    cab, cabEye: cab ? cab.eye : new THREE.Vector3(x(2.9), 3.25, 0.62),
+    inner, shell: { sect, cut, yF: 1.27, saloon: power ? null : [S0, S1], cabA: power ? [CB.A0, CB.A1] : null, holes },
+    headlightPos: new THREE.Vector3(x(0.4), 1.12, 0), hornPos: new THREE.Vector3(x(6), AC.PROOF + 0.1, 0), cabLightPos: new THREE.Vector3(x(3.2), 3.6, 0),
     enginePos: new THREE.Vector3(x(L / 2), 2.0, 0), skin: {},
   };
 }
+
+/* the inside casts no shadows (the body round it does) */
+function hsNoCast(objs) { for (const c of objs) c.traverse(o => { if (o.isMesh) o.castShadow = false; }); }
 
 /* ---------------- the trainset ---------------- */
 /* every car of set key, front to back; the last cab car (or power car) runs turned */
@@ -7970,6 +8038,8 @@ function setVehicle(m, i) {
 /* every frame: pantographs up to the wire or folded down, and the tilting coaches leaning into the curves */
 function animateTrainset(T, dt) {
   const panK = T.remote ? 1 : S.pan, v = T.remote ? 0 : S.v;
+  // the lamps inside: the surfaces glow a little by day, more at night, as the cars' own lighting would show them
+  if (RMAT.hsLit) { const d = smooth(0.2, 0.6, SKY.dark || 0); for (const m of RMAT.hsLit) m.emissiveIntensity = lerp(0.12, 0.42, d); RMAT.hsLight.emissiveIntensity = lerp(0.7, 1.1, d); }
   for (const veh of T.vehicles) {
     const m = veh.model; if (!m || !m.set) continue;
     for (const p of m.pans) p.set(p.raised ? lerp(p.down, p.rise, smooth(0, 1, panK)) : p.down);
@@ -8020,6 +8090,441 @@ function updateElectricAudio(T, inCab) {
   Z.bG.gain.setTargetAtTime(S.vcb ? 0.12 + 0.12 * work : 0, t, 0.6);
   Z.out.gain.setTargetAtTime(inCab ? 0.45 : 1, t, 0.1);
   Z.pG.gain.setTargetAtTime(S.pan > 0.99 ? 0.06 * smooth(15, 80, v) : 0, t, 0.3);
+}
+
+/* ============================================================================
+   Inside the high-speed trainsets: windows and windscreens you can see
+   through, the E5's and the Acela's driving cabs (every control works, the
+   screens read the train), and the saloons behind the windows, each class
+   with its own seats.
+   The lining is the inside face of the car's wall, HS_TH in from the skin and
+   following the same sections, so nothing inside can poke out through the
+   body. Window openings are cut through both, with a reveal between them.
+   Same local frame as 06e_hsr.js: +X forward, a = metres back from the car's front.
+   ========================================================================== */
+const HS_TH = 0.06;
+
+function hsIntMaterials() {
+  if (RMAT.hsLine) return;
+  cabMaterials(); dieselMaterials();   // levers and knobs shared with the other cabs
+  const mk = (c, m, r, extra = {}) => new THREE.MeshStandardMaterial({ color: c, metalness: m, roughness: r, side: THREE.DoubleSide, ...extra });
+  // the inside is lit by its own lamps: a glow in the colour of each surface, brighter at night (animateTrainset)
+  RMAT.hsLit = [];
+  const lit = (c, m, r) => { const x = mk(c, m, r, { emissive: c }); RMAT.hsLit.push(x); return x; };
+  RMAT.hsLine = lit(0xdcdbd4, 0.05, 0.75);      // wall and ceiling panels
+  RMAT.hsEnd = lit(0xc7c4bb, 0.1, 0.6);         // end walls
+  RMAT.hsDoor = lit(0x9fa3a6, 0.4, 0.4);        // sliding doors into the vestibules
+  RMAT.hsRack = lit(0xb4b8bb, 0.7, 0.35);       // luggage racks
+  RMAT.hsShell = lit(0x8d9194, 0.3, 0.5);       // seat frames, pedestals, armrests
+  RMAT.hsCover = lit(0xf1efe8, 0.0, 0.9);       // white headrest covers
+  RMAT.hsWood = lit(0x6e4a2e, 0.1, 0.45);       // Gran Class shells and tables
+  RMAT.hsTable = lit(0x5f6366, 0.3, 0.4);
+  for (const [k, c] of Object.entries({ ord: 0x46628a, green: 0x7d5f48, gran: 0xd6c8aa, first: 0x2f3c50, bus: 0x3e5677, cafe: 0x3e5677 })) RMAT['hsSeat_' + k] = lit(c, 0.0, 0.85);
+  for (const [k, c] of Object.entries({ ord: 0x5b6670, green: 0x5a4636, gran: 0x3c3027, first: 0x3a3f46, bus: 0x4a525a, cafe: 0x4a525a })) RMAT['hsCarpet_' + k] = lit(c, 0.0, 0.95);
+  RMAT.hsLight = new THREE.MeshStandardMaterial({ color: 0xf6f7f2, emissive: 0xfffdf4, emissiveIntensity: 0.7, roughness: 0.5, side: THREE.DoubleSide });
+  RMAT.hsLight.userData.lamp = true;
+  RMAT.hsSign = new THREE.MeshBasicMaterial({ map: canvasTex(512, 64, (g, w, h) => { g.fillStyle = '#0b0c0c'; g.fillRect(0, 0, w, h); g.fillStyle = '#ff9a2a'; g.font = 'bold 40px "IBM Plex Mono", monospace'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('NEXT · BELLEVUE', w / 2, h / 2 + 2); }) });
+  RMAT.hsPane = mk(0x1d2e33, 0.5, 0.05, { transparent: true, opacity: 0.32, depthWrite: false }); RMAT.hsPane.userData.noShadow = true;
+  // the cabs: dark blue-grey panels, a near-black desk
+  RMAT.hsCabLine = lit(0x6d747a, 0.15, 0.7);
+  RMAT.hsCabFloor = lit(0x2f3337, 0.1, 0.9);
+  RMAT.hsDesk = lit(0x33383d, 0.25, 0.55);
+  RMAT.hsDeskTop = lit(0x24282c, 0.2, 0.45);
+  RMAT.hsSeatCab = lit(0x30353b, 0.0, 0.8);
+  RMAT.hsScrOff = new THREE.MeshStandardMaterial({ color: 0x07090a, metalness: 0.3, roughness: 0.2 });
+  RMAT.hsBtn = mk(0x2c7a3c, 0.2, 0.4);
+}
+
+/* ---------------- the lining: the inside face of the wall ----------------
+   At one station (skin ring R, section p): the right half from the floor yF up the side, then over the roof
+   as far as angle th0 (pi / 2 reaches the top centre), pushed in by HS_TH along the wall's normal.
+   sideY: heights of the side points above the floor, the last the shoulder p.ys. When the floor is up in the
+   roof curve (an Acela nose) every point goes on the roof instead, so each station has the same count. */
+function hsSup(p, t) {
+  const ws = p.w - (p.tum || 0);
+  return [ws * Math.pow(Math.max(0, Math.cos(t)), 2 / p.n), p.ys + (p.yt - p.ys) * Math.pow(Math.max(0, Math.sin(t)), 2 / p.n)];
+}
+function liningHalf(R, p, yF, th0, sideY) {
+  let pts;
+  if (yF < p.ys - 0.05) {
+    pts = [[ringZ(R, yF), yF]];
+    for (const y of sideY) pts.push([ringZ(R, y), y]);
+    for (let i = 1; i <= 14; i++) pts.push(hsSup(p, th0 * i / 14));
+  } else {
+    const tF = Math.asin(Math.pow(clamp((yF - p.ys) / Math.max(0.01, p.yt - p.ys), 0, 1), p.n / 2)), n = sideY.length + 14;
+    pts = []; for (let i = 0; i <= n; i++) pts.push(hsSup(p, lerp(tF, Math.max(th0, tF + 0.01), i / n)));
+    pts[0][1] = yF;
+  }
+  const top = th0 > Math.PI / 2 - 1e-6;
+  return pts.map((q, i) => {
+    if (top && i === pts.length - 1) return [0, q[1] - HS_TH];
+    const a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)], tz = b[0] - a[0], ty = b[1] - a[1], l = Math.hypot(tz, ty) || 1;
+    return [q[0] - HS_TH * ty / l, q[1] + HS_TH * tz / l];
+  });
+}
+/* z of a half polyline (floor first) at height y, and y at z */
+function polyZ(H, y) {
+  for (let i = 0; i < H.length - 1; i++) { const a = H[i], b = H[i + 1]; if ((a[1] - y) * (b[1] - y) <= 0 && a[1] !== b[1]) return lerp(a[0], b[0], (y - a[1]) / (b[1] - a[1])); }
+  return y < H[0][1] ? H[0][0] : 0;
+}
+function polyY(H, z) {
+  for (let i = H.length - 1; i > 0; i--) { const a = H[i], b = H[i - 1]; if (z >= a[0] && z <= b[0] && b[0] > a[0]) return lerp(a[1], b[1], (z - a[0]) / (b[0] - a[0])); }
+  return H[H.length - 1][1];
+}
+
+/* a flat frame in the plane through (z0, y0) -> (z1, y1) (the window strip of a ring), over x0..x1: the rectangle
+   with a rounded-rectangle hole. side +1 right, -1 left; off moves it out along the normal. Returns the matrix too. */
+function stripFrame(x0, x1, q0, q1, side, off) {
+  const v = new THREE.Vector3(0, q1[1] - q0[1], side * (q1[0] - q0[0])).normalize(), u = new THREE.Vector3(side, 0, 0);
+  const n = new THREE.Vector3().crossVectors(u, v);
+  const o = new THREE.Vector3((x0 + x1) / 2, (q0[1] + q1[1]) / 2, side * (q0[0] + q1[0]) / 2).addScaledVector(n, off);
+  return { m: new THREE.Matrix4().makeBasis(u, v, n).setPosition(o), H: Math.hypot(q1[0] - q0[0], q1[1] - q0[1]) };
+}
+function rrectPath(P, w, h, r, rev) {
+  const x0 = -w / 2, x1 = w / 2, y0 = -h / 2, y1 = h / 2;
+  if (!rev) { P.moveTo(x0 + r, y0); P.lineTo(x1 - r, y0); P.quadraticCurveTo(x1, y0, x1, y0 + r); P.lineTo(x1, y1 - r); P.quadraticCurveTo(x1, y1, x1 - r, y1); P.lineTo(x0 + r, y1); P.quadraticCurveTo(x0, y1, x0, y1 - r); P.lineTo(x0, y0 + r); P.quadraticCurveTo(x0, y0, x0 + r, y0); }
+  else { P.moveTo(x0 + r, y0); P.quadraticCurveTo(x0, y0, x0, y0 + r); P.lineTo(x0, y1 - r); P.quadraticCurveTo(x0, y1, x0 + r, y1); P.lineTo(x1 - r, y1); P.quadraticCurveTo(x1, y1, x1, y1 - r); P.lineTo(x1, y0 + r); P.quadraticCurveTo(x1, y0, x1 - r, y0); P.lineTo(x0 + r, y0); }
+  return P;
+}
+/* rectangle W x H (grown by g) less a rounded hole w x h, radius r */
+function holeGeo(W, H, g, w, h, r) {
+  const s = new THREE.Shape(); s.moveTo(-W / 2 - g, -H / 2 - g); s.lineTo(W / 2 + g, -H / 2 - g); s.lineTo(W / 2 + g, H / 2 + g); s.lineTo(-W / 2 - g, H / 2 + g); s.closePath();
+  s.holes.push(rrectPath(new THREE.Path(), w, h, r, true));
+  return new THREE.ShapeGeometry(s, 4);
+}
+/* a rounded-rectangle ring t wide, its outside w x h with corner radius r */
+function ringGeo(w, h, r, t) { const s = rrectPath(new THREE.Shape(), w, h, r, false); s.holes.push(rrectPath(new THREE.Path(), w - 2 * t, h - 2 * t, Math.max(0.005, r - t), true)); return new THREE.ShapeGeometry(s, 4); }
+const rrGeo = (w, h, r) => new THREE.ShapeGeometry(rrectPath(new THREE.Shape(), w, h, r, false), 4);
+/* UVs planar in (a, y), as the skin's, so a frame in the skin's material carries the livery across */
+function skinUV(g, ref, uvL, uvH) {
+  const P = g.attributes.position, uv = new Float32Array(P.count * 2);
+  for (let i = 0; i < P.count; i++) { uv[2 * i] = (ref - P.getX(i)) / uvL; uv[2 * i + 1] = P.getY(i) / uvH; }
+  g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  return g;
+}
+
+/* ---------------- a lined room inside the body ----------------
+   o: st (the body's stations, first and last are the end walls), ref, yF (floor top), th0(a) (windscreen edge,
+   omitted for a full roof), holes [[a0, a1]] (windows, on the section's wy), r (window corner radius),
+   skin/uvL/uvH (skin material and texture size), line/floor (material keys), caps [front, rear].
+   Skin-side parts (window frames) go in gb; the rest in ib. Returns the lining halves by station. */
+function hsShell(gb, ib, o) {
+  const st = o.st, holes = o.holes || [], thAt = a => o.th0 ? o.th0(a) : Math.PI / 2;
+  const lin = st.map(s => {
+    const p = s.p, wy = holes.length && p.wy && p.wy[0] > o.yF + 0.01 && p.wy[1] < p.ys - 0.005 ? p.wy : null;   // as hsHalf, where the window fits below the shoulder
+    const sideY = wy ? [wy[0], wy[1], p.ys] : [1, 2, 3].map(k => lerp(o.yF, p.ys, k / 3));
+    return { a: s.a, R: s.R, p, th0: thAt(s.a), H: liningHalf(s.R, p, o.yF, thAt(s.a), sideY) };
+  });
+  const N = lin[0].H.length, rings = side => lin.map(l => ({ a: l.a, R: l.H.map(([z, y]) => [side * z, y]) })), idx = [...Array(N).keys()];
+  const inHole = (a0, a1) => holes.some(([h0, h1]) => a0 >= h0 - 1e-6 && a1 <= h1 + 1e-6);
+  const skip = (a0, a1, j0, j1) => holes.length && j0 === 1 && j1 === 2 && inHole(a0, a1);
+  for (const side of [1, -1]) { const acc = newMesh(); loftInto(acc, rings(side), idx, o.ref, 1, 1, 0, skip); ib.add(o.line, meshGeo(acc)); }
+  { const acc = newMesh(); loftInto(acc, lin.map(l => ({ a: l.a, R: [[l.H[0][0], l.H[0][1]], [-l.H[0][0], l.H[0][1]]] })), [0, 1], o.ref, 1, 1); ib.add(o.floor, meshGeo(acc)); }
+  // end walls: the lining's outline at the first and last station, closed along the floor
+  (o.caps || [true, true]).forEach((on, e) => {
+    if (!on) return;
+    const l = e ? lin[lin.length - 1] : lin[0], pts = [];
+    for (const [z, y] of l.H) pts.push([o.ref - l.a, y, z]);
+    for (let i = l.H.length - (l.th0 > Math.PI / 2 - 1e-6 ? 2 : 1); i >= 0; i--) pts.push([o.ref - l.a, l.H[i][1], -l.H[i][0]]);
+    const acc = newMesh(); capInto(acc, pts, [e ? 1 : -1, 0, 0]); ib.add(o.cap || o.line, meshGeo(acc));
+  });
+  // the windscreen's reveal: from the lining's edge out to the glass, all round the opening
+  if (o.th0) for (const side of [1, -1]) {
+    const acc = newMesh();
+    loftInto(acc, lin.map(l => { const q = hsSup(l.p, l.th0), e = l.H[N - 1]; return { a: l.a, R: [[side * e[0], e[1]], [side * q[0], q[1]]] }; }), [0, 1], o.ref, 1, 1);
+    ib.add('hsRubber', meshGeo(acc));
+  }
+  // windows: a reveal through the wall, the glass, a rubber gasket, and a frame on each face that rounds the corners
+  for (const [h0, h1] of holes) {
+    const ls = lin.filter(l => l.a >= h0 - 1e-6 && l.a <= h1 + 1e-6), l0 = ls[0];
+    const w = h1 - h0, x0 = o.ref - h1, x1 = o.ref - h0;
+    for (const side of [1, -1]) {
+      const S = (l, j) => [side * l.R[j][0], l.R[j][1]], I = (l, k) => [side * l.H[k][0], l.H[k][1]];
+      const acc = newMesh();
+      // sill and head along the opening, then the two jambs
+      loftInto(acc, ls.map(l => ({ a: l.a, R: [S(l, WIN_J), I(l, 1)] })), [0, 1], o.ref, 1, 1);
+      loftInto(acc, ls.map(l => ({ a: l.a, R: [S(l, WIN_J + 1), I(l, 2)] })), [0, 1], o.ref, 1, 1);
+      for (const l of [ls[0], ls[ls.length - 1]]) loftInto(acc, [{ a: l.a, R: [S(l, WIN_J), I(l, 1)] }, { a: l.a, R: [S(l, WIN_J + 1), I(l, 2)] }], [0, 1], o.ref, 1, 1);
+      ib.add(o.line, meshGeo(acc));
+      const q0 = [l0.R[WIN_J][0], l0.R[WIN_J][1]], q1 = [l0.R[WIN_J + 1][0], l0.R[WIN_J + 1][1]];
+      const out = stripFrame(x0, x1, q0, q1, side, 0.0015), Ht = out.H, r = Math.min(o.r, w / 2 - 0.005, Ht / 2 - 0.005);
+      gb.add(o.skin, skinUV(holeGeo(w, Ht, 0.004, w, Ht, r).applyMatrix4(out.m), o.ref, o.uvL, o.uvH));
+      gb.add('hsRubber', ringGeo(w, Ht, r, 0.016).applyMatrix4(stripFrame(x0, x1, q0, q1, side, 0.0025).m));
+      ib.add('hsPane', rrGeo(w, Ht, r).applyMatrix4(stripFrame(x0, x1, q0, q1, side, -0.012).m));
+      const inn = stripFrame(x0, x1, l0.H[1], l0.H[2], side, -0.0015);
+      ib.add(o.line, holeGeo(w, inn.H, 0.004, w, inn.H, Math.min(r, inn.H / 2 - 0.005)).applyMatrix4(inn.m));
+    }
+  }
+  return lin;
+}
+
+/* ---------------- seats ----------------
+   A seat facing +x, its cushion centred over the origin on the floor: one side profile extruded across the seat,
+   a white cover on the headrest. Per class: width between armrest centres, and how tall and deep it is. */
+const HS_SEAT = {
+  ord: { w: 0.47, k: 1.0 }, green: { w: 0.58, k: 1.06 }, gran: { w: 0.7, k: 1.12, shell: 'hsWood' },
+  bus: { w: 0.56, k: 1.04 }, first: { w: 0.62, k: 1.1 }, cafe: { w: 0.56, k: 1.04 },
+};
+function seatParts(cls) {
+  const key = 'seatGeo_' + cls; if (seatParts[key]) return seatParts[key];
+  const c = HS_SEAT[cls], k = c.k, sw = c.w - 0.05;
+  const s = new THREE.Shape();
+  const P = [[0.25, 0.3], [0.265, 0.42], [0.23, 0.46], [-0.18, 0.47], [-0.29, 1.1 * k], [-0.32, 1.17 * k], [-0.4, 1.16 * k], [-0.43, 1.1 * k], [-0.32, 0.44], [-0.28, 0.3]].map(([x, y]) => [x * Math.sqrt(k), y]);
+  s.moveTo(P[0][0], P[0][1]); for (let i = 1; i < P.length; i++) s.lineTo(P[i][0], P[i][1]); s.closePath();
+  const body = new THREE.ExtrudeGeometry(s, { depth: sw, bevelEnabled: true, bevelSize: 0.015, bevelThickness: 0.015, bevelSegments: 2, curveSegments: 2 });
+  body.translate(0, 0, -sw / 2);
+  // the cover lies on the front of the backrest, near its top
+  const b0 = P[3], b1 = P[4], t = 0.82, cx = lerp(b0[0], b1[0], t), cy = lerp(b0[1], b1[1], t), lean = Math.atan2(b0[0] - b1[0], b1[1] - b0[1]);
+  const nx = Math.cos(lean), ny = Math.sin(lean);
+  const cover = new THREE.BoxGeometry(0.012, 0.19, sw - 0.12).applyMatrix4(M(cx + 0.02 * nx, cy + 0.02 * ny, 0, 0, 0, lean));
+  return (seatParts[key] = { body, cover, sw: c.w, k, shell: c.shell || 'hsShell' });
+}
+/* a row of seats across the car: groups [[zFrom, n]] each n seats from zFrom toward the aisle (dir -1 from the
+   right wall, +1 from the left), facing face (+1 forward), cushions centred at x */
+function seatRow(ib, cls, x, face, groups) {
+  const S = seatParts(cls), r = face > 0 ? 0 : Math.PI;
+  for (const [z0, n, dir] of groups) {
+    const zc = i => z0 + dir * S.sw * (i + 0.5), zA = z0 + dir * S.sw * n;
+    for (let i = 0; i < n; i++) {
+      ib.add('hsSeat_' + cls, S.body.clone(), M(x, 0, zc(i), 0, r, 0));
+      ib.add('hsCover', S.cover.clone(), M(x, 0, zc(i), 0, r, 0));
+    }
+    // one pedestal under the group, armrests between and outside the seats on posts down to it
+    ib.box(S.shell, 0.34 * Math.sqrt(S.k), 0.31, Math.abs(zA - z0) - 0.12, x - face * 0.03, 0.155, (z0 + zA) / 2);
+    for (let i = 0; i <= n; i++) {
+      const z = z0 + dir * S.sw * i - dir * (i === 0 ? -0.025 : i === n ? 0.025 : 0);
+      ib.box(S.shell, 0.46, 0.05, 0.05, x - face * 0.04, 0.655, z);
+      ib.box(S.shell, 0.06, 0.37, 0.05, x - face * 0.12, 0.47, z);
+    }
+  }
+}
+/* a table between two facing rows, on a post to the floor */
+function seatTable(ib, x, z0, z1, key = 'hsTable') {
+  ib.box(key, 0.5, 0.03, Math.abs(z1 - z0), x, 0.72, (z0 + z1) / 2);
+  ib.cyl('hsShell', 0.035, 0.035, 0.705, 10, x, 0.3525, (z0 + z1) / 2);
+  ib.cyl('hsShell', 0.18, 0.2, 0.02, 16, x, 0.01, (z0 + z1) / 2);
+}
+
+/* ---------------- a saloon ----------------
+   o: everything hsShell takes, plus cls, face (+1 seats face the front of the car), rows (x of each row's cushion
+   centre, front to back), layout [nLeft, nRight], tables (row pairs facing across a table). */
+function hsSaloon(gb, ib, o) {
+  const lin = hsShell(gb, ib, Object.assign({ line: 'hsLine', floor: 'hsCarpet_' + o.cls, cap: 'hsEnd' }, o));
+  const mid = lin[lin.length >> 1].H, yF = o.yF, zW = y => polyZ(mid, y);
+  // luggage racks above the windows, from end to end, a shelf on brackets with a rail along its edge
+  const x0 = o.ref - lin[0].a - 0.01, x1 = o.ref - lin[lin.length - 1].a + 0.01, xm = (x0 + x1) / 2, len = x0 - x1;
+  for (const s of [-1, 1]) {
+    const y = o.rackY, z = zW(y), z2 = zW(y + 0.025);
+    ib.box('hsRack', len, 0.022, 0.43, xm, y, s * (Math.max(z, z2) + 0.01 - 0.215));
+    ib.box('hsRack', len, 0.05, 0.02, xm, y + 0.014, s * (Math.max(z, z2) - 0.42));
+    // brackets every 2.2 m: a strap up the wall from above the window heads, an arm out under the shelf
+    for (let x = x1 + 0.6; x < x0 - 0.3; x += 2.2) {
+      const zs = zW(y - 0.15); ib.box('hsRack', 0.03, 0.16, 0.025, x, y - 0.075, s * (Math.min(zs, z) - 0.0105));
+      ib.box('hsRack', 0.03, 0.02, 0.42, x, y - 0.021, s * (Math.max(z, z2) - 0.205));
+    }
+  }
+  // a light panel down the middle of the ceiling, its edges let into the curve
+  { const hw = 0.17, y = polyY(mid, hw) + 0.004; ib.box('hsLight', len - 0.3, 0.03, 2 * hw, xm, y - 0.015, 0); }
+  // a sliding door in each end wall, with a window, and the information display over it
+  for (const [l, e] of [[lin[0], 1], [lin[lin.length - 1], -1]]) {
+    const x = o.ref - l.a - e * 0.02, dh = 1.95;
+    ib.box('hsDoor', 0.04, dh, 0.86, x, yF + dh / 2, 0);
+    ib.box('hsPane', 0.044, 0.6, 0.42, x, yF + 1.4, 0);
+    ib.box('hsRack', 0.05, 0.03, 0.9, x, yF + dh + 0.015, 0);
+    ib.box('hsShell', 0.04, 0.14, 0.92, x, yF + dh + 0.18, 0);
+    ib.add('hsSign', new THREE.PlaneGeometry(0.84, 0.1), M(x - e * 0.021, yF + dh + 0.18, 0, 0, e > 0 ? -Math.PI / 2 : Math.PI / 2, 0));
+  }
+  const fit = new GeoBin();   // seats and tables, built on the floor at y 0
+  // the seats: a row per window, against the walls with the aisle between
+  const S = seatParts(o.cls), zR = Math.min(zW(yF + 0.3), zW(yF + 1.25)) - 0.04;
+  const [nL, nR] = o.layout, groups = [[zR, nR, -1], [-zR, nL, 1]];
+  o.rows.forEach((x, i) => {
+    const f = o.faces ? o.faces[i] : o.face;
+    seatRow(fit, o.cls, x, f, groups);
+  });
+  for (const [xa, xb] of o.tables || []) for (const [z0, n, d] of groups) seatTable(fit, (xa + xb) / 2, z0 - d * 0.04, z0 + d * (S.sw * n - 0.04));
+  if (o.counter) {
+    const [ca, cb] = o.counter, xc = o.ref - (ca + cb) / 2, cl = cb - ca;
+    ib.box('hsEnd', cl, 0.98, 0.62, xc, yF + 0.49, zR - 0.31);
+    ib.box('hsWood', cl + 0.04, 0.04, 0.68, xc, yF + 1.0, zR - 0.32);
+  }
+  for (const k in fit.bins) for (const g of fit.bins[k]) ib.add(k, g.translate(0, yF, 0));
+  return lin;
+}
+
+/* ---------------- a driving cab ----------------
+   o: st, ref, yF, th0, holes/r/skin/uvL/uvH (side windows), dx (model x of a), eye, drv (driver's z),
+   prof [[a, y]...] the top of the console from the front wall back to the desk, screen [i0, i1] (the profile
+   segment the screens sit on), desk [a0, a1, top, under], sect/cut (to keep the console inside the lining),
+   gW (the windscreen's lower edge at a), kind 'e5' | 'acela', lead, uid. */
+function hsCab(gb, body, ib, o) {
+  hsShell(gb, ib, Object.assign({ line: 'hsCabLine', floor: 'hsCabFloor', cap: 'hsCabLine' }, o));
+  const K = new CabKit(ib, body), dx = o.dx, V = (x, y, z) => new THREE.Vector3(x, y, z);
+  const inner = (a, y) => { const p = o.sect(a), R = hsRing(p, o.cut); return polyZ(liningHalf(R, p, o.yF, Math.PI / 2, [1, 2, 3].map(k => lerp(o.yF, p.ys, k / 3))), y); };
+  const topAt = a => { const P = o.prof; for (let i = 0; i < P.length - 1; i++) if (a <= P[i + 1][0] + 1e-9) return lerp(P[i][1], P[i + 1][1], (a - P[i][0]) / (P[i + 1][0] - P[i][0])); return P[P.length - 1][1]; };
+  /* a block lofted along a, its section a rectangle from y0(a) to y1(a), as wide as hw allows inside the lining */
+  const block = (key, a0, a1, y0f, y1f, hwMax) => {
+    const st = [], n = Math.max(2, Math.ceil((a1 - a0) / 0.05));
+    for (let i = 0; i <= n; i++) {
+      const a = lerp(a0, a1, i / n), y0 = y0f(a), y1 = Math.min(y1f(a), o.gW(a) - 0.03), hw = Math.min(hwMax, inner(a, y1) - 0.025, inner(a, y0) - 0.025);
+      st.push({ a, R: [[-hw, y0], [-hw, y1], [hw, y1], [hw, y0], [-hw, y0]] });
+    }
+    const acc = newMesh(); loftInto(acc, st, [0, 1, 2, 3, 4], o.ref, 1, 1);
+    for (const s of [st[0], st[st.length - 1]]) capInto(acc, s.R.slice(0, 4).map(([z, y]) => [o.ref - s.a, y, z]), [s === st[0] ? 1 : -1, 0, 0]);
+    ib.add(key, meshGeo(acc));
+    return st;
+  };
+  const P = o.prof, A0 = o.st[0].a, [dA0, dA1, dTop, dUnder] = o.desk;
+  block('hsDesk', A0 - 0.01, P[P.length - 1][0], () => o.yF - 0.01, topAt, 1.45);
+  block('hsDeskTop', dA0 - 0.02, dA1, () => dUnder, () => dTop, 1.45);
+  // the screens, on the panel that leans back toward the driver
+  const [i0, i1] = o.screen, s0 = V(dx(P[i1][0]), P[i1][1], 0), s1 = V(dx(P[i0][0]), P[i0][1], 0), up = s1.clone().sub(s0), sLen = up.length(); up.normalize();
+  const sn = V(up.y, -up.x, 0).normalize(); if (sn.x > 0) sn.negate();          // facing back, toward the driver
+  const panelFrame = (t, z, off) => faceFrame(s0.clone().addScaledVector(up, t * sLen).addScaledVector(sn, off).setZ(z), sn, up);
+  const kinds = ['hsSpeed', 'hsPower', 'air'], reads = [() => CAB_READ.hs(), () => CAB_READ.hsPower(), () => CAB_READ.air(GAME.train)];
+  const sw = 0.34, sh = Math.min(0.26, sLen - 0.07);
+  [-0.4, 0, 0.4].forEach((dz, i) => {
+    const m = panelFrame(0.5, o.drv + dz, 0);
+    ib.add('hsDeskTop', new THREE.BoxGeometry(sw + 0.04, sh + 0.04, 0.03).translate(0, 0, 0.0), m);
+    let key = 'hsScrOff';
+    if (o.lead) {
+      const tex = canvasTex(512, 384, g => { g.fillStyle = '#05080a'; g.fillRect(0, 0, 512, 384); });
+      key = 'hsScr' + o.uid + i; RMAT[key] = new THREE.MeshBasicMaterial({ map: tex });
+      K.screens.push({ tex, kind: kinds[i], draw: drawHsScreen });
+    }
+    ib.add(key, new THREE.PlaneGeometry(sw, sh).translate(0, 0, 0.0155), m);
+    const holder = new THREE.Group(); holder.matrixAutoUpdate = false; holder.matrix.copy(m); body.add(holder);
+    K.hit(holder, K.ctl({ id: 'screen', kind: 'info', label: reads[i] }), sw, sh, 0.05, 0, 0, 0.02);
+  });
+  // handles on the desk: power controller under the left hand, brake under the right, each swinging fore and aft
+  const yD = dTop, aH = (dA0 + dA1) / 2;
+  const handle = (id, name, z, a, len, knob, ctl, inv, swing) => {
+    ib.box('hsDesk', 0.2, 0.03, 0.09, dx(a), yD + 0.015, z);                                    // quadrant
+    ib.box('hsRubber', 0.17, 0.004, 0.012, dx(a), yD + 0.031, z);                                // its slot
+    const pt = K.part(V(dx(a), yD + 0.02, z));
+    pt.gb.cyl('dSteel', 0.018, 0.018, len, 10, 0, len / 2, 0); pt.gb.add(knob, new THREE.SphereGeometry(0.03, 14, 10).translate(0, len + 0.01, 0));
+    K.done(pt);
+    const c = K.ctl({ id, name, kind: 'lever', part: pt.inner, outer: pt.outer, grip: V(0, len, 0),
+      show: () => ctl.get(), p: () => ctlTravel(ctl, inv), setP: p => { ctlSetTravel(ctl, inv, p); GAME.controlTouched('lv' + id[0].toUpperCase() + id.slice(1)); },
+      pose: v => { pt.inner.rotation.z = swing * (ctlTravel(Object.assign({}, ctl, { get: () => v }), inv) - 0.5); }, label: () => name + ' · ' + ctl.label(ctl.get()) });
+    c.poseP = p => { pt.inner.rotation.z = swing * (p - 0.5); };
+    K.hit(pt, c, 0.08, 0.1, 0.08, 0, len, 0);
+  };
+  const L = o.kind === 'e5' ? [-0.47, 0.45, 0.68, -0.72] : [-0.4, 0.38, 0.55, -0.62];   // power, brake, regen, reverser across from the driver
+  handle('throttle', o.kind === 'e5' ? 'Power controller' : 'Throttle', o.drv + L[0], aH, 0.16, 'knob', CTL.throttle, true, 0.9);
+  handle('brake', 'Brake', o.drv + L[1], aH, 0.15, 'redKnob', CTL.brake, false, 1.0);
+  handle('dyn', 'Regenerative brake', o.drv + L[2], aH + 0.04, 0.1, 'knob', CTL.dyn, false, 0.8);
+  if (o.kind === 'acela') handle('ind', 'Independent brake', o.drv + L[2] + 0.17, aH + 0.04, 0.1, 'knob', CTL.ind, false, 0.8);
+  {
+    // reverser: a short key lever in a block, forward, off, reverse
+    const z = o.drv + L[3];
+    ib.box('hsDesk', 0.1, 0.035, 0.07, dx(aH), yD + 0.0175, z);
+    const pt = K.part(V(dx(aH), yD + 0.03, z));
+    pt.gb.box('handle', 0.018, 0.09, 0.03, 0, 0.045, 0); pt.gb.box('knob', 0.05, 0.03, 0.035, 0, 0.09, 0);
+    K.done(pt);
+    const c = K.ctl({ id: 'reverser', name: 'Reverser', kind: 'lever', part: pt.inner, outer: pt.outer, grip: V(0, 0.09, 0),
+      show: () => S.reverser, p: () => ctlTravel(CTL.reverser, false), setP: p => { ctlSetTravel(CTL.reverser, false, p); GAME.controlTouched('lvReverser'); },
+      pose: v => { pt.inner.rotation.z = -v * 0.42; }, label: () => 'Reverser · ' + CTL.reverser.label(S.reverser) });
+    c.poseP = p => c.pose(1 - 2 * p);
+    K.hit(pt, c, 0.07, 0.1, 0.07, 0, 0.07, 0);
+  }
+  // horn: a push button in front of the driver, held for as long as it sounds
+  {
+    const z = o.drv, a = dA1 - 0.07;
+    ib.cyl('hsDesk', 0.035, 0.035, 0.012, 16, dx(a), yD + 0.006, z);
+    const pt = K.part(V(dx(a), yD + 0.012, z));
+    pt.gb.cyl('hsBtn', 0.025, 0.025, 0.02, 16, 0, 0.01, 0);
+    K.done(pt);
+    const h = K.ctl({ id: 'horn', name: 'Horn', kind: 'hold', part: pt.inner, outer: pt.outer, grip: V(0, 0.02, 0),
+      show: () => S.whistle > 0.02 ? 1 : 0, p: () => whistleToPull(S.whistle || 0.62), setP: p => { S.whistle = pullToWhistle(p); },
+      pose: p => { pt.inner.position.y = -0.008 * clamp(p, 0, 1); }, press: () => { S.whistle = 0.62; }, release: () => { S.whistle = 0; }, label: () => 'Horn · hold it down' });
+    h.poseP = () => h.pose(1);
+    K.hit(pt, h, 0.06, 0.05, 0.06, 0, 0.02, 0);
+  }
+  // switches along the back of the desk: pantograph, headlight (and the Acela's bell and ditch lights)
+  {
+    const defs = [
+      { id: 'pan', name: 'Pantograph', get: () => S.panUp ? 1 : 0, tap: () => { const b = $('btnInj'); if (b) b.click(); }, txt: () => S.panUp ? (S.vcb ? 'up · breaker in' : 'rising') : 'down' },
+      { id: 'light', name: 'Headlight', get: () => S.light / 2, tap: () => { S.light = (S.light + 1) % 3; }, txt: () => ['off', 'dim', 'bright'][S.light], rot: true },
+    ];
+    if (o.kind === 'acela') defs.push(
+      { id: 'bell', name: 'Bell', get: () => S.bell ? 1 : 0, tap: () => { S.bell = !S.bell; }, txt: () => S.bell ? 'ringing' : 'off' },
+      { id: 'ditch', name: 'Ditch lights', get: () => S.ditch ? 1 : 0, tap: () => { S.ditch = !S.ditch; }, txt: () => S.ditch ? 'on' : 'off' });
+    const a = dA0 + 0.06, z0 = o.drv + 0.1 - (defs.length - 1) * 0.06;
+    ib.box('hsDesk', 0.07, 0.016, defs.length * 0.12, dx(a), yD + 0.008, z0 + (defs.length - 1) * 0.06);
+    defs.forEach((d, i) => {
+      const z = z0 + i * 0.12, pt = K.part(V(dx(a), yD + 0.016, z));
+      if (d.rot) { pt.gb.cyl('knob', 0.022, 0.024, 0.024, 14, 0, 0.012, 0); pt.gb.box('handle', 0.03, 0.006, 0.008, 0, 0.027, 0); }
+      else { pt.gb.box(d.id === 'pan' ? 'redKnob' : 'knob', 0.03, 0.02, 0.026, 0, 0.01, 0); pt.gb.box('handle', 0.008, 0.026, 0.006, 0, 0.026, 0); }
+      K.done(pt);
+      const c = K.ctl({ id: d.id, name: d.name, kind: 'toggle', part: pt.inner, outer: pt.outer, grip: V(0, 0.02, 0),
+        show: d.get, pose: d.rot ? (p => { pt.inner.rotation.y = (0.5 - p) * 1.6; }) : (p => { pt.inner.rotation.z = (0.5 - p) * 0.9; }),
+        tap: d.tap, label: () => d.name + ' · ' + d.txt() });
+      K.hit(pt, c, 0.07, 0.07, 0.08, 0, 0.02, 0);
+    });
+  }
+  // seats on pedestals: the driver's, and for the Acela the second man's across the cab
+  const seatTop = o.eye.y - 0.78, sa = o.seatA;
+  for (const z of o.seats) {
+    const x = dx(sa);
+    ib.cyl('dSteel', 0.2, 0.22, 0.03, 16, x, o.yF + 0.015, z);
+    ib.cyl('dSteel', 0.045, 0.045, seatTop - 0.08 - o.yF, 10, x, (seatTop - 0.08 + o.yF) / 2, z);
+    ib.box('hsSeatCab', 0.5, 0.1, 0.5, x, seatTop - 0.05, z);
+    ib.box('hsSeatCab', 0.1, 0.66, 0.48, x - 0.3, seatTop + 0.33, z, 0, 0, 0.12);
+    ib.box('hsSeatCab', 0.1, 0.2, 0.3, x - 0.36, seatTop + 0.76, z, 0, 0, 0.12);
+    ib.box('dSteel', 0.16, 0.04, 0.06, x - 0.22, seatTop + 0.02, z);
+  }
+  // a door in the back wall to the corridor
+  {
+    const l = o.st[o.st.length - 1], p = l.p, H = liningHalf(l.R, p, o.yF, Math.PI / 2, [1, 2, 3].map(k => lerp(o.yF, p.ys, k / 3)));
+    const x = o.ref - l.a + 0.02, z = o.door, dh = Math.min(1.85, polyY(H, Math.abs(z) + 0.33) - o.yF - 0.04);
+    ib.box('hsDoor', 0.04, dh, 0.62, x, o.yF + dh / 2, z); ib.box('dSteel', 0.05, 0.025, 0.14, x + 0.02, o.yF + Math.min(1.0, dh * 0.55), z + 0.2);
+  }
+  return K.out(o.eye, { look: [{ yaw: 0, pitch: -0.08 }, { yaw: 0.05, pitch: -0.62 }] });
+}
+
+/* what the high-speed screens show when pointed at */
+CAB_READ.hs = () => { const T = GAME.train, e5 = T && T.locoKey === 'e5', k = e5 ? 3.6 : 1 / MPH; return `${Math.round(Math.abs(S.v) * k)} ${e5 ? 'km/h' : 'mph'} · limit ${e5 ? Math.round(S.limit * MPH * 3.6) + ' km/h' : Math.round(S.limit) + ' mph'}`; };
+CAB_READ.hsPower = () => `${S.kW >= 0 ? 'Power' : 'Regenerating'} ${Math.abs(Math.round(S.kW)).toLocaleString()} kW · ${S.vcb ? 'breaker in' : S.panUp ? 'pantograph rising' : 'pantograph down'}`;
+
+/* ---------------- the high-speed displays ---------------- */
+function drawHsScreen(sc, T) {
+  if (sc.kind === 'air') return drawCabScreen(sc, T);
+  const c = sc.tex.image, g = c.getContext('2d'), w = c.width, h = c.height, e5 = T && T.locoKey === 'e5';
+  const unit = e5 ? 'km/h' : 'MPH', k = e5 ? 3.6 : 1 / MPH, vmax = e5 ? 320 : 160;
+  g.fillStyle = '#04070a'; g.fillRect(0, 0, w, h);
+  g.fillStyle = '#132430'; g.fillRect(0, 0, w, 44);
+  g.textBaseline = 'middle'; g.font = 'bold 24px "IBM Plex Mono", monospace';
+  const bar = (x, y, bw, bh, f, col, bg = '#14202a') => { g.fillStyle = bg; g.fillRect(x, y, bw, bh); g.fillStyle = col; g.fillRect(x, y, bw * clamp(f, 0, 1), bh); };
+  if (sc.kind === 'hsSpeed') {
+    const v = Math.abs(S.v) * k, lim = e5 ? S.limit * MPH * 3.6 : S.limit, over = v > lim + 2;
+    const dir = S.reverser > 0.5 ? 'FWD' : S.reverser < -0.5 ? 'REV' : 'NEUT';
+    g.textAlign = 'left'; g.fillStyle = dir === 'NEUT' ? '#e8c23a' : '#7fe0a0'; g.fillText(dir, 14, 23);
+    g.textAlign = 'right'; g.fillStyle = '#cfe9d8'; g.fillText(e5 ? 'ATC' : 'ACSES', w - 14, 23);
+    // a speed tape across the screen with the limit marked on it
+    const x0 = 30, x1 = w - 30, X = s => x0 + (x1 - x0) * clamp(s / vmax, 0, 1);
+    bar(x0, 238, x1 - x0, 26, v / vmax, over ? '#ff6b5a' : '#3fae74');
+    g.fillStyle = '#ffb02e'; g.fillRect(X(lim) - 3, 226, 6, 50);
+    g.fillStyle = '#5d7480'; g.font = '600 16px "IBM Plex Mono", monospace'; g.textAlign = 'center';
+    for (let s = 0; s <= vmax; s += vmax / 8) g.fillText(String(s), X(s), 292);
+    g.fillStyle = over ? '#ff8a6a' : '#eef6f1'; g.font = 'bold 120px "IBM Plex Mono", monospace'; g.fillText(String(Math.round(v)), w / 2, 136);
+    g.fillStyle = '#8fb3a0'; g.font = '600 22px "IBM Plex Sans Condensed", Arial, sans-serif'; g.fillText(unit, w / 2, 206);
+    g.fillStyle = '#ffb02e'; g.font = 'bold 26px "IBM Plex Mono", monospace'; g.fillText('LIMIT ' + Math.round(lim), w / 2, 336);
+  } else {
+    const notch = Math.round(S.throttle * 8), sp = T ? LOCO_SPEC[T.locoKey] : null, pMax = sp ? sp.P / 1000 : 9600;
+    g.textAlign = 'left'; g.fillStyle = '#cfe9d8'; g.fillText(S.dyn > 0.06 ? 'REGEN' : notch ? 'P' + notch : 'COAST', 14, 23);
+    g.textAlign = 'right'; g.fillStyle = S.vcb ? '#7fe0a0' : (S.panUp ? '#e8c23a' : '#ff6b5a'); g.fillText(S.vcb ? 'VCB ON' : (S.panUp ? 'PAN UP' : 'PAN DOWN'), w - 14, 23);
+    g.textAlign = 'left'; g.fillStyle = '#8fb3a0'; g.font = '600 20px "IBM Plex Sans Condensed", Arial, sans-serif';
+    g.fillText('TRACTION', 24, 86); bar(24, 102, w - 48, 26, Math.max(0, S.kW) / pMax, '#3fae74');
+    g.fillText('REGENERATION', 24, 160); bar(24, 176, w - 48, 26, Math.max(0, -S.kW) / pMax, '#4aa3e0');
+    g.fillStyle = '#eef6f1'; g.font = 'bold 30px "IBM Plex Mono", monospace';
+    g.fillText((S.kW >= 0 ? '' : '-') + Math.abs(Math.round(S.kW)).toLocaleString() + ' kW', 24, 244);
+    g.fillStyle = '#8fb3a0'; g.font = '600 22px "IBM Plex Mono", monospace';
+    g.fillText('LINE ' + (S.vcb ? (e5 ? '25.0' : '25.0') : ' 0.0') + ' kV', 24, 290);
+    g.fillText('ENERGY ' + Math.round(S.kWh).toLocaleString() + ' kWh', 24, 326);
+    g.textAlign = 'right'; g.fillText('PAN ' + Math.round(S.pan * 100) + '%', w - 24, 290);
+  }
+  sc.tex.needsUpdate = true;
 }
 
 /* ============================================================================
