@@ -565,7 +565,7 @@ function nearbyService() {
 }
 
 /* ---------------- main loop ---------------- */
-let chuffQ = 0, pumpT = 0, bellT = 0, idleT = 0, prevV = 0, stopT = 0;
+let chuffQ = 0, pumpT = 0, bellT = 0, idleT = 0, prevV = 0, stopT = 0, tipT = 0;
 function loop() {
   requestAnimationFrame(loop);
   let dt = Math.min(clock.getDelta(), 0.05);
@@ -603,11 +603,11 @@ function simStep(dt, T) {
         if (lim.hit && !S.derailed) CARS.contact(T, Math.sign(d), lim.hit);
       }
     }
-    // curve overspeed (lateral acceleration at the lead truck)
-    const lead = T.lead.leadPt.tp, k = Math.abs(lead.e.curv(lead.s));
-    const lat = S.v * S.v * k;
-    if (lat > 2.7) GAME.derail(`Overturned on the curve at ${Math.round(Math.abs(S.v) / MPH)} mph.`);
-    else if (lat > 1.75) { toast('Too fast for this curve!', 'warn', 2000, 'curve'); JOB.note('curve', { mph: Math.abs(S.v) / MPH }); }
+    // curve overspeed (unbalanced lateral acceleration at the lead truck)
+    const ub = curveUnbalanced(T.lead.leadPt.tp, S.v);
+    tipT = ub > CURVE_TIP && !S.derailed ? tipT + dt : 0;
+    if (tipT > CURVE_HOLD) GAME.derail(`Overturned on the curve at ${Math.round(Math.abs(S.v) / MPH)} mph.`);
+    else if (ub > CURVE_WARN) { toast('Too fast for this curve!', 'warn', 2000, 'curve'); JOB.note('curve', { mph: Math.abs(S.v) / MPH }); }
     // filling at water column / coal chute
     if (GAME.filling) {
       if (!nearbyService()) GAME.filling = null;
