@@ -34,3 +34,25 @@ test('each steam engine blows its own whistle', () => {
   assert.equal(new Set(keys).size, keys.length, `steam engines share a whistle: ${keys.join(', ')}`);
   assert.notEqual(LOCO_SPEC['1225'].whistle, LOCO_SPEC['765'].whistle);
 });
+
+// a 16-bit mono WAV's samples, as -1..1
+function wavSamples(f) {
+  const b = fs.readFileSync(f); let o = 12;
+  while (b.toString('ascii', o, o + 4) !== 'data') o += 8 + b.readUInt32LE(o + 4);
+  const n = b.readUInt32LE(o + 4) / 2, s = new Float32Array(n);
+  for (let i = 0; i < n; i++) s[i] = b.readInt16LE(o + 8 + 2 * i) / 32768;
+  return s;
+}
+
+test('whistle and horn sustain loops are long enough not to be heard repeating, and wrap without a click', () => {
+  for (const [k, files] of Object.entries(bank.SND_FILES)) {
+    if (!/^wh_[a-z0-9]+$/.test(k)) continue;
+    for (const f of files) {
+      const s = wavSamples(path.join(ROOT, 'audio', f)), sec = s.length / 44100;
+      assert.ok(sec >= 1.9, `${f}: a ${sec.toFixed(2)} s loop repeats audibly`);
+      const steps = Array.from(s.subarray(1), (v, i) => Math.abs(v - s[i])).sort((a, b) => a - b);
+      const p99 = steps[Math.floor(steps.length * 0.99)];
+      assert.ok(Math.abs(s[0] - s[s.length - 1]) <= p99, `${f}: the wrap from end to start jumps (a click)`);
+    }
+  }
+});
