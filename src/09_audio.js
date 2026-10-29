@@ -48,13 +48,13 @@ function audioInit() {
 }
 /* Whistles and horns. Each locomotive gets its own chord and its own tone colour:
    - a deep, mellow six-chime (minor voicing) with a long quill,
-   - a bright three-chime major triad, breathier and higher,
+   - a bigger, higher six-chime (E, F#, A, B, D#, G#, the Pere Marquette's), brighter on top,
    - a brassy five-chime air horn (B major 6th: D#, F#, G#, B, D#) with chorus and a hard attack.
    Partials are built with PeriodicWave so the tone is set per voice, and a presence lift
    keeps every one of them audible on a phone speaker. */
 const WHISTLES = {
   deep6: { kind: 'steam', notes: [164.8, 196.0, 220.0, 246.9, 293.7, 329.6], harm: [1, 0.56, 0.36, 0.24, 0.15, 0.09, 0.05], breath: 0.13, breathF: 1400, vib: [4.8, 0.0025], quill: 0.06, attack: 0.06, beat: 1.0018, pres: 2200 },
-  bright3: { kind: 'steam', notes: [349.2, 440.0, 523.3], harm: [1, 0.7, 0.42, 0.3, 0.18, 0.12, 0.07], breath: 0.17, breathF: 2900, vib: [6.2, 0.0035], quill: 0.04, attack: 0.045, beat: 1.0025, pres: 2600 },
+  chime6: { kind: 'steam', notes: [335.0, 375.4, 444.6, 505.4, 632.3, 825.8], harm: [1, 0.62, 0.38, 0.26, 0.16, 0.1, 0.06], breath: 0.14, breathF: 2200, vib: [5.4, 0.003], quill: 0.05, attack: 0.05, beat: 1.0025, pres: 2600 },
   /* Shinkansen air horn: a bright two-tone (A5 over F#5) with few upper partials */
   shin: { kind: 'horn', notes: [740.0, 880.0], harm: [1, 0.75, 0.5, 0.34, 0.22, 0.14, 0.08], breath: 0.025, breathF: 2400, vib: [0, 0], quill: 0, attack: 0.012, beat: 1.003, pres: 2400 },
   k5: { kind: 'horn', notes: [311.1, 370.0, 415.3, 493.9, 622.3], harm: [1, 0.92, 0.8, 0.7, 0.6, 0.52, 0.45, 0.38, 0.32, 0.27, 0.22, 0.18, 0.15, 0.12], breath: 0.035, breathF: 1300, vib: [0, 0], quill: 0, attack: 0.015, beat: 1.004, pres: 1500 },
