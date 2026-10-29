@@ -153,7 +153,7 @@ function mpClean(r) {
     o.s = n(r.s, 0, 1e5); o.o = r.o < 0 ? -1 : 1; o.v = n(r.v, -60, 60); o.rv = n(r.rv, -1, 1);
     o.wh = n(r.wh, 0, 1); o.bl = r.bl ? 1 : 0; o.hl = Math.round(n(r.hl, 0, 2, 1)); o.dl = r.dl ? 1 : 0;
     o.ex = n(r.ex, 0, 1.5); o.rpm = n(r.rpm, 0, 1200); o.dr = r.dr ? 1 : 0;
-    o.wk = o.dr && Array.isArray(r.wk) && r.wk.length >= 4 ? [n(r.wk[0], 0, 5000), r.wk[1] < 0 ? -1 : 1, Math.round(n(r.wk[2], 1, 2e9, 1)), n(r.wk[3], 0, 1), n(r.wk[4], 0, 150)] : null;
+    o.wk = o.dr && Array.isArray(r.wk) && r.wk.length >= 4 ? [n(r.wk[0], 0, 5000), r.wk[1] < 0 ? -1 : 1, Math.round(n(r.wk[2], 1, 2e9, 1)), n(r.wk[3], 0, 1), n(r.wk[4], 0, 150), n(r.wk[5], -150, 150), r.wk[6] ? 1 : 0] : null;
   }
   o.pz = r.pz ? 1 : 0;
   // send time on their clock, and their echo of ours: [our send time, ms they held it]
@@ -246,7 +246,7 @@ class RemoteTrain {
     this.v = st.v;
     // their wreck, as they see it: the same cars go over in the same order while it slides to rest
     const wk = st.dr && st.wk ? st.wk.join() : '';
-    if (wk !== (this.wkKey || '')) { this.wkKey = wk; this.train.wreck(wk ? { a: st.wk[0], side: st.wk[1], seed: st.wk[2], k: st.wk[3], v0: st.wk[4] } : null); }
+    if (wk !== (this.wkKey || '')) { this.wkKey = wk; this.train.wreck(wk ? { a: st.wk[0], side: st.wk[1], seed: st.wk[2], k: st.wk[3], v0: st.wk[4], vs: st.wk[5] || 0, hit: !!st.wk[6] } : null); }
   }
   frame(dt, st, cam, force) {
     if (!this.tp) return;
@@ -261,6 +261,8 @@ class RemoteTrain {
     else if (!this.visible) { T.setVisible(true); this.visible = true; }
     this.updT = 0;
     for (const p of T.pts) { if (p.tp) p.tp.copy(this.tp); else p.tp = this.tp.clone(); const off = p.a - this.a0; if (off) p.tp.advance(-off, null); }
+    // their wreck plays out here too, the cars still on the rails going at the speed they report
+    if (T.rb) { this.kin = this.kin || { v: 0, mass: 0, force: 0 }; this.kin.v = this.v; try { T.rb.step(dt, this.kin); } catch (e) { T.rb.asleep = true; } }
     T.update(dt, this.theta, st.rv || 0);
     // polyline for contact tests: front coupler, every tracked point, rear coupler
     const n = T.pts.length + 2;
@@ -511,7 +513,7 @@ MP.state = function () {
       ex: T.diesel ? +S.load.toFixed(2) : (S.Psc > 6 && S.cut > 0 && S.throttle > 0.02 ? +clamp((S.Psc / 245) * (0.35 + S.cut * 1.25), 0, 1.3).toFixed(2) : 0),
       rpm: T.diesel && !T.elec && S.engineRun ? Math.round(S.rpm) : 0, dr: S.derailed ? 1 : 0,
     });
-    if (S.derailed && T.wk) st.wk = [+T.wk.a.toFixed(1), T.wk.side, T.wk.seed, +T.wk.k.toFixed(2), +(T.wk.v0 || 0).toFixed(1)];
+    if (S.derailed && T.wk) st.wk = [+T.wk.a.toFixed(1), T.wk.side, T.wk.seed, +T.wk.k.toFixed(2), +(T.wk.v0 || 0).toFixed(1), +(T.wk.vs || 0).toFixed(2), T.wk.hit ? 1 : 0];
   }
   st.sw = NET.switches.map((sw, i) => MP.swv[i] * 2 + sw.state);
   if (MP.lt) st.lt = MP.lt;

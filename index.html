@@ -7075,49 +7075,6 @@ const CONSISTS = {
    track, so a train there just has to have its coupler clear of the points to let the switch be thrown. */
 const FOUL_LEN = 38, POINTS_CLEAR = 3;
 
-/* The world-space offset that throws wrecked car v from where the track holds it (its root matrix) to
-   where it lies: rolled over its low-side sill, slewed across the track, eased in over a second, and
-   let down until it rests on the ground. Trucks get the same offset so the car stays in one piece. */
-const _wkM = new THREE.Matrix4(), _wkI = new THREE.Matrix4(), _wkA = new THREE.Matrix4(), _wkP = new THREE.Vector3();
-function wreckPose(T, v, dt) {
-  const w = v.wk, M = v.root.matrix;
-  if (!w.box) {
-    // the body's own box in car coordinates, leaving out lamp beams and glows
-    v.root.updateMatrixWorld(true);
-    _wkI.copy(M).invert();
-    const box = new THREE.Box3(), b = new THREE.Box3();
-    v.root.traverse(o => {
-      if (!o.geometry || o.isInstancedMesh || !o.visible || (o.material && o.material.transparent)) return;
-      if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
-      box.union(b.copy(o.geometry.boundingBox).applyMatrix4(_wkA.multiplyMatrices(_wkI, o.matrixWorld)));
-    });
-    if (box.isEmpty()) box.set(new THREE.Vector3(-v.len / 2, 0.8, -1.55), new THREE.Vector3(v.len / 2, 4.3, 1.55));
-    w.box = box;
-  }
-  w.t += dt;
-  const x = clamp(w.t / 0.9, 0, 1), e = x * x * (3 - 2 * x), B = w.box;
-  // roll about the bottom of the side it falls toward, then slew and shove it sideways
-  const pz = w.side > 0 ? B.max.z : B.min.z, py = w.over ? B.min.y : 0;
-  _wkM.makeTranslation(0, 0, w.shift * e)
-    .multiply(_wkA.makeRotationY(w.yaw * e))
-    .multiply(_m4.makeTranslation(0, py, pz))
-    .multiply(_wkA.makeRotationX(w.side * w.roll * e))
-    .multiply(_m4.makeTranslation(0, -py, -pz));
-  _wkA.multiplyMatrices(M, _wkM);
-  // a car on its side lies on the ground; one still on its wheels settles into the ballast
-  let low = Infinity;
-  const pts = w.over ? 3 : 2;
-  for (let i = 0; i < pts; i++) for (let j = 0; j < (w.over ? 3 : 1); j++) for (let k = 0; k < (w.over ? 3 : 2); k++) {
-    if (w.over) _wkP.set(B.min.x + (B.max.x - B.min.x) * i / 2, B.min.y + (B.max.y - B.min.y) * j / 2, B.min.z + (B.max.z - B.min.z) * k / 2);
-    else _wkP.set((i ? 1 : -1) * Math.max(0, v.len / 2 - 2.6), 0, k ? 0.72 : -0.72);
-    _wkP.applyMatrix4(_wkA);
-    low = Math.min(low, _wkP.y - groundAt(_wkP.x, -_wkP.z));
-  }
-  const dy = w.over ? low : Math.max(w.drop, low - 0.6);
-  const D = new THREE.Matrix4().makeTranslation(0, -dy * e, 0).multiply(_wkA).multiply(_wkI.copy(M).invert());
-  return D;
-}
-
 /* A string of coupled vehicles following the track: the player's train, or a cut of cars standing in
    a yard. Vehicles can move between consists when they are coupled or cut off, so everything that
    depends on the order (offsets, tracked points, instanced trucks) is rebuilt by layout(). */
@@ -7218,18 +7175,19 @@ class Consist {
       const u = new THREE.Vector3().crossVectors(r, _v2).normalize();
       v.root.matrixAutoUpdate = false;
       v.root.matrix.makeBasis(_v2, u, r).setPosition(_v1);
-      const D = v.wk ? wreckPose(this, v, dt) : null;   // a wrecked car is thrown clear of where the rails would hold it
-      if (D) v.root.matrix.premultiply(D);
+      // a car off the rails goes where the wreck physics puts it, trucks and all (07d_wreck.js)
+      const D = v.rb ? v.rb.D : null;
+      if (D) v.root.matrix.copy(v.rb.W);
       v.root.matrixWorldNeedsUpdate = true;
       v.pos = v.pos || new THREE.Vector3(); v.pos.copy(_v1);
       v.fwd = v.fwd || new THREE.Vector3(); v.fwd.copy(_v2);
+      if (D) { v.pos.copy(v.rb.p); v.fwd.copy(v.rb.ax[0]).multiplyScalar(WreckSim.sF(v)); }
       // wheels keep turning the same way when a car changes hands or ends
       const roll = this.dist * (v.flip ? -1 : 1) + (v.roll || 0), wAng6 = -roll / 0.457, wAng4 = -roll / 0.419;
       for (let k = 0; k < v.trucks.length; k++) {
         const t = v.trucks[k], Fp = v.tp[k].F;
-        frameMatrix(Fp, _tm);
-        if (v.flip) _tm.multiply(_m4.makeRotationY(Math.PI));
-        if (D) _tm.premultiply(D);
+        if (D) _tm.multiplyMatrices(D, v.rb.t0[k]);
+        else { frameMatrix(Fp, _tm); if (v.flip) _tm.multiply(_m4.makeRotationY(Math.PI)); }
         if (t.type === 'six' || t.type === 'buck') {
           if (t.type === 'six') this.tSix.setMatrixAt(i6++, _tm); else this.tBuck.setMatrixAt(iB++, _tm);
           const sp = t.sp || 1.676;
@@ -7241,12 +7199,12 @@ class Consist {
       }
       if ((v.kind === 'loco' || v.kind === 'loco2') && this.diesel) {
         const U = v.model;
-        U.trucks.forEach((tg, k) => { tg.matrixAutoUpdate = false; frameMatrix(v.fp[k].F, tg.matrix); if (v.reversed) tg.matrix.multiply(_m4.makeRotationY(Math.PI)); if (D) tg.matrix.premultiply(D); tg.matrixWorldNeedsUpdate = true; });
+        U.trucks.forEach((tg, k) => { tg.matrixAutoUpdate = false; frameMatrix(v.fp[k].F, tg.matrix); if (v.reversed) tg.matrix.multiply(_m4.makeRotationY(Math.PI)); if (D && v.rb.u0) tg.matrix.multiplyMatrices(D, v.rb.u0[k]); tg.matrixWorldNeedsUpdate = true; });
         const wa = (v.reversed ? 1 : -1) * this.dist / (U.rW || DG.rW); for (const w of U.wheels) w.rotation.z = wa;
         v.root.updateMatrixWorld(true);
       } else if (v.kind === 'loco') {
         const lf = v.leadPt.F;
-        const lt = this.loco.leadTruck; lt.matrixAutoUpdate = false; frameMatrix(lf, lt.matrix); if (D) lt.matrix.premultiply(D); lt.matrixWorldNeedsUpdate = true;
+        const lt = this.loco.leadTruck; lt.matrixAutoUpdate = false; frameMatrix(lf, lt.matrix); if (D && v.rb.l0) lt.matrix.multiplyMatrices(D, v.rb.l0); lt.matrixWorldNeedsUpdate = true;
         this.loco.parts.lead.rotation.z = -roll / (this.loco.rL || LG.rL);
         this.loco.parts.trail[0].rotation.z = -roll / LG.rT1;
         this.loco.parts.trail[1].rotation.z = -roll / LG.rT2;
@@ -7255,29 +7213,12 @@ class Consist {
     }
     for (const im of this.inst) im.instanceMatrix.needsUpdate = true;
   }
-  /* Throw the train off the rails around a point of impact: spec = { a: metres back from the front coupler,
-     side: +1 or -1, seed, k: 0..1 how hard, v0: speed when it happened, m/s }. The cars nearest the hit go
-   first and the ones behind pile in after them, sooner and further back the faster it was going.
-     null puts every car back on the rails. */
+  /* Take the train off the rails around a point of impact (see WreckSim): spec = { a: metres back from
+     the front coupler, side: ±1, seed, k: 0..1 how hard, v0: m/s, hit }. null puts every car back on. */
   wreck(spec) {
-    for (const v of this.vehicles) v.wk = null;
+    for (const v of this.vehicles) v.rb = null;
     this.wk = spec || null;
-    if (!spec) return;
-    const v0 = spec.v0 || 0, r = rng(spec.seed || 1), reach = 18 + 70 * spec.k + 2.2 * v0, wave = Math.max(6, v0);
-    this.vehicles.forEach((v, i) => {
-      const mid = v.a0 + v.len / 2, gap = Math.max(0, Math.abs(mid - spec.a) - v.len / 2), f = 1 - gap / reach;
-      if (f <= 0) return;
-      // the cars nearest the hit go over on their side; further back they jackknife and lean in the ballast
-      const over = f > 0.5 && r() < 0.35 + 0.6 * spec.k;
-      const side = (i % 2 && r() < 0.5 ? -1 : 1) * spec.side;
-      v.wk = {
-        t: -gap / wave - 0.15 * r(), side, over,
-        roll: over ? (1.25 + 0.3 * r()) : f * (0.12 + 0.3 * r()),
-        yaw: (i % 2 ? -1 : 1) * side * f * (0.1 + 0.35 * r() * spec.k + Math.min(0.5, v0 / 60)),
-        shift: side * f * (0.9 + 2.6 * spec.k * r()),
-        drop: 0.25 + 0.2 * r(),
-      };
-    });
+    this.rb = spec ? new WreckSim(this, spec) : null;
   }
   /* hand vehicles over to another consist without a jump in their wheel rotation */
   release(v) { v.slide = false; v.roll = this.dist * (v.flip ? -1 : 1) + (v.roll || 0); }
@@ -8002,6 +7943,266 @@ PLACE.lineOf = function (tp) {
   for (const k in ROUTE.lines) if (ROUTE.lines[k].edges.includes(tp.e)) return k;
   return '';
 };
+
+/* ============================================================================
+   Wreck physics. When a train comes off the rails its cars stop following the track one by one and
+   become rigid bodies: a box the size of the car body with the car's own weight, carrying the speed it
+   had. They fall, slide and dig into the ground and the ballast, roll over, slam into each other, and
+   pull or shove the cars still coupled to them until a coupler lets go. The cars still on the rails
+   run on into the pile (their brakes go into emergency when the train line parts) and come off in turn
+   when the car ahead drags them off the rails or they hit it hard.
+
+   Contacts are springs and dampers at points over each box (ground, ballast and other cars) with
+   Coulomb friction, stepped at 240 Hz. Couplers are stiff springs that break above about 2.5 MN.
+   ========================================================================== */
+const WK = {
+  H: 1 / 240, G: 9.81, MU: 0.5, MAXB: 40,
+  KG: 400, CG: 8,             // ground contact, per point, per kg of the car
+  KC: 900, CC: 24,            // car against car
+  CPL_K: 4e7, CPL_C: 1.6e6, CPL_BREAK: 2.5e6, CPL_Y: 0.88,
+  OFF: 0.45, UP: 0.35,        // how far a coupler can be dragged off line before the next car comes off too
+  RAM: 2.5,                   // closing speed (m/s) at which a car on the rails ramming the pile comes off
+  EMERG: 1.2,                 // brakes in emergency on the cars still on the rails, m/s²
+};
+const _wa = new THREE.Vector3(), _wb = new THREE.Vector3(), _wc = new THREE.Vector3(), _wd = new THREE.Vector3(), _we = new THREE.Vector3(), _wf = new THREE.Vector3();
+const _wq = new THREE.Quaternion(), _wqi = new THREE.Quaternion(), _wM = new THREE.Matrix4(), _wN = new THREE.Matrix4();
+
+/* the box of a car body in its own coordinates, leaving out lamp beams and glows */
+function bodyBox(v) {
+  v.root.updateMatrixWorld(true);
+  _wN.copy(v.root.matrix).invert();
+  const box = new THREE.Box3(), b = new THREE.Box3();
+  v.root.traverse(o => {
+    if (!o.geometry || o.isInstancedMesh || !o.visible || (o.material && o.material.transparent)) return;
+    if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
+    box.union(b.copy(o.geometry.boundingBox).applyMatrix4(_wM.multiplyMatrices(_wN, o.matrixWorld)));
+  });
+  if (box.isEmpty() || box.max.x - box.min.x < 2) box.set(new THREE.Vector3(-v.len / 2, 0.8, -1.55), new THREE.Vector3(v.len / 2, 4.3, 1.55));
+  // the trucks ride under the body: count them in, down to the rail
+  box.min.y = Math.min(box.min.y, 0.05);
+  return box;
+}
+
+class WreckSim {
+  /* spec = { a: metres back from the front coupler, side: ±1, seed, k: 0..1, v0: m/s, hit } */
+  constructor(T, spec) {
+    this.T = T; this.spec = spec; this.r = rng(spec.seed || 1);
+    this.bodies = []; this.t = 0; this.still = 0; this.asleep = false; this.acc = 0;
+    this.kin = { v: spec.vs || 0, mass: 0, force: 0 };
+    this.broken = new Set();   // coupler i joins vehicle i (rear) and i + 1 (front)
+    WreckSim.couplers(T);
+    // the car at the point of impact comes off first
+    let first = 0, best = Infinity;
+    T.vehicles.forEach((v, i) => { const d = Math.abs(v.a0 + v.len / 2 - spec.a); if (d < best) { best = d; first = i; } });
+    const k = spec.k, side = spec.side, r = this.r;
+    const b = this.derail(first, spec.hit ? 0.15 : 1);
+    if (b) {
+      // thrown toward the outside, rolling that way
+      b.lv.addScaledVector(b.ax[2], side * (0.6 + 3.2 * k * (0.6 + 0.4 * r())));
+      b.lv.y += 0.3 + 0.8 * k;
+      b.av.addScaledVector(b.ax[0], side * (0.3 + 1.6 * k * r()));
+      b.av.y += (r() - 0.5) * 0.6 * k;
+    }
+  }
+  /* which way along the car's own x axis the front of the train is */
+  static sF(v) { return v._sF || (v.flip ? -1 : 1); }
+  /* both couplers of every car in its own coordinates, found from the track while it is still on it */
+  static couplers(T) {
+    const F = newFrame(), inv = new THREE.Matrix4();
+    for (const v of T.vehicles) {
+      const q = v.ptsAll[0]; if (!q || !q.tp) continue;
+      inv.copy(v.root.matrix).invert();
+      const at = d => { const tp = q.tp.clone(); tp.advance(d, null); tp.pose(F); return F.p.clone().addScaledVector(F.u, WK.CPL_Y).applyMatrix4(inv); };
+      v._cf = at(q.a - v.a0); v._cr = at(-(v.a0 + v.len - q.a));
+      v._sF = Math.sign(v._cf.x - v._cr.x) || 1;
+    }
+  }
+  /* take vehicle i off the rails: a rigid body with the speed the train had (times keep) */
+  derail(i, keep = 1) {
+    const v = this.T.vehicles[i]; if (!v || v.rb || this.bodies.length >= WK.MAXB) return null;
+    const M = v.root.matrix.clone(), box = bodyBox(v);
+    const c = box.getCenter(new THREE.Vector3()), h = box.getSize(new THREE.Vector3()).multiplyScalar(0.5);
+    const m = Math.max(8000, v.mass || 40000);
+    const p = c.clone().applyMatrix4(M), q = new THREE.Quaternion().setFromRotationMatrix(M);
+    const ax = [0, 1, 2].map(j => new THREE.Vector3().setFromMatrixColumn(M, j).normalize());
+    const sF = WreckSim.sF(v), sp = this.kinV() * keep;
+    const b = {
+      v, i, m, c, h, p, q, ax, M0: M,
+      lv: ax[0].clone().multiplyScalar(sF * sp), av: new THREE.Vector3(),
+      I: new THREE.Vector3(m / 3 * (h.y * h.y + h.z * h.z), m / 3 * (h.x * h.x + h.z * h.z), m / 3 * (h.x * h.x + h.y * h.y)),
+      // sample points over the box, from its centre
+      pts: [], bed: { o: _wa.set(0, 0, 0).applyMatrix4(M).clone(), r: ax[2].clone(), f: ax[0].clone(), len: v.len },
+      W: new THREE.Matrix4(), D: new THREE.Matrix4(), F: new THREE.Vector3(), tq: new THREE.Vector3(),
+    };
+    for (let x = -1; x <= 1; x++) for (let y = -1; y <= 1; y++) for (let z = -1; z <= 1; z++) if (x || y || z) b.pts.push(new THREE.Vector3(x * h.x, y * h.y, z * h.z));
+    // where the trucks were when it came off, so they stay with it
+    b.t0 = v.tp.map(t => { const m4 = frameMatrix(t.F, new THREE.Matrix4()); if (v.flip) m4.multiply(new THREE.Matrix4().makeRotationY(Math.PI)); return m4; });
+    if ((v.kind === 'loco' || v.kind === 'loco2') && this.T.diesel) b.u0 = v.model.trucks.map(tg => tg.matrix.clone());
+    else if (v.kind === 'loco' && this.T.loco && this.T.loco.leadTruck) b.l0 = this.T.loco.leadTruck.matrix.clone();
+    v.rb = b; this.bodies.push(b);
+    this.pose(b);
+    if (typeof sndClunk === 'function' && AU.on) sndClunk(clamp(Math.abs(sp) / 8, 0.4, 1.5), 0);
+    return b;
+  }
+  /* speed of the cars still on the rails, along the train */
+  kinV() { return this.kin ? this.kin.v : 0; }
+  /* root and truck matrices of a body for drawing */
+  pose(b) {
+    b.W.compose(b.p, b.q, _wf.set(1, 1, 1)).multiply(_wM.makeTranslation(-b.c.x, -b.c.y, -b.c.z));
+    b.D.copy(b.W).multiply(_wN.copy(b.M0).invert());
+    for (let j = 0; j < 3; j++) b.ax[j].setFromMatrixColumn(b.W, j).normalize();
+  }
+  /* world point and velocity of a car-local point (in the root's coordinates) on vehicle v */
+  pointOf(v, local, outP, outV) {
+    if (v.rb) {
+      const b = v.rb; outP.copy(local).sub(b.c).applyQuaternion(b.q);
+      outV.copy(b.av).cross(outP).add(b.lv); outP.add(b.p);
+    } else {
+      outP.copy(local).applyMatrix4(v.root.matrix);
+      outV.setFromMatrixColumn(v.root.matrix, 0).normalize().multiplyScalar(WreckSim.sF(v) * this.kinV());
+    }
+  }
+  /* height of whatever a point is resting on: the ground, or the roadbed the car came off */
+  ground(b, P) {
+    let g = groundAt(P.x, -P.z);
+    const B = b.bed; _we.subVectors(P, B.o);
+    if (Math.abs(_we.dot(B.f)) < B.len * 1.5) {
+      const lat = Math.abs(_we.dot(B.r));
+      const bed = lat < 1.8 ? -0.2 : -0.2 - (lat - 1.8) * 0.66;
+      if (bed > -0.95) g = Math.max(g, B.o.y + bed);
+    }
+    return g;
+  }
+  force(b, P, F) {
+    // linear and angular impulse over one step, applied to the body's accumulators
+    // a car that has come to rest stays put unless something hits it properly
+    if (b.sleep) { if (F.lengthSq() < 9 * (WK.G * b.m) ** 2) return; b.sleep = false; b.restT = 0; }
+    b.F.add(F); b.tq.add(_wd.subVectors(P, b.p).cross(F));
+  }
+  /* kin: the part of the train still on the rails = { v: m/s along the train, mass: kg, force: N along the train } */
+  step(dt, kin) {
+    this.kin = kin;
+    if (this.asleep) return;
+    const T = this.T, V = T.vehicles;
+    this.acc = Math.min(this.acc + dt, 0.06);
+    while (this.acc >= WK.H) {
+      this.acc -= WK.H; this.t += WK.H;
+      const h = WK.H;
+      for (const b of this.bodies) { b.F.set(0, -WK.G * b.m, 0); b.tq.set(0, 0, 0); }
+      kin.force = 0;
+      // ground and roadbed
+      for (const b of this.bodies) {
+        if (b.sleep) continue;
+        for (const s of b.pts) {
+          const P = _wa.copy(s).applyQuaternion(b.q), r = P.clone(); P.add(b.p);
+          const pen = this.ground(b, P) - P.y; if (pen <= 0) continue;
+          const vp = _wb.copy(b.av).cross(r).add(b.lv);
+          const fn = Math.max(0, WK.KG * b.m * Math.min(pen, 0.5) - WK.CG * b.m * vp.y);
+          const vt = _wc.set(vp.x, 0, vp.z), sp = vt.length();
+          const F = new THREE.Vector3(0, fn, 0);
+          if (sp > 1e-4) F.addScaledVector(vt, -WK.MU * fn / Math.max(sp, 0.25));
+          this.force(b, P, F);
+        }
+      }
+      // car against car: points of one box inside another (cars still on the rails count as immovable)
+      for (let x = 0; x < V.length; x++) {
+        const A = V[x]; if (!A.rb) continue;
+        for (let y = Math.max(0, x - 6); y < Math.min(V.length, x + 7); y++) {
+          if (y === x || (V[y].rb && y < x)) continue;
+          if (A.rb.sleep && (V[y].rb ? V[y].rb.sleep : Math.abs(this.kinV()) < 0.05)) continue;
+          this.touch(A, V[y], kin);
+        }
+      }
+      // couplers
+      for (let i = 0; i < V.length - 1; i++) {
+        if (this.broken.has(i)) continue;
+        const A = V[i], B = V[i + 1]; if (!A.rb && !B.rb) continue;
+        const la = A._cr, lb = B._cf; if (!la || !lb) continue;
+        const PA = new THREE.Vector3(), VA = new THREE.Vector3(), PB = new THREE.Vector3(), VB = new THREE.Vector3();
+        this.pointOf(A, la, PA, VA); this.pointOf(B, lb, PB, VB);
+        const d = _wb.subVectors(PB, PA), F = d.clone().multiplyScalar(WK.CPL_K).addScaledVector(_wc.subVectors(VB, VA), WK.CPL_C);
+        if (F.length() > WK.CPL_BREAK) { this.broken.add(i); if (AU.on) sndClunk(1.4, 0); continue; }
+        if (A.rb) this.force(A.rb, PA, F); else kin.force += F.dot(_we.setFromMatrixColumn(A.root.matrix, 0).normalize()) * WreckSim.sF(A);
+        if (B.rb) this.force(B.rb, PB, F.clone().negate()); else kin.force -= F.dot(_we.setFromMatrixColumn(B.root.matrix, 0).normalize()) * WreckSim.sF(B);
+        // dragged off line: the car still on the rails comes off too
+        const kv = A.rb ? (B.rb ? null : B) : A;
+        if (kv) {
+          const M = kv.root.matrix, off = _wd.subVectors(kv === A ? PB : PA, kv === A ? PA : PB);
+          const lat = Math.abs(off.dot(_we.setFromMatrixColumn(M, 2).normalize())), up = Math.abs(off.dot(_wf.setFromMatrixColumn(M, 1).normalize()));
+          if (lat > WK.OFF || up > WK.UP) this.derail(kv === A ? i : i + 1);
+        }
+      }
+      // integrate
+      let moving = false;
+      for (const b of this.bodies) {
+        if (b.sleep) continue;
+        b.lv.addScaledVector(b.F, h / b.m);
+        // angular: world inverse inertia from the body axes
+        const tq = b.tq, ax = b.ax;
+        for (let j = 0; j < 3; j++) b.av.addScaledVector(ax[j], tq.dot(ax[j]) / b.I.getComponent(j) * h);
+        b.av.multiplyScalar(0.9995);
+        b.p.addScaledVector(b.lv, h);
+        const w = b.av; _wq.set(w.x * h * 0.5, w.y * h * 0.5, w.z * h * 0.5, 0).multiply(b.q);
+        b.q.set(b.q.x + _wq.x, b.q.y + _wq.y, b.q.z + _wq.z, b.q.w + _wq.w).normalize();
+        this.pose(b);
+        // settled: slow for half a second puts it to sleep
+        if (b.lv.lengthSq() < 0.04 && b.av.lengthSq() < 0.04) { if ((b.restT = (b.restT || 0) + h) > 0.5) { b.sleep = true; b.lv.set(0, 0, 0); b.av.set(0, 0, 0); continue; } }
+        else b.restT = 0;
+        moving = true;
+      }
+      // the cars still on the rails: emergency brakes plus whatever the wreck pushes or pulls on them
+      if (kin.mass > 0 && kin.v !== 0) {
+        const s = Math.sign(kin.v), nv = kin.v + (kin.force / kin.mass) * h - s * WK.EMERG * h;
+        kin.v = Math.sign(nv) !== s ? 0 : nv;
+      } else if (kin.mass > 0 && kin.force) kin.v += (kin.force / kin.mass) * h * 0.5;
+      if (!moving && Math.abs(kin.v) < 0.05) { this.still += h; if (this.still > 1) { this.asleep = true; break; } } else this.still = 0;
+    }
+    for (const b of this.bodies) { b.v.pos.copy(b.p); b.v.fwd.copy(b.ax[0]).multiplyScalar(WreckSim.sF(b.v)); }
+  }
+  /* push apart rigid car A and car B where their boxes overlap */
+  touch(A, B, kin) {
+    const a = A.rb;
+    const bb = B.rb, cB = bb ? bb.p : _wf.copy(B.pos || _wf.setFromMatrixPosition(B.root.matrix));
+    if (a.p.distanceTo(cB) > (A.len + B.len) / 2 + 2) return;
+    // B as a box: centre, axes and half sizes
+    let hB, pB, qB;
+    if (bb) { hB = bb.h; pB = bb.p; qB = bb.q; }
+    else {
+      if (!B._box) { B._box = bodyBox(B); B._c = B._box.getCenter(new THREE.Vector3()); B._h = B._box.getSize(new THREE.Vector3()).multiplyScalar(0.5); }
+      hB = B._h; pB = B._c.clone().applyMatrix4(B.root.matrix); qB = _wqi.setFromRotationMatrix(B.root.matrix).clone();
+    }
+    const qi = qB.clone().invert();
+    const both = [[a, pB, qB, qi, hB, 1]];
+    if (bb) both.push([bb, a.p, a.q, a.q.clone().invert(), a.h, -1]);
+    for (const [src, pO, qO, qOi, hO, sg] of both) {
+      for (const s of src.pts) {
+        const P = _wa.copy(s).applyQuaternion(src.q).add(src.p);
+        const u = _wb.subVectors(P, pO).applyQuaternion(qOi);
+        const dx = hO.x - Math.abs(u.x), dy = hO.y - Math.abs(u.y), dz = hO.z - Math.abs(u.z);
+        if (dx <= 0 || dy <= 0 || dz <= 0) continue;
+        // out along the shallowest face
+        const n = new THREE.Vector3(), pen = Math.min(dx, dy, dz);
+        if (pen === dx) n.set(Math.sign(u.x) || 1, 0, 0); else if (pen === dy) n.set(0, Math.sign(u.y) || 1, 0); else n.set(0, 0, Math.sign(u.z) || 1);
+        n.applyQuaternion(qO);
+        const PP = P.clone(), VS = new THREE.Vector3(), VO = new THREE.Vector3();
+        VS.copy(src.av).cross(_wc.subVectors(PP, src.p)).add(src.lv);
+        if (bb) { const o = sg > 0 ? bb : a; VO.copy(o.av).cross(_wc.subVectors(PP, o.p)).add(o.lv); }
+        else VO.setFromMatrixColumn(B.root.matrix, 0).normalize().multiplyScalar(WreckSim.sF(B) * this.kinV());
+        const vn = _wd.subVectors(VS, VO).dot(n), mm = bb ? Math.min(a.m, bb.m) : a.m;
+        const fn = Math.max(0, WK.KC * mm * Math.min(pen, 0.6) - WK.CC * mm * vn);
+        const vt = _we.subVectors(VS, VO).addScaledVector(n, -vn), sp = vt.length();
+        const F = n.clone().multiplyScalar(fn); if (sp > 1e-4) F.addScaledVector(vt, -WK.MU * fn / Math.max(sp, 0.25));
+        this.force(src, PP, F);
+        if (bb) this.force(sg > 0 ? bb : a, PP, F.clone().negate());
+        else {
+          kin.force -= F.dot(_wf.setFromMatrixColumn(B.root.matrix, 0).normalize()) * WreckSim.sF(B);
+          // a car on the rails running hard into the pile comes off too
+          if (-vn > WK.RAM) this.derail(this.T.vehicles.indexOf(B));
+        }
+      }
+    }
+  }
+}
 
 /* ============================================================================
    Steam locomotive, boiler, air brake and train dynamics
@@ -10375,7 +10576,7 @@ function mpClean(r) {
     o.s = n(r.s, 0, 1e5); o.o = r.o < 0 ? -1 : 1; o.v = n(r.v, -60, 60); o.rv = n(r.rv, -1, 1);
     o.wh = n(r.wh, 0, 1); o.bl = r.bl ? 1 : 0; o.hl = Math.round(n(r.hl, 0, 2, 1)); o.dl = r.dl ? 1 : 0;
     o.ex = n(r.ex, 0, 1.5); o.rpm = n(r.rpm, 0, 1200); o.dr = r.dr ? 1 : 0;
-    o.wk = o.dr && Array.isArray(r.wk) && r.wk.length >= 4 ? [n(r.wk[0], 0, 5000), r.wk[1] < 0 ? -1 : 1, Math.round(n(r.wk[2], 1, 2e9, 1)), n(r.wk[3], 0, 1), n(r.wk[4], 0, 150)] : null;
+    o.wk = o.dr && Array.isArray(r.wk) && r.wk.length >= 4 ? [n(r.wk[0], 0, 5000), r.wk[1] < 0 ? -1 : 1, Math.round(n(r.wk[2], 1, 2e9, 1)), n(r.wk[3], 0, 1), n(r.wk[4], 0, 150), n(r.wk[5], -150, 150), r.wk[6] ? 1 : 0] : null;
   }
   o.pz = r.pz ? 1 : 0;
   // send time on their clock, and their echo of ours: [our send time, ms they held it]
@@ -10468,7 +10669,7 @@ class RemoteTrain {
     this.v = st.v;
     // their wreck, as they see it: the same cars go over in the same order while it slides to rest
     const wk = st.dr && st.wk ? st.wk.join() : '';
-    if (wk !== (this.wkKey || '')) { this.wkKey = wk; this.train.wreck(wk ? { a: st.wk[0], side: st.wk[1], seed: st.wk[2], k: st.wk[3], v0: st.wk[4] } : null); }
+    if (wk !== (this.wkKey || '')) { this.wkKey = wk; this.train.wreck(wk ? { a: st.wk[0], side: st.wk[1], seed: st.wk[2], k: st.wk[3], v0: st.wk[4], vs: st.wk[5] || 0, hit: !!st.wk[6] } : null); }
   }
   frame(dt, st, cam, force) {
     if (!this.tp) return;
@@ -10483,6 +10684,8 @@ class RemoteTrain {
     else if (!this.visible) { T.setVisible(true); this.visible = true; }
     this.updT = 0;
     for (const p of T.pts) { if (p.tp) p.tp.copy(this.tp); else p.tp = this.tp.clone(); const off = p.a - this.a0; if (off) p.tp.advance(-off, null); }
+    // their wreck plays out here too, the cars still on the rails going at the speed they report
+    if (T.rb) { this.kin = this.kin || { v: 0, mass: 0, force: 0 }; this.kin.v = this.v; try { T.rb.step(dt, this.kin); } catch (e) { T.rb.asleep = true; } }
     T.update(dt, this.theta, st.rv || 0);
     // polyline for contact tests: front coupler, every tracked point, rear coupler
     const n = T.pts.length + 2;
@@ -10733,7 +10936,7 @@ MP.state = function () {
       ex: T.diesel ? +S.load.toFixed(2) : (S.Psc > 6 && S.cut > 0 && S.throttle > 0.02 ? +clamp((S.Psc / 245) * (0.35 + S.cut * 1.25), 0, 1.3).toFixed(2) : 0),
       rpm: T.diesel && !T.elec && S.engineRun ? Math.round(S.rpm) : 0, dr: S.derailed ? 1 : 0,
     });
-    if (S.derailed && T.wk) st.wk = [+T.wk.a.toFixed(1), T.wk.side, T.wk.seed, +T.wk.k.toFixed(2), +(T.wk.v0 || 0).toFixed(1)];
+    if (S.derailed && T.wk) st.wk = [+T.wk.a.toFixed(1), T.wk.side, T.wk.seed, +T.wk.k.toFixed(2), +(T.wk.v0 || 0).toFixed(1), +(T.wk.vs || 0).toFixed(2), T.wk.hit ? 1 : 0];
   }
   st.sw = NET.switches.map((sw, i) => MP.swv[i] * 2 + sw.state);
   if (MP.lt) st.lt = MP.lt;
@@ -12964,42 +13167,45 @@ GAME.pause = function (p) {
   if (p) { $('menu').hidden = false; startLabel(); }
 };
 GAME.fail = function (title, body) { S.throttle = 0; if (JOB.fail(title, body)) return; $('bigMsg').classList.remove('wreck'); $('bigTitle').textContent = title; $('bigBody').textContent = body; $('bigMsg').hidden = false; };
-/* A derailment plays out: the train keeps its way on, ploughing along with the cars nearest the point
-   of impact going over and the ones behind piling in, and only once it has all come to rest does the
-   game say what happened. wk says where and how hard: { a: metres back from the front coupler, side,
-   k: 0..1 }; left out, the leading end goes, as hard as the speed it was doing. A collision (hit) has
-   met something solid, so most of its speed goes into the wreck rather than the slide. */
-const WRECK_DECEL = 3.2;
+/* A derailment plays out. The cars come off the rails as rigid bodies (WreckSim, 07d_wreck.js) with the
+   speed the train had, starting with the one at the point of impact; the rest keep running on the
+   rails into the pile until they are dragged off or hit it hard, and only once it has all come to rest
+   does the game say what happened. wk says where and how hard: { a: metres back from the front coupler,
+   side, k: 0..1 }; left out, the leading end goes, as hard as the speed it was doing. A collision (hit)
+   has met something solid: the car that hit stops almost dead and the train behind runs into it. */
 GAME.derail = function (why, title = 'Derailed', wk, hit) {
   if (S.derailed) return;
   const T = GAME.train, v0 = Math.abs(S.v), mph = v0 / MPH;
   if (hit === undefined) hit = title === 'Collision';
-  if (T) T.wreck(Object.assign({ a: S.v < 0 ? T.length : 0, side: Math.random() < 0.5 ? -1 : 1, k: clamp((mph - 4) / 40, 0.15, 1), v0 }, wk, { seed: 1 + ((Math.random() * 1e9) | 0) }));
-  S.derailed = true; S.throttle = 0; MP.dirty = true;
-  if (hit) S.v *= 0.15;
-  S.vw = S.v;
-  GAME.wrecking = { title, why, still: 0, clunkT: 0, done: false };
+  if (T) T.wreck(Object.assign({ a: S.v < 0 ? T.length : 0, side: Math.random() < 0.5 ? -1 : 1, k: clamp((mph - 4) / 40, 0.15, 1), v0 }, wk, { vs: S.v, hit, seed: 1 + ((Math.random() * 1e9) | 0) }));
+  S.derailed = true; S.throttle = 0; S.vw = S.v; MP.dirty = true;
+  GAME.wrecking = { title, why, clunkT: 0, done: false, kin: { v: S.v, mass: 0, force: 0 } };
   if (AU.on) for (let i = 0; i < 8; i++) sndClunk(1, i * 0.07);
   CAM.shakeHit = 1;
   toast(`${title}! ${why}`, 'bad', 4500, 'derail');
 };
-/* the wrecked train sliding to rest: no power, no brakes that matter, just the cars digging in */
 GAME.wreckStep = function (dt, T) {
   const W = GAME.wrecking; if (!W) return;
+  const R = T.rb, kin = W.kin;
+  kin.v = S.v; kin.mass = 0; for (const v of T.vehicles) if (!v.rb) kin.mass += v.mass || 40000;
+  // a fault in the wreck physics must never freeze the game: the pile just stays where it is
+  if (R && !R.asleep) { try { R.step(dt, kin); } catch (e) { console.warn('wreck', e); R.asleep = true; kin.v = 0; } }
+  S.v = S.vw = kin.mass > 0 ? kin.v : 0;
   if (S.v !== 0) {
-    const nv = Math.sign(S.v) * Math.max(0, Math.abs(S.v) - WRECK_DECEL * dt), d = (S.v + nv) / 2 * dt;
-    S.v = S.vw = nv;
-    const lim = CARS.limit(T, d);
+    // the cars still on the rails run on
+    const d = S.v * dt, lim = CARS.limit(T, d);
     const moved = T.move(lim.d, { onBlocked: () => { S.v = S.vw = 0; } });
     S.odo += Math.abs(moved);
     if (lim.hit) { S.v = S.vw = 0; sndClunk(1.2, 0); }   // ploughed into standing cars
+  }
+  const moving = Math.abs(S.v) > 0.05 || (R && !R.asleep);
+  if (moving) {
     CAM.shakeHit = Math.max(CAM.shakeHit, clamp(Math.abs(S.v) / 20, 0, 0.5));
     W.clunkT -= dt;
-    if (W.clunkT <= 0 && AU.on) { W.clunkT = 0.1 + Math.random() * 0.25; sndClunk(clamp(Math.abs(S.v) / 6, 0.3, 1.5), 0); }
-    W.still = 0;
-  } else if (!W.done && (W.still += dt) > 1.5) {
+    if (W.clunkT <= 0 && AU.on) { W.clunkT = 0.12 + Math.random() * 0.3; sndClunk(clamp(Math.abs(S.v) / 6, 0.3, 1.5), 0); }
+  } else if (!W.done) {
     // the dust has settled: a job is over; otherwise offer to put it back on the rails
-    W.done = true;
+    W.done = true; S.v = S.vw = 0;
     if (!JOB.fail(W.title, W.why)) GAME.wreckBar();
   }
 };
