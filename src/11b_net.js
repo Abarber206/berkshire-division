@@ -274,19 +274,19 @@ class RemoteTrain {
   }
   fx(dt, st, cam) {
     if (!this.placed || !this.visible) return;
-    const T = this.train, L = T.loco, night = SKY.night;
+    const T = this.train, L = T.loco, night = SKY.dark;
     const head = T.lead.pos, d = head.distanceTo(cam);
     this.tv.copy(T.lead.fwd).multiplyScalar(this.v);
     // lamps
     const hl = st.hl;
-    L.beam.material.opacity = hl === 0 ? 0 : (night ? (hl === 2 ? 0.075 : 0.035) : (SKY.weather !== 'clear' ? 0.02 : 0));
-    L.halo.material.opacity = hl === 0 ? 0 : (night ? 1 : 0.35) * (hl === 2 ? 1 : 0.6);
+    L.beam.material.opacity = hl === 0 ? 0 : Math.max(night * (hl === 2 ? 0.075 : 0.035), SKY.weather !== 'clear' ? 0.02 : 0);
+    L.halo.material.opacity = hl === 0 ? 0 : lerp(0.35, 1, night) * (hl === 2 ? 1 : 0.6);
     if (T.diesel) {
       const ph = Math.floor(performance.now() / 385) % 2, flash = st.wh > 0.05 || st.bl, on = st.dl && hl > 0;
-      L.ditch.forEach((dd, k) => { const b = !on ? 0.12 : (flash ? (ph === k ? 1 : 0.15) : 0.85); dd.lens.material.color.setScalar(0.25 + 0.75 * b); dd.halo.material.opacity = b * (night ? 1 : 0.45); });
+      L.ditch.forEach((dd, k) => { const b = !on ? 0.12 : (flash ? (ph === k ? 1 : 0.15) : 0.85); dd.lens.material.color.setScalar(0.25 + 0.75 * b); dd.halo.material.opacity = b * lerp(0.45, 1, night); });
     } else {
       const fl = 0.85 + 0.15 * Math.sin(performance.now() * 0.023);
-      L.fire.material.color.setRGB(fl, 0.4 * fl + 0.1, 0.1); L.ash.material.opacity = night ? 0.3 * fl : 0;
+      L.fire.material.color.setRGB(fl, 0.4 * fl + 0.1, 0.1); L.ash.material.opacity = night * 0.3 * fl;
     }
     // exhaust
     if (d < 1500) {

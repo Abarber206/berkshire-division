@@ -177,6 +177,7 @@ SND.init = function () {
     turbo: new Bed('turbo', L), dyn: new Bed('dyn', L), comp: new Bed('comp', L), motor: new Bed('motor', L),
     roll: new Bed('roll', W, { seg: [2, 4], xf: 0.9 }), flange: new Bed('flange', W, { seg: [1.2, 2.6], xf: 0.5, vary: 0.05 }), squeal: new Bed('squeal', W, { seg: [1, 2], xf: 0.4, vary: 0.04 }),
     wind: new Bed('wind', A, { seg: [3, 6], xf: 1.2 }), crickets: new Bed('crickets', A, { seg: [6, 11], xf: 1.8 }), birds: new Bed('birds', A, { seg: [6, 11], xf: 1.8 }), night: new Bed('night', A, { seg: [6, 11], xf: 1.8 }),
+    dawn: new Bed('dawn', A, { seg: [6, 11], xf: 1.8 }), frogs: new Bed('frogs', A, { seg: [6, 11], xf: 1.8 }),
   };
   SND.dz = (SND_DZ || []).map((r, i) => ({ rpm: r.rpm, load: r.load || 0, bed: new Bed('dz', L, { i, seg: [1.6, 3.2], xf: 0.6 }) }));
   SND.whistle = null; SND.whKey = null;
@@ -276,17 +277,20 @@ function whistleMix(T, tv, inCab) {
   AU.whistle.lp.frequency.setTargetAtTime(inCab ? 3200 : clamp(11000 / (1 + dist / 160), 1800, 7000), now, 0.1);
 }
 
-/* the countryside: wind (rising past the cab windows with speed), birds by day,
-   crickets at night, all hushed by snow */
+/* the countryside: wind (rising past the cab windows with speed), a dawn chorus at first light,
+   birds by day, chorus frogs from dusk, wind in the trees and crickets at night, all hushed by snow */
 let sndChirpT = 2;
 function ambience(dt, inCab, v) {
   const Vv = SND.v, snow = SKY.snow, night = SKY.night, wet = SKY.weather === 'overcast';
   const draught = inCab ? 0.9 * Math.min(1, (v / 30) ** 2) : 0;
   duo(Vv.wind, AU.wind, inCab ? 0.32 * Math.min(1, (v / 30) ** 2) + 0.02 : 0.03, (snow ? 0.32 : wet ? 0.24 : 0.16) * (inCab ? 0.5 : 1) + draught, 1 + (inCab ? 0.25 * Math.min(1, v / 30) : 0), 0.4);
   const out = inCab ? 0.35 : 1;
-  Vv.birds.set(!night && !snow ? (wet ? 0.5 : 1) * out * (SND_GAIN.birds || 1) : 0, 1, 1.5);
-  Vv.night.set(night && !snow ? out * (SND_GAIN.night || 1) : 0, 1, 1.5);
-  Vv.crickets.set(night && !snow ? out * (SND_GAIN.crickets || 1) : 0, 1, 2);
+  const dark = SKY.dark, h = SKY.hour, chorus = dnChorus(h, SKY.sunEl), still = snow ? 0 : out, G = k => SND_GAIN[k] || 1;
+  Vv.birds.set(still * (1 - dark) * (1 - 0.5 * chorus) * (wet ? 0.5 : 1) * G('birds'), 1, 3);
+  Vv.dawn.set(still * chorus * (wet ? 0.6 : 1) * G('dawn'), 1, 3);
+  Vv.night.set(still * dark * G('night'), 1, 3);
+  Vv.crickets.set(still * smooth(0.3, 0.8, dark) * G('crickets'), 1, 3);
+  Vv.frogs.set(still * smooth(0.35, 0.85, dark) * (h > 16 || h < 1 ? 1 : 0.35) * G('frogs'), 1, 3);
   if (Vv.birds.ok) return;
   sndChirpT -= dt; if (sndChirpT < 0) { sndChirpT = 1.5 + Math.random() * (night ? 2 : 5); if (!inCab && !snow) sndChirp(night); }
 }

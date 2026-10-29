@@ -96,7 +96,8 @@ JOB.begin = function (def) {
   JOB.closeUI();
   const R = JOB.run = { def, t0: S.time, steps: def.steps.map(s => ({ ...s, state: 'todo' })), i: 0, items: [], over: false, failed: null, cars: [],
     ep: {}, moveAt: null, lastStop: 0, score: 100 };
-  GAME.settings.time = def.look; applyLook(def.look, GAME.settings.weather, renderer, scene);
+  // the sky runs on the job's railroad clock
+  GAME.settings.time = def.look; SKY.hour = def.start / 3600; skyLight(true);
   [...$('optTime').children].forEach(c => c.setAttribute('aria-pressed', String(c.id === 'optTime_' + def.look)));
   // waybill the cars this job moves
   for (const st of R.steps) if (st.type === 'pickup') {
@@ -472,7 +473,7 @@ function jobBrief() {
 /* a job picks the train and the time of day itself */
 function refreshJobGroups() {
   const j = JOB.wanted();
-  $('optTrain').parentElement.hidden = !!j; $('optTime').parentElement.hidden = !!j;
+  $('optTrain').parentElement.hidden = !!j; $('optTime').parentElement.hidden = !!j; $('optCycle').parentElement.hidden = !!j;
 }
 
 function jobSetup() {

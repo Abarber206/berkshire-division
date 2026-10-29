@@ -1,30 +1,57 @@
 /* ============================================================================
-   Sky, light presets, weather, smoke & steam particles, snow
+   Sky, sun and moon on the clock, weather, smoke & steam particles, snow
    ========================================================================== */
-const SKY = {};
-const PRESETS = {
-  morning: { name: 'Morning', sub: 'Low sun, long shadows', elev: 13, az: 118, top: 0x5f93d6, hor: 0xe9d3b4, sun: 0xffdcae, sunI: 2.7, hemiS: 0xb9cde8, hemiG: 0x4f4836, hemiI: 0.8, fog: 0xd9cfbe, fogD: 0.00017, exp: 1.0, night: false },
-  noon: { name: 'Midday', sub: 'High sun, clear air', elev: 56, az: 170, top: 0x3e7dcf, hor: 0xbcd4ea, sun: 0xfff4e4, sunI: 2.6, hemiS: 0xc4d8f0, hemiG: 0x5d5845, hemiI: 0.6, fog: 0xc6d5e2, fogD: 0.00013, exp: 0.95, night: false },
-  golden: { name: 'Golden hour', sub: 'Sun on the drivers', elev: 6.5, az: 252, top: 0x4c6ea6, hor: 0xf3ae6e, sun: 0xffad63, sunI: 2.3, hemiS: 0x9fb2d6, hemiG: 0x584430, hemiI: 0.8, fog: 0xe2b58e, fogD: 0.0002, exp: 1.05, night: false },
-  night: { name: 'Night', sub: 'Headlight & firebox', elev: 28, az: 210, top: 0x03070f, hor: 0x162236, sun: 0x8ea6d6, sunI: 0.22, hemiS: 0x304060, hemiG: 0x141210, hemiI: 0.16, fog: 0x0a0f18, fogD: 0.00036, exp: 1.25, night: true },
-};
+const SKY = { hour: 6 + 40 / 60, weather: 'clear', dark: 0, night: false, look: {}, envKey: '', envAt: -1e9,
+  // shared by every fogged material (see the fog chunks below): the sun's glow in the haze, and how
+  // the haze thins with height. Plain objects, so each material's copy of the uniform is this one
+  fogSun: { x: 0, y: 1, z: 0 }, fogSunC: { x: 0, y: 0, z: 0 }, fogHaze: { x: 0, y: 260, z: 1 } };   // haze base height, thinning scale (m), on
 const WEATHER = {
   clear: { name: 'Clear', sub: 'Dry rail', mu: 0.27, fogK: 1, sunK: 1, cloud: 0.25, snow: 0, gray: 0 },
   overcast: { name: 'Overcast', sub: 'Damp rail', mu: 0.2, fogK: 1.9, sunK: 0.32, cloud: 0.95, snow: 0, gray: 0.55 },
   snow: { name: 'Snow', sub: 'Slippery, low visibility', mu: 0.15, fogK: 3.4, sunK: 0.25, cloud: 1, snow: 1, gray: 0.7 },
 };
 
+/* Haze that behaves like air: brighter and warmer looking toward the sun (light scattered forward
+   by the haze, strongest at golden hour and twilight), and thinner higher up, so valleys hold
+   more haze than ridge tops. Without these uniforms a material falls back to plain FogExp2. */
+(function hazeChunks() {
+  const C = THREE.ShaderChunk;
+  C.fog_pars_vertex = C.fog_pars_vertex.replace('varying float fogDepth;', 'varying float fogDepth; varying vec3 vFogWorld;');
+  C.fog_vertex = C.fog_vertex.replace('fogDepth = - mvPosition.z;', 'fogDepth = - mvPosition.z; vFogWorld = ( vec4( mvPosition.xyz, 0.0 ) * viewMatrix ).xyz;');
+  C.fog_pars_fragment = C.fog_pars_fragment.replace('varying float fogDepth;', 'varying float fogDepth; varying vec3 vFogWorld; uniform vec3 fogSunDir; uniform vec3 fogSunColor; uniform vec3 fogHaze;');
+  C.fog_fragment = `#ifdef USE_FOG
+  #ifdef FOG_EXP2
+    float fogH = max( 0.0, cameraPosition.y + vFogWorld.y * 0.5 - fogHaze.x );
+    float fogD = fogDensity * mix( 1.0, 0.4 + 0.6 * exp( - fogH / max( fogHaze.y, 1.0 ) ), fogHaze.z );
+    float fogFactor = 1.0 - exp( - fogD * fogD * fogDepth * fogDepth );
+    float fogS = max( dot( normalize( vFogWorld ), fogSunDir ), 0.0 );
+    vec3 fogC = fogColor + fogSunColor * ( pow( fogS, 10.0 ) * 0.55 + pow( fogS, 2.5 ) * 0.14 );
+    gl_FragColor.rgb = mix( gl_FragColor.rgb, fogC, fogFactor );
+  #else
+    float fogFactor = smoothstep( fogNear, fogFar, fogDepth );
+    gl_FragColor.rgb = mix( gl_FragColor.rgb, fogColor, fogFactor );
+  #endif
+#endif`;
+  const add = u => { if (u && u.fogColor) Object.assign(u, { fogSunDir: { value: SKY.fogSun }, fogSunColor: { value: SKY.fogSunC }, fogHaze: { value: SKY.fogHaze } }); };
+  add(THREE.UniformsLib.fog);
+  for (const k in THREE.ShaderLib) add(THREE.ShaderLib[k].uniforms);
+})();
+
 function buildSky(scene, renderer) {
-  const uni = { uTop: { value: new THREE.Color() }, uHor: { value: new THREE.Color() }, uSun: { value: new THREE.Vector3(0, 1, 0) }, uSunC: { value: new THREE.Color() }, uGray: { value: 0 }, uNight: { value: 0 } };
+  const uni = { uTop: { value: new THREE.Color() }, uHor: { value: new THREE.Color() }, uSun: { value: new THREE.Vector3(0, 1, 0) }, uSunC: { value: new THREE.Color() },
+    uMoon: { value: new THREE.Vector3(0, -1, 0) }, uMoonC: { value: new THREE.Color() }, uGray: { value: 0 }, uNight: { value: 0 } };
   const mat = new THREE.ShaderMaterial({
     uniforms: uni, side: THREE.BackSide, depthWrite: false, depthTest: false, fog: false,
     vertexShader: `varying vec3 vDir; void main(){ vDir = normalize(position); vec4 p = projectionMatrix * modelViewMatrix * vec4(position,1.0); gl_Position = p.xyww; }`,
-    fragmentShader: `uniform vec3 uTop,uHor,uSunC; uniform vec3 uSun; uniform float uGray,uNight; varying vec3 vDir;
+    // the sun's disc only above the horizon; its glow carries on below it through twilight
+    fragmentShader: `uniform vec3 uTop,uHor,uSunC,uMoonC; uniform vec3 uSun,uMoon; uniform float uGray,uNight; varying vec3 vDir;
       void main(){ vec3 d = normalize(vDir); float h = max(d.y, 0.0);
         vec3 c = mix(uHor, uTop, pow(h, 0.55));
         c = mix(c, uHor*0.55, smoothstep(0.0,-0.25,d.y));
-        float s = max(dot(d, normalize(uSun)), 0.0);
-        c += uSunC * (pow(s, 900.0)*6.0*(1.0-uGray) + pow(s, 12.0)*0.35*(1.0-uGray*0.7) + pow(s,3.0)*0.12);
+        float s = max(dot(d, normalize(uSun)), 0.0), up = smoothstep(-0.01, 0.006, d.y);
+        c += uSunC * (pow(s, 900.0)*6.0*(1.0-uGray)*up + pow(s, 12.0)*0.35*(1.0-uGray*0.7) + pow(s,3.0)*0.12);
+        float m = max(dot(d, normalize(uMoon)), 0.0);
+        c += uMoonC * (pow(m, 900.0)*6.0*(1.0-uGray) + pow(m, 12.0)*0.35*(1.0-uGray*0.7) + pow(m,3.0)*0.12);
         vec3 g = vec3(dot(c, vec3(0.3,0.5,0.2)));
         c = mix(c, g*vec3(0.95,0.98,1.03), uGray);
         gl_FragColor = vec4(c, 1.0); }`,
@@ -47,16 +74,37 @@ function buildSky(scene, renderer) {
   const cm = new THREE.MeshBasicMaterial({ map: ct, transparent: true, depthWrite: false, fog: false, opacity: 0.6 });
   const clouds = new THREE.Mesh(new THREE.PlaneGeometry(30000, 30000), cm); clouds.rotation.x = Math.PI / 2; clouds.position.y = 1600; clouds.renderOrder = -9; clouds.frustumCulled = false;
   scene.add(clouds); SKY.clouds = clouds;
-  // stars
-  const sp = []; const r = rng(9);
-  for (let i = 0; i < 2600; i++) { const u = r() * 2 - 1, a = r() * TAU, s = Math.sqrt(1 - u * u); const y = Math.abs(u); sp.push(Math.cos(a) * s * 8000, y * 8000 + 200, Math.sin(a) * s * 8000); }
-  const sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.Float32BufferAttribute(sp, 3));
-  SKY.stars = new THREE.Points(sg, new THREE.PointsMaterial({ color: 0xdfe8ff, size: 1.6, sizeAttenuation: false, fog: false, transparent: true, opacity: 0.85, depthWrite: false }));
+  // stars over the whole sphere, turning about the pole star through the night; those near the
+  // horizon dim out as starlight does through the thick air there
+  const sp = [], mag = []; const r = rng(9);
+  for (let i = 0; i < 3400; i++) { const u = r() * 2 - 1, a = r() * TAU, s = Math.sqrt(1 - u * u); sp.push(Math.cos(a) * s * 8000, u * 8000, Math.sin(a) * s * 8000); mag.push(Math.pow(r(), 3)); }
+  const sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.Float32BufferAttribute(sp, 3)); sg.setAttribute('aMag', new THREE.Float32BufferAttribute(mag, 1));
+  SKY.starU = { uAlpha: { value: 0 }, uPx: { value: Math.min(devicePixelRatio, 2) }, uCol: { value: new THREE.Color(0xdfe8ff) } };
+  SKY.stars = new THREE.Points(sg, new THREE.ShaderMaterial({
+    uniforms: SKY.starU, transparent: true, depthWrite: false, fog: false,
+    vertexShader: `#include <common>
+      #include <logdepthbuf_pars_vertex>
+      attribute float aMag; uniform float uAlpha, uPx; varying float vA;
+      void main(){ vec4 wp = modelMatrix * vec4(position, 1.0); float alt = normalize(wp.xyz - cameraPosition).y;
+        vA = uAlpha * (0.35 + 0.65 * aMag) * smoothstep(-0.005, 0.14, alt);
+        gl_PointSize = uPx * (1.1 + 1.6 * aMag); vec4 mvPosition = viewMatrix * wp; gl_Position = projectionMatrix * mvPosition;
+        #include <logdepthbuf_vertex>
+      }`,
+    fragmentShader: `#include <common>
+      #include <logdepthbuf_pars_fragment>
+      uniform vec3 uCol; varying float vA;
+      void main(){
+        #include <logdepthbuf_fragment>
+        vec2 q = gl_PointCoord - 0.5; float a = vA * smoothstep(0.5, 0.15, length(q)); if (a < 0.004) discard;
+        gl_FragColor = vec4(uCol, a); }`,
+  }));
   SKY.stars.renderOrder = -9; SKY.stars.frustumCulled = false; scene.add(SKY.stars);
+  SKY.pole = new THREE.Vector3(0, Math.sin(DN.lat * Math.PI / 180), -Math.cos(DN.lat * Math.PI / 180));
   // moon
   const mt = canvasTex(128, 128, (g) => { const gr = g.createRadialGradient(64, 64, 10, 64, 64, 64); gr.addColorStop(0, 'rgba(255,250,235,1)'); gr.addColorStop(0.35, 'rgba(240,238,225,1)'); gr.addColorStop(0.42, 'rgba(200,210,235,0.35)'); gr.addColorStop(1, 'rgba(160,180,220,0)'); g.fillStyle = gr; g.fillRect(0, 0, 128, 128); });
   SKY.moon = new THREE.Sprite(new THREE.SpriteMaterial({ map: mt, fog: false, depthWrite: false, transparent: true })); SKY.moon.scale.set(520, 520, 1); SKY.moon.renderOrder = -8; scene.add(SKY.moon);
-  // lights
+  // lights: one directional key light that is the sun by day and the moon by night (they swap
+  // at sunset, when both are too faint to see), and the sky's fill
   SKY.hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 0.7); scene.add(SKY.hemi);
   SKY.sun = new THREE.DirectionalLight(0xffffff, 2.5);
   SKY.sun.castShadow = true;
@@ -66,45 +114,86 @@ function buildSky(scene, renderer) {
   SKY.sun.shadow.bias = -0.0006; SKY.sun.shadow.normalBias = 0.04;
   scene.add(SKY.sun); scene.add(SKY.sun.target);
   scene.fog = new THREE.FogExp2(0xcccccc, 0.0002);
-  SKY.pmrem = new THREE.PMREMGenerator(renderer);
-  SKY.envScene = new THREE.Scene();
-  SKY.envDome = new THREE.Mesh(new THREE.SphereGeometry(50, 32, 16), mat.clone());
-  SKY.envDome.material.depthTest = true;
-  SKY.envScene.add(SKY.envDome);
-  SKY.envGround = new THREE.Mesh(new THREE.CircleGeometry(48, 24), new THREE.MeshBasicMaterial({ color: 0x4a4636 })); SKY.envGround.rotation.x = -Math.PI / 2; SKY.envGround.position.y = -2; SKY.envScene.add(SKY.envGround);
+  SKY.sunDir = new THREE.Vector3(0, 1, 0); SKY.moonDir = new THREE.Vector3(0, -1, 0); SKY.keyDir = new THREE.Vector3(0, 1, 0);
 }
-function applyLook(timeKey, weatherKey, renderer, scene) {
-  const P = PRESETS[timeKey], W = WEATHER[weatherKey];
-  const el = P.elev * Math.PI / 180, az = P.az * Math.PI / 180;
-  const sd = new THREE.Vector3(Math.sin(az) * Math.cos(el), Math.sin(el), -Math.cos(az) * Math.cos(el));
-  SKY.sunDir = sd;
-  const gray = W.gray * (P.night ? 0.4 : 1);
-  SKY.uni.uTop.value.set(P.top); SKY.uni.uHor.value.set(P.hor); SKY.uni.uSun.value.copy(sd); SKY.uni.uSunC.value.set(P.sun).multiplyScalar(P.night ? 0.25 : 1); SKY.uni.uGray.value = gray; SKY.uni.uNight.value = P.night ? 1 : 0;
-  if (W.gray) { SKY.uni.uTop.value.lerp(new THREE.Color(P.night ? 0x0b0f16 : 0x8e98a3), W.gray * 0.8); SKY.uni.uHor.value.lerp(new THREE.Color(P.night ? 0x121820 : 0xb9bec2), W.gray * 0.8); }
-  SKY.sun.color.set(P.sun); SKY.sun.intensity = P.sunI * W.sunK;
-  SKY.hemi.color.set(P.hemiS); SKY.hemi.groundColor.set(P.hemiG); SKY.hemi.intensity = P.hemiI * (W.gray ? 1.25 : 1);
-  SKY.sunBase = SKY.sun.intensity; SKY.hemiBase = SKY.hemi.intensity;
-  const fogC = new THREE.Color(P.fog); if (W.gray) fogC.lerp(new THREE.Color(P.night ? 0x0d1218 : 0xb3b8bc), W.gray);
-  scene.fog.color.copy(fogC).convertSRGBToLinear(); scene.fog.density = P.fogD * W.fogK;
-  SKY.sun.color.convertSRGBToLinear(); SKY.hemi.color.convertSRGBToLinear(); SKY.hemi.groundColor.convertSRGBToLinear();
-  renderer.toneMappingExposure = P.exp;
-  SKY.clouds.material.opacity = W.cloud * (P.night ? 0.25 : 1); SKY.clouds.material.color.set(P.night ? 0x1a2030 : (W.gray ? 0xb8bcc0 : 0xffffff));
-  SKY.stars.visible = P.night && !W.gray;
-  SKY.moon.visible = P.night && !W.gray;
-  SKY.moon.position.copy(sd).multiplyScalar(7000);
-  SKY.sun.castShadow = !P.night;
-  WORLD.snowU.value = W.snow;
-  ENV.mu = W.mu * (P.night && !W.gray ? 0.92 : 1);
-  SKY.night = P.night; SKY.snow = W.snow > 0; SKY.weather = weatherKey; SKY.time = timeKey;
-  for (const m of SCN.winMats) m.emissiveIntensity = P.night ? 0.95 : (W.gray ? 0.15 : 0);
-  RMAT.coachWin.emissiveIntensity = P.night ? 1.2 : (W.gray ? 0.25 : 0);
-  // environment map: a small canvas cube painted with the same sky (robust on every GPU)
-  if (SKY.envCube) SKY.envCube.dispose();
-  SKY.envCube = makeEnvCube(SKY.uni.uTop.value, SKY.uni.uHor.value, sd, SKY.uni.uSunC.value, gray, P.night ? 0x070707 : (W.snow ? 0xc3c7cb : 0x55503e));
-  scene.environment = SKY.envCube;
-  const smokeK = P.night ? 0.25 : (W.gray ? 0.75 : 1);
-  FX.light.setRGB(smokeK, smokeK * 0.98, smokeK * 0.95);
-  if (timeKey === 'golden') FX.light.setRGB(1.05, 0.86, 0.7); if (timeKey === 'morning') FX.light.setRGB(1, 0.93, 0.84);
+
+/* Set the clock to one of the menu's start times (timeKey), and/or the weather. Either may be null
+   to leave it as it is. */
+function applyLook(timeKey, weatherKey) {
+  if (timeKey && DN.starts[timeKey]) SKY.hour = DN.starts[timeKey].h;
+  if (weatherKey && WEATHER[weatherKey]) SKY.weather = weatherKey;
+  const W = WEATHER[SKY.weather];
+  SKY.snow = W.snow > 0; WORLD.snowU.value = W.snow;
+  skyLight(true);
+}
+/* the clock: a job runs on its own railroad clock; otherwise time passes at the chosen rate */
+function skyTick(dt) {
+  if (JOB.run && !JOB.run.over) SKY.hour = dnWrap(JOB.clock() / 3600);
+  else if (GAME.running && !S.paused) SKY.hour = dnWrap(SKY.hour + dt * ((DN.rates[GAME.settings.cycle] || DN.rates.x30).k) / 3600);
+  skyLight(false);
+}
+
+const _skC = new THREE.Color(), _skC2 = new THREE.Color(), _skQ = new THREE.Quaternion();
+/* everything the hour and weather decide: sky, sun or moon light, fog, exposure, stars, lit windows */
+function skyLight(force) {
+  const W = WEATHER[SKY.weather], h = SKY.hour;
+  const sb = dnSun(h), mb = dnMoon(h);
+  dnDir(sb, SKY.sunDir); dnDir(mb, SKY.moonDir);
+  const L = dnLook(sb.el, SKY.look);
+  const dark = dnDark(sb.el), gray = W.gray * lerp(1, 0.4, dark);
+  Object.assign(SKY, { sunEl: sb.el, sunAz: sb.az, moonEl: mb.el, dark, night: dark > 0.5, gray });
+  const u = SKY.uni;
+  u.uTop.value.setHex(L.top); u.uHor.value.setHex(L.hor);
+  if (W.gray) { u.uTop.value.lerp(_skC.setHex(mixHex(0x8e98a3, 0x0b0f16, dark)), W.gray * 0.8); u.uHor.value.lerp(_skC.setHex(mixHex(0xb9bec2, 0x121820, dark)), W.gray * 0.8); }
+  u.uSun.value.copy(SKY.sunDir); u.uSunC.value.setHex(L.sun).multiplyScalar(smooth(-12, -1, sb.el));
+  const mk = dnMoonK(sb.el, mb.el);
+  u.uMoon.value.copy(SKY.moonDir); u.uMoonC.value.setHex(0x8ea6d6).multiplyScalar(0.25 * mk);
+  u.uGray.value = gray; u.uNight.value = dark;
+  // the key light
+  const bySun = sb.el > -1.5;
+  SKY.keyDir.copy(bySun ? SKY.sunDir : SKY.moonDir);
+  SKY.sun.color.setHex(bySun ? L.sun : 0x8ea6d6).convertSRGBToLinear();
+  SKY.sun.intensity = SKY.sunBase = (bySun ? L.sunI : 0.22 * mk) * W.sunK;
+  SKY.hemi.color.setHex(L.hemiS).convertSRGBToLinear(); SKY.hemi.groundColor.setHex(L.hemiG).convertSRGBToLinear();
+  SKY.hemi.intensity = SKY.hemiBase = L.hemiI * (W.gray ? 1.25 : 1);
+  // haze
+  _skC.setHex(L.fog); if (W.gray) _skC.lerp(_skC2.setHex(mixHex(0xb3b8bc, 0x0d1218, dark)), W.gray);
+  scene.fog.color.copy(_skC).convertSRGBToLinear(); scene.fog.density = L.fogD * W.fogK;
+  const glowDir = sb.el > -8 ? SKY.sunDir : SKY.moonDir;
+  const glowK = (sb.el > -8 ? smooth(-8, -1, sb.el) * (1 - 0.6 * smooth(10, 40, sb.el)) : mk * 0.2) * (1 - gray * 0.85);
+  _skC.setHex(sb.el > -8 ? L.sun : 0x8ea6d6).convertSRGBToLinear().multiplyScalar(glowK);
+  Object.assign(SKY.fogSun, { x: glowDir.x, y: glowDir.y, z: glowDir.z }); Object.assign(SKY.fogSunC, { x: _skC.r, y: _skC.g, z: _skC.b });
+  renderer.toneMappingExposure = L.exp;
+  SKY.clouds.material.opacity = W.cloud * lerp(1, 0.25, dark); SKY.clouds.material.color.setHex(W.gray ? mixHex(0xb8bcc0, 0x1a2030, dark) : L.cloud);
+  SKY.starU.uAlpha.value = W.gray ? 0 : 0.85 * dnStars(sb.el); SKY.stars.visible = SKY.starU.uAlpha.value > 0.003;
+  SKY.stars.quaternion.copy(_skQ.setFromAxisAngle(SKY.pole, -h / 24 * TAU));
+  SKY.moon.visible = mb.el > -1 && !W.gray; SKY.moon.material.opacity = 1 - 0.8 * smooth(-4, 8, sb.el);
+  ENV.mu = W.mu * (SKY.night && !W.gray ? 0.92 : 1);
+  // windows light up through dusk: not all at once, each material at its own darkness
+  for (const m of SCN.winMats) { const a = m.userData.litAt !== undefined ? m.userData.litAt : 0.3; m.emissiveIntensity = Math.max(smooth(a, a + 0.1, dark) * (m.userData.litI || 0.95), W.gray ? 0.15 : 0); }
+  RMAT.coachWin.emissiveIntensity = Math.max(smooth(0.15, 0.3, dark) * 1.2, W.gray ? 0.25 : 0);
+  lampsLight(dark);
+  const sm = L.smoke, gk = W.gray ? lerp(0.75, 1, dark) : 1;
+  FX.light.setRGB(sm[0] * gk, sm[1] * gk, sm[2] * gk);
+  // the environment map (a small canvas cube painted with the same sky): repainted only when the
+  // light has moved enough to show, as it costs a few milliseconds
+  const key = `${Math.round(sb.el * 1.5)}|${Math.round(sb.az / 5)}|${SKY.weather}|${bySun}`;
+  const now = performance.now();
+  if (force || (key !== SKY.envKey && now - SKY.envAt > 900)) {
+    SKY.envKey = key; SKY.envAt = now;
+    if (SKY.envCube) SKY.envCube.dispose();
+    const kc = bySun ? u.uSunC.value : u.uMoonC.value;
+    SKY.envCube = makeEnvCube(u.uTop.value, u.uHor.value, SKY.keyDir, kc, gray, mixHex(W.snow ? 0xc3c7cb : 0x55503e, 0x070707, dark));
+    scene.environment = SKY.envCube;
+  }
+}
+/* sky things that follow the camera, and the key light's shadow box over what we are looking at */
+function skyFollow(cam, focus) {
+  const c = cam.position;
+  SKY.dome.position.copy(c); SKY.stars.position.copy(c);
+  SKY.clouds.position.set(c.x, c.y + 1600, c.z);
+  SKY.moon.position.copy(SKY.moonDir).multiplyScalar(7000).add(c);
+  SKY.sun.target.position.copy(focus); SKY.sun.position.copy(focus).addScaledVector(SKY.keyDir, 300);
 }
 
 function makeEnvCube(top, hor, sun, sunC, gray, ground) {

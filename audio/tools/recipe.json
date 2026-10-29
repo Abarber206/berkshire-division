@@ -280,6 +280,25 @@
   "hp": 1500
  },
  {
+  "name": "dawn",
+  "kind": "bed",
+  "src": "ambient-birds/yellowstone-dawn-chorus.mp3",
+  "start": 1,
+  "end": 61,
+  "db": -25,
+  "flat": 2.0
+ },
+ {
+  "name": "frogs",
+  "kind": "bed",
+  "src": "ambient-night/yellowstone-boreal-chorus-frogs.mp3",
+  "start": 97,
+  "end": 152,
+  "db": -27,
+  "hp": 300,
+  "flat": 1.5
+ },
+ {
   "name": "roll",
   "kind": "bed",
   "src": "diesel-passby/train-passing-bluffton-in.wav",
