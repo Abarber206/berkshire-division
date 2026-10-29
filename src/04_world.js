@@ -110,7 +110,7 @@ function makeMaterials() {
   MAT.steelDark = new THREE.MeshStandardMaterial({ color: 0x2b2c2e, metalness: 0.6, roughness: 0.6 });
   MAT.bridge = new THREE.MeshStandardMaterial({ color: 0x2a2d31, metalness: 0.55, roughness: 0.62 });
   MAT.concrete = new THREE.MeshLambertMaterial({ color: 0xa8a293 });
-  MAT.water = new THREE.MeshStandardMaterial({ color: 0x3a5457, metalness: 0.35, roughness: 0.1, transparent: true, opacity: 0.93, side: THREE.DoubleSide });
+  MAT.water = waterMaterial();
   MAT.road = new THREE.MeshLambertMaterial({ color: 0x5a5852, map: TEX.ground });
   MAT.gravelRoad = new THREE.MeshLambertMaterial({ color: 0x9b8f78, map: TEX.ballast });
   MAT.white = new THREE.MeshLambertMaterial({ color: 0xe8e6df });
@@ -402,24 +402,79 @@ function buildFarTerrain(scene) {
 }
 
 /* ---------------- water ---------------- */
+/* ---------------- water ----------------
+   Moving ripples (two layers of a tiling normal map drifting downstream), the sky's reflection growing toward
+   grazing angles, sun glints, clearer shallows at the banks where the bed shows through, and broken white
+   water where a mountain creek runs steep. */
+WORLD.waterT = { value: 0 };
+function waterNormalTex() {
+  const S = 256, H = new Float32Array(S * S), r = rng(907);
+  // a height field of random waves on whole-number frequencies, so it tiles
+  const waves = Array.from({ length: 28 }, () => { const a = r() * TAU, f = 2 + Math.floor(r() * 14); return [Math.round(Math.cos(a) * f), Math.round(Math.sin(a) * f), r() * TAU, 1 / Math.sqrt(f)]; });
+  for (let j = 0; j < S; j++) for (let i = 0; i < S; i++) { let h = 0; for (const [kx, ky, ph, a] of waves) h += a * Math.sin(TAU * (kx * i + ky * j) / S + ph); H[j * S + i] = h; }
+  let mn = Infinity, mx = -Infinity; for (const h of H) { mn = Math.min(mn, h); mx = Math.max(mx, h); }
+  const data = new Uint8Array(S * S * 4), at = (i, j) => H[((j + S) % S) * S + ((i + S) % S)];
+  for (let j = 0; j < S; j++) for (let i = 0; i < S; i++) {
+    const dx = (at(i + 1, j) - at(i - 1, j)) * 0.9, dy = (at(i, j + 1) - at(i, j - 1)) * 0.9, l = Math.hypot(dx, dy, 1), k = (j * S + i) * 4;
+    data[k] = (-dx / l * 0.5 + 0.5) * 255; data[k + 1] = (-dy / l * 0.5 + 0.5) * 255; data[k + 2] = (1 / l * 0.5 + 0.5) * 255; data[k + 3] = (at(i, j) - mn) / (mx - mn) * 255;   // alpha: the height, for the white water
+  }
+  const t = new THREE.DataTexture(data, S, S, THREE.RGBAFormat); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.generateMipmaps = true; t.minFilter = THREE.LinearMipmapLinearFilter; t.magFilter = THREE.LinearFilter; t.needsUpdate = true;
+  return t;
+}
+function waterMaterial() {
+  const m = new THREE.MeshStandardMaterial({ color: 0x172a2a, metalness: 0, roughness: 0.1, envMapIntensity: 0.6, transparent: true, opacity: 0.9, side: THREE.DoubleSide, normalMap: waterNormalTex(), normalScale: new THREE.Vector2(0.32, 0.32) });
+  m.onBeforeCompile = sh => {
+    sh.uniforms.uWT = WORLD.waterT;
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute float aEdge; attribute float aFoam; varying float vEdge; varying float vFoam;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvEdge = aEdge; vFoam = aFoam;');
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform float uWT; varying float vEdge; varying float vFoam;')
+      // two ripple layers at different scales drifting downstream (v runs downstream), faster on a steep creek
+      .replace('texture2D( normalMap, vUv ).xyz * 2.0 - 1.0', '(texture2D( normalMap, vUv - vec2(0.0, uWT * (0.05 + 0.25 * vFoam)) ).xyz + texture2D( normalMap, vUv * 1.93 + vec2(0.37, 0.11) - vec2(0.013, uWT * (0.08 + 0.4 * vFoam)) ).xyz - 1.0)')
+      .replace('#include <color_fragment>', `#include <color_fragment>
+        // the shallows by the banks: clearer, showing the gravel bed
+        diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.33, 0.32, 0.24), 0.45 * vEdge * vEdge);
+        diffuseColor.a *= mix(1.0, 0.35, smoothstep(0.55, 1.0, vEdge));
+        // white water on the steep runs
+        float wh = texture2D(normalMap, vUv * 1.4 - vec2(0.0, uWT * 0.6)).a;
+        float foam = vFoam * smoothstep(0.62 - 0.25 * vFoam, 0.9, wh);
+        diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.82, 0.85, 0.85), foam * 0.85);
+        diffuseColor.a = max(diffuseColor.a, foam);`);
+  };
+  return m;
+}
+/* a water surface along a line of points {X, N, y}: three strips across (bank, middle, bank) so the shallows
+   can fade, uv in metres / 9 with v running down the list, foam(i) for white water */
+function waterRibbon(P, w, foam = () => 0) {
+  const pos = [], uv = [], edge = [], fo = [], idx = [];
+  let along = 0;
+  for (let i = 0; i < P.length; i++) {
+    const a = P[Math.max(0, i - 1)], b = P[Math.min(P.length - 1, i + 1)], dx = b.X - a.X, dn = b.N - a.N, L = Math.hypot(dx, dn) || 1, nx = -dn / L, nn = dx / L;
+    if (i) along += Math.hypot(P[i].X - P[i - 1].X, P[i].N - P[i - 1].N);
+    const f = foam(i);
+    for (const o of [1, 0, -1]) { pos.push(P[i].X + nx * w * o, P[i].y, -(P[i].N + nn * w * o)); uv.push((o * w + w) / 9, along / 9); edge.push(Math.abs(o)); fo.push(f); }
+    if (i) { const k = (i - 1) * 3; for (const c of [0, 1]) idx.push(k + c, k + 3 + c, k + c + 1, k + c + 1, k + 3 + c, k + c + 4); }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.setAttribute('aEdge', new THREE.Float32BufferAttribute(edge, 1)); g.setAttribute('aFoam', new THREE.Float32BufferAttribute(fo, 1));
+  g.setIndex(idx); g.computeVertexNormals(); g.computeBoundingSphere();
+  if (g.attributes.normal.getY(1) < 0) { for (let i = 0; i < idx.length; i += 3) { const t = idx[i + 1]; idx[i + 1] = idx[i + 2]; idx[i + 2] = t; } g.setIndex(idx); g.computeVertexNormals(); }
+  return g;
+}
 function buildWater(scene) {
   if (WORLD.mtn) { mtBuildWater(scene); return; }
   const pts = [];
   for (let N = 8600; N >= 2402; N -= 25) pts.push([riverX(N), N]);
   for (let t = 1; t >= 0; t -= 0.04) { const N = lerp(WORLD.lake.N, 2402, t); pts.push([lerp(WORLD.lake.X, riverX(2402), smooth(0, 1, t)), N]); }
   WORLD.riverPts = pts;
-  const pos = [], idx = [];
-  for (let i = 0; i < pts.length; i++) {
-    const a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)];
-    const dx = b[0] - a[0], dn = b[1] - a[1], L = Math.hypot(dx, dn) || 1, nx = -dn / L, nn = dx / L;
-    const w = 42;
-    pos.push(pts[i][0] + nx * w, -3.5, -(pts[i][1] + nn * w), pts[i][0] - nx * w, -3.5, -(pts[i][1] - nn * w));
-    if (i > 0) { const k = (i - 1) * 2; idx.push(k, k + 2, k + 1, k + 1, k + 2, k + 3); }
-  }
-  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals();
-  const river = new THREE.Mesh(g, MAT.water); river.renderOrder = 1; scene.add(river);
-  const lake = new THREE.Mesh(new THREE.CircleGeometry(WORLD.lake.r + 24, 48), MAT.water);
-  lake.rotation.x = -Math.PI / 2; lake.position.set(WORLD.lake.X, -3.5, -WORLD.lake.N); scene.add(lake);
+  const river = new THREE.Mesh(waterRibbon(pts.map(p => ({ X: p[0], N: p[1], y: -3.5 })), 42), MAT.water); river.renderOrder = 1; scene.add(river);
+  // the lake: still water, clear toward its shore
+  const lg = new THREE.CircleGeometry(WORLD.lake.r + 24, 64, 0, TAU);
+  lg.rotateX(-Math.PI / 2); lg.translate(WORLD.lake.X, -3.5, -WORLD.lake.N);
+  const lp = lg.attributes.position, luv = [], le = [], lf = [];
+  for (let i = 0; i < lp.count; i++) { const x = lp.getX(i), z = lp.getZ(i); luv.push(x / 9, -z / 9); le.push(i === 0 ? 0 : 1); lf.push(0); }
+  lg.setAttribute('uv', new THREE.Float32BufferAttribute(luv, 2)); lg.setAttribute('aEdge', new THREE.Float32BufferAttribute(le, 1)); lg.setAttribute('aFoam', new THREE.Float32BufferAttribute(lf, 1));
+  const lake = new THREE.Mesh(lg, MAT.water); lake.renderOrder = 1; scene.add(lake);
 }
 
 /* ---------------- track geometry ---------------- */
