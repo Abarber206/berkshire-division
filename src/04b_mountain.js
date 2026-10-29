@@ -226,14 +226,10 @@ function mtRiverDist(X, N) { const w = mtWaterNear(X, N); return w ? w.d + 21 : 
 /* the streams' surfaces: a ribbon a little wider than the water, its edges tucked under the banks */
 function mtBuildWater(scene) {
   for (const r of MT.rivers) {
-    const P = r.pts, pos = [], idx = [], w = r.halfW + 2.5;
-    for (let i = 0; i < P.length; i++) {
-      const a = P[Math.max(0, i - 1)], b = P[Math.min(P.length - 1, i + 1)], dx = b.X - a.X, dn = b.N - a.N, L = Math.hypot(dx, dn) || 1, nx = -dn / L, nn = dx / L, y = P[i].y + r.depth;
-      pos.push(P[i].X + nx * w, y, -(P[i].N + nn * w), P[i].X - nx * w, y, -(P[i].N - nn * w));
-      if (i > 0) { const k = (i - 1) * 2; idx.push(k, k + 2, k + 1, k + 1, k + 2, k + 3); }
-    }
-    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals(); g.computeBoundingSphere();
-    const m = new THREE.Mesh(g, MAT.water); m.renderOrder = 1; scene.add(m);
+    const P = r.pts, S = P.map(p => ({ X: p.X, N: p.N, y: p.y + r.depth }));
+    // white water where the bed drops faster than about 1.5 in 100
+    const foam = i => { const a = P[Math.max(0, i - 3)], b = P[Math.min(P.length - 1, i + 3)], d = Math.hypot(b.X - a.X, b.N - a.N) || 1; return smooth(0.015, 0.05, (a.y - b.y) / d); };
+    const m = new THREE.Mesh(waterRibbon(S, r.halfW + 2.5, foam), MAT.water); m.renderOrder = 1; scene.add(m);
     WORLD.riverPts.push(...P.filter((p, i) => i % 4 === 0).map(p => [p.X, p.N]));
   }
 }

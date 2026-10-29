@@ -683,6 +683,7 @@ function renderStep(dt, T) {
   const lp = PLACE.on ? PLACE.focus() : (MP.view() || T).lead.pos;
   SKY.sun.target.position.copy(lp); SKY.sun.position.copy(lp).addScaledVector(SKY.sunDir, 300);
   updateTrackLOD(camera); updateDetailLOD(camera, scene, dt); mtUpdate(camera, scene);
+  WORLD.waterT.value += dt;
   // effects & sound
   effectsAndSound(dt, T);
   MP.post(dt);
