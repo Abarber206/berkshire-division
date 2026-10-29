@@ -8946,6 +8946,7 @@ class WreckSim {
   /* height of whatever a point is resting on: the ground, or the roadbed the car came off */
   ground(b, P) {
     let g = groundAt(P.x, -P.z);
+    if (WORLD.mtn && P.y < g) { const t = mtInBore(P.x, P.z, 0.5); if (t) g = t.rail - 0.3; }   // in a tunnel: the bore's floor, not the hill over it
     const B = b.bed; _we.subVectors(P, B.o);
     if (Math.abs(_we.dot(B.f)) < B.len * 1.5) {
       const lat = Math.abs(_we.dot(B.r));
