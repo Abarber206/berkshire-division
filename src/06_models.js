@@ -848,6 +848,9 @@ function coachModel(spec, num, observation) {
     RMAT.drumhead = dh; dh.emissive = new THREE.Color(0xffd9a0); dh.emissiveMap = dh.map; dh.emissiveIntensity = 0; SCN.winMats.push(dh);
     gb.add('drumhead', new THREE.CircleGeometry(0.42, 28), M(-12.575, 1.85, 0, 0, -Math.PI / 2, 0));
     gb.add('brass', new THREE.TorusGeometry(0.43, 0.025, 6, 28).rotateY(Math.PI / 2).translate(-12.56, 1.85, 0));
+    // marker lamps hung under the corners of the platform roof
+    for (const z of [-1.22, 1.22]) { gb.box('dark', 0.18, 0.3, 0.18, -12.4, 3.5, z); gb.box('dark', 0.05, 0.08, 0.05, -12.4, 3.68, z); }
+    root.userData.markers = [new THREE.Vector3(-12.492, 3.5, -1.22), new THREE.Vector3(-12.492, 3.5, 1.22)];
   }
   const couplers = carCouplers(gb, root, L, -0.55, 0.955, 1.08);
   root.add(gb.build(RMAT));

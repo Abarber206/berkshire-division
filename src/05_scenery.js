@@ -35,9 +35,15 @@ function sceneryMaterials() {
   // than all at once, and some rooms stay dark (win3: a hall lamp or a television, bluer and dim)
   SMAT.win2 = SMAT.win.clone(); SMAT.win2.emissive.set(0xffcf8a);
   SMAT.win3 = SMAT.win.clone(); SMAT.win3.emissive.set(0xc8d4ff);
-  SMAT.win.userData = { litAt: 0.2, litI: 0.95 }; SMAT.win2.userData = { litAt: 0.45, litI: 0.8 }; SMAT.win3.userData = { litAt: 0.7, litI: 0.3 };
+  SMAT.win.userData = { litI: 1.0, perWindow: true }; SMAT.win2.userData = { litI: 0.85, perWindow: true }; SMAT.win3.userData = { litI: 0.45, perWindow: true };
+  // each window decides when its room lights up and when its people go to bed (winMaterial, 10c_lamps.js)
+  if (typeof winMaterial === 'function') for (const m of [SMAT.win, SMAT.win2, SMAT.win3]) winMaterial(m);
   SCN.winMats.push(SMAT.win, SMAT.win2, SMAT.win3);
   SMAT.lampGlass = new THREE.MeshLambertMaterial({ color: 0x4a4436, emissive: 0xffc27a, emissiveIntensity: 0 });
+  SMAT.streetGlass = new THREE.MeshLambertMaterial({ color: 0x8a8678, emissive: 0xffc070, emissiveIntensity: 0, side: THREE.DoubleSide });
+  SMAT.floodGlass = new THREE.MeshLambertMaterial({ color: 0x8c9096, emissive: 0xeef3ff, emissiveIntensity: 0 });
+  SMAT.alu = new THREE.MeshLambertMaterial({ color: 0xb4b8bc });
+  SMAT.gateArm = new THREE.MeshLambertMaterial({ vertexColors: true });
   SMAT.road = new THREE.MeshLambertMaterial({ color: 0x55534f, map: TEX.ground });
   SMAT.gravel = new THREE.MeshLambertMaterial({ color: 0x9f927a, map: TEX.ballast });
   SMAT.line = new THREE.MeshBasicMaterial({ color: 0xd9c56a });
@@ -150,25 +156,77 @@ function clearPlace(line, sLine, lat, gap = 3.4) {
   for (let k = 0; k < 80; k++, lat += d * 0.5) { const pl = linePlace(line, sLine, lat); if (trackGap(pl.X, pl.N) >= gap) return pl; }
   return linePlace(line, sLine, lat);
 }
+/* set the two numbers a window's lighting hangs on (any geometry: every vertex gets the same pair) */
+function winSeed(geo, m) {
+  const e = m ? m.elements : [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, Math.random() * 1e3, Math.random() * 1e3, Math.random() * 1e3];
+  const h = (x, y, z, k) => { const s = Math.sin(x * 12.9898 + y * 78.233 + z * 37.719 + k * 4.581) * 43758.5453; return s - Math.floor(s); };
+  const a = h(e[12], e[13], e[14], 1), b = h(e[12], e[13], e[14], 2), n = geo.attributes.position.count, uv = new Float32Array(n * 2);
+  for (let i = 0; i < n; i++) { uv[i * 2] = a; uv[i * 2 + 1] = b; }
+  geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  return geo;
+}
 const WIN_SETS = ['win', 'win', 'win2', 'win2', 'win3'];
 function windowsRow(gb, base, x0, x1, y, z, w, h, n, face = 1) {
   const e = base.elements, seed = Math.abs(Math.round(e[12] * 7.3 + e[14] * 3.1 + y * 11 + z * 5));
-  for (let i = 0; i < n; i++) { const x = n === 1 ? (x0 + x1) / 2 : lerp(x0, x1, i / (n - 1)); gb.add(WIN_SETS[(seed + i * 3) % 5], new THREE.BoxGeometry(w, h, 0.06), P(base, x, y, z + face * 0.03)); gb.add('trim', new THREE.BoxGeometry(w + 0.16, 0.1, 0.1), P(base, x, y - h / 2 - 0.05, z + face * 0.05)); }
+  for (let i = 0; i < n; i++) { const x = n === 1 ? (x0 + x1) / 2 : lerp(x0, x1, i / (n - 1)); { const m = P(base, x, y, z + face * 0.03); gb.add(WIN_SETS[(seed + i * 3) % 5], winSeed(new THREE.BoxGeometry(w, h, 0.06), m), m); } gb.add('trim', new THREE.BoxGeometry(w + 0.16, 0.1, 0.1), P(base, x, y - h / 2 - 0.05, z + face * 0.05)); }
 }
 
 /* -------- buildings -------- */
-const LAMPS = { plat: [], sig: [], pools: [] };   // lit after dark by 10c_lamps.js
+/* every lamp on the railroad: { kind, p (where the light comes from), gp (where its glow shows, if not p) }.
+   Lit after dark, and the nearest ones really light their surroundings: see 10c_lamps.js */
+const LAMPS = { lights: [], sig: [] };
+const lampAt = (kind, m, x, y, z, more) => { const l = { kind, p: new THREE.Vector3(x, y, z).applyMatrix4(m), ...more }; LAMPS.lights.push(l); return l; };
 /* a platform lamp post on a depot's platform: cast iron plinth and post, a glazed lantern and its cap.
    x, z are in the depot's own frame, whose platform top is at y = 0.16. */
-function platformLamp(gb, base, x, z, pool) {
+function platformLamp(gb, base, x, z) {
   gb.add('black', new THREE.CylinderGeometry(0.15, 0.19, 0.36, 10), P(base, x, 0.16 + 0.18 - 0.01, z));   // sits 1 cm into the boards
   gb.add('black', new THREE.CylinderGeometry(0.055, 0.075, 3.12, 8), P(base, x, 0.5 + 1.56, z));
   gb.add('black', new THREE.BoxGeometry(0.36, 0.05, 0.36), P(base, x, 3.6, z));
   gb.add('lampGlass', new THREE.BoxGeometry(0.3, 0.38, 0.3), P(base, x, 3.6 + 0.02 + 0.19, z));
   gb.add('black', new THREE.ConeGeometry(0.27, 0.22, 4, 1).rotateY(Math.PI / 4), P(base, x, 4.0 + 0.11 - 0.005, z));
   gb.add('black', new THREE.SphereGeometry(0.05, 8, 6), P(base, x, 4.24, z));
-  LAMPS.plat.push({ p: new THREE.Vector3().setFromMatrixPosition(P(base, x, 3.81, z)), c: [1.0, 0.72, 0.42] });
-  if (pool) LAMPS.pools.push({ base, ...pool });
+  lampAt('plat', base, x, 3.81, z);
+}
+/* a gooseneck lamp over a door: a curved arm out of the wall and an enamel shade. x, z: the wall's face
+   in base's frame (facing +z), y: the top of the arm */
+function doorLamp(gb, base, x, y, z) {
+  gb.add('black', new THREE.BoxGeometry(0.14, 0.14, 0.04), P(base, x, y - 0.1, z + 0.02));
+  gb.add('black', new THREE.TorusGeometry(0.28, 0.02, 5, 10, Math.PI / 2), P(base, x, y - 0.32, z + 0.04, 0, -Math.PI / 2, 0).multiply(M(0, 0, 0, 0, 0, 0)));
+  gb.add('black', new THREE.ConeGeometry(0.2, 0.14, 12, 1, true), P(base, x, y - 0.38, z + 0.33));
+  gb.add('streetGlass', new THREE.CircleGeometry(0.12, 10).rotateX(Math.PI / 2), P(base, x, y - 0.44, z + 0.33));
+  lampAt('door', base, x, y - 0.5, z + 0.33);
+}
+/* a town street light: a wooden pole with a mast arm and a cobra head over the street (local +z) */
+function streetLamp(X, N, yaw) {
+  const y = groundAt(X, N), base = baseM(X, y, N, yaw), gb = binAt(X, N);
+  gb.add('pole', new THREE.CylinderGeometry(0.11, 0.15, 9.4, 8), P(base, 0, 4.4, 0));   // 0.3 m in the ground
+  gb.add('steel', new THREE.CylinderGeometry(0.045, 0.045, 2.1, 6), P(base, 0, 8.25, 1.0, Math.PI / 2 - 0.08, 0, 0));
+  gb.add('steel', new THREE.CylinderGeometry(0.025, 0.025, 1.2, 5), P(base, 0, 7.8, 0.55, Math.PI / 2 - 0.75, 0, 0));
+  gb.add('steel', new THREE.BoxGeometry(0.2, 0.2, 0.3), P(base, 0, 8.2, 0.16));
+  gb.add('silver', new THREE.SphereGeometry(0.3, 10, 6, 0, TAU, 0, Math.PI / 2).scale(0.75, 0.45, 1.25), P(base, 0, 8.27, 2.2, 0.08, 0, 0));
+  gb.add('streetGlass', new THREE.CylinderGeometry(0.2, 0.2, 0.06, 12).scale(1, 1, 1.5), P(base, 0, 8.24, 2.2, 0.08, 0, 0));
+  lampAt('street', base, 0, 8.05, 2.25, { gp: new THREE.Vector3(0, 8.15, 2.22).applyMatrix4(base) });
+  keep(X, N, 1.2);
+}
+/* a yard floodlight tower: a tapered steel pole, a platform with a rail, and a bank of floodlights
+   tipped down toward the tracks (local +z) */
+function floodTower(X, N, yaw) {
+  const y = groundAt(X, N), base = baseM(X, y, N, yaw), gb = binAt(X, N), H = 21;
+  footing(gb, 'concrete', base, 0, 0, 1.4, 1.4, 0.25);
+  gb.add('steel', new THREE.CylinderGeometry(0.22, 0.38, H, 10), P(base, 0, H / 2, 0));
+  for (let k = 0; k < 18; k++) gb.add('steel', new THREE.BoxGeometry(0.04, 0.04, 0.4), P(base, 0, 1.5 + k * 1.05, -0.32));   // step bolts
+  gb.add('steel', new THREE.BoxGeometry(2.6, 0.1, 1.8), P(base, 0, H, 0.2));
+  for (const z of [-0.7, 1.1]) gb.add('steel', new THREE.BoxGeometry(2.6, 0.05, 0.05), P(base, 0, H + 1.0, z));
+  for (const x of [-1.28, 1.28]) gb.add('steel', new THREE.BoxGeometry(0.05, 0.05, 1.8), P(base, x, H + 1.0, 0.2));
+  for (const x of [-1.28, 0, 1.28]) for (const z of [-0.7, 1.1]) gb.add('steel', new THREE.BoxGeometry(0.05, 1.0, 0.05), P(base, x, H + 0.5, z));
+  gb.add('steel', new THREE.BoxGeometry(2.5, 0.08, 0.08), P(base, 0, H + 1.6, 1.15));
+  for (let i = 0; i < 6; i++) {
+    const x = -1.0 + (i % 3) * 1.0, yy = H + (i < 3 ? 1.95 : 1.25), m = P(base, x, yy, 1.25, 0.7, 0, 0);
+    gb.add('black', new THREE.BoxGeometry(0.62, 0.5, 0.36), m.clone().multiply(M(0, 0, -0.1)));
+    gb.add('floodGlass', new THREE.PlaneGeometry(0.56, 0.44), m.clone().multiply(M(0, 0, 0.081)));
+  }
+  lampAt('flood', base, 0, H + 1.2, 2.0, { gp: new THREE.Vector3(0, H + 1.6, 1.5).applyMatrix4(base) });
+  keep(X, N, 2);
 }
 
 function depot(pl, name, big) {
@@ -199,8 +257,8 @@ function depot(pl, name, big) {
   gb.add('platform', boxT(L + 50, 0.32, 5.2, 3), P(base, 0, 0.0, W / 2 + 2.7));
   footing(gb, 'concrete', base, 0, W / 2 + 2.7, L + 50, 5.2, -0.16);
   // lamp posts along the back of the platform, beyond the depot's ends
-  const plat = { px0: -(L + 50) / 2 + 0.05, px1: (L + 50) / 2 - 0.05, pz0: W / 2 + 0.15, pz1: W / 2 + 5.25 };
-  for (const lx of [-(L / 2 + 20), -(L / 2 + 9), L / 2 + 11, L / 2 + 20]) platformLamp(gb, base, lx, W / 2 + 0.9, { ...plat, x: lx, z: W / 2 + 0.9 });
+  for (const lx of [-(L / 2 + 20), -(L / 2 + 9), L / 2 + 11, L / 2 + 20]) platformLamp(gb, base, lx, W / 2 + 0.9);
+  doorLamp(gb, base, L / 2 - 2.5, 3.25, W / 2);   // over the freight door
   // name boards on both ends + track side
   const nb = nameBoard(name);
   const mat = 'nb_' + name;
@@ -331,6 +389,26 @@ function engineHouse(pl) {
   gb.add('concrete', boxT(L, 0.12, W - 1), P(base, 0, 0.0, 0));
   keep(pl.X, pl.N, L / 2 + 6);
 }
+/* floodlight towers along Bellevue Yard (beyond its outside track) and at the engine terminal, each
+   standing clear of every track and building and facing back over the tracks */
+function yardFloods() {
+  const spots = [];
+  const y4 = ROUTE.lines['Yard 4'], eng = ROUTE.features.engine;
+  if (y4) for (const f of [0.22, 0.5, 0.78]) spots.push([y4, y4.len * f]);
+  if (eng) spots.push([eng, eng.len * 0.45]);
+  for (const [ln, sL] of spots) {
+    // the outer side: the one without a neighbouring track a track spacing away
+    const out = [-1, 1].sort((a, b) => { const qa = linePlace(ln, sL, a * 4.5), qb = linePlace(ln, sL, b * 4.5); return trackGap(qb.X, qb.N, [ln.locate(sL).edge]) - trackGap(qa.X, qa.N, [ln.locate(sL).edge]); })[0];
+    let q = null;
+    for (let lat = 6; lat < 40 && !q; lat += 1) {
+      const c = linePlace(ln, sL, out * lat);
+      if (trackGap(c.X, c.N) >= 5.5 && !kept(c.X, c.N, 3) && !inFoot(c.X, c.N, 3)) q = c;
+    }
+    if (!q) continue;
+    const look = linePlace(ln, sL, -out * 6);
+    floodTower(q.X, q.N, Math.atan2(look.X - q.X, -(look.N - q.N)));
+  }
+}
 function yardOffice(pl) {
   const base = baseM(pl.X, pl.y - 0.2, pl.N, pl.yaw);
   const gb = binAt(pl.X, pl.N);
@@ -340,6 +418,8 @@ function yardOffice(pl) {
   windowsRow(gb, base, -2.5, 2.5, 2, 2.5, 0.9, 1.3, 3);
   windowsRow(gb, base, -2.5, 2.5, 2, -2.5, 0.9, 1.3, 3, -1);
   gb.add('brick', boxT(0.6, 1.6, 0.6), P(base, 2.5, 4.6, 0));
+  gb.add('trim', new THREE.BoxGeometry(0.95, 2.1, 0.08), P(base, -1.6, 1.25, 2.53));   // door, with a lamp over it
+  doorLamp(gb, base, -1.6, 2.95, 2.5);
   keep(pl.X, pl.N, 9);
 }
 function grainElevator(pl) {
@@ -375,6 +455,7 @@ function interlockingTower(pl, label) {
   gb.add('wood', boxT(0.9, 0.1, 3.2), P(base, 2.85, 2.9, 0, 0, 0, 0.6));
   const nb = nameBoard(label); SMAT['nb_' + label] = nb;
   gb.add('nb_' + label, new THREE.PlaneGeometry(2.4, 0.5), P(base, 0, 3.6, 2.356));
+  doorLamp(gb, base, -1.6, 3.0, 2.25);
   keep(pl.X, pl.N, 7);
 }
 function farmstead(X, N, yaw, r) {
@@ -508,6 +589,62 @@ function buildBridge(scene) {
 }
 
 /* -------- roads and grade crossings -------- */
+/* A flashing-light crossing signal at (X, N), its local +x toward the road traffic it warns and +z toward
+   the middle of the road: a mast with the crossbuck and bell on top, two flashers each way on a crossarm,
+   and (on a gated crossing) the gate mechanism with its striped arm, which comes down across the near lane. */
+function xingMast(scene, xg, X, N, face, roadW) {
+  const y = groundAt(X, N), cb = baseM(X, y, N, face), gb = binAt(X, N), id = xg.id;
+  const mast = { flash: [], lightAt: new THREE.Vector3(0.6, 3.0, 0).applyMatrix4(cb) };
+  xg.masts.push(mast);
+  if (!SMAT['xA' + id]) for (const k of ['xA', 'xB', 'xT']) SMAT[k + id] = new THREE.MeshBasicMaterial({ color: 0x1e0604 });
+  footing(gb, 'concrete', cb, 0, 0, 0.9, 0.9, 0.12);
+  gb.add('alu', new THREE.CylinderGeometry(0.07, 0.08, 5.0, 10), P(cb, 0, 2.6, 0));
+  gb.add('alu', new THREE.CylinderGeometry(0.16, 0.2, 0.3, 10), P(cb, 0, 0.27, 0));
+  // the crossbuck
+  gb.add('xb1', new THREE.BoxGeometry(0.03, 0.32, 2.4), P(cb, 0.09, 4.35, 0, 0.785, 0, 0));
+  gb.add('xb2', new THREE.BoxGeometry(0.03, 0.32, 2.4), P(cb, 0.12, 4.35, 0, -0.785, 0, 0));
+  // the bell on its bracket at the top
+  gb.add('alu', new THREE.CylinderGeometry(0.03, 0.03, 0.2, 6), P(cb, 0, 5.18, 0));
+  gb.add('black', new THREE.SphereGeometry(0.17, 12, 6, 0, TAU, 0, Math.PI / 2), P(cb, 0, 5.24, 0));
+  // crossarm and the four flasher heads: a black background disc, the lens and a hood over it, each way
+  gb.add('alu', new THREE.BoxGeometry(0.08, 0.1, 1.72), P(cb, 0, 3.0, 0));
+  gb.add('alu', new THREE.BoxGeometry(0.1, 0.24, 0.2), P(cb, 0, 3.0, 0));
+  for (const fx of [1, -1]) for (const z of [-0.62, 0.62]) {
+    const rot = fx > 0 ? Math.PI / 2 : -Math.PI / 2;
+    gb.add('black', new THREE.CylinderGeometry(0.31, 0.31, 0.03, 20), P(cb, fx * 0.09, 3.0, z, 0, 0, Math.PI / 2));
+    gb.add('black', new THREE.CylinderGeometry(0.15, 0.15, 0.12, 14), P(cb, fx * 0.15, 3.0, z, 0, 0, Math.PI / 2));
+    gb.add('black', new THREE.CylinderGeometry(0.175, 0.175, 0.26, 14, 1, true, -Math.PI / 2, Math.PI), P(cb, fx * 0.31, 3.02, z, 0, 0, Math.PI / 2).multiply(M(0, 0, 0, 0, fx > 0 ? 0 : Math.PI, 0)));
+    // the near and far lamps of a pair flash in turn; seen from the other side, the pair is swapped
+    const ab = (z < 0) === (fx > 0) ? 0 : 1;
+    gb.add((ab ? 'xB' : 'xA') + id, new THREE.CircleGeometry(0.14, 18), P(cb, fx * 0.212, 3.0, z, 0, rot, 0));
+    mast.flash.push({ p: new THREE.Vector3(fx * 0.26, 3.0, z).applyMatrix4(cb), c: [0, 0, 0], ab });
+  }
+  if (!xg.gated) return mast;
+  // the gate: mechanism case on the track side of the mast, the arm pivoting in the plane 0.5 m behind it
+  gb.add('alu', new THREE.BoxGeometry(0.34, 0.95, 0.42), P(cb, -0.32, 1.25, 0.18));
+  gb.add('alu', new THREE.BoxGeometry(0.24, 0.12, 0.16), P(cb, -0.2, 1.25, 0.0));
+  const mount = new THREE.Object3D(); mount.matrixAutoUpdate = false; mount.matrix.copy(P(cb, -0.56, 1.35, 0.3));
+  const arm = new THREE.Group(); mount.add(arm); scene.add(mount);
+  const La = roadW / 2 + 1.2 - 0.3 - 0.3;   // reaching just short of the centre line
+  const ag = new GeoBin(), seg = 0.6;
+  ag.add('m', new THREE.BoxGeometry(0.14, 0.2, 0.3), M(0, 0, 0));
+  for (let z = 0.15, k = 0; z < La; z += seg, k++) {
+    const l = Math.min(seg, La - z), t = 1 - 0.35 * (z / La);
+    const g = new THREE.BoxGeometry(0.07, 0.13 * t, l); g.translate(0, 0, z + l / 2);
+    const c = k % 2 ? [0.94, 0.94, 0.92] : [0.78, 0.08, 0.06];
+    const col = new Float32Array(g.attributes.position.count * 3); for (let i = 0; i < col.length; i += 3) col.set(c, i);
+    g.setAttribute('color', new THREE.BufferAttribute(col, 3)); ag.add('arm', g);
+  }
+  // counterweights on the short end
+  for (const x of [-0.06, 0.06]) ag.add('m', new THREE.BoxGeometry(0.03, 0.06, 0.95), M(x, 0, -0.45));
+  ag.add('w', new THREE.BoxGeometry(0.18, 0.34, 0.32), M(0, -0.02, -0.82));
+  const lampsOnArm = [[La * 0.38, 'xA'], [La * 0.7, 'xB'], [La - 0.12, 'xT']];
+  for (const [z, k] of lampsOnArm) { ag.add('black', new THREE.CylinderGeometry(0.07, 0.07, 0.11, 10), M(0, 0.12, z, 0, 0, Math.PI / 2)); ag.add(k, new THREE.CircleGeometry(0.055, 12), M(0.056, 0.12, z, 0, Math.PI / 2, 0)); }
+  const grp = ag.build({ m: SMAT.alu, arm: SMAT.gateArm, w: SMAT.black, black: SMAT.black, xA: SMAT['xA' + id], xB: SMAT['xB' + id], xT: SMAT['xT' + id] }, { cast: false });
+  arm.add(grp); arm.rotation.x = -Math.PI / 2 * 0.96;
+  mast.arm = arm; mast.armLamps = lampsOnArm.map(([z, k]) => ({ at: new THREE.Vector3(0.1, 0.12, z), ab: k === 'xA' ? 0 : 1, tip: k === 'xT' }));
+  return mast;
+}
 function buildRoads(scene) {
   const roads = [];
   for (const X of WORLD.roadsX) roads.push({ dir: 'N', c: X, a: -3500, b: 8000, w: X === 600 ? 7 : 6, mat: X === 600 ? 'road' : 'gravel' });
@@ -574,17 +711,16 @@ function buildRoads(scene) {
     const groups = [];
     for (const c of [...r.cross].sort((p, q) => p.along - q.along)) { const g = groups[groups.length - 1]; if (g && c.along - g[g.length - 1].along < 14) g.push(c); else groups.push([c]); }
     for (const g of groups) {
-      // crossbucks beyond the outermost tracks, right-hand side of road
+      // a pair of flashing-light signals beyond the outermost tracks, on the right-hand side of the road
+      // for traffic coming up to the crossing, with gates on the paved roads
+      const xg = { cross: g, masts: [], gated: r.mat === 'road', id: (SCN.xings || (SCN.xings = [])).length };
+      SCN.xings.push(xg);
       for (const side of [-1, 1]) {
-        const c = side > 0 ? g[g.length - 1] : g[0], gb = binAt(c.X, c.N);
+        const c = side > 0 ? g[g.length - 1] : g[0];
         const dx = r.dir === 'N' ? 0 : side * 9, dn = r.dir === 'N' ? side * 9 : 0;
-        const lx = r.dir === 'N' ? (side > 0 ? -r.w / 2 - 1.2 : r.w / 2 + 1.2) : 0, ln = r.dir === 'E' ? (side > 0 ? -r.w / 2 - 1.2 : r.w / 2 + 1.2) : 0;
-        const X = c.X + dx + lx, N = c.N + dn + ln, y = groundAt(X, N);
+        const lx = r.dir === 'N' ? (side > 0 ? -r.w / 2 - 1.2 : r.w / 2 + 1.2) : 0, ln = r.dir === 'E' ? (side > 0 ? r.w / 2 + 1.2 : -r.w / 2 - 1.2) : 0;
         const face = r.dir === 'N' ? (side > 0 ? Math.PI / 2 : -Math.PI / 2) : (side > 0 ? 0 : Math.PI);
-        const cb = baseM(X, y, N, face);
-        gb.add('white', boxT(0.14, 4.2, 0.14), P(cb, 0, 1.8, 0));
-        gb.add('xb1', new THREE.BoxGeometry(0.03, 0.32, 2.4), P(cb, 0.08, 3.35, 0, 0.785, 0, 0));
-        gb.add('xb2', new THREE.BoxGeometry(0.03, 0.32, 2.4), P(cb, 0.1, 3.35, 0, -0.785, 0, 0));
+        xingMast(scene, xg, c.X + dx + lx, c.N + dn + ln, face, r.w);
       }
     }
     // whistle posts 1/4 mile before, on the right of each main track for its direction of running
@@ -790,6 +926,7 @@ function buildStations() {
   sandHouse(linePlace(eng, 300, 0));
   engineHouse(linePlace(eng, eng.len - 24, 0));
   const yo = linePlace(ROUTE.main, 470, -10 - ROUTE.spacing); yardOffice(yo);
+  yardFloods();
   const fe = ROUTE.lines['Elevator Track'];
   const ge = linePlace(fe, 190, -24); ge.lat = -1; grainElevator(ge);
   // Quarry Jct tower

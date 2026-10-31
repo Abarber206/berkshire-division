@@ -170,7 +170,8 @@ function skyLight(force) {
   SKY.moon.visible = mb.el > -1 && !W.gray; SKY.moon.material.opacity = 1 - 0.8 * smooth(-4, 8, sb.el);
   ENV.mu = W.mu * (SKY.night && !W.gray ? 0.92 : 1);
   // windows light up through dusk: not all at once, each material at its own darkness
-  for (const m of SCN.winMats) { const a = m.userData.litAt !== undefined ? m.userData.litAt : 0.3; m.emissiveIntensity = Math.max(smooth(a, a + 0.1, dark) * (m.userData.litI || 0.95), W.gray ? 0.15 : 0); }
+  // (house and depot windows decide for themselves, window by window: see winMaterial)
+  for (const m of SCN.winMats) { if (m.userData.perWindow) continue; const a = m.userData.litAt !== undefined ? m.userData.litAt : 0.3; m.emissiveIntensity = Math.max(smooth(a, a + 0.1, dark) * (m.userData.litI || 0.95), W.gray ? 0.15 : 0); }
   RMAT.coachWin.emissiveIntensity = Math.max(smooth(0.15, 0.3, dark) * 1.2, W.gray ? 0.25 : 0);
   lampsLight(dark);
   const sm = L.smoke, gk = W.gray ? lerp(0.75, 1, dark) : 1;
