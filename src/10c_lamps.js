@@ -10,29 +10,42 @@
    does at night. Windows light up one by one through dusk and go dark as the town goes to bed.
    ========================================================================== */
 
-const LAMP_MAX = 16;
+// a phone gets the nearest 8 lamps, a computer 16: each is a few more sums for every pixel lamps can reach
+const LAMP_MAX = (/iPhone|iPad|Android/i.test(navigator.userAgent) || Math.min(screen.width, screen.height) < 600) ? 8 : 16;
 const LAMPLIT = { P: new Float32Array(LAMP_MAX * 4), C: new Float32Array(LAMP_MAX * 4), D: new Float32Array(LAMP_MAX * 4), info: new Float32Array(4) };
 
 /* The lamp list in every Lambert, Phong and Standard shader. Typed arrays, so each material's copy of
    these uniforms is the same array (three.js copies plain arrays but not typed ones). */
 (function lampChunks() {
-  const C = THREE.ShaderChunk, LIT = '#if defined( LAMBERT ) || defined( PHONG ) || defined( STANDARD )';
-  C.common += `
-${LIT}
+  // Lambert's fragment shader has no define of its own, so the declarations go in with the light
+  // uniforms every lit shader pulls in (and in common for the lit vertex shaders, which may not)
+  const C = THREE.ShaderChunk, DECL = `
+#ifndef LAMP_DECL
+  #define LAMP_DECL
   #define LAMP_MAX ${LAMP_MAX}
   varying vec3 vLampP; varying vec3 vLampN;
   uniform vec4 lampP[ LAMP_MAX ]; uniform vec4 lampC[ LAMP_MAX ]; uniform vec4 lampD[ LAMP_MAX ]; uniform vec4 lampInfo;
 #endif`;
-  // world position and normal, from the view-space ones every lit shader already has
+  C.common += `
+#if defined( LAMBERT ) || defined( PHONG ) || defined( STANDARD )
+${DECL}
+#endif`;
+  C.lights_pars_begin = DECL + '\n' + C.lights_pars_begin;
+  // world position, and the normal turned back out of view space (three.js does not set cameraPosition
+  // for a Lambert material, so the position comes from the model matrix)
   C.project_vertex += `
-${LIT}
-  vLampP = ( vec4( mvPosition.xyz, 0.0 ) * viewMatrix ).xyz + cameraPosition;
+#ifdef LAMP_DECL
+  vec4 lampW = vec4( transformed, 1.0 );
+  #ifdef USE_INSTANCING
+    lampW = instanceMatrix * lampW;
+  #endif
+  vLampP = ( modelMatrix * lampW ).xyz;
   vLampN = ( vec4( transformedNormal, 0.0 ) * viewMatrix ).xyz;
 #endif`;
   // added to the diffuse light just before the shader sums it up. lampP: position, reach;
-  // lampC: colour x brightness; lampD: the way the lamp throws its light, and the cosine of its cone (-1: all round)
+  // lampC: colour x brightness, and how fast it falls off; lampD: the way the lamp throws its light, and the cosine of its cone
   C.aomap_fragment += `
-${LIT}
+#ifdef LAMP_DECL
   if ( lampInfo.x > 0.5 ) {
     vec3 lampNrm = normalize( vLampN ) * ( gl_FrontFacing ? 1.0 : -1.0 );
     vec3 lampSum = vec3( 0.0 );
@@ -60,11 +73,11 @@ ${LIT}
    switches it on, give or take a little for each lamp; warm: seconds to come up to full (a metal halide
    floodlight takes a while). */
 const LAMP_KINDS = {
-  plat: { col: 0xffbf78, I: 3.2, r: 15, k: 0.06, down: -1, glow: [1.0, 0.72, 0.42], gs: 1.5, on: 0.22 },
-  street: { col: 0xffb466, I: 5.5, r: 30, k: 0.025, down: 0.25, glow: [1.0, 0.68, 0.36], gs: 1.7, on: 0.26 },
-  flood: { col: 0xe4ecff, I: 9, r: 80, k: 0.006, down: 0.05, glow: [0.85, 0.9, 1.0], gs: 2.6, on: 0.3, warm: 40 },
+  plat: { col: 0xffbf78, I: 2.6, r: 12, k: 0.08, down: -1, glow: [1.0, 0.72, 0.42], gs: 1.5, on: 0.22 },
+  street: { col: 0xffb466, I: 3.4, r: 24, k: 0.03, down: 0.35, glow: [1.0, 0.68, 0.36], gs: 1.7, on: 0.26 },
+  flood: { col: 0xe4ecff, I: 4.5, r: 60, k: 0.008, down: 0.3, glow: [0.85, 0.9, 1.0], gs: 2.6, on: 0.3, warm: 40 },
   door: { col: 0xffcf8c, I: 2.4, r: 11, k: 0.08, down: 0.1, glow: [1.0, 0.78, 0.5], gs: 0.9, on: 0.25 },
-  xing: { col: 0xff2410, I: 4.5, r: 16, k: 0.06, down: -1 },
+  xing: { col: 0xff2410, I: 1.8, r: 10, k: 0.1, down: -1 },
   ditch: { col: 0xfff1d8, I: 7, r: 46, k: 0.004 },
 };
 const _lc = new THREE.Color();
