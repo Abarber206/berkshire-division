@@ -223,18 +223,25 @@ function depot(pl, name, big) {
   SCN.lamps.push(new THREE.Vector3().setFromMatrixPosition(P(base, 0, 3.4, W / 2 + 1.7)));
 }
 /* A plank walk over both main tracks at the depot, for trains on the far main: planks between the rails
-   like a road crossing, and timber decking between the tracks (and out to a depot beyond track 2) set
-   down into the ballast. Track 2 is on the left (-z) of track 1. */
+   like a road crossing, and timber decking between the tracks (and out to a depot beyond track 2, or beyond
+   a siding past it) set down into the ballast. Track 2 is on the left (-z) of track 1; distances here are
+   to the left. A siding between the mains and the depot lies one more track spacing out. */
 function stationCrossing(st) {
-  const sp = ROUTE.spacing, W = st.kind === 'depot' ? 8 : 6.5;
-  const near = 12 + sp - W / 2 - 2.7 - 2.6;   // the track edge of a depot platform beyond track 2
+  const sp = ROUTE.spacing, W = st.kind === 'depot' ? 8 : 6.5, across = st.across || 0;
   const loc = st.line.locate(st.sLine); loc.edge.pose(loc.s, FR);
   const gb = binAt(FR.p.x, -FR.p.z), m1 = frameMatrix(FR, new THREE.Matrix4());
   const deck = (m, z0, z1, depth) => gb.add('wood', boxT(3.0, depth, Math.abs(z1 - z0)), m.clone().multiply(M(0, -0.01 - depth / 2, -(z0 + z1) / 2)));
   const l2 = ROUTE.main2.locate(ROUTE.to2(st.sLine)); l2.edge.pose(l2.s, FR2);
-  for (const m of [m1, frameMatrix(FR2, new THREE.Matrix4())]) for (const z of [[-0.66, 0.66], [-1.5, -0.84], [0.84, 1.5]]) gb.add('wood', boxT(3.0, 0.18, z[1] - z[0]), m.clone().multiply(M(0, -0.1, (z[0] + z[1]) / 2)));
-  deck(m1, 1.5, sp - 1.5, 0.6);
-  if (st.across) deck(m1, sp + 1.5, near, 1.2);
+  const out = -st.side, tracks = [[m1, 0], [frameMatrix(FR2, new THREE.Matrix4()), sp]];   // out: +1 when the depot is on the left
+  for (let k = out > 0 ? 2 : 1; k * sp <= across + 0.01; k++) tracks.push([m1.clone().multiply(M(0, 0, -out * k * sp)), out * k * sp]);
+  tracks.sort((a, b) => a[1] - b[1]);
+  for (const [m] of tracks) for (const z of [[-0.66, 0.66], [-1.5, -0.84], [0.84, 1.5]]) gb.add('wood', boxT(3.0, 0.18, z[1] - z[0]), m.clone().multiply(M(0, -0.1, (z[0] + z[1]) / 2)));
+  for (let i = 0; i + 1 < tracks.length; i++) { const a = tracks[i][1], b = tracks[i + 1][1]; deck(m1, a + 1.5, b - 1.5, a === 0 && b === sp ? 0.6 : 1.0); }
+  // and out to the track edge of the depot's platform
+  if (across) {
+    const near = 12 + across - W / 2 - 2.7 - 2.6, far = out > 0 ? tracks[tracks.length - 1][1] : -tracks[0][1];
+    if (near > far + 1.5) deck(m1, out * (far + 1.5), out * near, 1.2);
+  }
 }
 function waterColumn(pl) {
   const base = baseM(pl.X, pl.y - 0.2, pl.N, pl.yaw + (pl.lat < 0 ? 0 : Math.PI));
@@ -768,7 +775,7 @@ function buildStations() {
     if (st.kind === 'quarry') continue;
     const pl = linePlace(st.line, st.sLine, st.side * (12 + (st.across || 0))); pl.lat = st.side;
     depot(pl, st.name.toUpperCase(), st.kind === 'depot');
-    if (st.line === ROUTE.main && ROUTE.main2) stationCrossing(st);
+    if (st.line === ROUTE.main && ROUTE.main2 && (!ROUTE.span2 || (st.sLine > ROUTE.span2[0] && st.sLine < ROUTE.span2[1]))) stationCrossing(st);
   }
   for (const w of ROUTE.water) {
     if (w.kind === 'column') { const pl = linePlace(w.line, w.sLine, w.side * 3.1); pl.lat = w.side; waterColumn(pl); w.place = pl; }

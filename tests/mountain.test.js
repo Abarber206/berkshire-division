@@ -73,7 +73,7 @@ test('the trestle and the river bridge span real gaps, and Summit tunnel has roc
   assert.ok(B.y - mtNaturalH(B.X, B.N) > 6, `the bridge clears the river by ${(B.y - mtNaturalH(B.X, B.N)).toFixed(1)} m`);
   const T = ROUTE.tunnels[0];
   let least = Infinity;
-  for (let s = T.s0 + 60; s <= T.s1 - 60; s += 20) { const p = at(s); least = Math.min(least, mtNaturalH(p.X, p.N) - (p.y + 7.6)); }
+  for (let s = T.s0 + 60; s <= T.s1 - 60; s += 20) { const p = at(s); least = Math.min(least, mtNaturalH(p.X, p.N) - (p.y + 8.0)); }
   assert.ok(least > 15, `only ${least.toFixed(1)} m of cover over the bore`);
 });
 
@@ -89,4 +89,29 @@ test('no water is buried: the graded ground lies under the surface all along eve
 test('every creek and river runs downhill', { skip: SKIP }, () => {
   const { MT } = mountain();
   for (const r of MT.rivers) for (let i = 1; i < r.pts.length; i++) assert.ok(r.pts[i].y <= r.pts[i - 1].y + 1e-6, `${r.name} climbs at point ${i}`);
+});
+
+/* track 2 runs 4.5 m beside track 1 from Riverton Jct to Ashby Jct; crossovers between them sit on tangent
+   track and land exactly on the other main; no signal stands on a bridge or in the bore */
+test('the mountain is double track, with crossovers and signals for both tracks', { skip: SKIP }, () => {
+  const { ROUTE, NET } = mountain(), m = ROUTE.main, m2 = ROUTE.main2;
+  assert.ok(m2, 'there is a second main track');
+  const [a, b] = ROUTE.span2;
+  assert.ok((b - a) / (m.len) > 0.9, `double track for ${((b - a) / 1609.344).toFixed(1)} mi`);
+  for (let s = a; s <= b; s += 50) {
+    const p = m.poseAt(s), q = m2.poseAt(ROUTE.to2(s)), d = Math.hypot(p.X - q.X, p.N - q.N);
+    assert.ok(Math.abs(d - 4.5) < 0.02, `tracks ${d.toFixed(3)} m apart at ${Math.round(s)} m`);
+  }
+  assert.ok(ROUTE.crossovers.length >= 10, `${ROUTE.crossovers.length} crossover legs`);
+  for (const x of ROUTE.crossovers) {
+    const s0 = x.mainS(0), s1 = x.mainS(x.len);
+    for (let s = s0; s <= s1; s += 10) assert.ok(Math.abs(m.poseAt(s).k) < 1e-7, `${x.name} is on a curve at ${Math.round(s)} m`);
+  }
+  for (const n of NET.nodes) { const ps = n.att.map(t => t.edge.xz(t.end ? t.edge.len : 0)); for (const p of ps) assert.ok(Math.hypot(p[0] - ps[0][0], p[1] - ps[0][1]) < 0.01, 'a joint does not meet'); }
+  const masts = ROUTE.signals.filter(g => g.kind === 'mast');
+  assert.ok(masts.some(g => g.line === m2 && g.dir < 0) && masts.some(g => g.line === m && g.dir > 0), 'signals for both tracks');
+  for (const g of masts) {
+    const e = g.line.locate(g.sLine);
+    assert.ok(!e.edge.isBridge(e.s) && !e.edge.isTunnel(e.s), `signal on a structure at ${g.line.name} ${Math.round(g.sLine)}`);
+  }
 });

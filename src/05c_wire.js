@@ -47,7 +47,7 @@ function wireMaterials() {
 function buildWire(scene) {
   if (WIRE.built) return; WIRE.built = true;
   const main = ROUTE.main, main2 = ROUTE.main2;
-  if (WORLD.custom || !main || !main2) return;
+  if (WORLD.custom || WORLD.mtn || !main || !main2) return;   // no wire over the mountain
   const mat = wireMaterials();
   const b = ROUTE.bridge, bridge0 = b ? b.s - 76 : -1, bridge1 = b ? b.s + 76 : -1;
   const v = new THREE.Vector3();

@@ -14,12 +14,13 @@ function mtFacilities() {
 }
 
 /* ---------------- Bear Run trestle ----------------
-   A steel deck-girder viaduct: tower spans of 9 m and 18 m intermediate spans alternate on battered
-   four-legged towers standing on concrete pedestals. Two plate girders under the ties carry the track. */
+   A double-track steel deck-girder viaduct: tower spans of 9 m and 18 m intermediate spans alternate on
+   battered four-legged towers standing on concrete pedestals. Two plate girders under the ties carry each
+   track; the frames here are on the middle line between the tracks (track 1 at +z, track 2 at -z). */
 function mtBuildViaduct(scene) {
-  const V = ROUTE.viaduct, line = V.line, gb = new GeoBin();
+  const V = ROUTE.viaduct, line = V.line, gb = new GeoBin(), off = V.off || 0, TR = off ? [off, -off] : [0];
   const s0 = V.s - V.half, s1 = V.s + V.half;
-  const frameAt = (s, F) => { const loc = line.locate(s); loc.edge.pose(loc.s, F); return F; };
+  const frameAt = (s, F) => { const loc = line.locate(s); loc.edge.pose(loc.s, F); F.p.addScaledVector(F.r, -off); return F; };
   const at = (F, x, y, z) => new THREE.Vector3().copy(F.p).addScaledVector(F.f, x).addScaledVector(_cU0, y).addScaledVector(F.r, z);
   const strut = (key, a, b, w, d) => {   // a box from point a to point b
     const L = a.distanceTo(b), g = new THREE.BoxGeometry(w, L, d), m = new THREE.Matrix4();
@@ -32,13 +33,13 @@ function mtBuildViaduct(scene) {
   // abutments at each end: a concrete seat and backwall, with the ballasted fill sloping down to the ground
   for (const [s, dir] of [[s0, -1], [s1, 1]]) {
     const F = frameAt(s, newFrame()), base = frameMatrix(F, new THREE.Matrix4());
-    const gl = Math.min(...[-3, 0, 3].map(z => groundAt(at(F, 0, 0, z).x, -at(F, 0, 0, z).z))) - F.p.y;
+    const gl = Math.min(...[-3 - off, 0, 3 + off].map(z => groundAt(at(F, 0, 0, z).x, -at(F, 0, 0, z).z))) - F.p.y, AW = 6.6 + 2 * off;
     // the body under the approach fill, the bridge seat the girder ends bear on, and the backwall between them,
     // which stops under the ties so the track runs straight over it
     const h = -0.5 - gl + 1.5, hs = yBot - gl + 1.5;
-    gb.add('concrete', boxT(3.7, h, 6.6, 2), base.clone().multiply(M(dir * 1.85, -0.5 - h / 2, 0)));
-    gb.add('concrete', boxT(1.4, hs, 6.6, 2), base.clone().multiply(M(-dir * 0.7, yBot - hs / 2, 0)));
-    gb.add('concrete', boxT(0.5, -0.42 - yBot, 6.6), base.clone().multiply(M(-dir * 0.25, (yBot - 0.42) / 2, 0)));
+    gb.add('concrete', boxT(3.7, h, AW, 2), base.clone().multiply(M(dir * 1.85, -0.5 - h / 2, 0)));
+    gb.add('concrete', boxT(1.4, hs, AW, 2), base.clone().multiply(M(-dir * 0.7, yBot - hs / 2, 0)));
+    gb.add('concrete', boxT(0.5, -0.42 - yBot, AW), base.clone().multiply(M(-dir * 0.25, (yBot - 0.42) / 2, 0)));
   }
   // the towers: every 27 m, a 9 m tower span then an 18 m girder span
   const towers = [];
@@ -47,11 +48,11 @@ function mtBuildViaduct(scene) {
     const bents = [ta, tb].map(s => {
       const F = frameAt(s, newFrame()), legs = [];
       for (const z of [-1, 1]) {
-        const top = at(F, 0, yBot - 0.2, z * 1.55);
+        const zt = 1.55 + off, top = at(F, 0, yBot - 0.2, z * zt);
         // battered 1 in 6 outward; follow the ground down to the pedestal
         let len = 0, foot = null;
-        for (let k = 0; k < 4; k++) { const d = top.y - (foot ? foot.gy : top.y - 20); foot = at(F, 0, yBot - 0.2 - d, z * (1.55 + d / 6)); foot.gy = groundAt(foot.x, -foot.z) + 0.5; len = d; }
-        const bot = at(F, 0, 0, 0); bot.copy(F.p).addScaledVector(_cU0, yBot - 0.2 - (top.y - foot.gy)).addScaledVector(F.r, z * (1.55 + (top.y - foot.gy) / 6));
+        for (let k = 0; k < 4; k++) { const d = top.y - (foot ? foot.gy : top.y - 20); foot = at(F, 0, yBot - 0.2 - d, z * (zt + d / 6)); foot.gy = groundAt(foot.x, -foot.z) + 0.5; len = d; }
+        const bot = at(F, 0, 0, 0); bot.copy(F.p).addScaledVector(_cU0, yBot - 0.2 - (top.y - foot.gy)).addScaledVector(F.r, z * (zt + (top.y - foot.gy) / 6));
         legs.push({ top, bot, z });
         strut('steel', top, bot, 0.42, 0.42);
         // pedestal under each leg, down past the lowest ground round it
@@ -61,7 +62,7 @@ function mtBuildViaduct(scene) {
         gb.add('concrete', boxT(1.5, ph, 1.5), pm.multiply(M(0, -ph / 2 + 0.15, 0)));
       }
       // cap beam across the bent under the girders
-      strut('steel', at(F, 0, yBot - 0.2, -1.9), at(F, 0, yBot - 0.2, 1.9), 0.5, 0.45);
+      strut('steel', at(F, 0, yBot - 0.2, -1.9 - off), at(F, 0, yBot - 0.2, 1.9 + off), 0.5, 0.45);
       return { F, legs };
     });
     // bracing: struts every 8 m down each bent and between the two bents, with X braces in each panel
@@ -84,20 +85,20 @@ function mtBuildViaduct(scene) {
   const stops = [s0 + 0.6, ...towers.flat(), s1 - 0.6];
   for (let i = 0; i < stops.length - 1; i++) {
     const a = stops[i], b = stops[i + 1];
-    for (const z of [-GZ, GZ]) {
+    for (const z of TR.flatMap(t => [t - GZ, t + GZ])) {
       const Fa = frameAt(a + 0.05, newFrame()), Fb = frameAt(b - 0.05, newFrame());
       strut('steel', at(Fa, 0, (yTop + yBot) / 2, z), at(Fb, 0, (yTop + yBot) / 2, z), 0.06, GD);   // web
       for (const y of [yTop - 0.03, yBot + 0.03]) strut('steel', at(Fa, 0, y, z), at(Fb, 0, y, z), 0.46, 0.06);   // flanges (box lies along the strut)
       for (let s = a + 1.5; s < b - 1; s += 1.5) { const F = frameAt(s, FR2); strut('steel', at(F, 0, yTop - 0.05, z + 0.12), at(F, 0, yBot + 0.05, z + 0.12), 0.1, 0.02); strut('steel', at(F, 0, yTop - 0.05, z - 0.12), at(F, 0, yBot + 0.05, z - 0.12), 0.1, 0.02); }
     }
     // cross frames between the girders
-    for (let s = a + 3; s < b - 2; s += 4.5) { const F = frameAt(s, FR2); strut('steel', at(F, 0, yTop - 0.1, -GZ), at(F, 0, yBot + 0.1, GZ), 0.1, 0.1); strut('steel', at(F, 0, yBot + 0.1, -GZ), at(F, 0, yTop - 0.1, GZ), 0.1, 0.1); }
+    for (let s = a + 3; s < b - 2; s += 4.5) for (const t of TR) { const F = frameAt(s, FR2); strut('steel', at(F, 0, yTop - 0.1, t - GZ), at(F, 0, yBot + 0.1, t + GZ), 0.1, 0.1); strut('steel', at(F, 0, yBot + 0.1, t - GZ), at(F, 0, yTop - 0.1, t + GZ), 0.1, 0.1); }
   }
-  // open deck: ties, guard timbers, a walkway with a pipe railing on one side
+  // open deck: ties under each track, guard timbers, and a walkway with a pipe railing along each outer side
   const r = rng(51);
-  for (let s = s0 - 1; s <= s1 + 1; s += 0.42) {
-    const F = frameAt(s, FR2), m = frameMatrix(F, new THREE.Matrix4());
-    const geo = new THREE.BoxGeometry(0.24, 0.24, (Math.round(s / 0.42) % 4 ? 3.1 : 4.6)); geo.translate(0, -0.3, Math.round(s / 0.42) % 4 ? 0 : 0.75);
+  for (let s = s0 - 1; s <= s1 + 1; s += 0.42) for (const t of TR) {
+    const F = frameAt(s, FR2), m = frameMatrix(F, new THREE.Matrix4()), out = t < 0 ? -1 : 1, long = !(Math.round(s / 0.42) % 4);
+    const geo = new THREE.BoxGeometry(0.24, 0.24, long ? 4.6 : 3.1); geo.translate(0, -0.3, t + (long ? out * 0.75 : 0));
     const v = 0.7 + r() * 0.3, col = new Float32Array(geo.attributes.position.count * 3);
     for (let i = 0; i < col.length; i += 3) { col[i] = 0.42 * v; col[i + 1] = 0.36 * v; col[i + 2] = 0.29 * v; }
     geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
@@ -105,28 +106,34 @@ function mtBuildViaduct(scene) {
   }
   for (let s = s0 - 1; s < s1 + 1; s += 6) {
     const Fa = frameAt(s, newFrame()), Fb = frameAt(Math.min(s + 6, s1 + 1), newFrame());
-    for (const z of [-1.42, 1.42]) strut('wood', at(Fa, 0, -0.1, z), at(Fb, 0, -0.1, z), 0.2, 0.2);
-    strut('wood', at(Fa, 0, -0.2, 2.45), at(Fb, 0, -0.2, 2.45), 0.66, 0.06);
-    strut('steel', at(Fa, 0, 0.85, 2.75), at(Fb, 0, 0.85, 2.75), 0.06, 0.06);
-    strut('steel', at(Fa, 0, -0.2, 2.75), at(Fa, 0, 0.85, 2.75), 0.06, 0.06);
+    for (const t of TR) {
+      const out = t < 0 ? -1 : 1;
+      for (const z of [-1.42, 1.42]) strut('wood', at(Fa, 0, -0.1, t + z), at(Fb, 0, -0.1, t + z), 0.2, 0.2);
+      strut('wood', at(Fa, 0, -0.2, t + out * 2.45), at(Fb, 0, -0.2, t + out * 2.45), 0.66, 0.06);
+      strut('steel', at(Fa, 0, 0.85, t + out * 2.75), at(Fb, 0, 0.85, t + out * 2.75), 0.06, 0.06);
+      strut('steel', at(Fa, 0, -0.2, t + out * 2.75), at(Fa, 0, 0.85, t + out * 2.75), 0.06, 0.06);
+    }
   }
   const vis = gb.build({ steel: MAT.bridge, concrete: SMAT.concrete, tie: MAT.tie, wood: SMAT.wood });
   vis.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
   scene.add(vis);
   // keep the woods off the towers, and from under the deck where it runs low near the ends
-  for (const [ta, tb] of towers) { const p = line.poseAt((ta + tb) / 2); keep(p.X, p.N, 16); }
-  for (let s = s0 - 10; s <= s1 + 10; s += 8) { const p = line.poseAt(s), F = frameAt(s, FR2); if (F.p.y - groundAt(p.X, p.N) < 24) keep(p.X, p.N, 9); }
+  for (const [ta, tb] of towers) { const F = frameAt((ta + tb) / 2, FR2); keep(F.p.x, -F.p.z, 16 + off); }
+  for (let s = s0 - 10; s <= s1 + 10; s += 8) { const F = frameAt(s, FR2); if (F.p.y - groundAt(F.p.x, -F.p.z) < 24) keep(F.p.x, -F.p.z, 9 + off); }
 }
 const _cU0 = new THREE.Vector3(0, 1, 0);
 
 /* ---------------- Summit tunnel ----------------
-   The bore is lined in concrete: walls 3.0 m either side of the centre line up to the springing at 4.6 m,
-   then a semicircular arch to the crown at 7.6 m. At each end a concrete headwall stands across the cut,
-   and the hillside round it is graded on a fine patch of ground that replaces the terrain there. */
-const BORE = { half: 3.0, spring: 4.6, crown: 7.6, wallH: 11.2, wallHalf: 13.2, wallT: 2.4, cutHalf: 4.5, cutSlope: 1.5 };
+   A double-track bore, lined in concrete: walls 5.3 m either side of the middle line between the tracks
+   (3.05 m outside each track) up to the springing at 4.6 m, then an elliptical arch rising 3.4 m to the
+   crown at 8.0 m. At each end a concrete headwall stands across the cut, and the hillside round it is
+   graded on a fine patch of ground that replaces the terrain there. */
+const BORE = { half: 5.3, spring: 4.6, rise: 3.4, crown: 8.0, wallH: 11.8, wallHalf: 15.6, wallT: 2.4, cutHalf: 6.8, cutSlope: 1.5 };
+/* the lining's height over the rail at l metres from the middle of the bore */
+const boreTop = l => BORE.spring + BORE.rise * Math.sqrt(Math.max(0, 1 - (l / BORE.half) ** 2));
 function boreProfile(n = 16) {   // the inside of the lining, from the left foot round the arch to the right foot
   const p = [[-BORE.half, -1.6], [-BORE.half, BORE.spring]];
-  for (let i = 1; i < n; i++) { const a = Math.PI - Math.PI * i / n; p.push([Math.cos(a) * BORE.half, BORE.spring + Math.sin(a) * BORE.half]); }
+  for (let i = 1; i < n; i++) { const a = Math.PI - Math.PI * i / n; p.push([Math.cos(a) * BORE.half, BORE.spring + Math.sin(a) * BORE.rise]); }
   p.push([BORE.half, BORE.spring], [BORE.half, -1.6]);
   return p;
 }
@@ -138,7 +145,7 @@ function mtBuildTunnels(scene) {
     const pos = [], col = [], idx = [], F = newFrame();
     const nS = Math.ceil((T.s1 - T.s0) / 4);
     for (let i = 0; i <= nS; i++) {
-      const s = T.s0 + (T.s1 - T.s0) * i / nS, loc = line.locate(s); loc.edge.pose(loc.s, F);
+      const s = T.s0 + (T.s1 - T.s0) * i / nS, loc = line.locate(s); loc.edge.pose(loc.s, F); F.p.addScaledVector(F.r, -(T.off || 0));
       const depth = Math.min(s - T.s0, T.s1 - s), k = 0.1 + 0.9 * Math.exp(-depth / 35);
       for (const [x, y] of prof) {
         pos.push(F.p.x + F.r.x * x + F.u.x * y, F.p.y + F.r.y * x + F.u.y * y, F.p.z + F.r.z * x + F.u.z * y);
@@ -157,6 +164,7 @@ function mtBuildTunnels(scene) {
 /* a portal at s on line, dir +1 when the bore runs on toward +s */
 function mtPortal(scene, T, s, dir) {
   const line = T.line, loc = line.locate(s), F = newFrame(); loc.edge.pose(loc.s, F);
+  F.p.addScaledVector(F.r, -(T.off || 0));   // the middle of the bore
   if (dir < 0) { F.f.negate(); F.r.negate(); }
   const rail = F.p.y, yaw = Math.atan2(-F.f.z, F.f.x);
   const P = { X: F.p.x, N: -F.p.z, y: rail, yaw, c: Math.cos(yaw), sn: Math.sin(yaw), name: T.name };
@@ -279,7 +287,7 @@ function mtInBore(x, z, pad = 0) {
     if (!P0) continue;
     const [a, l] = portalAL(P0, x, -z), len = portalAL(P0, P1.X, P1.N)[0];
     if (a < -0.8 || a > len + 0.8 || Math.abs(l) > BORE.half + pad) continue;
-    const top = BORE.spring + Math.sqrt(Math.max(0, BORE.half * BORE.half - l * l));   // the lining's height over the rail here
+    const top = boreTop(l);   // the lining's height over the rail here
     return { rail: lerp(P0.y, P1.y, clamp(a / len, 0, 1)), depth: Math.min(a, len - a), l, top, P: P0 };
   }
   return null;

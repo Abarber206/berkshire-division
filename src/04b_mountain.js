@@ -135,7 +135,7 @@ function mtPrepare() {
   // spread round each piece of track (not the tunnel or the trestle, which leave the land alone)
   const C = G(50), cw = 210, ch = new Map();
   for (const e of NET.edges) for (let s = 0; s <= e.len; s += 12) {
-    if (e.isTunnel(s) || (e.isBridge(s) && e.line === m && Math.abs(e.lineS0 + s - ROUTE.viaduct.s) < ROUTE.viaduct.half + 5)) continue;
+    if (e.isTunnel(s) || (e.isBridge(s) && (e.line === m || e.line === ROUTE.main2) && Math.abs((e.line === m ? e.lineS0 + s : ROUTE.to1(e.lineS0 + s)) - ROUTE.viaduct.s) < ROUTE.viaduct.half + 5)) continue;
     const [X, N] = e.xz(s), k = Math.floor(X / 500) + ',' + Math.floor(N / 500);
     let a = ch.get(k); if (!a) ch.set(k, a = []); a.push(X, N, e.elev(s) - mtValley(X, N));
   }

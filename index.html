@@ -1701,14 +1701,14 @@ const LAYOUTS = {
 const PLAY_LAYOUT = (() => { try { const id = new URLSearchParams(location.search).get('layout'); const m = id && LAYOUTS.get(id); return m && m.pieces && m.pieces.length ? m : null; } catch (e) { return null; } })();
 
 /* ============================================================================
-   Laurel Mountain: the second railroad. A single-track mountain division,
+   Laurel Mountain: the second railroad. A double-track mountain division,
    35 miles from Riverton Yard up the river, round the Laurel Run horseshoe,
    along the valley wall to Summit tunnel and down Pine Creek to Ashby. A
    turning loop at each end; the ruling grade is 1.9 per cent eastward.
    ========================================================================== */
 const ROUTES = {
   ohio: { name: 'Berkshire Division', sub: 'Ohio farm country · 13.8 mi double-track loop' },
-  laurel: { name: 'Laurel Mountain', sub: 'Mountain grades · 35.6 mi single track, horseshoe curve, tunnel' },
+  laurel: { name: 'Laurel Mountain', sub: 'Mountain grades · 35.6 mi double track, horseshoe curve, tunnel' },
 };
 /* ?route= picks the railroad; without it, the one last driven. A layout from the editor overrides both. */
 const ROUTE_KEY = (() => {
@@ -1809,6 +1809,29 @@ function buildMountainRoute() {
   ROUTE.tunnels = [{ line: main, s0: tunnel[0], s1: tunnel[1], name: 'SUMMIT' }];
   for (const [a] of limits.slice(1)) main.cut(a);
 
+  /* ---------- the second main track ----------
+     Track 2 runs 4.5 m to the left of track 1 from just past Riverton Yard to just short of Ashby, leaving
+     and rejoining it on long easy reverse curves. Right-hand running, as on the Berkshire Division: track 1
+     carries eastward (+s) trains up the mountain and track 2 westward ones. Beyond the two junctions the
+     terminals, their yards and the turning loops are single track. */
+  const DT = 4.5, JL = 150, sW = 2480, sE = F.ashby + 40;
+  const nW = main.cut(sW), nE = main.cut(sE);
+  const main2 = new Line('Main 2', alongside(main, sW, sE, DT, JL), { kind: 'main', startNode: nW, endNode: nE });
+  const S2 = main2.pts.map(p => p.s), SM2 = main2.pts.map(p => p.sm);
+  const remap = (A, B) => s => {
+    if (s <= A[0]) return B[0]; if (s >= A[A.length - 1]) return B[B.length - 1];
+    let lo = 0, hi = A.length - 1; while (hi - lo > 1) { const m = (lo + hi) >> 1; if (A[m] <= s) lo = m; else hi = m; }
+    return B[lo] + (B[hi] - B[lo]) * (s - A[lo]) / ((A[hi] - A[lo]) || 1);
+  };
+  const to2 = remap(SM2, S2), to1 = main2.mainS;
+  main2.opt.limitAt = s => limitAt(to1(s));
+  main2.opt.bridges = main.opt.bridges.map(([a, b]) => [to2(a), to2(b)]);
+  main2.opt.tunnels = [[to2(tunnel[0]), to2(tunnel[1])]];
+  for (const [a] of limits.slice(1)) if (a > sW + JL && a < sE - JL) main2.cut(to2(a));
+  ROUTE.main2 = main2; ROUTE.to2 = to2; ROUTE.to1 = to1; ROUTE.spacing = DT;
+  ROUTE.span2 = [sW + JL, sE - JL];   // where the two tracks run side by side at full spacing
+  ROUTE.tunnels[0].off = ROUTE.viaduct.off = DT / 2;   // both are built round the middle of the two tracks
+
   /* ---------- sidings, yards and terminals ---------- */
   const lines = [];
   const side = (name, parent, sA, sB, off, opt, back = true, L = 90) => {
@@ -1822,13 +1845,22 @@ function buildMountainRoute() {
   for (let k = 2; k <= 4; k++) { const p = yards[k - 2]; yards.push(side('Riverton ' + k, p, 125, p.len - 125, -4.5, YARD)); }
   const eng = side('Riverton Engine Track', yards[3], 140, 700, -9, { kind: 'yard', limit: 10 }, false, 110);
   ROUTE.features.engine = eng;
-  // passing sidings: [name, from, to, which side]
+  /* passing sidings: [name, from, to (on track 1), which side]. Those on the left come off track 2, for
+     westward trains; Big Laurel and Pine Flats, on the right, come off track 1, so a slow freight on the
+     climb can be put away there for a faster train to go by. */
   const sid = {};
-  for (const [nm, a, b, o] of [['Hollins', F.hollins + 200, F.hollins + 1900, 4.5], ['Big Laurel', 16200, 17950, 4.5], ['Glen Iron', 29600, 31350, 4.5], ['Summit', 38150, 39480, 4.5], ['Pine Flats', 49150, 50950, -4.5]])
-    sid[nm] = side(nm + ' Siding', main, a, b, o, SIDING);
+  for (const [nm, a, b, o] of [['Hollins', F.hollins + 200, F.hollins + 1900, 4.5], ['Big Laurel', 16200, 17950, -4.5], ['Glen Iron', 29600, 31350, 4.5], ['Summit', 38150, 39480, 4.5], ['Pine Flats', 49150, 50950, -4.5]])
+    sid[nm] = o > 0 ? side(nm + ' Siding', main2, to2(a), to2(b), o, SIDING) : side(nm + ' Siding', main, a, b, o, SIDING);
   const ashby = side('Ashby 1', main, F.ashby + 120, main.len - 330, -4.5, YARD);
   const ashby2 = side('Ashby 2', ashby, 125, ashby.len - 125, -4.5, YARD);
-  // turning loops beyond each terminal
+  /* crossovers between the main tracks, on tangent track: A takes an eastward train from track 1 over to
+     track 2 and B, just beyond, brings one back, each on a reverse curve as long as the junctions' */
+  const xos = [];
+  for (const [place, s] of [['Riverton', 3400], ['Big Laurel', 15120], ['Bear Run', 22450], ['Glen Iron', 28300], ['Summit', 37100], ['Pine Flats', 51100], ['Ashby', 54600]]) {
+    const sB = s + JL + 50;
+    xos.push({ line: new Line(place + ' crossover A', alongside(main, s, s + JL, DT, JL, true, false), { kind: 'main', limit: 40, cant: false, startNode: main.cut(s), endNode: main2.cut(to2(s + JL)) }), from: main, to: main2 });
+    xos.push({ line: new Line(place + ' crossover B', alongside(main, sB, sB + JL, DT, JL, false, true), { kind: 'main', limit: 40, cant: false, startNode: main2.cut(to2(sB)), endNode: main.cut(sB + JL) }), from: main2, to: main });
+  }  // turning loops beyond each terminal
   const p0 = main.poseAt(0), pE = main.poseAt(main.len);
   const nLW = main.startNode = NET.node(), nLE = main.endNode = NET.node();
   const loopW = new Line('Riverton Loop', balloonPts(p0.X, p0.N, p0.h + Math.PI), { kind: 'yard', limit: 15, startNode: nLW, endNode: nLW });
@@ -1836,6 +1868,8 @@ function buildMountainRoute() {
 
   /* ---------- build edges ---------- */
   main.build(s => mainY(s));
+  main2.build(s => mainY(to1(s)));
+  for (const x of xos) x.line.build(s => mainY(x.line.mainS(s)));
   for (const l of lines) l.build(s => mainY(l.mainS(s)));
   loopW.build(() => 0); loopE.build(() => mainY(main.len));
 
@@ -1851,42 +1885,61 @@ function buildMountainRoute() {
     SW('Riverton ladder E' + (k + 1), yards[k].endNode, yards[k - 1], yards[k], false, ['Riverton ' + k, 'Riverton ' + (k + 1)]);
   }
   SW('Riverton Engine Terminal', eng.startNode, yards[3], eng, true, ['Riverton 4', 'Engine track']);
-  for (const nm in sid) { SW(nm + ' West', sid[nm].startNode, main, sid[nm], true, ['Main', 'Siding']); SW(nm + ' East', sid[nm].endNode, main, sid[nm], false, ['Main', 'Siding']); }
+  SW('Riverton Jct', nW, main, main2, true, ['Track 1', 'Track 2']); SW('Ashby Jct', nE, main, main2, false, ['Track 1', 'Track 2']);
+  for (const nm in sid) { const on = main2.map.has(sid[nm].startNode) ? main2 : main;
+    SW(nm + ' West', sid[nm].startNode, on, sid[nm], true, ['Main', 'Siding']); SW(nm + ' East', sid[nm].endNode, on, sid[nm], false, ['Main', 'Siding']); }
+  // the two switches of a crossover are thrown together
+  for (let i = 0; i < xos.length; i += 2) for (const x of [xos[i], xos[i + 1]]) {
+    const a = SW(x.line.name, x.line.startNode, x.from, x.line, true, [x.from === main ? 'Track 1' : 'Track 2', 'Crossover']);
+    const b = SW(x.line.name, x.line.endNode, x.to, x.line, false, [x.to === main ? 'Track 1' : 'Track 2', 'Crossover']);
+    a.mate = b; b.mate = a;
+  }
   SW('Ashby West', ashby.startNode, main, ashby, true, ['Main', 'Ashby 1']); SW('Ashby East', ashby.endNode, main, ashby, false, ['Main', 'Ashby 1']);
   SW('Ashby ladder W', ashby2.startNode, ashby, ashby2, true, ['Ashby 1', 'Ashby 2']); SW('Ashby ladder E', ashby2.endNode, ashby, ashby2, false, ['Ashby 1', 'Ashby 2']);
   // the loops' switches are sprung: a train coming round trails through without being thrown
   for (const [nm, node, loop, trunk] of [['Riverton Loop', nLW, loopW, main.first()], ['Ashby Loop', nLE, loopE, main.last()]])
     NET.addSwitch(node, trunk, loop.first(), loop.last(), nm, ['Loop', 'Loop return']).spring = true;
-  for (const sw of NET.switches) { const dk = sw.legs[1].edge.kind; sw.divLimit = dk === 'siding' ? 30 : 15; }
+  for (const sw of NET.switches) { const dk = sw.legs[1].edge.kind; sw.divLimit = dk === 'main' ? 40 : dk === 'siding' ? 30 : 15; }
   for (const nd of NET.nodes) if (nd.att.length === 1) ROUTE.bumpers.push(nd);
 
   /* ---------- stations, water, signals, mileposts ---------- */
   const st = (name, line, s, side, kind, across = 0) => { const loc = line.locate(s); ROUTE.stations.push({ name, line, sLine: s, edge: loc.edge, s: loc.s, side, kind, across }); };
   st('Riverton', main, 1500, -1, 'depot');
-  st('Hollins', main, F.hollins + 1100, -1, 'depot', 4.5);   // beyond the siding
-  st('Big Laurel', main, 17000, -1, 'small', 4.5);
-  st('Glen Iron', main, 30400, 1, 'small', 4.5);
-  st('Summit', main, 38800, -1, 'small', 4.5);
-  st('Pine Flats', main, 50000, 1, 'depot', 4.5);
+  // across: how much further out than usual, past track 2 and any siding beyond it
+  st('Hollins', main, F.hollins + 1100, -1, 'depot', 2 * DT);
+  st('Big Laurel', main, 17000, -1, 'small', DT);
+  st('Glen Iron', main, 30400, 1, 'small');
+  st('Summit', main, 38800, -1, 'small', 2 * DT);
+  st('Pine Flats', main, 50000, 1, 'depot', DT);
   st('Ashby', main, F.ashby + 700, -1, 'depot');
   const wc = (line, s, side, kind) => { const loc = line.locate(s); ROUTE.water.push({ line, sLine: s, edge: loc.edge, s: loc.s, side, kind }); };
-  wc(main, 17500, 1, 'column'); wc(main, 39100, 1, 'column'); wc(main, 50400, -1, 'column');   // on the side away from the siding
+  // beside the track they serve, never between the two mains: Big Laurel's for trains in the siding on the climb
+  wc(sid['Big Laurel'], 1300, 1, 'column'); wc(main, 39100, 1, 'column'); wc(main2, to2(50400), -1, 'column');
   wc(eng, 160, 1, 'tower'); wc(main, F.ashby + 1000, -1, 'column');
   ROUTE.coal = { line: eng, sLine: 260, edge: eng.locate(260).edge, s: eng.locate(260).s };
-  /* Single track, signalled both ways: a home signal 400 m out from each end of every siding and
-     automatic block signals in between, staggered. Dwarfs govern moves off the sidings and Riverton 1. */
+  /* Signals, as on the Berkshire Division: track 1 for eastward running and track 2 for westward. A home
+     signal 350 m short of each place with switches on that track, automatic block signals between them
+     about every 2.5 km. Into each junction from the single track at the terminals, one home signal on the
+     main. Dwarfs govern moves off the sidings and Riverton 1 and Ashby 1 onto the main. */
   const sig = (line, sLine, dir, kind = 'mast') => ROUTE.signals.push({ line, sLine, dir, kind });
-  const ends = [[2420, 2420], ...Object.values(sid).map(l => [l.mainS(0), l.mainS(l.len)]), [F.ashby + 120, F.ashby + 120]];
-  for (let i = 0; i < ends.length; i++) {
-    const [a, b] = ends[i];
-    if (i > 0) sig(main, a - 420, 1);
-    if (i < ends.length - 1) sig(main, b + 420, -1);
-    if (i < ends.length - 1) {   // automatic signals between this siding and the next, about every 3 km
-      const g0 = b + 420, g1 = ends[i + 1][0] - 420, n = Math.floor((g1 - g0) / 3000);
-      for (let k = 1; k <= n; k++) { const s = g0 + (g1 - g0) * k / (n + 1); sig(main, s - 40, 1); sig(main, s + 40, -1); }
+  const swAt = ln => NET.switches.filter(sw => ln.map.has(sw.node)).map(sw => { const m = ln.map.get(sw.node); return m.after ? m.after.edge.lineS0 : m.before.edge.lineS0 + m.before.edge.len; });
+  // nothing on the bridges or in the bore: a signal that would stand there goes back to the near end of it
+  const structs = [...main.opt.bridges.map(([a, b]) => [a - 40, b + 40]), [tunnel[0] - 90, tunnel[1] + 90]];
+  const clear = (ln, s, dir) => { for (let g = 0; g < 3; g++) for (const [a, b] of structs) { const m = ln === main2 ? to1(s) : s; if (m > a && m < b) s = ln === main2 ? to2(dir > 0 ? a : b) : dir > 0 ? a : b; } return s; };
+  for (const [ln, dir] of [[main, 1], [main2, -1]]) {
+    // the places, each the switches within 2 km of each other (a siding's two ends make one place)
+    const at = swAt(ln).filter(s => ln === main2 || (s > 2000 && s < sE + 100)).sort((a, b) => (a - b) * dir), places = [];
+    for (const s of at) if (places.length && (s - places[places.length - 1].last) * dir < 2000) places[places.length - 1].last = s; else places.push({ first: s, last: s });
+    let prev = null;
+    for (const pl of places) {
+      const into = ln === main2 && pl === places[0], home = into ? sE + 350 : clear(ln, pl.first - dir * 350, dir);
+      if (prev !== null) { const n = Math.floor(Math.abs(home - prev) / 2500); for (let k = 1; k <= n; k++) sig(ln, clear(ln, prev + (home - prev) * k / (n + 1), dir), dir); }
+      sig(into ? main : ln, home, dir);
+      prev = pl.last;
     }
   }
   for (const l of [...Object.values(sid), yards[0], ashby]) { sig(l, 80, -1, 'dwarf'); sig(l, l.len - 80, 1, 'dwarf'); }
+  ROUTE.crossovers = xos.map(x => x.line);
   for (let m = 1; m * MILE < main.len; m++) ROUTE.mileposts.push({ line: main, sLine: m * MILE, num: m });
   ROUTE.yardLimits = [[2700, -1], [F.ashby - 50, 1]];
   ROUTE.startLine = yards[1]; ROUTE.startS = 260;
@@ -2859,7 +2912,7 @@ function mtPrepare() {
   // spread round each piece of track (not the tunnel or the trestle, which leave the land alone)
   const C = G(50), cw = 210, ch = new Map();
   for (const e of NET.edges) for (let s = 0; s <= e.len; s += 12) {
-    if (e.isTunnel(s) || (e.isBridge(s) && e.line === m && Math.abs(e.lineS0 + s - ROUTE.viaduct.s) < ROUTE.viaduct.half + 5)) continue;
+    if (e.isTunnel(s) || (e.isBridge(s) && (e.line === m || e.line === ROUTE.main2) && Math.abs((e.line === m ? e.lineS0 + s : ROUTE.to1(e.lineS0 + s)) - ROUTE.viaduct.s) < ROUTE.viaduct.half + 5)) continue;
     const [X, N] = e.xz(s), k = Math.floor(X / 500) + ',' + Math.floor(N / 500);
     let a = ch.get(k); if (!a) ch.set(k, a = []); a.push(X, N, e.elev(s) - mtValley(X, N));
   }
@@ -3204,18 +3257,25 @@ function depot(pl, name, big) {
   SCN.lamps.push(new THREE.Vector3().setFromMatrixPosition(P(base, 0, 3.4, W / 2 + 1.7)));
 }
 /* A plank walk over both main tracks at the depot, for trains on the far main: planks between the rails
-   like a road crossing, and timber decking between the tracks (and out to a depot beyond track 2) set
-   down into the ballast. Track 2 is on the left (-z) of track 1. */
+   like a road crossing, and timber decking between the tracks (and out to a depot beyond track 2, or beyond
+   a siding past it) set down into the ballast. Track 2 is on the left (-z) of track 1; distances here are
+   to the left. A siding between the mains and the depot lies one more track spacing out. */
 function stationCrossing(st) {
-  const sp = ROUTE.spacing, W = st.kind === 'depot' ? 8 : 6.5;
-  const near = 12 + sp - W / 2 - 2.7 - 2.6;   // the track edge of a depot platform beyond track 2
+  const sp = ROUTE.spacing, W = st.kind === 'depot' ? 8 : 6.5, across = st.across || 0;
   const loc = st.line.locate(st.sLine); loc.edge.pose(loc.s, FR);
   const gb = binAt(FR.p.x, -FR.p.z), m1 = frameMatrix(FR, new THREE.Matrix4());
   const deck = (m, z0, z1, depth) => gb.add('wood', boxT(3.0, depth, Math.abs(z1 - z0)), m.clone().multiply(M(0, -0.01 - depth / 2, -(z0 + z1) / 2)));
   const l2 = ROUTE.main2.locate(ROUTE.to2(st.sLine)); l2.edge.pose(l2.s, FR2);
-  for (const m of [m1, frameMatrix(FR2, new THREE.Matrix4())]) for (const z of [[-0.66, 0.66], [-1.5, -0.84], [0.84, 1.5]]) gb.add('wood', boxT(3.0, 0.18, z[1] - z[0]), m.clone().multiply(M(0, -0.1, (z[0] + z[1]) / 2)));
-  deck(m1, 1.5, sp - 1.5, 0.6);
-  if (st.across) deck(m1, sp + 1.5, near, 1.2);
+  const out = -st.side, tracks = [[m1, 0], [frameMatrix(FR2, new THREE.Matrix4()), sp]];   // out: +1 when the depot is on the left
+  for (let k = out > 0 ? 2 : 1; k * sp <= across + 0.01; k++) tracks.push([m1.clone().multiply(M(0, 0, -out * k * sp)), out * k * sp]);
+  tracks.sort((a, b) => a[1] - b[1]);
+  for (const [m] of tracks) for (const z of [[-0.66, 0.66], [-1.5, -0.84], [0.84, 1.5]]) gb.add('wood', boxT(3.0, 0.18, z[1] - z[0]), m.clone().multiply(M(0, -0.1, (z[0] + z[1]) / 2)));
+  for (let i = 0; i + 1 < tracks.length; i++) { const a = tracks[i][1], b = tracks[i + 1][1]; deck(m1, a + 1.5, b - 1.5, a === 0 && b === sp ? 0.6 : 1.0); }
+  // and out to the track edge of the depot's platform
+  if (across) {
+    const near = 12 + across - W / 2 - 2.7 - 2.6, far = out > 0 ? tracks[tracks.length - 1][1] : -tracks[0][1];
+    if (near > far + 1.5) deck(m1, out * (far + 1.5), out * near, 1.2);
+  }
 }
 function waterColumn(pl) {
   const base = baseM(pl.X, pl.y - 0.2, pl.N, pl.yaw + (pl.lat < 0 ? 0 : Math.PI));
@@ -3749,7 +3809,7 @@ function buildStations() {
     if (st.kind === 'quarry') continue;
     const pl = linePlace(st.line, st.sLine, st.side * (12 + (st.across || 0))); pl.lat = st.side;
     depot(pl, st.name.toUpperCase(), st.kind === 'depot');
-    if (st.line === ROUTE.main && ROUTE.main2) stationCrossing(st);
+    if (st.line === ROUTE.main && ROUTE.main2 && (!ROUTE.span2 || (st.sLine > ROUTE.span2[0] && st.sLine < ROUTE.span2[1]))) stationCrossing(st);
   }
   for (const w of ROUTE.water) {
     if (w.kind === 'column') { const pl = linePlace(w.line, w.sLine, w.side * 3.1); pl.lat = w.side; waterColumn(pl); w.place = pl; }
@@ -4427,7 +4487,7 @@ function wireMaterials() {
 function buildWire(scene) {
   if (WIRE.built) return; WIRE.built = true;
   const main = ROUTE.main, main2 = ROUTE.main2;
-  if (WORLD.custom || !main || !main2) return;
+  if (WORLD.custom || WORLD.mtn || !main || !main2) return;   // no wire over the mountain
   const mat = wireMaterials();
   const b = ROUTE.bridge, bridge0 = b ? b.s - 76 : -1, bridge1 = b ? b.s + 76 : -1;
   const v = new THREE.Vector3();
@@ -4581,12 +4641,13 @@ function mtFacilities() {
 }
 
 /* ---------------- Bear Run trestle ----------------
-   A steel deck-girder viaduct: tower spans of 9 m and 18 m intermediate spans alternate on battered
-   four-legged towers standing on concrete pedestals. Two plate girders under the ties carry the track. */
+   A double-track steel deck-girder viaduct: tower spans of 9 m and 18 m intermediate spans alternate on
+   battered four-legged towers standing on concrete pedestals. Two plate girders under the ties carry each
+   track; the frames here are on the middle line between the tracks (track 1 at +z, track 2 at -z). */
 function mtBuildViaduct(scene) {
-  const V = ROUTE.viaduct, line = V.line, gb = new GeoBin();
+  const V = ROUTE.viaduct, line = V.line, gb = new GeoBin(), off = V.off || 0, TR = off ? [off, -off] : [0];
   const s0 = V.s - V.half, s1 = V.s + V.half;
-  const frameAt = (s, F) => { const loc = line.locate(s); loc.edge.pose(loc.s, F); return F; };
+  const frameAt = (s, F) => { const loc = line.locate(s); loc.edge.pose(loc.s, F); F.p.addScaledVector(F.r, -off); return F; };
   const at = (F, x, y, z) => new THREE.Vector3().copy(F.p).addScaledVector(F.f, x).addScaledVector(_cU0, y).addScaledVector(F.r, z);
   const strut = (key, a, b, w, d) => {   // a box from point a to point b
     const L = a.distanceTo(b), g = new THREE.BoxGeometry(w, L, d), m = new THREE.Matrix4();
@@ -4599,13 +4660,13 @@ function mtBuildViaduct(scene) {
   // abutments at each end: a concrete seat and backwall, with the ballasted fill sloping down to the ground
   for (const [s, dir] of [[s0, -1], [s1, 1]]) {
     const F = frameAt(s, newFrame()), base = frameMatrix(F, new THREE.Matrix4());
-    const gl = Math.min(...[-3, 0, 3].map(z => groundAt(at(F, 0, 0, z).x, -at(F, 0, 0, z).z))) - F.p.y;
+    const gl = Math.min(...[-3 - off, 0, 3 + off].map(z => groundAt(at(F, 0, 0, z).x, -at(F, 0, 0, z).z))) - F.p.y, AW = 6.6 + 2 * off;
     // the body under the approach fill, the bridge seat the girder ends bear on, and the backwall between them,
     // which stops under the ties so the track runs straight over it
     const h = -0.5 - gl + 1.5, hs = yBot - gl + 1.5;
-    gb.add('concrete', boxT(3.7, h, 6.6, 2), base.clone().multiply(M(dir * 1.85, -0.5 - h / 2, 0)));
-    gb.add('concrete', boxT(1.4, hs, 6.6, 2), base.clone().multiply(M(-dir * 0.7, yBot - hs / 2, 0)));
-    gb.add('concrete', boxT(0.5, -0.42 - yBot, 6.6), base.clone().multiply(M(-dir * 0.25, (yBot - 0.42) / 2, 0)));
+    gb.add('concrete', boxT(3.7, h, AW, 2), base.clone().multiply(M(dir * 1.85, -0.5 - h / 2, 0)));
+    gb.add('concrete', boxT(1.4, hs, AW, 2), base.clone().multiply(M(-dir * 0.7, yBot - hs / 2, 0)));
+    gb.add('concrete', boxT(0.5, -0.42 - yBot, AW), base.clone().multiply(M(-dir * 0.25, (yBot - 0.42) / 2, 0)));
   }
   // the towers: every 27 m, a 9 m tower span then an 18 m girder span
   const towers = [];
@@ -4614,11 +4675,11 @@ function mtBuildViaduct(scene) {
     const bents = [ta, tb].map(s => {
       const F = frameAt(s, newFrame()), legs = [];
       for (const z of [-1, 1]) {
-        const top = at(F, 0, yBot - 0.2, z * 1.55);
+        const zt = 1.55 + off, top = at(F, 0, yBot - 0.2, z * zt);
         // battered 1 in 6 outward; follow the ground down to the pedestal
         let len = 0, foot = null;
-        for (let k = 0; k < 4; k++) { const d = top.y - (foot ? foot.gy : top.y - 20); foot = at(F, 0, yBot - 0.2 - d, z * (1.55 + d / 6)); foot.gy = groundAt(foot.x, -foot.z) + 0.5; len = d; }
-        const bot = at(F, 0, 0, 0); bot.copy(F.p).addScaledVector(_cU0, yBot - 0.2 - (top.y - foot.gy)).addScaledVector(F.r, z * (1.55 + (top.y - foot.gy) / 6));
+        for (let k = 0; k < 4; k++) { const d = top.y - (foot ? foot.gy : top.y - 20); foot = at(F, 0, yBot - 0.2 - d, z * (zt + d / 6)); foot.gy = groundAt(foot.x, -foot.z) + 0.5; len = d; }
+        const bot = at(F, 0, 0, 0); bot.copy(F.p).addScaledVector(_cU0, yBot - 0.2 - (top.y - foot.gy)).addScaledVector(F.r, z * (zt + (top.y - foot.gy) / 6));
         legs.push({ top, bot, z });
         strut('steel', top, bot, 0.42, 0.42);
         // pedestal under each leg, down past the lowest ground round it
@@ -4628,7 +4689,7 @@ function mtBuildViaduct(scene) {
         gb.add('concrete', boxT(1.5, ph, 1.5), pm.multiply(M(0, -ph / 2 + 0.15, 0)));
       }
       // cap beam across the bent under the girders
-      strut('steel', at(F, 0, yBot - 0.2, -1.9), at(F, 0, yBot - 0.2, 1.9), 0.5, 0.45);
+      strut('steel', at(F, 0, yBot - 0.2, -1.9 - off), at(F, 0, yBot - 0.2, 1.9 + off), 0.5, 0.45);
       return { F, legs };
     });
     // bracing: struts every 8 m down each bent and between the two bents, with X braces in each panel
@@ -4651,20 +4712,20 @@ function mtBuildViaduct(scene) {
   const stops = [s0 + 0.6, ...towers.flat(), s1 - 0.6];
   for (let i = 0; i < stops.length - 1; i++) {
     const a = stops[i], b = stops[i + 1];
-    for (const z of [-GZ, GZ]) {
+    for (const z of TR.flatMap(t => [t - GZ, t + GZ])) {
       const Fa = frameAt(a + 0.05, newFrame()), Fb = frameAt(b - 0.05, newFrame());
       strut('steel', at(Fa, 0, (yTop + yBot) / 2, z), at(Fb, 0, (yTop + yBot) / 2, z), 0.06, GD);   // web
       for (const y of [yTop - 0.03, yBot + 0.03]) strut('steel', at(Fa, 0, y, z), at(Fb, 0, y, z), 0.46, 0.06);   // flanges (box lies along the strut)
       for (let s = a + 1.5; s < b - 1; s += 1.5) { const F = frameAt(s, FR2); strut('steel', at(F, 0, yTop - 0.05, z + 0.12), at(F, 0, yBot + 0.05, z + 0.12), 0.1, 0.02); strut('steel', at(F, 0, yTop - 0.05, z - 0.12), at(F, 0, yBot + 0.05, z - 0.12), 0.1, 0.02); }
     }
     // cross frames between the girders
-    for (let s = a + 3; s < b - 2; s += 4.5) { const F = frameAt(s, FR2); strut('steel', at(F, 0, yTop - 0.1, -GZ), at(F, 0, yBot + 0.1, GZ), 0.1, 0.1); strut('steel', at(F, 0, yBot + 0.1, -GZ), at(F, 0, yTop - 0.1, GZ), 0.1, 0.1); }
+    for (let s = a + 3; s < b - 2; s += 4.5) for (const t of TR) { const F = frameAt(s, FR2); strut('steel', at(F, 0, yTop - 0.1, t - GZ), at(F, 0, yBot + 0.1, t + GZ), 0.1, 0.1); strut('steel', at(F, 0, yBot + 0.1, t - GZ), at(F, 0, yTop - 0.1, t + GZ), 0.1, 0.1); }
   }
-  // open deck: ties, guard timbers, a walkway with a pipe railing on one side
+  // open deck: ties under each track, guard timbers, and a walkway with a pipe railing along each outer side
   const r = rng(51);
-  for (let s = s0 - 1; s <= s1 + 1; s += 0.42) {
-    const F = frameAt(s, FR2), m = frameMatrix(F, new THREE.Matrix4());
-    const geo = new THREE.BoxGeometry(0.24, 0.24, (Math.round(s / 0.42) % 4 ? 3.1 : 4.6)); geo.translate(0, -0.3, Math.round(s / 0.42) % 4 ? 0 : 0.75);
+  for (let s = s0 - 1; s <= s1 + 1; s += 0.42) for (const t of TR) {
+    const F = frameAt(s, FR2), m = frameMatrix(F, new THREE.Matrix4()), out = t < 0 ? -1 : 1, long = !(Math.round(s / 0.42) % 4);
+    const geo = new THREE.BoxGeometry(0.24, 0.24, long ? 4.6 : 3.1); geo.translate(0, -0.3, t + (long ? out * 0.75 : 0));
     const v = 0.7 + r() * 0.3, col = new Float32Array(geo.attributes.position.count * 3);
     for (let i = 0; i < col.length; i += 3) { col[i] = 0.42 * v; col[i + 1] = 0.36 * v; col[i + 2] = 0.29 * v; }
     geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
@@ -4672,28 +4733,34 @@ function mtBuildViaduct(scene) {
   }
   for (let s = s0 - 1; s < s1 + 1; s += 6) {
     const Fa = frameAt(s, newFrame()), Fb = frameAt(Math.min(s + 6, s1 + 1), newFrame());
-    for (const z of [-1.42, 1.42]) strut('wood', at(Fa, 0, -0.1, z), at(Fb, 0, -0.1, z), 0.2, 0.2);
-    strut('wood', at(Fa, 0, -0.2, 2.45), at(Fb, 0, -0.2, 2.45), 0.66, 0.06);
-    strut('steel', at(Fa, 0, 0.85, 2.75), at(Fb, 0, 0.85, 2.75), 0.06, 0.06);
-    strut('steel', at(Fa, 0, -0.2, 2.75), at(Fa, 0, 0.85, 2.75), 0.06, 0.06);
+    for (const t of TR) {
+      const out = t < 0 ? -1 : 1;
+      for (const z of [-1.42, 1.42]) strut('wood', at(Fa, 0, -0.1, t + z), at(Fb, 0, -0.1, t + z), 0.2, 0.2);
+      strut('wood', at(Fa, 0, -0.2, t + out * 2.45), at(Fb, 0, -0.2, t + out * 2.45), 0.66, 0.06);
+      strut('steel', at(Fa, 0, 0.85, t + out * 2.75), at(Fb, 0, 0.85, t + out * 2.75), 0.06, 0.06);
+      strut('steel', at(Fa, 0, -0.2, t + out * 2.75), at(Fa, 0, 0.85, t + out * 2.75), 0.06, 0.06);
+    }
   }
   const vis = gb.build({ steel: MAT.bridge, concrete: SMAT.concrete, tie: MAT.tie, wood: SMAT.wood });
   vis.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
   scene.add(vis);
   // keep the woods off the towers, and from under the deck where it runs low near the ends
-  for (const [ta, tb] of towers) { const p = line.poseAt((ta + tb) / 2); keep(p.X, p.N, 16); }
-  for (let s = s0 - 10; s <= s1 + 10; s += 8) { const p = line.poseAt(s), F = frameAt(s, FR2); if (F.p.y - groundAt(p.X, p.N) < 24) keep(p.X, p.N, 9); }
+  for (const [ta, tb] of towers) { const F = frameAt((ta + tb) / 2, FR2); keep(F.p.x, -F.p.z, 16 + off); }
+  for (let s = s0 - 10; s <= s1 + 10; s += 8) { const F = frameAt(s, FR2); if (F.p.y - groundAt(F.p.x, -F.p.z) < 24) keep(F.p.x, -F.p.z, 9 + off); }
 }
 const _cU0 = new THREE.Vector3(0, 1, 0);
 
 /* ---------------- Summit tunnel ----------------
-   The bore is lined in concrete: walls 3.0 m either side of the centre line up to the springing at 4.6 m,
-   then a semicircular arch to the crown at 7.6 m. At each end a concrete headwall stands across the cut,
-   and the hillside round it is graded on a fine patch of ground that replaces the terrain there. */
-const BORE = { half: 3.0, spring: 4.6, crown: 7.6, wallH: 11.2, wallHalf: 13.2, wallT: 2.4, cutHalf: 4.5, cutSlope: 1.5 };
+   A double-track bore, lined in concrete: walls 5.3 m either side of the middle line between the tracks
+   (3.05 m outside each track) up to the springing at 4.6 m, then an elliptical arch rising 3.4 m to the
+   crown at 8.0 m. At each end a concrete headwall stands across the cut, and the hillside round it is
+   graded on a fine patch of ground that replaces the terrain there. */
+const BORE = { half: 5.3, spring: 4.6, rise: 3.4, crown: 8.0, wallH: 11.8, wallHalf: 15.6, wallT: 2.4, cutHalf: 6.8, cutSlope: 1.5 };
+/* the lining's height over the rail at l metres from the middle of the bore */
+const boreTop = l => BORE.spring + BORE.rise * Math.sqrt(Math.max(0, 1 - (l / BORE.half) ** 2));
 function boreProfile(n = 16) {   // the inside of the lining, from the left foot round the arch to the right foot
   const p = [[-BORE.half, -1.6], [-BORE.half, BORE.spring]];
-  for (let i = 1; i < n; i++) { const a = Math.PI - Math.PI * i / n; p.push([Math.cos(a) * BORE.half, BORE.spring + Math.sin(a) * BORE.half]); }
+  for (let i = 1; i < n; i++) { const a = Math.PI - Math.PI * i / n; p.push([Math.cos(a) * BORE.half, BORE.spring + Math.sin(a) * BORE.rise]); }
   p.push([BORE.half, BORE.spring], [BORE.half, -1.6]);
   return p;
 }
@@ -4705,7 +4772,7 @@ function mtBuildTunnels(scene) {
     const pos = [], col = [], idx = [], F = newFrame();
     const nS = Math.ceil((T.s1 - T.s0) / 4);
     for (let i = 0; i <= nS; i++) {
-      const s = T.s0 + (T.s1 - T.s0) * i / nS, loc = line.locate(s); loc.edge.pose(loc.s, F);
+      const s = T.s0 + (T.s1 - T.s0) * i / nS, loc = line.locate(s); loc.edge.pose(loc.s, F); F.p.addScaledVector(F.r, -(T.off || 0));
       const depth = Math.min(s - T.s0, T.s1 - s), k = 0.1 + 0.9 * Math.exp(-depth / 35);
       for (const [x, y] of prof) {
         pos.push(F.p.x + F.r.x * x + F.u.x * y, F.p.y + F.r.y * x + F.u.y * y, F.p.z + F.r.z * x + F.u.z * y);
@@ -4724,6 +4791,7 @@ function mtBuildTunnels(scene) {
 /* a portal at s on line, dir +1 when the bore runs on toward +s */
 function mtPortal(scene, T, s, dir) {
   const line = T.line, loc = line.locate(s), F = newFrame(); loc.edge.pose(loc.s, F);
+  F.p.addScaledVector(F.r, -(T.off || 0));   // the middle of the bore
   if (dir < 0) { F.f.negate(); F.r.negate(); }
   const rail = F.p.y, yaw = Math.atan2(-F.f.z, F.f.x);
   const P = { X: F.p.x, N: -F.p.z, y: rail, yaw, c: Math.cos(yaw), sn: Math.sin(yaw), name: T.name };
@@ -4846,7 +4914,7 @@ function mtInBore(x, z, pad = 0) {
     if (!P0) continue;
     const [a, l] = portalAL(P0, x, -z), len = portalAL(P0, P1.X, P1.N)[0];
     if (a < -0.8 || a > len + 0.8 || Math.abs(l) > BORE.half + pad) continue;
-    const top = BORE.spring + Math.sqrt(Math.max(0, BORE.half * BORE.half - l * l));   // the lining's height over the rail here
+    const top = boreTop(l);   // the lining's height over the rail here
     return { rail: lerp(P0.y, P1.y, clamp(a / len, 0, 1)), depth: Math.min(a, len - a), l, top, P: P0 };
   }
   return null;
@@ -11911,7 +11979,7 @@ function camSolid(p, lift = 0.9) {
   const g = groundAt(p.x, -p.z) + lift, b = WORLD.mtn && p.y < g - lift ? mtInBore(p.x, p.z, 1.2) : null;
   if (b) {   // in the bore: kept off the lining, under the arch and above the rails
     const w = BORE.half - 0.5, dl = clamp(b.l, -w, w) - b.l; p.x -= b.P.sn * dl; p.z -= b.P.c * dl;
-    const top = BORE.spring + Math.sqrt(Math.max(0, BORE.half * BORE.half - (b.l + dl) ** 2));
+    const top = boreTop(b.l + dl);
     p.y = clamp(p.y, b.rail + Math.min(lift, 1.2), b.rail + top - 0.5);
   } else if (isFinite(g) && p.y < g) p.y = g;
   return Math.hypot(p.x - x0, p.y - y0, p.z - z0);
@@ -13625,7 +13693,8 @@ JOB.drawMap = function (g, tx, ty, opt) {
 
 /* ============================================================================
    Traffic: the interlocking (routes locked for AI trains, signal aspects)
-   and AI trains running the timetable on the Berkshire Division
+   and AI trains running the timetable on the Berkshire Division and over
+   Laurel Mountain
    ========================================================================== */
 const IX = { res: new Map(), idx: null, idxAt: -1 };
 const AI = { trains: [] };
@@ -13778,7 +13847,8 @@ IX.playerTick = function () {
   else P.passed = null;
   // running against the current of traffic there are no signals for us: hold the main ahead instead
   const f = S.v >= 0 ? T.endTP('front') : T.endTP('rear'), dir = (S.v >= 0 ? 1 : -1) * f.o;
-  const ln = f.e.line, against = (ln === ROUTE.main && dir < 0) || (ln === ROUTE.main2 && dir > 0);
+  const ln = f.e.line, sp = ROUTE.span2, two = !sp || ln !== ROUTE.main || (f.e.lineS0 + f.s > sp[0] - 200 && f.e.lineS0 + f.s < sp[1] + 200);   // the mountain's terminals are single track
+  const against = two && ((ln === ROUTE.main && dir < 0) || (ln === ROUTE.main2 && dir > 0));
   if (against && av > 0.5) {
     routeWalk(f.e, f.s, dir, 900 + av * av / 0.8, (e, a, b) => { want.push({ e, a, b }); }, (nd, d, facing, lined) => { sws.push(nd.sw); return !lined; });
     if (!P.againstT || S.time - P.againstT > 120) toast(`Running against the current of traffic on track ${ln === ROUTE.main ? 1 : 2}. Trains coming the other way are held for you: keep it moving.`, 'warn', 5200, 'against');
@@ -13805,10 +13875,20 @@ const TRAFFIC = {
   no5: { name: 'No. 5', sub: 'Eastward express', loco: 'diesel', units: 2, livery: 'kn', consist: 'passenger', dir: 1, vmax: 70, accel: 0.32, brake: 0.6, stops: true, seed: 5 },
   x2210: { name: 'Extra 2210 East', sub: 'Manifest freight', loco: 'diesel', units: 2, livery: 'fle', consist: 'freight', dir: 1, vmax: 45, accel: 0.12, brake: 0.32, seed: 2210 },
 };
+/* Over Laurel Mountain the trains run from end to end, turn on the loop at the terminal and come back on
+   the other track. Speeds are held down by the mountain's limits more than by the trains. */
+Object.assign(TRAFFIC, {
+  m22: { name: 'No. 22', sub: 'Westward local', loco: '1225', consist: 'passenger', dir: -1, vmax: 45, accel: 0.28, brake: 0.55, stops: true, seed: 22, mtn: true },
+  m21: { name: 'No. 21', sub: 'Eastward mail and express', loco: 'diesel', units: 2, livery: 'kn', consist: 'passenger', dir: 1, vmax: 50, accel: 0.3, brake: 0.6, stops: true, seed: 21, mtn: true },
+  m90: { name: 'Extra 2214 East', sub: 'Coal empties', loco: 'diesel', units: 3, livery: 'fle', consist: 'freight', dir: 1, vmax: 30, accel: 0.08, brake: 0.3, seed: 2214, mtn: true },
+});
 /* free running: where each train is on the road when you start (distance along track 1) */
 const FREE_TRAFFIC = [['no12', 13800], ['x2210', 7700], ['no5', 20400]];
-const PASSING = { 1: 'Kenton East', '-1': 'Fostoria East' };
-const DWELL = 35;
+const MTN_TRAFFIC = [['m90', 12500], ['m22', 31000], ['m21', 43500]];
+/* the facing switch of the passing siding each way: a slow train with a faster one behind it goes in there */
+const PASSING = { 1: 'Kenton East', '-1': 'Fostoria East' }, MTN_PASSING = { 1: 'Big Laurel West', '-1': 'Glen Iron East' };
+const passingSw = dir => (WORLD.mtn ? MTN_PASSING : PASSING)[dir];
+const DWELL = 35, TERMINAL_DWELL = 90;
 
 class AITrain extends RemoteTrain {
   constructor(id, def) {
@@ -13819,6 +13899,7 @@ class AITrain extends RemoteTrain {
     this.id = id; this.def = def; this.name = def.name;
     this.st = Object.assign(st, { hl: 2, wh: 0, bl: false, dl: true, rpm: 300, ex: 0, rv: 0.6 });
     this.train.ai = this; this.train.v = 0;
+    this.dir = def.dir;   // the way it is running now: on the mountain it changes on the loops
     this.line = def.dir > 0 ? ROUTE.main : ROUTE.main2;
     this.route = []; this.sws = []; this.signalsAhead = []; this.endSig = null; this.end = null;
     this.authLeft = 0; this.odo = 0; this.events = []; this.askT = 0; this.held = 0; this.heldWhy = ''; this.dwell = 0;
@@ -13862,7 +13943,7 @@ class AITrain extends RemoteTrain {
       if (nd.sw) {
         const sw = nd.sw, facing = sw.trunk.edge === e && sw.trunk.end === end;
         const leg = facing ? this.choose(sw) : (sw.legs[0].edge === e && sw.legs[0].end === end ? 0 : 1);
-        out.sws.push({ sw, state: leg, d });
+        if (facing || !sw.spring) out.sws.push({ sw, state: leg, d });   // a sprung loop switch is trailed through as it lies
         nx = facing ? sw.legs[leg] : sw.trunk;
       } else nx = nd.next(e, end, null);
       if (!nx) { out.len = d - 12; return out; }   // end of track: stop short of the bumper
@@ -13870,9 +13951,13 @@ class AITrain extends RemoteTrain {
     }
     out.len = d; return out;
   }
-  /* which way to take a facing switch: straight on, unless it is our passing siding and we should let a faster train by */
+  /* which way to take a facing switch: straight on, unless it is our passing siding and we should let a faster
+     train by, or a junction where the double track starts, where we take our own track */
   choose(sw) {
-    if (sw.name !== PASSING[this.def.dir] || this.yieldTo) return this.yieldTo && sw.name === PASSING[this.def.dir] ? 1 : 0;
+    const L = sw.legs.map(l => l.edge.line);
+    if (L[0] === ROUTE.main && L[1] === ROUTE.main2) return this.dir > 0 ? 0 : 1;
+    const ps = passingSw(this.dir);
+    if (sw.name !== ps || this.yieldTo) return this.yieldTo && sw.name === ps ? 1 : 0;
     const f = this.follower();
     if (f) { this.yieldTo = f; this.yieldT = 0; return 1; }
     return 0;
@@ -13883,7 +13968,7 @@ class AITrain extends RemoteTrain {
     if (!hit) return null;
     const c = hit.c, them = c === GAME.train ? Math.abs(S.v) : Math.abs(c.v || 0);
     if (c === GAME.train) return them > 6 && hit.d < 3500 ? c : null;
-    if (c.ai && c.ai.def.dir === this.def.dir && c.ai.def.vmax > this.def.vmax + 8) return c;
+    if (c.ai && c.ai.dir === this.dir && c.ai.def.vmax > this.def.vmax + 8) return c;
     return null;
   }
   /* why the route can't be had, or '' */
@@ -13925,9 +14010,9 @@ class AITrain extends RemoteTrain {
       const L = Math.abs(p.b - p.a);
       this.events.push({ at: base + d, limit: p.e.limit * MPH });
       if (this.def.stops) for (const st of ROUTE.stations) {
-        const m = this.stopMark(st); if (!m || m.e !== p.e) continue;
+        const m = this.stopMark(st, p); if (!m || m.e !== p.e) continue;
         const k = (m.s - p.a) * Math.sign(p.b - p.a || 1);
-        if (k >= 0 && k <= L) this.events.push({ at: base + d + k + 18, stop: st.name });   // the cab on the mark
+        if (k >= 0 && k <= L) this.events.push({ at: base + d + k + 18, stop: st.name, dwell: m.dwell });   // the cab on the mark
       }
       for (const c of SCN.crossings) if (c.edge === p.e) { const k = (c.s - p.a) * Math.sign(p.b - p.a || 1); if (k >= 0 && k <= L) this.events.push({ at: base + d + k - 380, horn: 'crossing' }); }
       d += L;
@@ -13938,17 +14023,24 @@ class AITrain extends RemoteTrain {
     this.heldWhy = '';
     return true;
   }
-  /* a station's mark on our track */
-  stopMark(st) {
+  /* a station's mark on the track of piece p (which runs from p.a toward p.b) */
+  stopMark(st, p) {
     if (st.kind !== 'depot' && st.kind !== 'small') return null;
-    if (this.line === ROUTE.main) return st.line === ROUTE.main ? { e: st.edge, s: st.s } : null;
+    const sp = ROUTE.span2;
+    if (sp && st.line === ROUTE.main && (st.sLine < sp[0] || st.sLine > sp[1])) {
+      // a terminal on the mountain's single track: stop on the way in, not again once round the loop
+      const dir = Math.sign(p.b - p.a || 1), inbound = st.sLine < sp[0] ? dir < 0 : dir > 0;
+      return inbound ? { e: st.edge, s: st.s, dwell: TERMINAL_DWELL } : null;
+    }
+    if (p.e.line === ROUTE.main) return st.line === ROUTE.main ? { e: st.edge, s: st.s } : null;
+    if (p.e.line !== ROUTE.main2) return null;
     const loc = ROUTE.main2.locate(ROUTE.to2(st.sLine)); return { e: loc.edge, s: loc.s };
   }
   inSiding() { const k = this.train.endTP('front').e.kind; return k === 'siding' || k === 'yard'; }
   /* the train t has gone past us: its rear is ahead of our front along the main */
   passedBy(t) {
     if (!t || (t !== GAME.train && !AI.trains.some(a => a.train === t))) return true;
-    const dir = this.def.dir, L = ROUTE.mainLen, wrap = x => ((x % L) + L * 1.5) % L - L / 2;
+    const dir = this.dir, L = ROUTE.mainLen, wrap = x => ((x % L) + L * 1.5) % L - L / 2;
     const me = AI.along(this.train.endTP('front'), dir), f = AI.along(t.endTP('front'), dir), b = AI.along(t.endTP('rear'), dir);
     if (me === null || f === null || b === null) return false;
     return wrap(f - me) > 30 && wrap(b - me) > 30;
@@ -13957,6 +14049,8 @@ class AITrain extends RemoteTrain {
   /* ---- running ---- */
   tick(dt) {
     const T = this.train, def = this.def;
+    // round a turning loop and back on the main, it runs the other way, on the other track
+    { const f = T.endTP('front'), ln = f.e.line; if (ln === ROUTE.main || ln === ROUTE.main2) { this.dir = f.o; this.line = f.o > 0 ? ROUTE.main : ROUTE.main2; } }
     // keep asking for the road while it is closer than our stopping distance and a bit
     this.askT -= dt;
     const stopD = this.v * this.v / (2 * def.brake);
@@ -14001,7 +14095,7 @@ class AITrain extends RemoteTrain {
     this.accel = (nv - v) / Math.max(dt, 1e-3);
     this.v = nv;
     // station stops
-    for (const ev of this.events) if (ev.stop && !ev.done && ahead(ev.at) < 2 && this.v < 0.05) { ev.done = true; this.dwell = DWELL; this.st.bl = true; }
+    for (const ev of this.events) if (ev.stop && !ev.done && ahead(ev.at) < 2 && this.v < 0.05) { ev.done = true; this.dwell = ev.dwell || DWELL; this.st.bl = true; }
     // horn for road crossings, ringing the bell through towns
     for (const ev of this.events) if (ev.horn && !ev.done && ahead(ev.at) < 0) { ev.done = true; if (this.v > 3) this.toot([2.2, 0.35, 2.2, 0.35, 0.8, 0.35, 2.6]); }
     if (this.st.bl && this.v > 13) this.st.bl = false;
@@ -14085,7 +14179,7 @@ AI.along = function (tp, dir) {
    memo keeps, for each end of T, how far a's rear has still to run to reach it, and an end counts as passed
    when that distance wraps round from nearly nothing to nearly a whole lap. */
 AI.gone = function (a, T, memo) {
-  const dir = a.def.dir, L = ROUTE.mainLen, r = AI.along(a.train.endTP('rear'), dir);
+  const dir = a.dir, L = ROUTE.mainLen, r = AI.along(a.train.endTP('rear'), dir);
   if (r === null) return false;
   let all = true;
   for (const k of ['front', 'rear']) {
@@ -14099,7 +14193,7 @@ AI.gone = function (a, T, memo) {
 };
 
 /* ---------------- the traffic on the railroad ---------------- */
-AI.enabled = () => !MP.on && !WORLD.custom && !WORLD.mtn && GAME.settings.traffic !== 'off';
+AI.enabled = () => !MP.on && !WORLD.custom && GAME.settings.traffic !== 'off';
 AI.clear = function () {
   for (const a of AI.trains) a.dispose();
   AI.trains = []; IX.clear();
@@ -14108,7 +14202,7 @@ AI.clear = function () {
 AI.setup = function () {
   AI.clear();
   if (!AI.enabled()) return;
-  const job = JOB.wanted(), list = job ? job.traffic || [] : FREE_TRAFFIC;
+  const job = JOB.wanted(), list = job ? job.traffic || [] : WORLD.mtn ? MTN_TRAFFIC : FREE_TRAFFIC;
   for (const [id, s] of list) AI.spawn(id, s);
 };
 AI.spawn = function (id, sMain) {
@@ -14714,7 +14808,7 @@ function jobIn(o, V) {
   carPanelState.key = '';
   JOB.ui();
 }
-const aiOut = () => AI.trains.map(a => ({ id: a.id, f: tpOut(a.train.endTP('front')), fl: lineOut(a.train.endTP('front')), v: rnd(a.v), dwell: rnd(a.dwell), odo: rnd(a.odo) }));
+const aiOut = () => AI.trains.map(a => ({ id: a.id, f: tpOut(a.train.endTP('front')), fl: lineOut(a.train.endTP('front')), v: rnd(a.v), dwell: rnd(a.dwell), odo: rnd(a.odo), d: a.dir }));
 /* the timetable trains, each where it was; each asks the signals for its road again, so one that had
    a clear road carries on at the speed it can still stop from */
 function aiIn(list, E) {
@@ -14724,7 +14818,7 @@ function aiIn(list, E) {
     const def = TRAFFIC[o.id]; if (!def) continue;
     const tp = tpIn(o.f, E) || lineIn(o.fl); if (!tp) continue;
     const a = new AITrain(o.id, def);
-    a.place(tp); a.odo = o.odo || 0; a.dwell = o.dwell || 0;
+    a.place(tp); a.odo = o.odo || 0; a.dwell = o.dwell || 0; if (o.d) a.dir = o.d;
     AI.trains.push(a); IX.idx = null;
   }
   for (const a of AI.trains) {
@@ -15293,7 +15387,7 @@ function buildMenu() {
   segButtons('optCycle', DN.rates, 'cycle', () => saveSettings());
   segButtons('optWeather', WEATHER, 'weather', k => { if (GAME.ready) { applyLook(null, k); FX.snow.visible = SKY.snow; } });
   segButtons('optFire', { auto: { name: 'Fireman', sub: 'Stoker & water handled' }, hand: { name: 'Hand fired', sub: 'You run the boiler' } }, 'fire', k => { S.autoFire = k === 'auto'; GAME.refreshKeys(); saveSettings(); });
-  segButtons('optTraffic', { on: { name: 'Timetable', sub: 'No. 5, No. 12 and freights on the road' }, off: { name: 'Clear road', sub: 'Just you and the signals' } }, 'traffic', () => { if (GAME.ready && GAME.train) AI.setup(); saveSettings(); });
+  segButtons('optTraffic', { on: { name: 'Timetable', sub: ROUTE_KEY === 'laurel' ? 'No. 21, No. 22 and coal trains on the mountain' : 'No. 5, No. 12 and freights on the road' }, off: { name: 'Clear road', sub: 'Just you and the signals' } }, 'traffic', () => { if (GAME.ready && GAME.train) AI.setup(); saveSettings(); });
   specGrid();
   jobSetup();
   $('btnStart').addEventListener('click', () => GAME.start());

@@ -89,7 +89,7 @@ function camSolid(p, lift = 0.9) {
   const g = groundAt(p.x, -p.z) + lift, b = WORLD.mtn && p.y < g - lift ? mtInBore(p.x, p.z, 1.2) : null;
   if (b) {   // in the bore: kept off the lining, under the arch and above the rails
     const w = BORE.half - 0.5, dl = clamp(b.l, -w, w) - b.l; p.x -= b.P.sn * dl; p.z -= b.P.c * dl;
-    const top = BORE.spring + Math.sqrt(Math.max(0, BORE.half * BORE.half - (b.l + dl) ** 2));
+    const top = boreTop(b.l + dl);
     p.y = clamp(p.y, b.rail + Math.min(lift, 1.2), b.rail + top - 0.5);
   } else if (isFinite(g) && p.y < g) p.y = g;
   return Math.hypot(p.x - x0, p.y - y0, p.z - z0);
