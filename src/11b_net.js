@@ -150,12 +150,14 @@ function mpClean(r) {
     o.u = Math.round(n(r.u, 1, 3, 1)); o.lv = LIVERIES[r.lv] ? r.lv : 'ss'; o.mx = r.mx ? 1 : 0;
     o.cu = Array.isArray(r.cu) && r.cu.length === 3 ? r.cu.map(c => Math.round(n(c, 0, 0xffffff))) : null;
     o.no = Math.round(n(r.no, 0, 9999));
+    o.vh = Number.isInteger(r.vh) && r.vh > 0 ? r.vh >>> 0 : 0;
+    o.vs = o.vh && typeof r.vs === 'string' && r.vs.length < 12000 && mpHash(r.vs) === o.vh ? r.vs : null;
     o.s = n(r.s, 0, 1e5); o.o = r.o < 0 ? -1 : 1; o.v = n(r.v, -60, 60); o.rv = n(r.rv, -1, 1);
     o.wh = n(r.wh, 0, 1); o.bl = r.bl ? 1 : 0; o.hl = Math.round(n(r.hl, 0, 2, 1)); o.dl = r.dl ? 1 : 0;
     o.ex = n(r.ex, 0, 1.5); o.rpm = n(r.rpm, 0, 1200); o.dr = r.dr ? 1 : 0;
     o.wk = o.dr && Array.isArray(r.wk) && r.wk.length >= 4 ? [n(r.wk[0], 0, 5000), r.wk[1] < 0 ? -1 : 1, Math.round(n(r.wk[2], 1, 2e9, 1)), n(r.wk[3], 0, 1), n(r.wk[4], 0, 150), n(r.wk[5], -150, 150), r.wk[6] ? 1 : 0] : null;
   }
-  o.pz = r.pz ? 1 : 0;
+  o.pz = r.pz ? 1 : 0; o.cs = r.cs ? 1 : 0;
   // send time on their clock, and their echo of ours: [our send time, ms they held it]
   o.ts = n(r.ts, 0, 1e12);
   const ak = r.ak && typeof r.ak === 'object' ? r.ak[MP.id] : null;
@@ -166,20 +168,6 @@ function mpClean(r) {
   o.hx = Array.isArray(r.hx) && r.hx.length === 5 && typeof r.hx[0] === 'string' ? [r.hx[0].slice(0, 16), Math.round(n(r.hx[1], 0, 1e9)), n(r.hx[2], 0, 200), n(r.hx[3], -1e5, 1e5), n(r.hx[4], -1e5, 1e5)] : null;
   o.ch = Array.isArray(r.ch) && r.ch.length === 2 ? [Math.round(n(r.ch[0], 0, 1e9)), mpText(r.ch[1], 80)] : null;
   return o;
-}
-/* signed distance along the track from a to b, in a's facing sense; null if not within reach */
-function trackDelta(a, b, maxD = 70) {
-  if (a.e === b.e) return (b.s - a.s) * a.o;
-  for (const dir of [1, -1]) {
-    const c = a.clone(); let acc = 0;
-    for (let hop = 0; hop < 3 && acc < maxD; hop++) {
-      const toEnd = (c.o * dir > 0) ? c.e.len - c.s : c.s, step = toEnd + 1e-3;
-      if (c.advance(dir * step, null)) break;
-      acc += step;
-      if (c.e === b.e) { const r = (b.s - c.s) * c.o * dir; if (r > -0.5) return dir * (acc + r); break; }
-    }
-  }
-  return null;
 }
 function mpSegDist(p, a, b) {
   _mpC.subVectors(b, a); const L2 = _mpC.lengthSq();
@@ -216,12 +204,30 @@ function mpJoints(T, mem, speed, cp) {
   }
 }
 
+/* another player's train made up as they have it: T is their engine built light, code its trainCode */
+function mpCompose(T, code) {
+  const power = T.vehicles.slice(), used = new Set(), V = [];
+  for (const tok of code.split(',').slice(0, 240)) {
+    if (tok[0] === '#') {
+      const v = power[+tok.slice(1)];
+      if (!v || used.has(v)) throw new Error('their engine is built differently');
+      used.add(v); V.push(v); continue;
+    }
+    const k = carTokenIn(tok); if (!k) throw new Error('unknown car ' + tok.slice(0, 20));
+    const v = carFromToken(k); T.track(v); T.markerLamps(v); V.push(v);
+  }
+  if (used.size !== power.length) { for (const v of V) if (!power.includes(v)) { T.scene.remove(v.root); freeVehicle(v); } throw new Error('their engine is built differently'); }
+  T.vehicles = V; T.layout(); T.buildInstances();
+}
+
 /* ---------------- another player's train ---------------- */
 class RemoteTrain {
   constructor(peer, st, extra) {
     this.peer = peer;
     this.key = `${st.lk}|${st.ck}|${st.u}`; this.paint = `${st.lv}|${st.mx}|${st.cu}|${st.no}`;
-    this.train = new Train(scene, st.lk, st.ck, Object.assign(mpOpts(st), { remote: true }, extra));
+    const code = extra && extra.code;
+    this.train = new Train(scene, st.lk, code ? 'light' : st.ck, Object.assign(mpOpts(st), { remote: true }));
+    if (code) { try { mpCompose(this.train, code); } catch (e) { this.train.disposeDeep(); throw e; } }
     prepareTrain(this.train);
     this.a0 = this.train.pts[0].a;
     this.tp = null; this.err = 0; this.v = 0; this.theta = 0; this.chuffQ = null; this.idleT = 0; this.bellT = 0.8; this.updT = 0;
@@ -382,8 +388,9 @@ MP.connect = function (code, creator) {
   MP.spawned = creator && GAME.running; MP.needSpawn = !MP.spawned;
   MP.topic = 'bdiv/v1/' + code; MP.hit = null;
   const will = { topic: MP.topic, payload: JSON.stringify({ id: MP.id, bye: 1 }) };
-  MP.links = MP.brokers.map((url, i) => { const l = new MiniMQTT(url, 'bd-' + MP.id + '-' + i, will, (t, txt) => t === MP.topic ? MP.onText(txt) : MP.onWorldText(txt), () => MP.ui()); l.subscribe(MP.topic); l.subscribe(MP.topic + '/w'); return l; });
+  MP.links = MP.brokers.map((url, i) => { const l = new MiniMQTT(url, 'bd-' + MP.id + '-' + i, will, (t, txt) => t === MP.topic ? MP.onText(txt) : t === MP.topic + '/c' ? MPC.onText(txt) : MP.onWorldText(txt), () => MP.ui()); l.subscribe(MP.topic); l.subscribe(MP.topic + '/w'); l.subscribe(MP.topic + '/c'); return l; });
   MP.worldJoin(creator);
+  MPC.join(creator);
   mpRoomLink(code, st => MP.receive(st), id => MP.drop(id, 'left')).then(link => { if (link && MP.on && MP.code === code) { MP.room = link; MP.ui(); } else if (link) link.close(); });
   try { history.replaceState(null, '', location.pathname + mpQuery(code)); } catch (e) {}
   MP.dirty = true; MP.ui(); startLabel();
@@ -398,6 +405,7 @@ MP.leave = function (quiet) {
   MP.bye();
   for (const l of MP.links) l.close();
   if (MP.room) MP.room.close();
+  MPC.leave();
   MP.links = []; MP.room = null; MP.on = false; MP.code = ''; MP.needSpawn = false; MP.spawned = false;
   for (const id of [...MP.peers.keys()]) MP.drop(id, null);
   MP.unwatch(); $('mpPanel').hidden = true;
@@ -459,7 +467,7 @@ MP.addLog = function (name, color, text) {
 };
 
 /* ---------------- messages ---------------- */
-MP.onText = function (txt) { if (txt.length > 4000) return; let r; try { r = JSON.parse(txt); } catch (e) { return; } MP.receive(r); };
+MP.onText = function (txt) { if (txt.length > 16000) return; let r; try { r = JSON.parse(txt); } catch (e) { return; } MP.receive(r); };
 MP.receive = function (raw) {
   if (!MP.on || !MP.ready) return;
   const st = mpClean(raw);
@@ -482,9 +490,16 @@ MP.receive = function (raw) {
   else if (p.hx === undefined) p.hx = st.hx ? st.hx[1] : 0;
   if (st.ch && st.ch[0] !== p.lastCh) { p.lastCh = st.ch[0]; if (st.ch[1]) { toast(`${st.nm}: ${st.ch[1]}`, '', 5200); MP.addLog(st.nm, p.color, st.ch[1]); } }
   if (st.e < 0) { if (p.rt) { if (MP.watching === p.id) MP.unwatch(); p.rt.dispose(); p.rt = null; } return; }
-  const key = `${st.lk}|${st.ck}|${st.u}`;
-  if (p.rt && p.rt.key !== key) { p.rt.dispose(); p.rt = null; }
-  if (!p.rt) { try { p.rt = new RemoteTrain(p, st); } catch (e) { console.warn('remote train', e); return; } }
+  // what their train is made up of: the cars come with the state now and then, and are kept until they change
+  if (st.vs) p.vs = { h: st.vh, code: st.vs };
+  const code = st.vh ? (p.vs && p.vs.h === st.vh ? p.vs.code : null) : null;
+  const key = `${st.lk}|${st.ck}|${st.u}|${st.vh ? (code ? st.vh : '?') : ''}`;
+  // until the list of cars comes in, the train they had is kept on show
+  if (p.rt && p.rt.key !== key && !(st.vh && !code && p.rt.key.startsWith(`${st.lk}|${st.ck}|${st.u}|`))) { p.rt.dispose(); p.rt = null; }
+  if (!p.rt) {
+    try { p.rt = new RemoteTrain(p, st, code ? { code } : undefined); p.rt.key = key; }
+    catch (e) { console.warn('remote train', e); if (!code) return; try { p.rt = new RemoteTrain(p, st); p.rt.key = key; } catch (e2) { return; } }
+  }
   p.rt.repaint(st);
   p.rt.target(st, MP.lag(p));
 };
@@ -505,14 +520,24 @@ MP.state = function () {
   const st = { id: MP.id, q: ++MP.q, nm: MP.name, ly: MP.ly, e: -1, pz: (S.paused || !GAME.running) ? 1 : 0, ts: Math.round(now) };
   // echo each player's last send time so they can time the round trip
   if (MP.peers.size) { st.ak = {}; for (const p of MP.peers.values()) if (p.ts !== undefined) st.ak[p.id] = [p.ts, Math.round(now - p.rx)]; }
+  if (MPC.synced) st.cs = 1;
   if (MP.spawned && T) {
-    const f = T.pts[0].tp;
+    // while the train is held up to be placed, the room still sees it where it stood
+    const held = PLACE.on && PLACE.ghost && PLACE.ghost.kind === 'train' ? PLACE.ghost.orig : null;
+    const f = held ? held[0] : T.pts[0].tp;
     Object.assign(st, {
       lk: T.locoKey, ck: T.consistKey, u: T.nUnits || 1, lv: g.livery, mx: g.mix ? 1 : 0, cu: g.livery === 'custom' ? [g.custom.body, g.custom.accent, g.custom.letter] : 0, no: g.livery === 'custom' ? (+g.number || 0) : 0,
-      e: f.e.id, s: +f.s.toFixed(2), o: f.o, v: +S.v.toFixed(2), rv: +S.reverser.toFixed(2), wh: +S.whistle.toFixed(2), bl: S.bell ? 1 : 0, hl: S.light, dl: S.ditch ? 1 : 0,
+      e: f.e.id, s: +f.s.toFixed(2), o: f.o, v: PLACE.on ? 0 : +S.v.toFixed(2), rv: +S.reverser.toFixed(2), wh: +S.whistle.toFixed(2), bl: S.bell ? 1 : 0, hl: S.light, dl: S.ditch ? 1 : 0,
       ex: T.diesel ? +S.load.toFixed(2) : (S.Psc > 6 && S.cut > 0 && S.throttle > 0.02 ? +clamp((S.Psc / 245) * (0.35 + S.cut * 1.25), 0, 1.3).toFixed(2) : 0),
       rpm: T.diesel && !T.elec && S.engineRun ? Math.round(S.rpm) : 0, dr: S.derailed ? 1 : 0,
     });
+    // a train made up differently from what its engine and train build (cars picked up, set out or placed) says what is in it
+    const code = trainCode(T);
+    if (code !== T.code0) {
+      st.vh = mpHash(code);
+      if (code !== MP.code1) { MP.code1 = code; MP.codeAt = now; }
+      if (now - MP.codeAt < 3000 || MP.q % 8 === 0) st.vs = code;
+    }
     if (S.derailed && T.wk) st.wk = [+T.wk.a.toFixed(1), T.wk.side, T.wk.seed, +T.wk.k.toFixed(2), +(T.wk.v0 || 0).toFixed(1), +(T.wk.vs || 0).toFixed(2), T.wk.hit ? 1 : 0];
   }
   st.sw = NET.switches.map((sw, i) => MP.swv[i] * 2 + sw.state);
@@ -579,13 +604,15 @@ MP.spawnSlot = function (T) {
   // make sure every train we have heard about is placed before looking for room
   for (const p of MP.peers.values()) if (p.rt && p.rt.tp && !p.rt.placed) p.rt.frame(0, p.st, camera.position, true);
   const rts = [...MP.peers.values()].map(p => p.rt).filter(rt => rt && rt.placed && rt.polyN);
-  // clear when no other train comes within 3.4 m of the track centre anywhere along our length, plus 30 m each end
+  // the cars standing about are shared too, so a new train is not made up on top of them
+  const polys = [...rts.map(rt => rt.poly.slice(0, rt.polyN)), ...CARS.cuts.map(c => c.pts.map(p => p.F.p))];
+  // clear when no other train or car comes within 3.4 m of the track centre anywhere along our length, plus 30 m each end
   const clear = (line, sF) => {
     for (let s = sF + 30; s >= sF - T.length - 30; s -= 3) {
       const P = line.poseAt(line.loop ? ((s % line.len) + line.len) % line.len : clamp(s, 0, line.len));
       _mpE.set(P.X, 0, -P.N);
-      for (const rt of rts) for (let i = 0; i < rt.polyN - 1; i++) {
-        _mpF.copy(rt.poly[i]).setY(0); _mpG.copy(rt.poly[i + 1]).setY(0);
+      for (const poly of polys) for (let i = 0; i < poly.length - 1; i++) {
+        _mpF.copy(poly[i]).setY(0); _mpG.copy(poly[i + 1]).setY(0);
         if (mpSegDist(_mpE, _mpF, _mpG) < 3.4) return false;
       }
     }
@@ -616,6 +643,7 @@ MP.frame = function (dt) {
     if (pd.v >= MP.swv[i]) { if (pd.s !== sw.state) MP.setSwitch(sw, pd.s, MP.thrower(i, pd.v)); MP.swv[i] = pd.v; }
   }
   for (const p of MP.peers.values()) if (p.rt) p.rt.frame(dt, p.st, cam, MP.watching === p.id);
+  MPC.tick();
   // by the wall clock, so a slow device still reports eight times a second
   if (now - MP.sentAt >= 125 || (MP.dirty && now - MP.sentAt > 40)) { MP.sentAt = now; MP.dirty = false; MP.send(); }
   MP.panelT += dt; if (MP.panelT > 0.5) { MP.panelT = 0; if (!$('mpPanel').hidden) MP.panel(); MP.ui(); }

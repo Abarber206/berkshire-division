@@ -30,7 +30,8 @@ const PG = 4, pgKey = (x, z) => Math.floor(x / PG) + ',' + Math.floor(z / PG);
 /* the bodies of everything else, hashed on a 4 m grid. Nothing moves while placing, so it is kept until a
    placement changes something. */
 function placeGrid(skip) {
-  const key = CARS.gen + ':' + PLACE.ver + ':' + S.time;
+  // in a room other trains and cars keep moving while we place, so the picture is taken again now and then
+  const key = CARS.gen + ':' + PLACE.ver + ':' + S.time + (MP.on ? ':' + Math.floor(performance.now() / 300) : '');
   if (PLACE.grid && PLACE.grid.key === key && PLACE.grid.skip === skip) return PLACE.grid.g;
   const g = new Map();
   for (const c of placeConsists(skip)) for (const p of bodyPts(c.endTP('front'), c.length)) {

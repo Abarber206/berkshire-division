@@ -10,7 +10,6 @@ const _pv = new THREE.Vector3(), _pw = new THREE.Vector3(), _ps = new THREE.Vect
 PLACE.toggle = () => PLACE.on ? PLACE.exit() : PLACE.enter();
 PLACE.enter = function () {
   if (!GAME.running || !GAME.train || PLACE.on) return;
-  if (MP.on) { toast('Placing trains and cars is single player for now: a room shares its switches but not its cars.', 'warn', 4800, 'placeMP'); return; }
   if (JOB.activeId()) { toast('A job makes up its own train and cars, so placing is off until it is over. Abandon the job from its sheet to place things.', 'warn', 5200, 'placeJob'); return; }
   PLACE.on = true; PLACE.ghost = null; PLACE.pick = null;
   carPanelToggle(false); if (MAP.visible) MAP.close(); CPL.point(null);
@@ -19,7 +18,10 @@ PLACE.enter = function () {
   c.x = p.x; c.y = p.y; c.z = p.z; c.yaw = Math.atan2(camera.position.x - p.x, camera.position.z - p.z); c.pitch = 0.8; c.dist = 75;
   $('hud').classList.add('placing'); $('placeBar').hidden = false;
   PLACE.chips(); PLACE.show();
-  if (!PLACE.told) {
+  if (MP.on && !PLACE.toldMP) {
+    PLACE.toldMP = PLACE.told = true;
+    toast('Your train holds still while you place, but the room carries on around you. Cars you set down, pick up or couple are shared with everyone.', '', 7000, 'placeIntro');
+  } else if (!PLACE.told) {
     PLACE.told = true;
     toast(matchMedia('(pointer: coarse)').matches ? 'Everything holds still while you place. Pick a car or your engine, tap the track to put it there, then tap Place. Tap a car on the track to pick it up.'
       : 'Everything holds still while you place. Pick a car or your engine and click the track to set it down; F turns it, Delete removes it, Esc puts it back.', '', 7000, 'placeIntro');
