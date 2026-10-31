@@ -195,6 +195,18 @@ function buildTowns(scene) {
     for (let i = 0; i < sg.attributes.normal.count; i++) { if (sg.attributes.normal.getY(i) < 0) { const ix = sg.index.array; for (let q = 0; q < ix.length; q += 3) { const t = ix[q + 1]; ix[q + 1] = ix[q + 2]; ix[q + 2] = t; } sg.computeVertexNormals(); } break; }
     const uvs = new Float32Array(pos.length / 3 * 2); for (let i = 0; i < pos.length / 3; i++) { uvs[i * 2] = pos[i * 3] / 6; uvs[i * 2 + 1] = pos[i * 3 + 2] / 6; } sg.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
     const sm = new THREE.Mesh(sg, SMAT.road); sm.receiveShadow = true; scene.add(sm);
+    // street lights: a pole every 36 m or so, on alternate sides, its arm out over the street
+    for (const [a, b, w] of T.streets) {
+      const len = Math.hypot(b[0] - a[0], b[1] - a[1]), du = (b[0] - a[0]) / len, dv = (b[1] - a[1]) / len;
+      const n = Math.max(1, Math.round(len / 36));
+      for (let i = 0; i <= n; i++) {
+        const t = (i + 0.5) / (n + 1), u = lerp(a[0], b[0], t), v = lerp(a[1], b[1], t), side = i % 2 ? 1 : -1;
+        const [Xc, Nc] = T.at(u, v), [X, N] = T.at(u - dv * side * (w / 2 + 0.9), v + du * side * (w / 2 + 0.9));
+        const lat = latticeAt(X, N);
+        if ((lat && lat.d < 14) || riverDist(X, N) < 45 || kept(X, N, 0.8) || inFoot(X, N, 0.8)) continue;
+        streetLamp(X, N, Math.atan2(Xc - X, -(Nc - N)));
+      }
+    }
     for (const L of T.lots) {
       const gb = binAt(L.X, L.N), y = groundAt(L.X, L.N);
       const r = rng(Math.floor(L.r * 1e6));
@@ -208,7 +220,7 @@ function buildTowns(scene) {
         fnd(base, 0, 0, L.w + 0.1, L.d + 0.1, 0.06);
         gb.add('vc', colorize(new THREE.BoxGeometry(L.w + 0.3, 0.45, L.d + 0.3), [0.82, 0.78, 0.68]), P(base, 0, H + 0.1, 0)); // cornice
         gb.add('vc', colorize(new THREE.BoxGeometry(L.w - 0.4, 0.7, 0.12), [0.12, 0.12, 0.12]), P(base, 0, 3.75, L.d / 2 + 0.06)); // sign band
-        gb.add('win', new THREE.BoxGeometry(L.w - 2.0, 2.2, 0.08), P(base, -0.6, 1.6, L.d / 2 + 0.02));
+        { const m = P(base, -0.6, 1.6, L.d / 2 + 0.02); gb.add('win', winSeed(new THREE.BoxGeometry(L.w - 2.0, 2.2, 0.08), m), m); }   // shop window
         gb.add('trim', new THREE.BoxGeometry(1.0, 2.4, 0.1), P(base, L.w / 2 - 0.9, 1.25, L.d / 2 + 0.03));
         const ac = hex3(AWN[(r() * AWN.length) | 0]);
         gb.add('awning', colorize(new THREE.PlaneGeometry(L.w - 0.6, 1.6), ac), P(base, 0, 3.15, L.d / 2 + 0.65, -1.05, 0, 0));
@@ -238,8 +250,9 @@ function buildTowns(scene) {
         gb.add('white', boxT(4.6, 15, 4.6, 2.4), P(base, 0, 7.5, 12.8));
         gb.add('slate', new THREE.ConeGeometry(3.3, 11, 4).rotateY(Math.PI / 4), P(base, 0, 20.5, 12.8));
         gb.add('trim', new THREE.BoxGeometry(1.6, 3.0, 0.1), P(base, 0, 1.55, 15.12));
-        for (const z of [-7, -2, 3]) for (const s of [-1, 1]) gb.add('win', new THREE.BoxGeometry(0.08, 3.4, 1.1), P(base, s * 6.03, 4.4, z));
-        gb.add('win', new THREE.CylinderGeometry(0.8, 0.8, 0.08, 16).rotateX(Math.PI / 2), P(base, 0, 11.0, 15.12));
+        // the church's windows all light together for evening service: one seed for the lot
+        { const m0 = P(base, 0, 4.4, 0); for (const z of [-7, -2, 3]) for (const s of [-1, 1]) gb.add('win', winSeed(new THREE.BoxGeometry(0.08, 3.4, 1.1), m0), P(base, s * 6.03, 4.4, z));
+          gb.add('win', winSeed(new THREE.CylinderGeometry(0.8, 0.8, 0.08, 16).rotateX(Math.PI / 2), m0), P(base, 0, 11.0, 15.12)); }
         keep(L.X, L.N, 18);
       } else if (L.kind === 'tower') {
         const base = baseM(L.X, y - 0.15, L.N, yaw); foot(base, 0, 0, 14, 14);

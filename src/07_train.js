@@ -252,16 +252,19 @@ class Train extends Consist {
       L.body.add(this.fireLight); this.fireLight.position.set(CABDIM.bh - 0.3, CABDIM.fl + 0.5, 0.1);
       this.cabLight = new THREE.PointLight(0xffd09a, 0, 5, 2); L.body.add(this.cabLight); if (L.cabLightPos) this.cabLight.position.copy(L.cabLightPos); else this.cabLight.position.set(ax(15.8), 4.1, 0);
     } else { this.head = null; this.fireLight = null; this.cabLight = null; }
-    this.markerMats = [];
     for (const v of this.vehicles) this.markerLamps(v);
     // the train as built, so a room is only sent the cars when they differ from what this engine and train make up
     this.code0 = trainCode(this);
   }
-  /* red marker lamps on a caboose or observation car */
+  /* red marker lamps on a caboose or observation car, lit only while it is on the rear of a train (railLamps) */
   markerLamps(v) {
     if (!v.markers || v.lamps) return;
-    v.lamps = true;
-    for (const p of v.markers) { const m = new THREE.Mesh(new THREE.CircleGeometry(0.07, 12), new THREE.MeshBasicMaterial({ color: 0xff2a1e })); m.position.copy(p); m.rotation.y = -Math.PI / 2; v.root.add(m); this.markerMats.push(m); }
+    const mat = new THREE.MeshBasicMaterial({ color: 0x2a0806 });
+    v.lamps = { mat, lit: -1, glows: [] };
+    for (const p of v.markers) {
+      const m = new THREE.Mesh(new THREE.CircleGeometry(0.075, 14), mat); m.position.copy(p); m.rotation.y = -Math.PI / 2; v.root.add(m);
+      if (typeof markerGlow === 'function') { const g = markerGlow(0.8); g.position.copy(p).x -= 0.05; v.root.add(g); v.lamps.glows.push(g); }
+    }
   }
   update(dt, theta = 0, rev = 0) {
     super.update(dt, theta, rev);
