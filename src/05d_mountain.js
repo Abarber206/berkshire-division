@@ -299,8 +299,7 @@ function mtInBore(x, z, pad = 0) {
 const FOREST = { tiles: new Map(), geos: null };
 function mtForestTile(key, scene) {
   const [ti, tj] = key.split(',').map(Number), X0 = INNER.x0 + ti * 1500, N0 = INNER.n0 + tj * 1500;
-  const G = FOREST.geos || (FOREST.geos = treeGeos());
-  const r = rng(ti * 7919 + tj * 104729 + 13), L = { dec: [], con: [] };
+  const r = rng(ti * 7919 + tj * 104729 + 13), L = { dec: [], con: [] }, RK = [];
   const sp = 10.5;
   for (let y = N0 + sp / 2; y < N0 + 1500; y += sp) for (let x = X0 + sp / 2; x < X0 + 1500; x += sp) {
     const X = x + (r() - 0.5) * sp * 0.9, N = y + (r() - 0.5) * sp * 0.9, rr = r();
@@ -309,38 +308,79 @@ function mtForestTile(key, scene) {
     if (rr > p) continue;
     const lat = latticeAt(X, N); if (lat && lat.d < 17 + r() * 8) continue;
     if (mtClearing(X, N, r() * 12)) continue;
+    if (trackWithin(X, N, 14)) continue;   // the lattice is a 20 m grid; check the real distance close in
     if (mtRiverDist(X, N) < 24) continue;
     if (inTown(X, N) || kept(X, N, 2) || inFoot(X, N, 5)) continue;
     const gy = groundAt(X, N);
     // the woods thin out on rock steeper than about 45 degrees
     const sl = Math.hypot(groundAt(X + 3, N) - groundAt(X - 3, N), groundAt(X, N + 3) - groundAt(X, N - 3)) / 6;
     if (sl > 1 && r() < 0.75) continue;
+    // ledge rock breaks out on the steep ground, and a boulder now and then on the forest floor
+    if (r() < (sl > 0.55 ? 0.22 : 0.025) && !(lat && lat.d < 16) && !trackWithin(X, N, 17)) { const sz = sl > 0.55 ? 0.8 + r() * 1.6 : 0.5 + r() * 0.9; RK.push([X, gy, N, sz, r() * TAU, (r() * 3) | 0]); }
     const conK = clamp(0.18 + 0.55 * smooth(260, 560, gy) + 0.35 * Noise.fbm(X / 300 - 2, N / 300 + 5, 2), 0.05, 0.9);
     if (r() < conK) L.con.push([X, gy - 0.3, N, 0.95 + r() * 0.8, [0.12 + r() * 0.05, 0.22 + r() * 0.07, 0.13 + r() * 0.03]]);
     else { const x2 = r(); L.dec.push([X, gy - 0.3, N, 0.85 + r() * 0.6, x2 < 0.45 ? [0.28 + r() * 0.1, 0.40 + r() * 0.12, 0.16] : x2 < 0.72 ? [0.74 + r() * 0.14, 0.52 + r() * 0.16, 0.15] : x2 < 0.9 ? [0.68 + r() * 0.1, 0.26 + r() * 0.1, 0.11] : [0.55, 0.40, 0.2]]); }
   }
   const tt = { hi: [], lo: [], c: null, r: 0, solids: [], key };
-  const pts = [];
-  for (const type of ['dec', 'con']) {
-    const list = L[type]; if (!list.length) continue;
-    const hi = new THREE.InstancedMesh(G[type], MAT.treeNear, list.length), lo = new THREE.InstancedMesh(G[type + 'Lo'], MAT.treeFar, list.length);
-    list.forEach((q, i) => {
-      const s = q[3];
-      _m4.compose(_v1.set(q[0], q[1], -q[2]), _q.setFromEuler(_e.set(0, (q[0] * 13.1 + q[2]) % TAU, 0)), _v2.set(s, s * (0.9 + ((q[0] * 7 + q[2] * 3) % 1) * 0.25), s));
-      hi.setMatrixAt(i, _m4); hi.setColorAt(i, _tc.setRGB(q[4][0], q[4][1], q[4][2]));
-      pts.push(new THREE.Vector3(q[0], q[1], -q[2]));
-      const cell = Math.floor(q[0] / 40) + ',' + Math.floor(-q[2] / 40), e = type === 'dec' ? [q[0], -q[2], 3.7 * s, q[1] + 2.4 * s, q[1] + 9.9 * s] : [q[0], -q[2], 2.6 * s, q[1] + 1.5 * s, q[1] + 10 * s];
-      let l = SCN.solids.get(cell); if (!l) SCN.solids.set(cell, l = []); l.push(e); tt.solids.push([cell, e]);
-    });
-    lo.instanceMatrix = hi.instanceMatrix; lo.instanceColor = hi.instanceColor;   // one copy of the placements serves both
-    for (const m of [hi, lo]) { m.castShadow = false; m.receiveShadow = false; m.visible = false; scene.add(m); }
-    tt.hi.push(hi); tt.lo.push(lo);
+  const M = { dec: [], con: [] };
+  for (const type of ['dec', 'con']) for (const q of L[type]) {
+    const s = q[3];
+    M[type].push([q[0], q[1], q[2], s, s * (0.9 + ((q[0] * 7 + q[2] * 3) % 1) * 0.25), q[4]]);
+    const cell = Math.floor(q[0] / 40) + ',' + Math.floor(-q[2] / 40), e = type === 'dec' ? [q[0], -q[2], 3.7 * s, q[1] + 2.4 * s, q[1] + 9.9 * s] : [q[0], -q[2], 2.6 * s, q[1] + 1.5 * s, q[1] + 10 * s];
+    let l = SCN.solids.get(cell); if (!l) SCN.solids.set(cell, l = []); l.push(e); tt.solids.push([cell, e]);
   }
-  if (pts.length) { const s = new THREE.Sphere().setFromPoints(pts); for (const m of [...tt.hi, ...tt.lo]) m.geometry = m.geometry.clone(), m.geometry.boundingSphere = s.clone(); tt.c = s.center; tt.r = s.radius + 12; }
+  const T = treeMeshes(M, scene);
+  tt.hi = T.hi; tt.lo = T.lo;
+  if (RK.length) {
+    const BG = boulderGeos(), sph = new THREE.Sphere().setFromPoints(RK.map(q => new THREE.Vector3(q[0], q[1], -q[2]))); sph.radius += 4;
+    for (let v = 0; v < 3; v++) {
+      const list = RK.filter(q => q[5] === v); if (!list.length) continue;
+      const im = new THREE.InstancedMesh(shareGeo(BG[v], sph.clone()), MAT.boulder, list.length);
+      list.forEach((q, i) => {
+        _m4.compose(_v1.set(q[0], q[1], -q[2]), _q.setFromEuler(_e.set(0, q[4], 0)), _v2.set(q[3], q[3] * (0.8 + 0.3 * ((q[4] * 3) % 1)), q[3] * 0.85)); im.setMatrixAt(i, _m4);
+        const cell = Math.floor(q[0] / 40) + ',' + Math.floor(-q[2] / 40), e = [q[0], -q[2], q[3] * 1.1, q[1] - 0.2, q[1] + q[3]];
+        let l = SCN.solids.get(cell); if (!l) SCN.solids.set(cell, l = []); l.push(e); tt.solids.push([cell, e]);
+      });
+      im.userData.sph = im.geometry.boundingSphere;
+      im.castShadow = false; im.receiveShadow = true; im.visible = false; scene.add(im); tt.hi.push(im);
+    }
+  }
+  if (T.pts.length) { const s = new THREE.Sphere().setFromPoints(T.pts); tt.c = s.center; tt.r = s.radius + 12; }
   else { tt.c = new THREE.Vector3(X0 + 750, 0, -(N0 + 750)); tt.r = 1100; }
   tt.n = L.dec.length + L.con.length;
   FOREST.tiles.set(key, tt); WORLD.treeTiles.push(tt);
   return tt;
+}
+/* field boulders and broken ledge rock: a lumpy, flattened stone, mossy on top, in three shapes */
+function boulderGeos() {
+  if (FOREST.rocks) return FOREST.rocks;
+  FOREST.rocks = [1, 2, 3].map(seed => {
+    const g = new THREE.IcosahedronGeometry(1, 1), p = g.attributes.position, r = rng(seed * 31);
+    const off = [r() * 9, r() * 9, r() * 9];
+    for (let i = 0; i < p.count; i++) {
+      _v1.fromBufferAttribute(p, i);
+      const k = 0.75 + 0.45 * (Noise.n2(_v1.x * 1.3 + off[0], _v1.z * 1.3 + _v1.y + off[1]) + 0.5) + 0.12 * Noise.n2(_v1.x * 4 + off[2], _v1.y * 4 - _v1.z * 3);   // the same at shared corners, so the stone stays closed
+      _v1.multiplyScalar(k); _v1.y = _v1.y * 0.62 + 0.18; if (_v1.y < -0.15) _v1.y = -0.15 - (-_v1.y - 0.15) * 0.3;   // sits down in the soil
+      p.setXYZ(i, _v1.x * (1 + 0.25 * seed / 3), _v1.y, _v1.z);
+    }
+    g.computeVertexNormals();
+    { // the icosahedron comes unwelded: average the normals of coincident corners so the stone reads rounded
+      const n = g.attributes.normal, acc = new Map(), key = i => p.getX(i).toFixed(3) + ',' + p.getY(i).toFixed(3) + ',' + p.getZ(i).toFixed(3);
+      for (let i = 0; i < p.count; i++) { const k = key(i); const a = acc.get(k) || [0, 0, 0]; a[0] += n.getX(i); a[1] += n.getY(i); a[2] += n.getZ(i); acc.set(k, a); }
+      for (let i = 0; i < p.count; i++) { const a = acc.get(key(i)), l = Math.hypot(a[0], a[1], a[2]) || 1; n.setXYZ(i, a[0] / l, a[1] / l, a[2] / l); }
+    }
+    const n = g.attributes.normal, col = new Float32Array(p.count * 3), uv = g.attributes.uv;
+    for (let i = 0; i < p.count; i++) {
+      const moss = smooth(0.45, 0.85, n.getY(i)) * 0.8, v = 0.9 + 0.2 * r();
+      col[i * 3] = lerp(0.6, 0.38, moss) * v; col[i * 3 + 1] = lerp(0.58, 0.4, moss) * v; col[i * 3 + 2] = lerp(0.54, 0.27, moss) * v;
+      uv.setXY(i, (p.getX(i) + p.getZ(i)) * 0.35, p.getY(i) * 0.6);
+    }
+    for (let i = 0; i < col.length; i++) col[i] = Math.pow(col[i], 2.2);   // written linear, as the scene expects
+    g.setAttribute('color', new THREE.BufferAttribute(col, 3)); (linearizeObject.done || (linearizeObject.done = new WeakSet())).add(col);
+    g.computeBoundingSphere();
+    return g;
+  });
+  return FOREST.rocks;
 }
 /* yards and sidings stand in open ground: woods kept 50 m back from yard tracks and 28 m from sidings */
 function mtClearing(X, N, jit) {
@@ -359,7 +399,7 @@ function mtClearing(X, N, jit) {
   return false;
 }
 function mtForestDrop(tt) {
-  for (const m of [...tt.hi, ...tt.lo]) { scene.remove(m); m.geometry.dispose(); }
+  for (const m of [...tt.hi, ...tt.lo]) { scene.remove(m); dropShared(m.geometry); m.dispose && m.dispose(); const w = WORLD.treeMeshes.indexOf(m); if (w >= 0) WORLD.treeMeshes.splice(w, 1); }
   for (const [cell, e] of tt.solids) { const l = SCN.solids.get(cell); if (l) { const i = l.indexOf(e); if (i >= 0) l.splice(i, 1); } }
   FOREST.tiles.delete(tt.key); WORLD.treeTiles.splice(WORLD.treeTiles.indexOf(tt), 1);
 }

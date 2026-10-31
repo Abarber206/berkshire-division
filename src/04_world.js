@@ -5,14 +5,35 @@ const MAT = {};
 const TEX = {};
 const WORLD = { pieces: [], tiles: [], treeMeshes: [], switchVis: [], lattice: null, riverPts: [], lake: { X: -1010, N: 1180, r: 290 }, roadsX: [3300, 600, -1700], roadN: -62 };
 
+/* value noise that wraps at the edges of a w x w texture: octaves are [cells across, weight] */
+function tileNoise(w, octs, seed) {
+  const out = new Float32Array(w * w), r = rng(seed);
+  for (const [P, wt] of octs) {
+    const L = new Float32Array(P * P); for (let i = 0; i < L.length; i++) L[i] = r();
+    for (let y = 0; y < w; y++) for (let x = 0; x < w; x++) {
+      const fx = x / w * P, fy = y / w * P, ix = Math.floor(fx), iy = Math.floor(fy), tx = fx - ix, ty = fy - iy;
+      const sx = tx * tx * (3 - 2 * tx), sy = ty * ty * (3 - 2 * ty), a = L[iy * P + ix], b = L[iy * P + (ix + 1) % P], c = L[((iy + 1) % P) * P + ix], e = L[((iy + 1) % P) * P + (ix + 1) % P];
+      out[y * w + x] += wt * lerp(lerp(a, b, sx), lerp(c, e, sx), sy);
+    }
+  }
+  let lo = 1e9, hi = -1e9; for (const v of out) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
+  for (let i = 0; i < out.length; i++) out[i] = (out[i] - lo) / (hi - lo);   // stretched to the full 0..1
+  return out;
+}
 function makeTextures() {
-  TEX.ballast = canvasTex(256, 256, (g, w, h) => {
-    const r = rng(7); g.fillStyle = '#8a8580'; g.fillRect(0, 0, w, h);
-    for (let i = 0; i < 2600; i++) {
-      const x = r() * w, y = r() * h, s = 1.5 + r() * 4.5, v = 70 + r() * 110 | 0;
-      g.fillStyle = `rgb(${v},${v - 4 | 0},${v - 10 | 0})`;
-      g.beginPath(); g.ellipse(x, y, s, s * (0.6 + r() * 0.4), r() * 3, 0, TAU); g.fill();
-      g.fillStyle = 'rgba(255,255,255,0.12)'; g.beginPath(); g.ellipse(x - s * 0.25, y - s * 0.25, s * 0.45, s * 0.3, 0, 0, TAU); g.fill();
+  // crushed trap rock: angular stones, lit from above, with dark voids between them (wraps seamlessly)
+  TEX.ballast = canvasTex(512, 512, (g, w, h) => {
+    const r = rng(7); g.fillStyle = '#4a4744'; g.fillRect(0, 0, w, h);
+    for (let i = 0; i < 5200; i++) {
+      const x = r() * w, y = r() * h, s = 3 + r() * 7, v = 85 + r() * 105 | 0, warm = r() * 14 - 4, n = 5 + (r() * 3 | 0), a0 = r() * TAU;
+      const pts = []; for (let k = 0; k < n; k++) { const a = a0 + k / n * TAU + (r() - 0.5) * 0.7, rr = s * (0.65 + r() * 0.45); pts.push([Math.cos(a) * rr, Math.sin(a) * rr * (0.65 + r() * 0.35)]); }
+      for (const ox of [0, -w, w]) for (const oy of [0, -h, h]) {
+        const cx = x + ox, cy = y + oy; if (cx < -12 || cy < -12 || cx > w + 12 || cy > h + 12) continue;
+        const path = () => { g.beginPath(); pts.forEach((p, k) => k ? g.lineTo(cx + p[0], cy + p[1]) : g.moveTo(cx + p[0], cy + p[1])); g.closePath(); };
+        g.fillStyle = 'rgba(15,13,12,0.55)'; g.save(); g.translate(1.2, 1.6); path(); g.fill(); g.restore();   // the void and shadow under each stone
+        g.fillStyle = `rgb(${v + warm | 0},${v | 0},${v - warm - 6 | 0})`; path(); g.fill();
+        g.fillStyle = 'rgba(255,250,240,0.16)'; g.save(); g.translate(cx, cy); g.scale(0.55, 0.5); g.translate(-cx - s * 0.35, -cy - s * 0.45); path(); g.fill(); g.restore();   // the lit facet
+      }
     }
   }, { repeat: true });
   TEX.ground = canvasTex(256, 256, (g, w, h) => {
@@ -24,6 +45,29 @@ function makeTextures() {
     }
     g.putImageData(id, 0, 0);
   }, { repeat: true });
+  // tiling detail for the ground: R fine grass and clods, G mid mottling, B broad patches (all wrap seamlessly)
+  TEX.detail = canvasTex(256, 256, (g, w, h) => {
+    const id = g.createImageData(w, h), d = id.data;
+    const R = tileNoise(w, [[64, 0.5], [128, 0.3], [256, 0.2]], 5), G = tileNoise(w, [[8, 0.5], [16, 0.3], [32, 0.2]], 6), B = tileNoise(w, [[4, 0.6], [8, 0.3], [16, 0.1]], 7);
+    for (let i = 0; i < w * h; i++) { d[i * 4] = R[i] * 255; d[i * 4 + 1] = G[i] * 255; d[i * 4 + 2] = B[i] * 255; d[i * 4 + 3] = 255; }
+    g.putImageData(id, 0, 0);
+    // tufts and blade strokes on top of the red channel only
+    const r = rng(41); g.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < 900; i++) { const x = r() * w, y = r() * h, a = -Math.PI / 2 + (r() - 0.5) * 1.4, L = 2 + r() * 5, v = 30 + r() * 50 | 0; g.strokeStyle = `rgb(${v},0,0)`; g.lineWidth = 1; for (const ox of [0, -w, w]) for (const oy of [0, -h, h]) { g.beginPath(); g.moveTo(x + ox, y + oy); g.lineTo(x + ox + Math.cos(a) * L, y + oy + Math.sin(a) * L); g.stroke(); } }
+  }, { repeat: true, srgb: false });
+  TEX.detail.anisotropy = 8;
+  // bedrock: Allegheny sandstone and shale, in level beds with joints and weathered faces
+  TEX.rock = canvasTex(256, 256, (g, w, h) => {
+    const id = g.createImageData(w, h), d = id.data, N = tileNoise(w, [[16, 0.5], [32, 0.3], [64, 0.2]], 9), N2 = tileNoise(w, [[4, 0.7], [8, 0.3]], 10);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const i = y * w + x, bed = 0.5 + 0.5 * Math.sin((y + N2[i] * 22) / h * TAU * 9), crack = Math.pow(Math.abs(Math.sin((y + N2[i] * 22) / h * TAU * 4.5)), 30);
+      const v = clamp(0.5 + 0.28 * (N[i] - 0.5) * 2 + 0.12 * bed - 0.35 * crack, 0, 1);
+      d[i * 4] = v * 255; d[i * 4 + 1] = v * 247; d[i * 4 + 2] = v * 232; d[i * 4 + 3] = 255;
+    }
+    g.putImageData(id, 0, 0);
+    const r = rng(43); g.strokeStyle = 'rgba(30,26,22,0.55)';
+    for (let i = 0; i < 26; i++) { const x = r() * w, y0 = r() * h, L = 8 + r() * 26; g.lineWidth = 1 + r(); g.beginPath(); g.moveTo(x, y0); g.lineTo(x + (r() - 0.5) * 4, y0 + L); g.stroke(); }
+  }, { repeat: true });
   TEX.wood = canvasTex(128, 32, (g, w, h) => {
     const r = rng(3); g.fillStyle = '#a49a8c'; g.fillRect(0, 0, w, h);
     for (let i = 0; i < 40; i++) { g.strokeStyle = `rgba(40,30,22,${0.1 + r() * 0.25})`; g.lineWidth = 0.5 + r(); g.beginPath(); const y = r() * h; g.moveTo(0, y); g.bezierCurveTo(w * 0.3, y + r() * 4 - 2, w * 0.7, y + r() * 4 - 2, w, y + r() * 3 - 1.5); g.stroke(); }
@@ -34,8 +78,8 @@ function makeTextures() {
 /* Distance bands (metres) for detail that has a near and a far version, or that stops being drawn:
    [fade in from, fully in, start fading out, gone]. Far ends that depend on the fog are set each frame. */
 const LOD = {
-  treeNear: { value: new THREE.Vector4(-2, -1, 560, 720) },
-  treeFar: { value: new THREE.Vector4(560, 720, 4500, 7000) },
+  treeNear: { value: new THREE.Vector4(-2, -1, 380, 480) },
+  treeFar: { value: new THREE.Vector4(380, 480, 4500, 7000) },
   bush: { value: new THREE.Vector4(-2, -1, 340, 420) },
   grass: { value: new THREE.Vector4(-2, -1, 185, 230) },
   flowers: { value: new THREE.Vector4(-2, -1, 245, 300) },
@@ -78,13 +122,15 @@ function makeMaterials() {
     sh.uniforms.uSnow = WORLD.snowU;
     sh.uniforms.uField = { value: WORLD.fieldTex.tex };
     sh.uniforms.uFieldXf = { value: new THREE.Vector4(WORLD.fieldTex.i0, WORLD.fieldTex.j0, WORLD.fieldTex.w, WORLD.fieldTex.h) };
+    sh.uniforms.uDetail = { value: TEX.detail }; sh.uniforms.uRock = { value: TEX.rock };
+    sh.uniforms.uMtn = { value: WORLD.mtn ? 1 : 0 };
     sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\nvarying float vUp; varying vec3 vWPos; attribute float aCrop; varying float vCropW;')
-      .replace('#include <beginnormal_vertex>', '#include <beginnormal_vertex>\nvUp = normal.y;')
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvWPos = (modelMatrix * vec4(transformed, 1.0)).xyz; vCropW = aCrop;');
+      .replace('#include <common>', '#include <common>\nvarying float vUp; varying vec3 vWPos; varying vec3 vNrm; varying float vCamD; attribute float aCrop; varying float vCropW;')
+      .replace('#include <beginnormal_vertex>', '#include <beginnormal_vertex>\nvUp = normal.y; vNrm = normal;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvWPos = (modelMatrix * vec4(transformed, 1.0)).xyz; vCropW = aCrop; vCamD = length((modelViewMatrix * vec4(transformed, 1.0)).xyz);');
     sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', '#include <common>\nuniform float uSnow; varying float vUp; varying vec3 vWPos; varying float vCropW; uniform sampler2D uField; uniform vec4 uFieldXf;')
-      .replace('#include <color_fragment>', '#include <color_fragment>\n' + CROP_GLSL + '\n diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.86,0.89,0.93), uSnow * smoothstep(0.55,0.85,vUp) * (0.85 + 0.15*diffuseColor.g));');
+      .replace('#include <common>', '#include <common>\nuniform float uSnow; varying float vUp; varying vec3 vWPos; varying vec3 vNrm; varying float vCamD; varying float vCropW; uniform sampler2D uField; uniform vec4 uFieldXf; uniform sampler2D uDetail; uniform sampler2D uRock; uniform float uMtn;')
+      .replace('#include <color_fragment>', '#include <color_fragment>\n' + CROP_GLSL + GROUND_GLSL + '\n diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.86,0.89,0.93), uSnow * smoothstep(0.55,0.85,vUp) * (0.85 + 0.15*diffuseColor.g) * (1.0 - 0.6 * smoothstep(0.82, 0.62, vUp)));');
   };
   MAT.ballast = new THREE.MeshLambertMaterial({ vertexColors: true, map: TEX.ballast });
   MAT.ballast.onBeforeCompile = sh => {
@@ -92,8 +138,9 @@ function makeMaterials() {
     sh.uniforms.uTieFade = LOD.tieFar;
     sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying float vUp; varying float vCamD;').replace('#include <beginnormal_vertex>', '#include <beginnormal_vertex>\nvUp = normal.y;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvCamD = length((modelViewMatrix * vec4(transformed, 1.0)).xyz);');
-    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform float uSnow; uniform vec4 uTieFade; varying float vUp; varying float vCamD;')
-      .replace('#include <color_fragment>', '#include <color_fragment>\n' +
+    sh.uniforms.uDetail = { value: TEX.detail };
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform float uSnow; uniform vec4 uTieFade; uniform sampler2D uDetail; varying float vUp; varying float vCamD;')
+      .replace('#include <color_fragment>', '#include <color_fragment>\n' + BALLAST_GLSL +
         // past the distance where the ties dissolve, the crown takes on their average colour so the track keeps its look
         ' diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.085,0.062,0.045), 0.5 * (1.0 - smoothstep(1.15, 1.4, abs(vUv.x * 1.4))) * smoothstep(uTieFade.z, uTieFade.w, vCamD));\n' +
         ' diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.86,0.89,0.93), uSnow * smoothstep(0.55,0.85,vUp) * (0.85 + 0.15*diffuseColor.g));');
@@ -120,11 +167,15 @@ function makeMaterials() {
   MAT.lampRed = new THREE.MeshBasicMaterial({ color: 0xff4433 });
   MAT.lampAmber = new THREE.MeshBasicMaterial({ color: 0xffb340 });
   MAT.lampOff = new THREE.MeshLambertMaterial({ color: 0x1d2222 });
-  MAT.tree = new THREE.MeshLambertMaterial({ vertexColors: true });
+  // trees and shrubs are leaf cards near and one baked picture each far away (see 04c_foliage.js);
   // level-of-detail pairs dissolve into each other instead of popping (see fadeByDistance)
-  MAT.treeNear = fadeByDistance(MAT.tree.clone(), LOD.treeNear, true);
-  MAT.treeFar = fadeByDistance(MAT.tree.clone(), LOD.treeFar);
-  MAT.bush = fadeByDistance(MAT.tree.clone(), LOD.bush, true);
+  if (GFX.lite) { LOD.treeNear.value.set(-2, -1, 250, 330); LOD.treeFar.value.set(250, 330, 4500, 7000); }
+  MAT.tree = foliageMaterial();
+  MAT.treeNear = fadeByDistance(foliageMaterial(), LOD.treeNear, true);
+  MAT.bush = fadeByDistance(foliageMaterial(), LOD.bush, true);
+  foliageGeos();
+  MAT.treeFar = fadeByDistance(impostorMaterial(FOL.imp), LOD.treeFar);
+  MAT.boulder = fadeByDistance(new THREE.MeshLambertMaterial({ vertexColors: true, map: TEX.rock }), LOD.treeNear, true);
   MAT.tieNear = MAT.tie.clone(); MAT.tieNear.onBeforeCompile = MAT.tie.onBeforeCompile; fadeByDistance(MAT.tieNear, LOD.tieNear, true);
   MAT.tieFar = MAT.tie.clone(); MAT.tieFar.onBeforeCompile = MAT.tie.onBeforeCompile; fadeByDistance(MAT.tieFar, LOD.tieFar);
   MAT.hit = new THREE.MeshBasicMaterial({ visible: false });
@@ -318,6 +369,70 @@ const CROP_GLSL = `
     crop *= (0.8 + 0.3 * speck) * (0.85 + 0.3 * macro);
     vec4 mtx = mapTexelToLinear(texture2D(map, vUv));
     diffuseColor.rgb = mix(diffuseColor.rgb, pow(crop, vec3(2.2)) * mtx.rgb, vCropW);
+  }`;
+
+/* Everything the ground shows below crop scale, per pixel: broad drifts of dry and lush grass and damp hollows
+   so a pasture is never one flat green, mottling and tufts that sharpen as the camera comes close (and fade out
+   before they would shimmer), worn bare earth in the meadows, and bedrock in level beds wherever the ground is
+   too steep to hold soil. Linear colours. */
+const GROUND_GLSL = `
+  {
+    vec3 base = diffuseColor.rgb;
+    float wild = 1.0 - vCropW;                                    // meadow, verge, bank and forest floor; crops have their own pattern
+    vec2 xz = vWPos.xz;
+    float b1 = texture2D(uDetail, xz * 0.0011 + 0.13).b, b2 = texture2D(uDetail, xz * 0.0047 - 0.31).b;
+    float g1 = texture2D(uDetail, xz * 0.031).g, g2 = texture2D(uDetail, xz * 0.13 + 0.5).g;
+    // dry and lush drifts, darker in the damp low spots
+    float dry = smoothstep(0.38, 0.66, b1 * 0.65 + b2 * 0.35);
+    vec3 tint = mix(vec3(0.72, 1.0, 0.8), vec3(1.45, 1.05, 0.55), dry);
+    float grassy = smoothstep(0.004, 0.03, base.g - base.r * 1.05);   // only living grass drifts green or straw; leaf litter keeps its brown
+    base = mix(base, base * tint, wild * 0.9 * grassy);
+    base *= 0.62 + 0.76 * g1 * g1 + 0.0 * g1;
+    // close up: tufts, clods and blades; the finest layer goes before it can alias
+    float fw = fwidth(vWPos.x) + fwidth(vWPos.z);
+    float k1 = 1.0 - smoothstep(0.08, 0.35, fw), k2 = 1.0 - smoothstep(0.02, 0.09, fw);
+    float f1 = texture2D(uDetail, xz * 0.37).r, f2 = texture2D(uDetail, xz * 1.6 + 0.2).r;
+    base *= mix(1.0, 0.5 + 1.0 * f1, k1 * 0.8) * mix(1.0, 0.55 + 0.9 * f2, k2 * 0.7);
+    base *= 0.72 + 0.56 * g2;
+    // fallen leaves on the forest floor: scattered red, orange and gold, close up
+    float litter = (1.0 - grassy) * wild * (0.4 + 0.6 * uMtn);
+    vec3 leafC = mix(vec3(0.42, 0.10, 0.03), vec3(0.55, 0.32, 0.04), g2);
+    base = mix(base, leafC * (0.6 + 0.6 * f1), litter * smoothstep(0.55, 0.75, f2) * k1 * 0.8);
+    // bare earth: cattle paths and thin spots in the grass, a little more of it close to the track
+    float bare = smoothstep(0.66, 0.74, b2 + 0.25 * (g1 - 0.5)) * wild * (1.0 - uMtn * 0.6);
+    vec3 dirt = vec3(0.13, 0.085, 0.05) * (0.75 + 0.5 * f1);
+    base = mix(base, dirt, bare * 0.7);
+    // bedrock where it is too steep for soil, in level beds; triplanar so cliffs don't smear
+    vec3 n = normalize(vNrm);
+    float steep = smoothstep(0.84, 0.66, vUp + (g1 - 0.5) * 0.14);
+    if (steep > 0.001) {
+      vec3 an = abs(n); an /= (an.x + an.z + 0.001);
+      vec3 rk = texture2D(uRock, vWPos.zy * vec2(0.09, 0.16)).rgb * an.x + texture2D(uRock, vWPos.xy * vec2(0.09, 0.16)).rgb * an.z;
+      rk = pow(rk, vec3(2.2));
+      vec3 rockC = mix(vec3(0.30, 0.27, 0.23), vec3(0.24, 0.24, 0.23), uMtn) * 1.9 * rk * (0.85 + 0.3 * g2);
+      // moss and lichen on the ledges
+      rockC = mix(rockC, base * 0.8, smoothstep(0.55, 0.75, g1) * 0.45);
+      base = mix(base, rockC, steep);
+    }
+    diffuseColor.rgb = base;
+  }`;
+
+/* The ballast section, across it (u, metres from the centre line) and along it: rust from the wheels and brake shoes
+   dusted along both rails, a darker oily streak down the middle, and on the shoulders the stone fouled with fines
+   and dirt, going over to weeds and grass in a ragged line at the toe instead of a ruled edge. Linear colours. */
+const BALLAST_GLSL = `
+  {
+    float u = abs(vUv.x * 1.4); vec2 wp = vec2(vUv.x * 1.4, vUv.y * 1.4);
+    float nz = texture2D(uDetail, wp * vec2(0.21, 0.031)).g, nf = texture2D(uDetail, wp * 0.9).r, nb = texture2D(uDetail, wp * vec2(0.05, 0.008)).b;
+    float near = 1.0 - smoothstep(60.0, 160.0, vCamD);
+    float rust = (1.0 - smoothstep(0.0, 0.42, abs(u - 0.72))) * (0.45 + 0.4 * nb);
+    diffuseColor.rgb *= mix(vec3(1.0), vec3(0.74, 0.55, 0.42), rust);
+    diffuseColor.rgb *= 1.0 - 0.22 * (1.0 - smoothstep(0.0, 0.3, u)) * nb;
+    float foul = smoothstep(1.8, 3.6, u + (nz - 0.5) * 1.2);
+    diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.86, 0.76, 0.6), foul * 0.7);
+    float weeds = smoothstep(3.3, 5.0, u + (nz - 0.5) * 3.0) * smoothstep(0.25, 0.55, nf + 0.35 * smoothstep(3.6, 6.0, u));
+    vec3 weedC = mix(vec3(0.085, 0.11, 0.035), vec3(0.20, 0.17, 0.07), nb) * (0.7 + 0.6 * nf);
+    diffuseColor.rgb = mix(diffuseColor.rgb, weedC, weeds * mix(0.75, 0.9, near));
   }`;
 
 /* ---------------- terrain tiles ---------------- */
@@ -819,6 +934,6 @@ function updateTrackLOD(cam) {
   tF.w = fogFar(7000); tF.z = tF.w * 0.65;
   for (const t of WORLD.treeTiles || []) {
     const dc = t.c.distanceTo(cp), near = dc - t.r < tN.w, farOn = dc + t.r > tF.x && dc - t.r < tF.w;
-    t.hi.forEach(m => m.visible = near); t.lo.forEach(m => m.visible = farOn);
+    t.hi.forEach(m => { const ps = m.userData.sph; m.visible = near && (!ps || ps.center.distanceTo(cp) - ps.radius < tN.w); }); t.lo.forEach(m => m.visible = farOn);
   }
 }

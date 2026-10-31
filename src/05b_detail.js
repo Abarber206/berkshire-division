@@ -24,6 +24,15 @@ function distToTrack(X, N) {
   }
   return d;
 }
+/* is any track centre within r metres (any r; distToTrack only sees about 10 m) */
+function trackWithin(X, N, r) {
+  const H = WORLD.trackHash, ix = Math.floor(X / 10), iy = Math.floor(N / 10), c = Math.ceil(r / 10);
+  for (let j = iy - c; j <= iy + c; j++) for (let i = ix - c; i <= ix + c; i++) {
+    const a = H.get(i + ',' + j); if (!a) continue;
+    for (let q = 0; q < a.length; q += 2) if (Math.hypot(a[q] - X, a[q + 1] - N) < r) return true;
+  }
+  return false;
+}
 function farFromTrack(X, N) { let d = 1e9; for (const p of WORLD.trackCoarse) { const dd = (p[0] - X) ** 2 + (p[1] - N) ** 2; if (dd < d) d = dd; } return Math.sqrt(d); }
 const onRoad = (X, N, pad) => { for (const rx of WORLD.roadsX) if (Math.abs(X - rx) < pad) return true; return Math.abs(N - WORLD.roadN) < pad; };
 
@@ -40,6 +49,21 @@ function detailTextures() {
   TEX.goldenrod = canvasTex(128, 128, (g, w, h) => {
     const r = rng(22); blades(g, w, h, r, 26, ['#6f8a45', '#5e7a3b'], 0.45);
     for (let k = 0; k < 7; k++) { const cx = w * (0.15 + 0.7 * r()), cy = h * (0.08 + 0.3 * r()); for (let i = 0; i < 40; i++) { g.fillStyle = r() < 0.5 ? '#f0c63a' : '#d9a92a'; g.beginPath(); g.arc(cx + (r() - 0.5) * 22 + (i / 40) * 10, cy + (r() - 0.2) * 16 + i * 0.5, 1.6 + r() * 1.8, 0, TAU); g.fill(); } }
+  });
+  // bracken and wood fern, arching fronds from the crown; the instance colour gives green or autumn rust
+  TEX.fern = canvasTex(128, 128, (g, w, h) => {
+    const r = rng(24);
+    for (let f = 0; f < 9; f++) {
+      const a = -Math.PI / 2 + (f / 8 - 0.5) * 2.4 + (r() - 0.5) * 0.2, L = 52 + r() * 22, bend = (f / 8 - 0.5) * 0.9;
+      let x = w / 2, y = h - 2, ang = a;
+      for (let k = 0; k < 18; k++) {
+        const nx = x + Math.cos(ang) * L / 18, ny = y + Math.sin(ang) * L / 18; ang += bend * 0.06;
+        g.strokeStyle = '#c9d0b8'; g.lineWidth = 1.4; g.beginPath(); g.moveTo(x, y); g.lineTo(nx, ny); g.stroke();
+        const pl = (1 - k / 18) * 11 + 2;
+        for (const sd of [-1, 1]) { const pa = ang + sd * 1.25; const v = 200 + r() * 55 | 0; g.strokeStyle = `rgb(${v},${v},${v * 0.92 | 0})`; g.lineWidth = 2.2; g.beginPath(); g.moveTo(nx, ny); g.lineTo(nx + Math.cos(pa) * pl, ny + Math.sin(pa) * pl); g.stroke(); }
+        x = nx; y = ny;
+      }
+    }
   });
   TEX.aster = canvasTex(128, 128, (g, w, h) => {
     const r = rng(23); blades(g, w, h, r, 30, ['#6c8546', '#57703a'], 0.4);
@@ -80,10 +104,10 @@ function detailTextures() {
     sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nuniform float uTime;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\n#ifdef USE_INSTANCING\n float sw = sin(uTime * 1.8 + instanceMatrix[3].x * 0.37 + instanceMatrix[3].z * 0.23) * 0.08 * position.y;\n transformed.x += sw; transformed.z += sw * 0.6;\n#endif');
   };
-  for (const k of ['grass', 'goldenrod', 'aster']) {
+  for (const k of ['grass', 'goldenrod', 'aster', 'fern']) {
     const m = new THREE.MeshLambertMaterial({ map: TEX[k], alphaTest: 0.5 });
     m.onBeforeCompile = sway; m.customProgramCacheKey = () => 'sway';
-    fadeByDistance(m, k === 'grass' ? LOD.grass : LOD.flowers, true);
+    fadeByDistance(m, k === 'grass' || k === 'fern' ? LOD.grass : LOD.flowers, true);
     SMAT['g_' + k] = m; DET.grassMats.push(m);
   }
 }
@@ -379,8 +403,7 @@ function crossedQuads(w, h, n = 3) {
 }
 function grassGeos() {
   if (DET.geos) return DET.geos;
-  const bush = mergeGeos([new THREE.IcosahedronGeometry(0.75, 0).translate(0, 0.65, 0), new THREE.IcosahedronGeometry(0.55, 0).translate(0.5, 0.5, 0.25), new THREE.IcosahedronGeometry(0.5, 0).translate(-0.45, 0.45, -0.2)].map(g => colorize(g, [1, 1, 1])));
-  return (DET.geos = { grass: crossedQuads(1.0, 0.75), goldenrod: crossedQuads(0.9, 1.2), aster: crossedQuads(0.8, 0.9), bush });
+  return (DET.geos = { grass: crossedQuads(1.0, 0.75), goldenrod: crossedQuads(0.9, 1.2), aster: crossedQuads(0.8, 0.9), fern: crossedQuads(1.3, 0.75, 2), bush: foliageGeos().bush });
 }
 function genGrass(piece, scene) {
   const U = piece.userData, e = U.edge, G = grassGeos();
@@ -414,7 +437,7 @@ function genGrass(piece, scene) {
   for (const k in L) {
     const list = L[k]; if (!list.length) continue;
     const mat = k === 'bush' ? MAT.bush : SMAT['g_' + k];
-    const im = new THREE.InstancedMesh(G[k].clone(), mat, list.length);
+    const im = new THREE.InstancedMesh(k === 'bush' ? shareGeo(G.bush, U.sphere.clone()) : G[k].clone(), mat, list.length);
     list.forEach((q, i) => { _m4.compose(_v1.set(q[0], q[1], -q[2]), _q.setFromEuler(_e.set(0, q[3], 0)), _v2.set(q[4], q[4] * (k === 'grass' ? 0.8 + (i % 5) * 0.12 : 1), q[4])); im.setMatrixAt(i, _m4); _tc.setRGB(q[5][0], q[5][1], q[5][2]).convertSRGBToLinear(); im.setColorAt(i, _tc); });
     im.geometry.boundingSphere = U.sphere.clone();
     im.castShadow = false; im.receiveShadow = true; im.userData.kind = k;
@@ -432,6 +455,73 @@ function updateDetailLOD(cam, scene, dt) {
     if (!U.grass && d < 360 && budget > 0) { genGrass(p, scene); budget--; }
     if (U.grass) { U.grass.visible = d < 420; for (const m of U.grass.children) m.visible = d < (m.userData.kind === 'grass' ? (SKY.snow ? -1 : 230) : m.userData.kind === 'bush' ? 420 : 300); }
   }
+  coverUpdate(cam, scene);
   for (const g of DET.cornGroups) g.visible = g.userData.c.distanceTo(cp) - g.userData.r < 3200;
   for (const g of DET.lifeGroups) g.visible = g.userData.c.distanceTo(cp) - g.userData.r < 900;
+}
+
+/* ---------- ground cover away from the track: grass tufts in the pastures and meadows, weeds and flowers along
+   the fence rows, bracken under the mountain woods. Grown in 48 m cells round the camera, one cell a frame, and
+   let go again behind it. Nothing comes within 26 m of a track (the lineside grass covers that) or onto a road,
+   a river, a town or a building. ---------- */
+const COVER = { cells: new Map(), size: 48 };
+function coverCell(ci, cj, scene) {
+  const S = COVER.size, X0 = ci * S, N0 = cj * S, G = grassGeos(), r = rng(ci * 7349 + cj * 1931 + 5);
+  const sp = GFX.lite ? 2.3 : 1.55, L = { grass: [], goldenrod: [], aster: [], fern: [] };
+  const mtn = !!WORLD.mtn;
+  for (let y = N0 + sp / 2; y < N0 + S; y += sp) for (let x = X0 + sp / 2; x < X0 + S; x += sp) {
+    const X = x + (r() - 0.5) * sp, N = y + (r() - 0.5) * sp, pick = r();
+    let type = null, c = null;
+    if (mtn) {
+      const wood = (0.55 + 0.5 * Noise.fbm(X / 420 + 9, N / 420 - 4, 3)) * (1 - 0.55 * smooth(700, 2600, mtField(MT.dT, X, N)));
+      if (wood > 0.28 && !mtClearing(X, N, 0)) { if (pick < 0.11) { type = 'fern'; c = r() < 0.55 ? [0.62, 0.42, 0.2] : [0.36, 0.44, 0.2]; } }
+      else if (pick < 0.32) type = 'grass';
+      else if (pick < 0.335) type = 'goldenrod';
+    } else {
+      const f = fieldAt(X, N), n = f.t.n, edge = f.edge < 4.5;
+      const p = edge ? 0.7 : n === 'pasture' ? 0.3 : n === 'woods' ? 0.4 : n === 'stubble' ? 0.03 : 0;
+      if (pick >= p) continue;
+      type = edge && pick < 0.1 ? (pick < 0.06 ? 'goldenrod' : 'aster') : 'grass';
+    }
+    if (!type) continue;
+    const lat = latticeAt(X, N); if (lat && lat.d < 26) continue;
+    if ((mtn ? mtRiverDist(X, N) < 24 : riverDist(X, N) < 30) || onRoad(X, N, 6) || kept(X, N, 1) || inTown(X, N) || inFoot(X, N, 1.5)) continue;
+    if (type === 'grass') { const d = r(); c = d < 0.4 ? [0.68, 0.62, 0.42] : d < 0.8 ? [0.46, 0.55, 0.28] : [0.38, 0.5, 0.22]; }
+    if (!c) c = [1, 1, 1];
+    const sc = type === 'grass' ? 0.55 + r() * 0.7 : type === 'fern' ? 0.6 + r() * 0.6 : 0.75 + r() * 0.4;
+    L[type].push([X, groundAt(X, N) - 0.05, N, r() * TAU, sc, c]);
+  }
+  const grp = new THREE.Group(), sph = new THREE.Sphere(new THREE.Vector3(X0 + S / 2, groundAt(X0 + S / 2, N0 + S / 2), -(N0 + S / 2)), S * 0.75 + 6);
+  for (const k in L) {
+    const list = L[k]; if (!list.length) continue;
+    const im = new THREE.InstancedMesh(shareGeo(G[k], sph.clone()), SMAT['g_' + k], list.length);
+    list.forEach((q, i) => { _m4.compose(_v1.set(q[0], q[1], -q[2]), _q.setFromEuler(_e.set(0, q[3], 0)), _v2.set(q[4], q[4] * (k === 'grass' ? 0.8 + (i % 5) * 0.12 : 1), q[4])); im.setMatrixAt(i, _m4); _tc.setRGB(q[5][0], q[5][1], q[5][2]).convertSRGBToLinear(); im.setColorAt(i, _tc); });
+    folColorsDone(im);
+    im.castShadow = false; im.receiveShadow = true; im.userData.kind = k;
+    grp.add(im);
+  }
+  scene.add(grp);
+  return { grp, c: sph.center };
+}
+function coverUpdate(cam, scene) {
+  if (!WORLD.trackHash) return;
+  const S = COVER.size, R = GFX.lite ? 125 : 200, cp = cam.position, X = cp.x, N = -cp.z;
+  // nothing to grow when the camera is high above the ground (an aerial view sees it all as texture)
+  const high = cp.y - groundAt(X, N) > 140;
+  let best = null, bd = 1e9;
+  const i0 = Math.floor((X - R) / S), i1 = Math.floor((X + R) / S), j0 = Math.floor((N - R) / S), j1 = Math.floor((N + R) / S);
+  if (!high) for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+    const key = i + ',' + j; if (COVER.cells.has(key)) continue;
+    if (i * S < INNER.x0 + 40 || (i + 1) * S > INNER.x1 - 40 || j * S < INNER.n0 + 40 || (j + 1) * S > INNER.n1 - 40) continue;
+    const d = Math.hypot((i + 0.5) * S - X, (j + 0.5) * S - N) - S * 0.7; if (d > R) continue;
+    if (d < bd) { bd = d; best = key; }
+  }
+  if (best) { const [i, j] = best.split(',').map(Number); COVER.cells.set(best, coverCell(i, j, scene)); }
+  const snow = SKY.snow;
+  for (const [key, c] of COVER.cells) {
+    const d = Math.hypot(c.c.x - cp.x, c.c.z - cp.z);
+    if (d > R + 160) { scene.remove(c.grp); for (const m of c.grp.children) { dropShared(m.geometry); m.dispose(); } COVER.cells.delete(key); continue; }
+    c.grp.visible = d < 300;
+    for (const m of c.grp.children) m.visible = !(snow && (m.userData.kind === 'grass' || m.userData.kind === 'fern'));
+  }
 }

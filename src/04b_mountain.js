@@ -238,10 +238,10 @@ function mtBuildWater(scene) {
    cinder and ballast shoulders by the track and gravel bars along the water */
 function mtGroundColor(X, N, h, lat, out) {
   const wood = (0.55 + 0.5 * Noise.fbm(X / 420 + 9, N / 420 - 4, 3)) * (1 - 0.55 * smooth(700, 2600, mtField(MT.dT, X, N)));
-  const k0 = typeof mtClearing === 'function' && mtClearing(X, N, 6) ? 0 : smooth(0.35, 0.75, wood);   // the yards are cleared meadow
+  const k0 = typeof mtClearing === 'function' && mtClearing(X, N, 6) ? 0 : smooth(0.1, 0.36, wood);   // the yards are cleared meadow
   // under the woods: dark leaf litter and the canopy's shade, rust and olive in patches so a wooded hillside reads as autumn woods from afar
   const rust = smooth(-0.1, 0.5, Noise.fbm(X / 160 + 3, N / 160 - 7, 2));
-  let r = lerp(0.40, lerp(0.25, 0.34, rust), k0), g = lerp(0.47, lerp(0.27, 0.24, rust), k0), b = lerp(0.24, lerp(0.14, 0.12, rust), k0);
+  let r = lerp(0.40, lerp(0.22, 0.31, rust), k0), g = lerp(0.47, lerp(0.22, 0.19, rust), k0), b = lerp(0.24, lerp(0.12, 0.09, rust), k0);
   // hemlock needles darken the high ground
   const hk = smooth(300, 560, h) * k0; r = lerp(r, 0.24, hk * 0.5); g = lerp(g, 0.27, hk * 0.5); b = lerp(b, 0.18, hk * 0.5);
   if (lat && lat.d < 30) {
