@@ -680,7 +680,6 @@ MP.contact = function (T) {
         S.v = theirs - sg * buffE(closing) * closing; S.vw = S.v;
         if (closing > 0.3) sndClunk(clamp(closing / COUPLE_OK, 0.3, 1.5), 0);
         if (closing > COUPLE_OK) JOB.note('couple', { mph: closing / MPH, shove: true });
-        toast(closing > COUPLE_HARD ? `Hit ${p.st.nm}'s train hard at ${Math.round(closing / MPH)} mph and bounced off.` : `Buffered up against ${p.st.nm}'s train.`, closing > COUPLE_HARD ? 'bad' : 'warn', 2600, 'mpbump');
       }
       // their updates come a few times a second, so we can end up a little inside their end: back out
       const depth = Math.min(at, len - at);

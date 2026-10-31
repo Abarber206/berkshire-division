@@ -528,7 +528,7 @@ AI.contact = function (A, dir, hit) {
   const ai = (A.ai || B.ai), other = A.ai ? B : A;
   if (other === T) {
     if (closing > 2.7) { GAME.derail(`Collided with ${ai.name} at ${mph} mph. Stop at red signals: they are protecting other trains.`, 'Collision'); return; }
-    sndClunk(0.8, 0); toast(`Buffered up against ${ai.name}.`, 'warn', 2600, 'aibump');
+    sndClunk(0.8, 0);
   } else if (closing > 0.5) sndClunk(clamp(closing / COUPLE_OK, 0.3, 1.2) / (1 + Math.pow(ai.train.lead.pos.distanceTo(camera.position) / 30, 1.3)), 0);
   for (const c of [A, B]) setVel(c, 0);
 };

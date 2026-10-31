@@ -179,8 +179,8 @@ details.keys kbd{color:var(--brass)}
 /* after a wreck: a strip at the top, so the wreck stays in view */
 #bigMsg.wreck{align-items:flex-start;padding-top:calc(env(safe-area-inset-top) + 64px)}
 #bigMsg.wreck .card{width:auto;flex-direction:row;align-items:center;flex-wrap:wrap;gap:10px 14px;max-width:min(640px,calc(100vw - 32px));padding:10px 14px}
-#bigMsg.wreck h2{font-size:22px}
-#bigMsg.wreck p{flex:1 1 220px;font-size:13px}
+#bigMsg.wreck .card{border-top-width:1px;padding:8px}
+#bigMsg.wreck h2,#bigMsg.wreck p{display:none}
 .btn{border:1px solid var(--rule);background:var(--steel-2);border-radius:6px;padding:9px 12px;font-weight:700;font-size:12px;letter-spacing:1px;text-transform:uppercase}
 .btn.prim{border-color:#5d461b;background:linear-gradient(#f0d38a,#b88c35);color:#1b1408}
 .saves{display:flex;flex-direction:column;gap:4px}

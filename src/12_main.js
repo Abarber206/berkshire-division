@@ -380,7 +380,7 @@ GAME.fail = function (title, body) { S.throttle = 0; if (JOB.fail(title, body)) 
 /* A derailment plays out. The cars come off the rails as rigid bodies (WreckSim, 07d_wreck.js) with the
    speed the train had, starting with the one at the point of impact; the rest keep running on the
    rails into the pile until they are dragged off or hit it hard, and only once it has all come to rest
-   does the game say what happened. wk says where and how hard: { a: metres back from the front coupler,
+   does the game offer to put it back (a job's results sheet still says what went wrong). wk says where and how hard: { a: metres back from the front coupler,
    side, k: 0..1 }; left out, the leading end goes, as hard as the speed it was doing. A collision (hit)
    has met something solid: the car that hit stops almost dead and the train behind runs into it. */
 GAME.derail = function (why, title = 'Derailed', wk, hit) {
@@ -391,8 +391,7 @@ GAME.derail = function (why, title = 'Derailed', wk, hit) {
   S.derailed = true; S.throttle = 0; S.vw = S.v; MP.dirty = true;
   GAME.wrecking = { title, why, clunkT: 0, done: false, kin: { v: S.v, mass: 0, force: 0 } };
   if (AU.on) for (let i = 0; i < 8; i++) sndClunk(1, i * 0.07);
-  CAM.shakeHit = 1;
-  toast(`${title}! ${why}`, 'bad', 4500, 'derail');
+  CAM.shakeHit = 1;   // no caption: the pile-up, the shake and the noise say it
 };
 GAME.wreckStep = function (dt, T) {
   const W = GAME.wrecking; if (!W) return;
@@ -421,7 +420,8 @@ GAME.wreckStep = function (dt, T) {
 };
 GAME.wreckBar = function () {
   const W = GAME.wrecking; if (!W || !W.done || PLACE.on) return;
-  $('bigTitle').textContent = W.title; $('bigBody').textContent = W.why;
+  // just the way out: re-rail or the menu. The wreck itself shows what happened
+  $('bigTitle').textContent = ''; $('bigBody').textContent = '';
   $('bigMsg').classList.add('wreck'); $('bigMsg').hidden = false;
 };
 GAME.rerail = function () {
@@ -430,7 +430,6 @@ GAME.rerail = function () {
   if (S.dead) { S.dead = false; S.W = 0.6; S.fire = 0.4; S.P = 180; }
   for (const v of GAME.train.vehicles) { v.brake.BP = 90; v.brake.AR = 90; v.brake.BC = 0; v.brake.emerg = false; }
   S.ER = 90;
-  toast('Re-railed. Mind the speed boards.', 'good');
 };
 GAME.event = function (k) {
   if (k === 'slip') toast('Drivers slipping! Ease the throttle or use sand.', 'warn', 2600, 'slip');
