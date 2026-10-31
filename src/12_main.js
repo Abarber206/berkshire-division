@@ -601,8 +601,8 @@ function simStep(dt, T) {
           onNode: (node, from, to) => {
             const sw = node.sw; if (!sw) return;
             const div = from === sw.legs[1].edge || to === sw.legs[1].edge;
-            if (div && mph > sw.divLimit * 1.75) GAME.derail(`Took the ${sw.name} turnout at ${Math.round(mph)} mph. The diverging route is good for ${sw.divLimit} mph.`);
-            else if (div && mph > sw.divLimit + 4) { toast(`Over turnout speed at ${sw.name}: ${Math.round(mph)} mph (limit ${sw.divLimit}).`, 'warn', 3000, 'tov'); JOB.note('turnout', { name: sw.name, mph, limit: sw.divLimit }); }
+            if (div && mph > turnoutDerailMph(sw.divLimit)) GAME.derail(`Took the ${sw.name} turnout at ${Math.round(mph)} mph. The diverging route is good for ${sw.divLimit} mph.`);
+            else if (div && mph > sw.divLimit + TURNOUT_WARN_OVER) { toast(`Over turnout speed at ${sw.name}: ${Math.round(mph)} mph (limit ${sw.divLimit}).`, 'warn', 3000, 'tov'); JOB.note('turnout', { name: sw.name, mph, limit: sw.divLimit }); }
           },
           onRunThrough: sw => { GAME.stats.runThrough++; MP.noteThrow(sw); JOB.note('runThrough', { name: sw.name }); toast(`Ran through ${sw.name}. The points were forced over.`, 'bad', 3800, 'rt' + sw.id); },
           onBlocked: () => {
