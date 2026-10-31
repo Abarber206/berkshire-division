@@ -250,15 +250,39 @@ function soundMix(dt, T, fx, tv) {
   ambience(dt, inCab, v);
 }
 
+/* How long the cord is held decides how long the whistle sounds. A valve can't snap open and shut, so even
+   the quickest tap blows a short toot (TOOT_MIN); after that the whistle closes as soon as the cord drops.
+   o keeps the state: o.whOpen (when the valve opened), o.whLast (the pull it was opened to). */
+const TOOT_MIN = 0.16;
+function whistleValve(o, pull, now) {
+  if (pull > 0.05) { if (!(o.whOpen >= 0)) o.whOpen = now; o.whLast = pull; return pull; }
+  if (o.whOpen >= 0 && now - o.whOpen < TOOT_MIN) return o.whLast;
+  o.whOpen = -1; return pull;
+}
+/* The opening take (the valve cracking open into the full chord) starts when the valve opens and is
+   cut off with the sustain loop when it closes, so a tap is a toot rather than the whole take. */
+function whistleOnset(o, k, R, pull, dest, now) {
+  const was = o.whPull || 0;
+  if (pull > 0.05 && was <= 0.05) { whistleCut(o, now, 0.01); o.whOn = SND.shot(k + '_on', dest, { gain: (SND_GAIN[k] || 1) * Math.pow(pull, 0.6), vary: 0.01, dur: R.on }); }
+  else if (pull <= 0.05 && was > 0.05) whistleCut(o, now, R.release);
+}
+function whistleCut(o, now, tc) {
+  const sh = o.whOn; o.whOn = null; if (!sh) return;
+  try { const g = sh.g.gain; g.cancelScheduledValues(now); g.setValueAtTime(g.value, now); g.setTargetAtTime(0, now, tc); sh.s.stop(now + tc * 6 + 0.02); } catch (e) {}
+}
+
 /* whistle or horn. Recorded: the attack of the take, then its sustain loop held
    while the cord is pulled; a part-open valve sounds lower and breathier (the quill).
    Doppler comes from the emitter. Synthesized: the voices of 09_audio.js. */
 function whistleMix(T, tv, inCab) {
-  const DSL = T.diesel, key = LOCO_SPEC[GAME.settings.loco].whistle, k = 'wh_' + key, pull = S.whistle, now = AU.ctx.currentTime;
+  const DSL = T.diesel, key = LOCO_SPEC[GAME.settings.loco].whistle, k = 'wh_' + key, now = AU.ctx.currentTime;
+  let pull = S.whistle;
   if (SND.has(k)) {
     if (SND.whKey !== k) { if (SND.whistle) SND.whistle.kill(); SND.whistle = new Loop(k, AU.loco); SND.whKey = k; SND.whPull = 0; }
-    const R = WHISTLE_REC[key], opening = pull > SND.whPull + 0.002;
-    if (pull > 0.05 && SND.whPull <= 0.05) SND.shot(k + '_on', AU.loco, { gain: (SND_GAIN[k] || 1) * Math.pow(pull, 0.6), vary: 0.01, dur: R.on });
+    const R = WHISTLE_REC[key];
+    pull = whistleValve(SND, pull, now);
+    const opening = pull > SND.whPull + 0.002;
+    whistleOnset(SND, k, R, pull, AU.loco, now);
     SND.whistle.set((SND_GAIN[k] || 1) * Math.pow(pull, DSL ? 0.5 : 0.8) * (inCab ? 0.7 : 1), 1 - R.quill * (1 - pull), opening ? R.attack : R.release);
     SND.whPull = pull;
     if (AU.whistle) setG(AU.whistle.out, 0);
@@ -400,10 +424,10 @@ function remoteSound(R, dt, st, d, cam) {
   if (SND.has(k)) {
     if (!B.whistle && st.wh > 0.02) B.whistle = new Loop(k, B.g);
     if (B.whistle) {
-      const Rw = WHISTLE_REC[key];
-      if (st.wh > 0.05 && !(B.whPull > 0.05)) SND.shot(k + '_on', B.g, { gain: (SND_GAIN[k] || 1) * Math.pow(st.wh, 0.6), vary: 0.01, dur: Rw.on });
-      B.whistle.set((SND_GAIN[k] || 1) * Math.pow(st.wh, T.diesel ? 0.5 : 0.8), 1 - Rw.quill * (1 - st.wh), st.wh > (B.whPull || 0) ? Rw.attack : Rw.release);
-      B.whistle.tick(); B.whPull = st.wh;
+      const Rw = WHISTLE_REC[key], now = AU.ctx.currentTime, wh = whistleValve(B, st.wh, now);
+      whistleOnset(B, k, Rw, wh, B.g, now);
+      B.whistle.set((SND_GAIN[k] || 1) * Math.pow(wh, T.diesel ? 0.5 : 0.8), 1 - Rw.quill * (1 - wh), wh > (B.whPull || 0) ? Rw.attack : Rw.release);
+      B.whistle.tick(); B.whPull = wh;
     }
     return;
   }

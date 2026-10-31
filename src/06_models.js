@@ -25,6 +25,13 @@ function rollingMaterials() {
   RMAT.coal = S(0x161618, 0.15, 0.55, { map: TEX.ballast });
   RMAT.lens = new THREE.MeshBasicMaterial({ color: 0xfff1cf });
   RMAT.lensOff = S(0x99928a, 0.6, 0.15);
+  // a steam headlight's lens: a Fresnel glass, its rings faintly visible, the bulb's hot spot in the middle
+  RMAT.hlLens = new THREE.MeshBasicMaterial({ color: 0xfff1cf, map: canvasTex(128, 128, (g, w, h) => {
+    const c = w / 2, gr = g.createRadialGradient(c, c, 0, c, c, c);
+    gr.addColorStop(0, '#ffffff'); gr.addColorStop(0.18, '#fffdf4'); gr.addColorStop(0.7, '#f4ead2'); gr.addColorStop(1, '#d9c9a2');
+    g.fillStyle = gr; g.fillRect(0, 0, w, h);
+    g.lineWidth = 1.5; for (let r = 10; r < c; r += 7) { g.strokeStyle = `rgba(150,128,90,${0.12 + 0.25 * r / c})`; g.beginPath(); g.arc(c, c, r, 0, Math.PI * 2); g.stroke(); }
+  }) });
   RMAT.glow = new THREE.MeshBasicMaterial({ color: 0xff7a26 });
   RMAT.green = S(0x2a3a2a, 0.3, 0.5);
   RMAT.roof = S(0x1d1e1f, 0.2, 0.8);
@@ -364,15 +371,48 @@ function buildBerkshire(key) {
     gb.cylZ('dark', 0.025, 0.62, 8, bx, by + 0.22, 0);
     gb.box('black', 0.08, 0.06, 0.66, bx, by + 0.4, 0);
   };
+  /* A Pyle-National headlight case: a drum with a rounded back, a hinged front door whose rim holds the lens
+     a little behind its lip, a visor over the top of the door, a ventilator cap on top, the door hinge on the
+     fireman's side and the latch on the engineer's. aF: front of the door, R: case radius, D: case depth.
+     Returns where the lens sits and its radius. */
+  const headlamp = (aF, y, R, D, rim) => {
+    const aB = aF + D, x0 = ax(aB);
+    const prof = [[0, 0], [0.012, R * 0.5], [0.04, R * 0.8], [0.09, R * 0.95], [0.15, R], [D - 0.06, R], [D - 0.06, R + 0.022], [D - 0.014, R + 0.022], [D, R - 0.012], [D, R - 0.05], [D - 0.04, R - 0.055]];
+    gb.add('black', new THREE.LatheGeometry(prof.map(p => new THREE.Vector2(p[1], p[0])), 36).rotateZ(-Math.PI / 2).translate(x0, y, 0));
+    gb.add(rim, new THREE.TorusGeometry(R - 0.028, 0.018, 8, 36).rotateY(Math.PI / 2).translate(ax(aF + 0.01), y, 0));   // door rim
+    gb.add('black', new THREE.TorusGeometry(R + 0.006, 0.014, 6, 36).rotateY(Math.PI / 2).translate(ax(aB - 0.15), y, 0));   // rolled bead round the case
+    // visor: an arched hood over the top of the door
+    { const s = new THREE.Shape(), r0 = R + 0.005, r1 = R + 0.03, t0 = 0.3, t1 = Math.PI - 0.3;
+      s.absarc(0, 0, r1, t0, t1, false); s.lineTo(r0 * Math.cos(t1), r0 * Math.sin(t1)); s.absarc(0, 0, r0, t1, t0, true); s.lineTo(r1 * Math.cos(t0), r1 * Math.sin(t0));
+      gb.add('black', new THREE.ExtrudeGeometry(s, { depth: 0.13, bevelEnabled: false, curveSegments: 16 }).rotateY(Math.PI / 2).translate(ax(aF + 0.06), y, 0)); }
+    // ventilator cap on top, back of the case
+    gb.cyl('black', 0.05, 0.055, 0.1, 14, ax(aB - 0.13), y + R + 0.03, 0); gb.cyl('black', 0.085, 0.085, 0.025, 16, ax(aB - 0.13), y + R + 0.09, 0);
+    gb.cyl('black', 0.03, 0.03, 0.03, 10, ax(aB - 0.13), y + R + 0.115, 0);
+    // door hinge (fireman's side) and latch (engineer's side)
+    for (const dy of [-0.55, 0.55]) gb.cyl('dark', 0.022, 0.022, 0.08, 10, ax(aF + 0.03), y + dy * R, -(R + 0.016));
+    gb.cyl('dark', 0.009, 0.009, 1.2 * R, 6, ax(aF + 0.03), y, -(R + 0.016));
+    gb.box('dark', 0.05, 0.07, 0.04, ax(aF + 0.03), y, R + 0.025); gb.box('dark', 0.025, 0.025, 0.06, ax(aF + 0.005), y, R + 0.045);
+    return { a: aF + 0.035, r: R - 0.05 };
+  };
   if (nkp) {
-    // Pyle-National headlight on a bracket on the smokebox top, number-board wings either side
-    const hx = 1.62, hy = 4.33; hlPos = [ax(hx - 0.33), hy]; hlR = 0.2; lensA = hx - 0.33;
-    gb.box('black', 0.46, 0.46, 0.46, ax(hx), hy, 0);
-    gb.add('black', new THREE.CylinderGeometry(0.23, 0.23, 0.12, 28).rotateZ(Math.PI / 2).translate(ax(hx - 0.27), hy, 0));
-    gb.box('black', 0.3, 0.05, 0.54, ax(hx - 0.2), hy + 0.255, 0);                           // visor
-    gb.box('black', 0.42, 0.06, 0.06, ax(hx + 0.05), hy + 0.26, 0);
-    for (const z of [-0.37, 0.37]) { gb.box('black', 0.42, 0.24, 0.28, ax(hx + 0.02), hy - 0.02, z); gb.add('num' + key, new THREE.PlaneGeometry(0.34, 0.17), M(ax(hx - 0.19) + 0.002, hy - 0.02, z, 0, Math.PI / 2, 0)); }
-    gb.box('black', 0.5, sbTop - (hy - 0.23) + 0.08, 0.3, ax(hx + 0.05), (sbTop + hy - 0.23) / 2 - 0.04, 0);   // bracket down onto the smokebox
+    // Pyle-National headlight on a shelf bracket at the top of the smokebox front, number boards angled back either side
+    const hx = 1.62, hy = 4.33, R = 0.27, D = 0.52, aF = hx - D / 2;
+    const ln = headlamp(aF, hy, R, D, 'black'); hlPos = [ax(ln.a), hy]; hlR = ln.r; lensA = ln.a;
+    // shelf under the case running back to the smokebox front, a web below it and a cradle the drum sits in
+    const shelfY = hy - R - 0.02;
+    gb.box('black', 0.56, 0.04, 0.46, ax(hx + 0.06), shelfY, 0);
+    gb.box('black', 0.22, 0.12, 0.05, ax(hx + 0.24), shelfY - 0.08, 0);
+    for (const z of [-0.16, 0.16]) gb.box('black', 0.3, 0.07, 0.04, ax(hx), shelfY + 0.05, z);
+    // conduit from the turbo-generator into the back of the case
+    bar('dark', 0.018, [ax(hx + 0.2), hy - 0.12, -0.2], [ax(hx + 0.3), shelfY + 0.02, -0.21]);
+    // number boards: lit glass boxes on the case sides, swept back 25 degrees, black frames
+    const th = 0.44, W = 0.4, H = 0.22, Dp = 0.13, _e = new THREE.Euler(), _q = new THREE.Quaternion(), _m = new THREE.Matrix4();
+    const place = (x, y, z, ry) => _m.compose(new THREE.Vector3(x, y, z), _q.setFromEuler(_e.set(0, ry, 0)), new THREE.Vector3(1, 1, 1)).clone();
+    for (const s of [-1, 1]) {
+      const zc = s * (R - 0.02 + W / 2 * Math.cos(th)), xc = ax(hx - 0.06) - W / 2 * Math.sin(th), ry = -s * th;
+      gb.add('black', new THREE.BoxGeometry(Dp, H + 0.04, W + 0.03), place(xc, hy - 0.01, zc, ry));
+      gb.add('num' + key, new THREE.PlaneGeometry(W - 0.05, H - 0.04), place(xc + (Dp / 2 + 0.002) * Math.cos(th), hy - 0.01, zc + s * (Dp / 2 + 0.002) * Math.sin(th), Math.PI / 2 + ry));
+    }
     // bell hung on a bracket out of the door centre, number plate below it
     gb.box('black', 0.42, 0.1, 0.14, ax(door.a - 0.2), yB + 0.55, 0);
     bell(ax(door.a - 0.32), yB + 0.15 - 0.02);
@@ -382,10 +422,7 @@ function buildBerkshire(key) {
     gb.add('plate' + key, new THREE.PlaneGeometry(0.42, 0.42), M(ax(door.a - 0.017), yB - 0.48, 0, 0, Math.PI / 2, 0));
   } else {
     // round lamp in the door centre with a brass rim, the bell up on top of the smokebox front, number plate beside the lamp
-    hlPos = [ax(door.a - 0.42), yB + 0.05]; hlR = 0.26; lensA = door.a - 0.42;
-    gb.add('black', new THREE.CylinderGeometry(0.31, 0.33, 0.44, 28).rotateZ(Math.PI / 2).translate(ax(door.a - 0.2), yB + 0.05, 0));
-    gb.add('brass', new THREE.TorusGeometry(0.29, 0.035, 8, 28).rotateY(Math.PI / 2).translate(ax(door.a - 0.42), yB + 0.05, 0));
-    gb.box('black', 0.26, 0.05, 0.5, ax(door.a - 0.32), yB + 0.38, 0);
+    { const ln = headlamp(door.a - 0.44, yB + 0.05, 0.3, 0.46, 'brass'); hlPos = [ax(ln.a), yB + 0.05]; hlR = ln.r; lensA = ln.a; }
     gb.box('black', 0.3, 0.3, 0.3, ax(door.a - 0.05), yB - 0.18, 0);                         // lamp bracket on the door
     gb.box('black', 0.08, 0.24, 0.42, ax(door.a - 0.01), yB - 0.1, 0.55);
     gb.add('num' + key, new THREE.PlaneGeometry(0.34, 0.18), M(ax(door.a - 0.052), yB - 0.1, 0.55, 0, Math.PI / 2, 0));
@@ -548,7 +585,7 @@ function buildBerkshire(key) {
   body.add(statics);
 
   /* ---- glows & lights ---- */
-  const lens = new THREE.Mesh(new THREE.CircleGeometry(hlR, 28), RMAT.lens); lens.position.set(ax(lensA) + 0.004, hlPos[1], 0); lens.rotation.y = Math.PI / 2; body.add(lens);
+  const lens = new THREE.Mesh(new THREE.CircleGeometry(hlR, 36), RMAT.hlLens); lens.position.set(ax(lensA) + 0.004, hlPos[1], 0); lens.rotation.y = Math.PI / 2; body.add(lens);
   const fire = new THREE.Mesh(new THREE.PlaneGeometry(...cab.fireSize), RMAT.glow.clone()); fire.position.copy(cab.firePos); fire.rotation.y = -Math.PI / 2; body.add(fire);
   const beamG = new THREE.ConeGeometry(7, 70, 24, 1, true); beamG.translate(0, -35, 0); beamG.rotateZ(Math.PI / 2);
   const beam = new THREE.Mesh(beamG, new THREE.MeshBasicMaterial({ color: 0xfff2c8, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: true }));

@@ -56,3 +56,40 @@ test('whistle and horn sustain loops are long enough not to be heard repeating, 
     }
   }
 });
+
+// the valve logic from 09b_sound.js, run against a fake clock and a fake opening take
+function valveSandbox() {
+  const src = fs.readFileSync(path.join(ROOT, 'src', '09b_sound.js'), 'utf8');
+  const from = src.indexOf('const TOOT_MIN'), to = src.indexOf('/* whistle or horn. Recorded');
+  const log = [];
+  const gain = () => ({ value: 1, cancelScheduledValues() {}, setValueAtTime() {}, setTargetAtTime(v, t, tc) { log.push(['fade', t, tc]); } });
+  const ctx = { SND_GAIN: {}, log, SND: { shot: (k, d, o) => { log.push(['shot', k, o.dur]); return { g: { gain: gain() }, s: { stop: t => log.push(['stop', t]) } }; } } };
+  vm.runInNewContext(src.slice(from, to) + ';this.whistleValve = whistleValve; this.whistleOnset = whistleOnset; this.TOOT_MIN = TOOT_MIN;', ctx);
+  return ctx;
+}
+// drive one cord pull of `hold` seconds at 60 fps; returns when the whistle went quiet and the log
+function blow(hold) {
+  const c = valveSandbox(), o = { whPull: 0 }, R = { release: 0.12, on: 1.2 };
+  let shut = null;
+  for (let f = 0; f < 180; f++) {
+    const now = f / 60, cord = now < hold ? 0.7 : 0;
+    const p = c.whistleValve(o, cord, now); c.whistleOnset(o, 'wh_x', R, p, null, now); o.whPull = p;
+    if (shut === null && f > 0 && p <= 0.05) shut = now;
+  }
+  return { shut, log: c.log, TOOT_MIN: c.TOOT_MIN };
+}
+
+test('a tap on the whistle is a short toot, not the whole opening take', () => {
+  const r = blow(1 / 60);
+  assert.ok(r.shut >= r.TOOT_MIN && r.shut < r.TOOT_MIN + 0.05, `tap sounded for ${r.shut} s`);
+  assert.equal(r.log.filter(e => e[0] === 'shot').length, 1);
+  const stop = r.log.find(e => e[0] === 'stop');
+  assert.ok(stop && stop[1] < 1.2, 'the opening take was not cut off when the valve closed');
+});
+
+test('holding the cord blows for as long as it is held', () => {
+  for (const hold of [0.5, 1.0, 2.0]) {
+    const r = blow(hold);
+    assert.ok(Math.abs(r.shut - hold) < 0.03, `held ${hold} s, sounded ${r.shut} s`);
+  }
+});

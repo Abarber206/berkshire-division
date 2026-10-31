@@ -651,7 +651,7 @@ function renderStep(dt, T) {
   // headlight & glows, brightening through dusk
   const night = SKY.dark, darkH = Math.max(night, smooth(0.3, 0.7, SKY.boreK || 0));   // in a tunnel the headlight works as it does at night
   T.head.intensity = S.light === 0 ? 0 : (S.light === 1 ? lerp(0.4, 1.6, darkH) : lerp(1.4, 6, darkH));
-  RMAT.lens.color.setScalar(S.light === 0 ? 0.25 : (S.light === 1 ? 0.75 : 1.0));
+  RMAT.lens.color.setScalar(S.light === 0 ? 0.25 : (S.light === 1 ? 0.75 : 1.0)); RMAT.hlLens.color.copy(RMAT.lens.color);
   const flick = 0.85 + 0.15 * Math.sin(S.time * 23) * Math.sin(S.time * 7.3);
   if (T.diesel) {
     T.fireLight.intensity = 0;
