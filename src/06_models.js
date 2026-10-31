@@ -118,6 +118,51 @@ function rodGeo(L, h0, h1, t, boss0, boss1) {
   return mergeGeos(parts);
 }
 
+/* ---- headlight beam and glow, shared by every engine ----
+   The beam is the light seen in the air ahead (haze, rain, night). An evenly lit cone shows hard edges and,
+   seen nose-on, a flat disc; this one is brightest along its axis and fades to nothing at its silhouette
+   (where the eye looks through little of it) and along its length, so it reads as light, not a solid.
+   Its material keeps an opacity property so callers can set it like any other material's. */
+function headBeam(x, y, tilt = -0.03, len = 80, rad = 8) {
+  const g = new THREE.ConeGeometry(rad, len, 32, 8, true); g.translate(0, -len / 2, 0); g.rotateZ(Math.PI / 2);
+  const m = new THREE.ShaderMaterial({
+    uniforms: { uOp: { value: 0 }, uLen: { value: len }, uCol: { value: new THREE.Color(0xfff0cc) } },
+    vertexShader: `uniform float uLen; varying vec3 vN; varying vec3 vV; varying float vT;
+      void main() { vT = position.x / uLen; vec4 mv = modelViewMatrix * vec4(position, 1.0); vV = -mv.xyz; vN = normalMatrix * normal; gl_Position = projectionMatrix * mv; }`,
+    fragmentShader: `uniform float uOp; uniform vec3 uCol; varying vec3 vN; varying vec3 vV; varying float vT;
+      void main() {
+        float edge = pow(abs(dot(normalize(vN), normalize(vV))), 2.2);
+        float along = smoothstep(0.0, 0.04, vT) * pow(1.0 - clamp(vT, 0.0, 1.0), 1.6);
+        float a = uOp * 4.5 * edge * along;
+        gl_FragColor = vec4(uCol * a, 1.0);
+      }`,
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+  });
+  Object.defineProperty(m, 'opacity', { get() { return this.uniforms ? this.uniforms.uOp.value : 1; }, set(v) { if (this.uniforms) this.uniforms.uOp.value = v; }, configurable: true });
+  const beam = new THREE.Mesh(g, m); beam.position.set(x, y, 0); beam.rotation.z = tilt; beam.castShadow = false; beam.renderOrder = 2;
+  return beam;
+}
+/* the glow round a lit lamp: a hot core, a soft bloom and a faint horizontal streak */
+let _haloTex = null;
+function haloTex() {
+  return _haloTex || (_haloTex = canvasTex(128, 128, g => {
+    const gr = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+    gr.addColorStop(0, 'rgba(255,252,240,1)'); gr.addColorStop(0.1, 'rgba(255,246,222,0.9)'); gr.addColorStop(0.3, 'rgba(255,232,186,0.32)'); gr.addColorStop(0.62, 'rgba(255,220,160,0.08)'); gr.addColorStop(1, 'rgba(255,214,150,0)');
+    g.fillStyle = gr; g.fillRect(0, 0, 128, 128);
+    const st = g.createLinearGradient(0, 0, 128, 0); st.addColorStop(0, 'rgba(255,236,200,0)'); st.addColorStop(0.5, 'rgba(255,240,210,0.35)'); st.addColorStop(1, 'rgba(255,236,200,0)');
+    g.fillStyle = st; g.fillRect(0, 62, 128, 4);
+  }));
+}
+/* how squarely a lamp on L faces the camera, 0..1: a headlight's glow is seen from ahead, not from behind */
+const _lfA = new THREE.Vector3(), _lfB = new THREE.Vector3();
+function lampFacing(L, cam) {
+  if (!L.headlightPos) return 1;
+  _lfA.copy(L.headlightPos).applyMatrix4(L.root.matrixWorld);
+  _lfB.set(1, 0, 0).transformDirection(L.root.matrixWorld);
+  const d = _lfA.sub(cam.isObject3D ? cam.position : cam).multiplyScalar(-1).normalize().dot(_lfB);
+  return smooth(-0.15, 0.55, d);
+}
+
 /* =================== THE BERKSHIRE =================== */
 const LOCO_SPEC = {   // front: 'nkp' headlight on top with number-board wings, bell on the door; 'pm' lamp in the door, bell on top, pumps on the pilot
   '765': { road: 'NICKEL PLATE ROAD', num: '765', short: 'NKP', cls: 'S-2', built: 'Lima, Sept 1944', weight: 440800, adhesive: 264300, te: 64135, fw: 'Worthington', whistle: 'deep6', front: 'nkp', leadR: 0.457, cylR: 0.3175, wheels: 'spoked' },
@@ -587,11 +632,9 @@ function buildBerkshire(key) {
   /* ---- glows & lights ---- */
   const lens = new THREE.Mesh(new THREE.CircleGeometry(hlR, 36), RMAT.hlLens); lens.position.set(ax(lensA) + 0.004, hlPos[1], 0); lens.rotation.y = Math.PI / 2; body.add(lens);
   const fire = new THREE.Mesh(new THREE.PlaneGeometry(...cab.fireSize), RMAT.glow.clone()); fire.position.copy(cab.firePos); fire.rotation.y = -Math.PI / 2; body.add(fire);
-  const beamG = new THREE.ConeGeometry(7, 70, 24, 1, true); beamG.translate(0, -35, 0); beamG.rotateZ(Math.PI / 2);
-  const beam = new THREE.Mesh(beamG, new THREE.MeshBasicMaterial({ color: 0xfff2c8, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: true }));
-  beam.position.set(ax(lensA), hlPos[1], 0); beam.rotation.z = -0.045; beam.castShadow = false; body.add(beam);
-  const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: canvasTex(64, 64, g => { const gr = g.createRadialGradient(32, 32, 0, 32, 32, 32); gr.addColorStop(0, 'rgba(255,248,225,1)'); gr.addColorStop(0.25, 'rgba(255,236,190,0.55)'); gr.addColorStop(1, 'rgba(255,220,160,0)'); g.fillStyle = gr; g.fillRect(0, 0, 64, 64); }), color: 0xffffff, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0 }));
-  halo.position.set(ax(lensA) + 0.05, hlPos[1], 0); halo.scale.set(2.4, 2.4, 1); body.add(halo);
+  const beam = headBeam(ax(lensA), hlPos[1], -0.04); body.add(beam);
+  const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: haloTex(), color: 0xffffff, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0 }));
+  halo.position.set(ax(lensA) + 0.06, hlPos[1], 0); halo.scale.set(2.6, 2.6, 1); body.add(halo);
   const ash = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 1.0), new THREE.MeshBasicMaterial({ color: 0xff5a1a, transparent: true, opacity: 0.0, depthWrite: false, blending: THREE.AdditiveBlending }));
   ash.rotation.x = Math.PI / 2; ash.position.set(ax(13.2), FB.base - 0.73, 0); body.add(ash);
 
