@@ -101,7 +101,7 @@ test('the holiday trim is only built when asked for, and the menu choice asks fo
   // the menu's finish picks the trim; the windows of a dressed car glow a little even by day
   w.GAME.settings.finish = 'polar'; assert.equal(w.trimWanted(), 'polar');
   w.GAME.settings.finish = 'white'; assert.equal(w.trimWanted(), '');
-  assert.ok(w.SCN.winMats.includes(w.RMAT.holWin) && w.RMAT.holWin.userData.minI > 0.2);
+  assert.ok(w.SCN.winMats.includes(w.RMAT.holWin) && w.RMAT.holWin.userData.minI > 0.1);
 });
 
 test('every wreath, swag, bow and drift is fixed to the engine, tender or car: nothing floats', { skip: !have && 'tests/vendor/three.min.js missing' }, () => {

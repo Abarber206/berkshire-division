@@ -467,12 +467,12 @@ function buildBerkshire(key, trim = '') {
     gb.box('black', 0.04, 0.4, 0.4, ax(door.a + 0.005), yB - 0.48, 0);
     gb.add('plate' + key, new THREE.PlaneGeometry(0.42, 0.42), M(ax(door.a - 0.017), yB - 0.48, 0, 0, Math.PI / 2, 0));
     // holiday: a wreath framing the number plate, its back on the plate's mounting
-    if (trim) addWreath(gb, 0.33, 0.055, M(ax(door.a - 0.015), yB - 0.48, 0, 0, Math.PI / 2, 0));
+    if (trim) addWreath(gb, 0.34, 0.075, M(ax(door.a - 0.015), yB - 0.48, 0, 0, Math.PI / 2, 0));
   } else {
     // round lamp in the door centre with a brass rim, the bell up on top of the smokebox front, number plate beside the lamp
     { const ln = headlamp(door.a - 0.44, yB + 0.05, 0.3, 0.46, 'brass'); hlPos = [ax(ln.a), yB + 0.05]; hlR = ln.r; lensA = ln.a; }
     // holiday: a wreath round the lamp drum, hugging the case just ahead of the number board
-    if (trim) addWreath(gb, 0.4, 0.07, M(ax(door.a - 0.05), yB + 0.05, 0, 0, Math.PI / 2, 0));
+    if (trim) addWreath(gb, 0.41, 0.09, M(ax(door.a - 0.05), yB + 0.05, 0, 0, Math.PI / 2, 0));
     gb.box('black', 0.3, 0.3, 0.3, ax(door.a - 0.05), yB - 0.18, 0);                         // lamp bracket on the door
     gb.box('black', 0.08, 0.24, 0.42, ax(door.a - 0.01), yB - 0.1, 0.55);
     gb.add('num' + key, new THREE.PlaneGeometry(0.34, 0.18), M(ax(door.a - 0.052), yB - 0.1, 0.55, 0, Math.PI / 2, 0));
@@ -740,19 +740,19 @@ function trimMaterials() {
   // a dusting: the same snow, broken into patches by an alpha map so the coal shows through
   const dust = canvasTex(256, 256, (g, w, h) => {
     g.fillStyle = '#000'; g.fillRect(0, 0, w, h); const r = rng(1941);
-    for (let i = 0; i < 420; i++) { const x = r() * w, y = r() * h, rr = 3 + r() * 12, gr = g.createRadialGradient(x, y, 0, x, y, rr); gr.addColorStop(0, 'rgba(255,255,255,0.95)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(x - rr, y - rr, 2 * rr, 2 * rr); }
+    for (let i = 0; i < 1600; i++) { const x = r() * w, y = r() * h, rr = 1.5 + r() * 4.5, gr = g.createRadialGradient(x, y, 0, x, y, rr); gr.addColorStop(0, 'rgba(255,255,255,0.95)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(x - rr, y - rr, 2 * rr, 2 * rr); }
   }, { srgb: false });
   RMAT.snowDust = S(0xf2f5fa, 0, 0.85, { alphaMap: dust, alphaTest: 0.45, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 });
   RMAT.snowDust.side = THREE.DoubleSide;
   // fir garland: deep green needles, a little lighter at the tips
-  const fir = canvasTex(128, 64, (g, w, h) => { g.fillStyle = '#163a20'; g.fillRect(0, 0, w, h); const r = rng(24); for (let i = 0; i < 700; i++) { const x = r() * w, y = r() * h, a = r() * TAU, l = 3 + r() * 6; g.strokeStyle = r() < 0.5 ? '#2a5e32' : '#0f2c17'; g.lineWidth = 1; g.beginPath(); g.moveTo(x, y); g.lineTo(x + Math.cos(a) * l, y + Math.sin(a) * l); g.stroke(); } }, { repeat: true });
-  RMAT.garland = S(0x2e6b3a, 0, 0.88, { map: fir });
+  const fir = canvasTex(128, 64, (g, w, h) => { g.fillStyle = '#2b6236'; g.fillRect(0, 0, w, h); const r = rng(24); for (let i = 0; i < 700; i++) { const x = r() * w, y = r() * h, a = r() * TAU, l = 3 + r() * 6; g.strokeStyle = r() < 0.5 ? '#4f9257' : '#1d4a28'; g.lineWidth = 1; g.beginPath(); g.moveTo(x, y); g.lineTo(x + Math.cos(a) * l, y + Math.sin(a) * l); g.stroke(); } }, { repeat: true });
+  RMAT.garland = S(0xffffff, 0, 0.85, { map: fir });
   RMAT.ribbon = S(0xb3141c, 0.05, 0.42);
   RMAT.berry = S(0xc8161e, 0.1, 0.3);
   RMAT.gold = S(0xd2a446, 0.9, 0.3);
   RMAT.holBody = S(TRIM.polar.body, 0.25, 0.42); RMAT.holBody.envMapIntensity = 0.9;
   // car windows that glow a little even by day, like a train with every lamp lit inside
-  RMAT.holWin = RMAT.coachWin.clone(); RMAT.holWin.userData = { litAt: 0.15, litI: 1.3, minI: 0.42 };
+  RMAT.holWin = RMAT.coachWin.clone(); RMAT.holWin.userData = { litAt: 0.15, litI: 1.3, minI: 0.14 };
   SCN.winMats.push(RMAT.holWin);
   for (const k of ['snow', 'garland', 'ribbon', 'holBody']) RMAT[k].side = THREE.DoubleSide;
 }
