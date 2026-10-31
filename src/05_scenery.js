@@ -842,30 +842,47 @@ function quarry() {
 }
 
 /* -------- trees -------- */
-function treeGeos() {
-  const colorize = (g, c) => { const a = new Float32Array(g.attributes.position.count * 3); for (let i = 0; i < a.length; i += 3) { a[i] = c[0]; a[i + 1] = c[1]; a[i + 2] = c[2]; } g.setAttribute('color', new THREE.BufferAttribute(a, 3)); return g; };
-  const trunk = c => colorize(new THREE.CylinderGeometry(0.16, 0.28, 4.5, 5, 1, true).translate(0, 2.25, 0), c);
-  const dec = mergeGeos([trunk([0.33, 0.27, 0.22]),
-    colorize(new THREE.IcosahedronGeometry(3.4, 0).scale(1, 0.95, 1).translate(0, 6.4, 0), [1, 1, 1]),
-    colorize(new THREE.IcosahedronGeometry(2.6, 0).translate(1.4, 5.0, 0.8), [0.92, 0.92, 0.92]),
-    colorize(new THREE.IcosahedronGeometry(2.3, 0).translate(-1.3, 5.3, -0.9), [0.85, 0.85, 0.85])]);
-  const con = mergeGeos([trunk([0.3, 0.24, 0.2]),
-    colorize(new THREE.ConeGeometry(2.6, 5.5, 7, 1, true).translate(0, 4.6, 0), [1, 1, 1]),
-    colorize(new THREE.ConeGeometry(1.9, 4.2, 7, 1, true).translate(0, 7.4, 0), [0.92, 0.92, 0.92])]);
-  const decLo = mergeGeos([colorize(new THREE.OctahedronGeometry(3.6, 0).scale(1.05, 1.15, 1.05).translate(0, 5.8, 0), [0.95, 0.95, 0.95])]);
-  const conLo = mergeGeos([colorize(new THREE.ConeGeometry(2.5, 9.5, 5, 1, true).translate(0, 5.6, 0), [0.95, 0.95, 0.95])]);
-  return { dec, con, decLo, conLo };
+/* instanced near (leaf-card) and far (impostor) meshes for a batch of trees: items are [X, y, N, sx, sy, sRGB colour] */
+function treeMeshes(L, scene) {
+  const G = foliageGeos(), out = { hi: [], lo: [], pts: [] };
+  for (const k of ['dec', 'con']) {
+    const list = L[k]; if (!list || !list.length) continue;
+    const pts = list.map(q => new THREE.Vector3(q[0], q[1], -q[2]));
+    const sph = new THREE.Sphere().setFromPoints(pts); sph.radius += 14;
+    const vari = [list.filter(q => ((q[0] * 7.3 + q[2] * 3.1) % 2 + 2) % 2 < 1), list.filter(q => ((q[0] * 7.3 + q[2] * 3.1) % 2 + 2) % 2 >= 1)];
+    const set = (im, i, q) => {
+      _m4.compose(_v1.set(q[0], q[1], -q[2]), _q.setFromEuler(_e.set(0, ((q[0] * 13.1 + q[2]) % TAU + TAU) % TAU, 0)), _v2.set(q[3], q[4], q[3]));
+      im.setMatrixAt(i, _m4); setFolColor(im, i, q[5]);
+    };
+    // near trees go in 250 m patches, so only the patches round the camera send their leaf cards to the GPU
+    vari.forEach((vl, v) => {
+      const patches = new Map();
+      for (const q of vl) { const key = Math.floor(q[0] / 250) + ',' + Math.floor(q[2] / 250); let a = patches.get(key); if (!a) patches.set(key, a = []); a.push(q); }
+      for (const [, pl] of patches) {
+        const ps = new THREE.Sphere().setFromPoints(pl.map(q => new THREE.Vector3(q[0], q[1], -q[2]))); ps.radius += 14;
+        const im = new THREE.InstancedMesh(shareGeo(G[v ? k + '2' : k], ps), MAT.treeNear, pl.length);
+        pl.forEach((q, i) => set(im, i, q)); folColorsDone(im);
+        im.userData.sph = ps; out.hi.push(im);
+      }
+    });
+    const lo = new THREE.InstancedMesh(shareGeo(G[k + 'Lo'], sph.clone()), MAT.treeFar, list.length);
+    list.forEach((q, i) => set(lo, i, q)); folColorsDone(lo);
+    out.lo.push(lo); out.pts.push(...pts);
+  }
+  for (const m of [...out.hi, ...out.lo]) { m.castShadow = false; m.receiveShadow = false; m.visible = false; scene.add(m); WORLD.treeMeshes.push(m); }
+  return out;
 }
 function buildTrees(scene) {
-  const G = treeGeos();
   const tiles = new Map();
   const put = (X, N, type, s, c) => {
     const k = Math.floor((X + 20000) / 1500) + ',' + Math.floor((N + 20000) / 1500);
     if (!tiles.has(k)) tiles.set(k, { dec: [], con: [] });
     tiles.get(k)[type].push([X, N, s, c]);
   };
+  const cedar = (r) => [0.13 + r() * 0.05, 0.22 + r() * 0.06, 0.13 + r() * 0.03];   // red cedar and spruce, the farm windbreak evergreens
   const ok = (X, N, pad) => {
     const lat = latticeAt(X, N); if (lat && lat.d < 24 + pad) return false;
+    if (WORLD.trackHash && trackWithin(X, N, 14 + pad)) return false;   // the lattice is a 20 m grid; check the real distance close in
     for (const rx of WORLD.roadsX) if (Math.abs(X - rx) < 11) return false;
     if (Math.abs(N - WORLD.roadN) < 12) return false;
     if (riverDist(X, N) < 30) return false;
@@ -896,7 +913,7 @@ function buildTrees(scene) {
       }
       // fence-row trees along some field edges
       if (Noise.hash(i * 3 + 1, j * 7 + 2) < 0.22) {
-        for (let x = 0; x < FIELD.w; x += 18 + r() * 30) { const X = X0 + x, N = N0 + (r() - 0.5) * 3; if (ok(X, N, 6) && r() < 0.6) put(X, N, 'dec', 0.8 + r() * 0.5, autumn(r)); }
+        for (let x = 0; x < FIELD.w; x += 18 + r() * 30) { const X = X0 + x, N = N0 + (r() - 0.5) * 3; if (ok(X, N, 6) && r() < 0.6) { if (r() < 0.12) put(X, N, 'con', 0.6 + r() * 0.3, cedar(r)); else put(X, N, 'dec', 0.8 + r() * 0.5, autumn(r)); } }
       }
       if (Noise.hash(i * 5 + 3, j * 11 + 1) < 0.16) {
         for (let y = 0; y < FIELD.h; y += 18 + r() * 30) { const X = X0 + (r() - 0.5) * 3, N = N0 + y; if (ok(X, N, 6) && r() < 0.6) put(X, N, 'dec', 0.8 + r() * 0.5, autumn(r)); }
@@ -910,29 +927,25 @@ function buildTrees(scene) {
   // windbreaks at farmsteads
   for (const f of SCN.farms) for (let i = 0; i < 14; i++) {
     const a = r() * TAU, d = 20 + r() * 30; const X = f.X + Math.cos(a) * d, N = f.N + Math.sin(a) * d;
-    if (r() < 0.6) { const sc = (r() < 0.4 ? -1 : 1) * (1 + r() * 0.5), col = autumn(r); if (!inFoot(X, N, 3.6 * Math.abs(sc))) put(X, N, 'dec', sc, col); }
+    if (r() < 0.6) {
+      const sc = (r() < 0.4 ? -1 : 1) * (1 + r() * 0.5), col = autumn(r), con = r() < 0.35;
+      if (!inFoot(X, N, 3.6 * Math.abs(sc))) { if (con) put(X, N, 'con', 0.8 + r() * 0.4, cedar(r)); else put(X, N, 'dec', sc, col); }
+    }
   }
   for (const t of SCN.extraTrees || []) { const col = t[3] || autumn(r); if (!inFoot(t[0], t[1], 3.6 * Math.abs(t[2]))) put(t[0], t[1], 'dec', t[2], col); }
   let total = 0;
   WORLD.treeTiles = [];
   for (const [, t] of tiles) {
-    const tt = { hi: [], lo: [], c: null, r: 0 }; const allPts = [];
-    for (const type of ['dec', 'decLo']) {
-      const list = t[type.replace('Lo', '')]; if (!list.length) continue;
-      const im = new THREE.InstancedMesh(G[type].clone(), type.endsWith('Lo') ? MAT.treeFar : MAT.treeNear, list.length);
-      const pts = [];
-      list.forEach((q, i) => {
-        const [X, N, s0, c] = q; const y = groundAt(X, N) - 0.3; const s = Math.abs(s0), col = s0 < 0;
-        _m4.compose(_v1.set(X, y, -N), _q.setFromEuler(_e.set(0, (X * 13.1 + N) % TAU, 0)), col ? _v2.set(s * 0.55, s * 1.45, s * 0.55) : _v2.set(s, s * (0.9 + ((X * 7 + N * 3) % 1) * 0.2), s));
-        im.setMatrixAt(i, _m4); im.setColorAt(i, _tc.setRGB(c[0], c[1], c[2])); pts.push(new THREE.Vector3(X, y, -N));
-        if (type === 'dec') { if (col) solid(X, -N, 1.95 * s, y + 4.3 * s, y + 14.1 * s); else solid(X, -N, 3.7 * s, y + 2.4 * s, y + 9.9 * s); }
-      });
-      const sph = new THREE.Sphere().setFromPoints(pts); sph.radius += 12; im.geometry.boundingSphere = sph;
-      im.castShadow = false; im.receiveShadow = false;
-      scene.add(im); WORLD.treeMeshes.push(im);
-      if (type.endsWith('Lo')) { tt.lo.push(im); im.visible = false; } else { tt.hi.push(im); total += list.length; allPts.push(...pts); }
+    const L = { dec: [], con: [] };
+    for (const k of ['dec', 'con']) for (const [X, N, s0, c] of t[k]) {
+      const y = groundAt(X, N) - 0.3, s = Math.abs(s0), col = s0 < 0;   // a negative scale is a columnar tree (poplar, tulip tree)
+      if (k === 'con') { L.con.push([X, y, N, s, s * (0.95 + ((X * 7 + N * 3) % 1) * 0.2), c]); solid(X, -N, 2.6 * s, y + 1.5 * s, y + 10 * s); continue; }
+      L.dec.push(col ? [X, y, N, s * 0.55, s * 1.45, c] : [X, y, N, s, s * (0.9 + ((X * 7 + N * 3) % 1) * 0.2), c]);
+      if (col) solid(X, -N, 1.95 * s, y + 4.3 * s, y + 14.1 * s); else solid(X, -N, 3.7 * s, y + 2.4 * s, y + 9.9 * s);
     }
-    if (allPts.length) { const sp = new THREE.Sphere().setFromPoints(allPts); tt.c = sp.center; tt.r = sp.radius; WORLD.treeTiles.push(tt); }
+    const M = treeMeshes(L, scene);
+    total += L.dec.length + L.con.length;
+    if (M.pts.length) { const sp = new THREE.Sphere().setFromPoints(M.pts); WORLD.treeTiles.push({ hi: M.hi, lo: M.lo, c: sp.center, r: sp.radius }); }
   }
   WORLD.treeCount = total;
 }
