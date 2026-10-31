@@ -683,7 +683,7 @@ function renderStep(dt, T) {
   skyTick(dt);
   SKY.clouds.material.map.offset.x += dt * 0.0006; SKY.clouds.material.map.offset.y += dt * 0.0003;
   skyFollow(camera, PLACE.on ? PLACE.focus() : (MP.view() || T).lead.pos);
-  lampsFrame(camera);
+  lampsFrame(camera, dt);
   updateTrackLOD(camera); updateDetailLOD(camera, scene, dt); mtUpdate(camera, scene);
   WORLD.waterT.value += dt;
   // effects & sound
