@@ -187,8 +187,8 @@ details.keys kbd{color:var(--brass)}
 /* after a wreck: a strip at the top, so the wreck stays in view */
 #bigMsg.wreck{align-items:flex-start;padding-top:calc(env(safe-area-inset-top) + 64px)}
 #bigMsg.wreck .card{width:auto;flex-direction:row;align-items:center;flex-wrap:wrap;gap:10px 14px;max-width:min(640px,calc(100vw - 32px));padding:10px 14px}
-#bigMsg.wreck h2{font-size:22px}
-#bigMsg.wreck p{flex:1 1 220px;font-size:13px}
+#bigMsg.wreck .card{border-top-width:1px;padding:8px}
+#bigMsg.wreck h2,#bigMsg.wreck p{display:none}
 .btn{border:1px solid var(--rule);background:var(--steel-2);border-radius:6px;padding:9px 12px;font-weight:700;font-size:12px;letter-spacing:1px;text-transform:uppercase}
 .btn.prim{border-color:#5d461b;background:linear-gradient(#f0d38a,#b88c35);color:#1b1408}
 .saves{display:flex;flex-direction:column;gap:4px}
@@ -11234,7 +11234,6 @@ function slideFeel(dt, T) {
     SLIDE.surgeV -= 0.09 * dir; SLIDE.settle = 1.2;
     if (AU.on) { let k = 0; for (let j = T.vehicles.length - 1; j >= 0; j--) { const x = T.vehicles[j]; if (!x.pos) continue; const d = x.pos.distanceTo(cp); if (d < 120) sndClunk(0.45 / (1 + (d / 25) ** 1.3), (k++) * 0.09); } }
   }
-  if (sliding && !SLIDE.wasSlide && run && v > 2) toast('Wheels locked: sliding!', 'warn', 2500, 'slide');
   SLIDE.wasSlide = sliding;
   // forward lean from the deceleration (only steam trains skid; everything feels the brakes), under-damped
   const target = clamp(-(S.accel || 0), -2, 2) * 0.035;
@@ -12891,7 +12890,6 @@ MP.contact = function (T) {
         S.v = theirs - sg * buffE(closing) * closing; S.vw = S.v;
         if (closing > 0.3) sndClunk(clamp(closing / COUPLE_OK, 0.3, 1.5), 0);
         if (closing > COUPLE_OK) JOB.note('couple', { mph: closing / MPH, shove: true });
-        toast(closing > COUPLE_HARD ? `Hit ${p.st.nm}'s train hard at ${Math.round(closing / MPH)} mph and bounced off.` : `Buffered up against ${p.st.nm}'s train.`, closing > COUPLE_HARD ? 'bad' : 'warn', 2600, 'mpbump');
       }
       // their updates come a few times a second, so we can end up a little inside their end: back out
       const depth = Math.min(at, len - at);
@@ -14149,7 +14147,7 @@ AI.contact = function (A, dir, hit) {
   const ai = (A.ai || B.ai), other = A.ai ? B : A;
   if (other === T) {
     if (closing > 2.7) { GAME.derail(`Collided with ${ai.name} at ${mph} mph. Stop at red signals: they are protecting other trains.`, 'Collision'); return; }
-    sndClunk(0.8, 0); toast(`Buffered up against ${ai.name}.`, 'warn', 2600, 'aibump');
+    sndClunk(0.8, 0);
   } else if (closing > 0.5) sndClunk(clamp(closing / COUPLE_OK, 0.3, 1.2) / (1 + Math.pow(ai.train.lead.pos.distanceTo(camera.position) / 30, 1.3)), 0);
   for (const c of [A, B]) setVel(c, 0);
 };
@@ -15362,7 +15360,7 @@ GAME.fail = function (title, body) { S.throttle = 0; if (JOB.fail(title, body)) 
 /* A derailment plays out. The cars come off the rails as rigid bodies (WreckSim, 07d_wreck.js) with the
    speed the train had, starting with the one at the point of impact; the rest keep running on the
    rails into the pile until they are dragged off or hit it hard, and only once it has all come to rest
-   does the game say what happened. wk says where and how hard: { a: metres back from the front coupler,
+   does the game offer to put it back (a job's results sheet still says what went wrong). wk says where and how hard: { a: metres back from the front coupler,
    side, k: 0..1 }; left out, the leading end goes, as hard as the speed it was doing. A collision (hit)
    has met something solid: the car that hit stops almost dead and the train behind runs into it. */
 GAME.derail = function (why, title = 'Derailed', wk, hit) {
@@ -15373,8 +15371,7 @@ GAME.derail = function (why, title = 'Derailed', wk, hit) {
   S.derailed = true; S.throttle = 0; S.vw = S.v; MP.dirty = true;
   GAME.wrecking = { title, why, clunkT: 0, done: false, kin: { v: S.v, mass: 0, force: 0 } };
   if (AU.on) for (let i = 0; i < 8; i++) sndClunk(1, i * 0.07);
-  CAM.shakeHit = 1;
-  toast(`${title}! ${why}`, 'bad', 4500, 'derail');
+  CAM.shakeHit = 1;   // no caption: the pile-up, the shake and the noise say it
 };
 GAME.wreckStep = function (dt, T) {
   const W = GAME.wrecking; if (!W) return;
@@ -15403,7 +15400,8 @@ GAME.wreckStep = function (dt, T) {
 };
 GAME.wreckBar = function () {
   const W = GAME.wrecking; if (!W || !W.done || PLACE.on) return;
-  $('bigTitle').textContent = W.title; $('bigBody').textContent = W.why;
+  // just the way out: re-rail or the menu. The wreck itself shows what happened
+  $('bigTitle').textContent = ''; $('bigBody').textContent = '';
   $('bigMsg').classList.add('wreck'); $('bigMsg').hidden = false;
 };
 GAME.rerail = function () {
@@ -15412,7 +15410,6 @@ GAME.rerail = function () {
   if (S.dead) { S.dead = false; S.W = 0.6; S.fire = 0.4; S.P = 180; }
   for (const v of GAME.train.vehicles) { v.brake.BP = 90; v.brake.AR = 90; v.brake.BC = 0; v.brake.emerg = false; }
   S.ER = 90;
-  toast('Re-railed. Mind the speed boards.', 'good');
 };
 GAME.event = function (k) {
   if (k === 'slip') toast('Drivers slipping! Ease the throttle or use sand.', 'warn', 2600, 'slip');

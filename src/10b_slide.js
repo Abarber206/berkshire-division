@@ -133,7 +133,6 @@ function slideFeel(dt, T) {
     SLIDE.surgeV -= 0.09 * dir; SLIDE.settle = 1.2;
     if (AU.on) { let k = 0; for (let j = T.vehicles.length - 1; j >= 0; j--) { const x = T.vehicles[j]; if (!x.pos) continue; const d = x.pos.distanceTo(cp); if (d < 120) sndClunk(0.45 / (1 + (d / 25) ** 1.3), (k++) * 0.09); } }
   }
-  if (sliding && !SLIDE.wasSlide && run && v > 2) toast('Wheels locked: sliding!', 'warn', 2500, 'slide');
   SLIDE.wasSlide = sliding;
   // forward lean from the deceleration (only steam trains skid; everything feels the brakes), under-damped
   const target = clamp(-(S.accel || 0), -2, 2) * 0.035;
