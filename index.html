@@ -3569,7 +3569,10 @@ function impostorMaterial(tex) {
         vec3 upC = normalize(cross(normalize(-mvPosition.xyz), rightV));
         upV = normalize(mix(upV, upC, 0.5));   // lean back a little toward the viewer when seen from above
         mvPosition.xyz += rightV * position.x * length(instanceMatrix[0].xyz) + upV * position.y * length(instanceMatrix[1].xyz);
-        gl_Position = projectionMatrix * mvPosition;`);
+        gl_Position = projectionMatrix * mvPosition;
+        #ifdef LAMP_DECL
+          vLampP = vec3(1e6); vLampN = vec3(0.0, 1.0, 0.0);   // far trees: out of reach of the lamps (10c_lamps.js)
+        #endif`);
   };
   m.customProgramCacheKey = () => 'impostor';
   return m;
