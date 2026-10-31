@@ -51,6 +51,7 @@ function rollingMaterials() {
   RMAT.rbEdge = S(0x141516, 0.25, 0.48);   // running-board edge (white on excursion finish)
   RMAT.dWall = S(0x141516, 0.25, 0.5);     // outer face of driver & engine-truck tires
   for (const k of ['black', 'blackMatte', 'graphite', 'dark', 'tire', 'rod', 'brass', 'green', 'roof', 'oxide', 'oxide2', 'caboose', 'tank', 'steel', 'backhead', 'cabInt', 'wood']) RMAT[k].side = THREE.DoubleSide;
+  trimMaterials();
 }
 function decalMat(w, h, draw) { return new THREE.MeshStandardMaterial({ map: canvasTex(w, h, draw), transparent: true, alphaTest: 0.35, metalness: 0.2, roughness: 0.55, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }); }
 function romanText(g, txt, x, y, size, color = '#efede4', spacing = 0.06) {
@@ -250,7 +251,7 @@ function boxpokCentre(R, main, parts) {
   parts.black.push(new THREE.ExtrudeGeometry(cw, { depth: 0.09, bevelEnabled: false, curveSegments: 18 }));
 }
 
-function buildBerkshire(key) {
+function buildBerkshire(key, trim = '') {
   const spec = LOCO_SPEC[key], nkp = spec.front !== 'pm';
   const root = new THREE.Group();
   const body = new THREE.Group(); root.add(body);
@@ -465,9 +466,13 @@ function buildBerkshire(key) {
     RMAT['plate' + key] = plate;
     gb.box('black', 0.04, 0.4, 0.4, ax(door.a + 0.005), yB - 0.48, 0);
     gb.add('plate' + key, new THREE.PlaneGeometry(0.42, 0.42), M(ax(door.a - 0.017), yB - 0.48, 0, 0, Math.PI / 2, 0));
+    // holiday: a wreath framing the number plate, its back on the plate's mounting
+    if (trim) addWreath(gb, 0.33, 0.055, M(ax(door.a - 0.015), yB - 0.48, 0, 0, Math.PI / 2, 0));
   } else {
     // round lamp in the door centre with a brass rim, the bell up on top of the smokebox front, number plate beside the lamp
     { const ln = headlamp(door.a - 0.44, yB + 0.05, 0.3, 0.46, 'brass'); hlPos = [ax(ln.a), yB + 0.05]; hlR = ln.r; lensA = ln.a; }
+    // holiday: a wreath round the lamp drum, hugging the case just ahead of the number board
+    if (trim) addWreath(gb, 0.4, 0.07, M(ax(door.a - 0.05), yB + 0.05, 0, 0, Math.PI / 2, 0));
     gb.box('black', 0.3, 0.3, 0.3, ax(door.a - 0.05), yB - 0.18, 0);                         // lamp bracket on the door
     gb.box('black', 0.08, 0.24, 0.42, ax(door.a - 0.01), yB - 0.1, 0.55);
     gb.add('num' + key, new THREE.PlaneGeometry(0.34, 0.18), M(ax(door.a - 0.052), yB - 0.1, 0.55, 0, Math.PI / 2, 0));
@@ -599,6 +604,12 @@ function buildBerkshire(key) {
       gb.box('roof', 1.1, 0.04, 1.0, ax((C.a0 + C.a1) / 2), C.crown + 0.16, 0);
       // rear of the roof: a curved storm sheet down to the side extensions
       gb.box('roof', 0.05, 0.25, 2 * hw + 0.1, ax(aRoof1) + 0.025, C.roofY - 0.1, 0);
+      // holiday: snow lying on the roof (the boiler is too warm to hold any)
+      if (trim) {
+        const pts = []; for (let i = 0; i <= 24; i++) { const z = -hw + i / 24 * 2 * hw; pts.push([z, C.arch(z)]); }
+        const L = aRoof1 - C.a0 - 0.12;
+        gb.add('snow', snowCap(pts, 0.05, L, 0.35).translate(ax(aRoof1 - 0.06), 0, 0));
+      }
     }
     // floor and the deck back to the tender
     gb.box('dark', L + 0.05, 0.08, 2 * hw - 0.02, x1 + (L + 0.05) / 2, fl - 0.04, 0);
@@ -698,17 +709,114 @@ function buildBerkshire(key) {
 }
 
 /* Paint finish for the steam engines: as delivered (graphite smokebox and firebox),
-   excursion white trim (tire faces and running-board edges), or plain black. */
+   excursion white trim (tire faces and running-board edges), plain black, or the holiday
+   trim (white walls here; the wreaths, garland and snow are built with the train). */
 function applySteamFinish(k) {
   if (!RMAT.graphite) return;
   const set = (m, hex) => { m.color.set(hex).convertSRGBToLinear(); m.userData.lin = true; };
   const white = 0xe9e6dc;
   set(RMAT.graphite, k === 'black' ? 0x19191a : 0x45474a); RMAT.graphite.roughness = k === 'black' ? 0.5 : 0.66;
-  set(RMAT.rbEdge, k === 'white' ? white : 0x141516);
-  set(RMAT.dWall, k === 'white' ? white : 0x141516);
-  RMAT.dWall.metalness = RMAT.rbEdge.metalness = k === 'white' ? 0.05 : 0.25;
-  RMAT.dWall.roughness = k === 'white' ? 0.62 : 0.5;
+  const wt = k === 'white' || k === 'polar';   // the holiday trim keeps the excursion white walls
+  set(RMAT.rbEdge, wt ? white : 0x141516);
+  set(RMAT.dWall, wt ? white : 0x141516);
+  RMAT.dWall.metalness = RMAT.rbEdge.metalness = wt ? 0.05 : 0.25;
+  RMAT.dWall.roughness = wt ? 0.62 : 0.5;
 }
+
+/* =================== HOLIDAY TRIM =================== */
+/* The "North Pole" finish dresses a steam train for a Christmas excursion: a wreath on the smokebox front,
+   garland swags and wreaths on the coaches, snow lying on the cab roof, the tender and the car roofs, warm
+   windows, and the cars in deep maroon with gold lining and our own POLAR LIMITED lettering. The trim is
+   built with the train (Train opts.trim) so other trains on the road keep their everyday paint. */
+const TRIM = {
+  polar: { road: 'POLAR LIMITED', drum: ['THE', 'POLAR', 'LIMITED'], gold: '#e0bd62', body: 0x4d1418 },
+};
+function trimMaterials() {
+  if (RMAT.snow || !RMAT.black) return;
+  const S = (c, m, r, extra = {}) => new THREE.MeshStandardMaterial({ color: c, metalness: m, roughness: r, ...extra });
+  // fresh snow: near white with a cool tint, matte, a few sparkles in the texture
+  const snowTex = canvasTex(128, 128, (g, w, h) => { g.fillStyle = '#f4f7fb'; g.fillRect(0, 0, w, h); const r = rng(1225); for (let i = 0; i < 900; i++) { const v = 228 + ((r() * 27) | 0); g.fillStyle = `rgb(${v - 6},${v - 2},${v})`; g.fillRect(r() * w, r() * h, 2, 2); } }, { repeat: true });
+  RMAT.snow = S(0xf2f5fa, 0, 0.82, { map: snowTex });
+  // a dusting: the same snow, broken into patches by an alpha map so the coal shows through
+  const dust = canvasTex(256, 256, (g, w, h) => {
+    g.fillStyle = '#000'; g.fillRect(0, 0, w, h); const r = rng(1941);
+    for (let i = 0; i < 420; i++) { const x = r() * w, y = r() * h, rr = 3 + r() * 12, gr = g.createRadialGradient(x, y, 0, x, y, rr); gr.addColorStop(0, 'rgba(255,255,255,0.95)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(x - rr, y - rr, 2 * rr, 2 * rr); }
+  }, { srgb: false });
+  RMAT.snowDust = S(0xf2f5fa, 0, 0.85, { alphaMap: dust, alphaTest: 0.45, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 });
+  RMAT.snowDust.side = THREE.DoubleSide;
+  // fir garland: deep green needles, a little lighter at the tips
+  const fir = canvasTex(128, 64, (g, w, h) => { g.fillStyle = '#163a20'; g.fillRect(0, 0, w, h); const r = rng(24); for (let i = 0; i < 700; i++) { const x = r() * w, y = r() * h, a = r() * TAU, l = 3 + r() * 6; g.strokeStyle = r() < 0.5 ? '#2a5e32' : '#0f2c17'; g.lineWidth = 1; g.beginPath(); g.moveTo(x, y); g.lineTo(x + Math.cos(a) * l, y + Math.sin(a) * l); g.stroke(); } }, { repeat: true });
+  RMAT.garland = S(0x2e6b3a, 0, 0.88, { map: fir });
+  RMAT.ribbon = S(0xb3141c, 0.05, 0.42);
+  RMAT.berry = S(0xc8161e, 0.1, 0.3);
+  RMAT.gold = S(0xd2a446, 0.9, 0.3);
+  RMAT.holBody = S(TRIM.polar.body, 0.25, 0.42); RMAT.holBody.envMapIntensity = 0.9;
+  // car windows that glow a little even by day, like a train with every lamp lit inside
+  RMAT.holWin = RMAT.coachWin.clone(); RMAT.holWin.userData = { litAt: 0.15, litI: 1.3, minI: 0.42 };
+  SCN.winMats.push(RMAT.holWin);
+  for (const k of ['snow', 'garland', 'ribbon', 'holBody']) RMAT[k].side = THREE.DoubleSide;
+}
+/* a smooth, repeatable bump at a point, so vertices that share a position move together and seams stay closed */
+function fluff(x, y, z) { const s = Math.sin(x * 127.1 + y * 311.7 + z * 74.7) * 43758.5453; return s - Math.floor(s) - 0.5; }
+function fluffGeo(g, amt) {
+  const p = g.attributes.position, n = g.attributes.normal;
+  if (!p || !n || !(p.count > 0)) return g;
+  for (let i = 0; i < p.count; i++) {
+    const x = p.getX(i), y = p.getY(i), z = p.getZ(i), k = fluff(Math.round(x * 400), Math.round(y * 400), Math.round(z * 400)) * amt;
+    p.setXYZ(i, x + n.getX(i) * k, y + n.getY(i) * k, z + n.getZ(i) * k);
+  }
+  g.computeVertexNormals(); return g;
+}
+/* A layer of snow lying on a roof: pts is the roof's top line across the car, [z, y] pairs from one side to the
+   other; the layer is t thick in the middle and thins to nothing at both edges. Its underside sits a few mm
+   into the roof so it never floats. Runs along x from 0 to L. */
+function snowCap(pts, t, L, edge = 0.25) {
+  const z0 = pts[0][0], z1 = pts[pts.length - 1][0], s = new THREE.Shape();
+  const th = z => t * Math.min(1, smooth(0, edge, z - z0) * 0.85 + 0.15, smooth(0, edge, z1 - z) * 0.85 + 0.15);
+  s.moveTo(-pts[0][0], pts[0][1] - 0.006);
+  for (const [z, y] of pts) s.lineTo(-z, y + th(z));
+  for (let i = pts.length - 1; i >= 0; i--) s.lineTo(-pts[i][0], pts[i][1] - 0.006);
+  const g = new THREE.ExtrudeGeometry(s, { depth: L, bevelEnabled: false });
+  g.rotateY(Math.PI / 2);   // shape x (minus z) back to z, the extrusion along +x
+  return g;
+}
+/* points along a quadratic curve, [z, y] */
+function quadPts(p0, c, p1, n, t0 = 0, t1 = 1) {
+  const out = []; for (let i = 0; i <= n; i++) { const t = lerp(t0, t1, i / n), u = 1 - t; out.push([u * u * p0[0] + 2 * u * t * c[0] + t * t * p1[0], u * u * p0[1] + 2 * u * t * c[1] + t * t * p1[1]]); } return out;
+}
+/* A wreath of fir with a red bow at the bottom and berries round the ring. Built facing +z (its back on z = 0)
+   and placed by matrix m: R ring radius, r thickness. */
+function addWreath(gb, R, r, m) {
+  const ring = fluffGeo(new THREE.TorusGeometry(R, r, 10, 40), r * 0.5); ring.scale(1, 1, 0.75); ring.translate(0, 0, r * 0.75);
+  gb.add('garland', ring, m);
+  const rb = rng(Math.round(R * 1000));
+  for (let i = 0; i < 9; i++) { const a = Math.PI / 2 + (i + 0.5) / 9 * TAU * 0.86 - TAU * 0.43 + Math.PI; const rr = R + (rb() - 0.5) * r * 0.9; gb.add('berry', new THREE.IcosahedronGeometry(r * 0.28, 0).translate(Math.cos(a) * rr, Math.sin(a) * rr, r * 1.35), m); }
+  // the bow: two loops, a knot and two tails, on the face of the ring at the bottom
+  const by = -R, bz = r * 1.35;
+  for (const s of [-1, 1]) {
+    gb.add('ribbon', new THREE.SphereGeometry(r * 0.9, 10, 6).scale(1.25, 0.7, 0.45).rotateZ(s * 0.35).translate(s * r * 1.05, by + r * 0.2, bz), m);
+    gb.add('ribbon', new THREE.BoxGeometry(r * 0.5, r * 2.6, r * 0.18).rotateZ(s * 0.32).translate(s * r * 0.55, by - r * 1.3, bz - r * 0.1), m);
+  }
+  gb.add('ribbon', new THREE.SphereGeometry(r * 0.55, 10, 6).scale(1, 1, 0.7).translate(0, by + r * 0.15, bz + r * 0.05), m);
+}
+/* garland hung in swags between anchor points along a car side at face z, sagging dy between them, a bow at each anchor */
+function addSwags(gb, xs, y, dy, z, r, bows = true) {
+  const pts = [];
+  for (let i = 0; i < xs.length - 1; i++) for (let k = 0; k < 6; k++) { const t = k / 6; pts.push([lerp(xs[i], xs[i + 1], t), y - dy * 4 * t * (1 - t), z]); }
+  pts.push([xs[xs.length - 1], y, z]);
+  const c = new THREE.CatmullRomCurve3(pts.map(p => new THREE.Vector3(p[0], p[1], p[2])));
+  gb.add('garland', fluffGeo(new THREE.TubeGeometry(c, (xs.length - 1) * 10, r, 7, false), r * 0.45));
+  if (!bows) return;
+  const s = Math.sign(z) || 1;
+  for (const x of xs) {
+    const m = M(x, y + r * 0.2, z + s * r * 0.7, 0, s > 0 ? 0 : Math.PI, 0);
+    for (const d of [-1, 1]) gb.add('ribbon', new THREE.SphereGeometry(r * 0.9, 8, 5).scale(1.2, 0.7, 0.45).rotateZ(d * 0.35).translate(d * r * 1.0, 0, 0), m);
+    gb.add('ribbon', new THREE.SphereGeometry(r * 0.5, 8, 5).scale(1, 1, 0.7), m);
+    for (const d of [-1, 1]) gb.add('ribbon', new THREE.BoxGeometry(r * 0.45, r * 2.4, r * 0.16).rotateZ(d * 0.3).translate(d * r * 0.5, -r * 1.25, 0), m);
+  }
+}
+/* the finish the menu asks for, as a trim for a new steam train ('' for none) */
+function trimWanted() { return (typeof GAME !== 'undefined' && GAME.settings && GAME.settings.finish === 'polar') ? 'polar' : ''; }
 
 /* Valve gear & rods kinematics. theta: driver rotation angle; rev: -1..1 */
 function animateBerkshire(L, theta, rev) {
@@ -761,8 +869,8 @@ function animateBerkshire(L, theta, rev) {
 const TD = { len: 13.626, axles: [1.64, 3.164, 4.688, 8.648, 10.172, 11.696], trucks: [3.164, 10.172], sp: 1.524, hw: 1.60,
   t0: 0.69, t1: 13.07, yBot: 1.12, yTank: 3.62, yBunk: 4.21, bunk: [1.47, 7.25, 8.13], deck: 2.06 };
 TD.ref = (TD.trucks[0] + TD.trucks[1]) / 2;
-function buildTender(key) {
-  const spec = LOCO_SPEC[key];
+function buildTender(key, trim = '') {
+  const spec = LOCO_SPEC[key], T = TRIM[trim];
   const root = new THREE.Group();
   const gb = new GeoBin();
   const D = TD, tx = a => D.ref - a, hw = D.hw, Lt = D.len;
@@ -825,9 +933,18 @@ function buildTender(key) {
   }
   const coupler = addCoupler(gb, root, { x: tx(Lt), out: -1, sx: tx(D.t1 + 0.27) - tx(Lt), sb: 0.88, ly: 1.12, zh: 1.3, yp: 0.86, housing: true, hl: 0.3 });
   // lettering, centred on the tank side below the bunker line
-  const road = decalMat(1024, 128, (g, w, h) => romanText(g, spec.road, w / 2, h / 2 + 6, spec.road.length > 15 ? 84 : 92, '#ecE9de', 0.1));
-  RMAT['road' + key] = road;
-  for (const s of [-1, 1]) gb.add('road' + key, new THREE.PlaneGeometry(9.6, 1.2), M(tx(6.9), 2.45, s * (hw + 0.008), 0, s > 0 ? 0 : Math.PI, 0));
+  const rk = 'road' + key + trim, rt = T ? T.road : spec.road;
+  RMAT[rk] = decalMat(1024, 128, (g, w, h) => romanText(g, rt, w / 2, h / 2 + 6, rt.length > 15 ? 84 : 92, T ? T.gold : '#ecE9de', 0.1));
+  for (const s of [-1, 1]) gb.add(rk, new THREE.PlaneGeometry(9.6, 1.2), M(tx(6.9), 2.45, s * (hw + 0.008), 0, s > 0 ? 0 : Math.PI, 0));
+  if (T) {
+    // snow on the tank top behind the bunker and a dusting over the coal; garland swagged along the tank sides
+    const pts = []; for (let i = 0; i <= 12; i++) pts.push([-hw + i / 12 * 2 * hw, D.yTank]);
+    const L = D.t1 - D.bunk[2] - 0.12;
+    gb.add('snow', snowCap(pts, 0.06, L, 0.3).translate(tx(D.t1 - 0.06), 0, 0));
+    const coal = gb.bins.coal[gb.bins.coal.length - 1].clone(); coal.translate(0, 0.008, 0); gb.add('snowDust', coal);
+    const xs = []; for (let a = D.bunk[2] + 0.35; a <= D.t1 - 0.3 + 1e-6; a += (D.t1 - 0.65 - D.bunk[2]) / 3) xs.push(tx(a));
+    for (const s of [-1, 1]) addSwags(gb, xs, D.yTank - 0.12, 0.16, s * (hw + 0.035), 0.045);
+  }
   const statics = gb.build(RMAT);
   root.add(statics); root.add(bl);
   root.traverse(o => { if (o.isMesh && !o.userData.cpl) { o.castShadow = true; o.receiveShadow = true; } });
@@ -841,11 +958,12 @@ function textDecal(lines, w = 1024, h = 128, color = '#e9e3c9', font = 'serif', 
     else { g.font = `bold ${size}px "Arial Narrow", Arial`; g.fillStyle = color; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(lines, W / 2, H / 2 + 4); }
   });
 }
-function coachModel(spec, num, observation) {
+function coachModel(spec, num, observation, trim = '') {
   const root = new THREE.Group(); const gb = new GeoBin();
   const L = 24.7, ref = L / 2, tx = a => ref - a, hw = 1.52;
+  const T = TRIM[trim], body = T ? 'holBody' : 'green', win = T ? 'holWin' : 'win', gold = T ? T.gold : '#d9c27a';
   // body
-  gb.box('green', 23.4, 2.55, 2 * hw, 0, 2.45, 0);
+  gb.box(body, 23.4, 2.55, 2 * hw, 0, 2.45, 0);
   gb.box('dark', 23.6, 0.25, 2 * hw - 0.1, 0, 1.08, 0);
   // underbody gear: battery boxes, AC generator, truss
   gb.box('dark', 2.0, 0.6, 1.2, 3.5, 0.75, 0); gb.box('dark', 1.6, 0.5, 1.0, -3, 0.75, 0.3); gb.box('dark', 2.6, 0.45, 0.5, 0, 0.75, -0.6);
@@ -858,24 +976,26 @@ function coachModel(spec, num, observation) {
   const wy = 2.62;
   for (let i = 0; i < 13; i++) {
     const x = -9.5 + i * 1.58;
-    for (const s of [-1, 1]) for (const dx of [-0.33, 0.33]) gb.box('win', 0.56, 0.78, 0.04, x + dx, wy, s * (hw + 0.005));
+    for (const s of [-1, 1]) for (const dx of [-0.33, 0.33]) gb.box(win, 0.56, 0.78, 0.04, x + dx, wy, s * (hw + 0.005));
   }
   // letterboard
-  const lb = textDecal(spec.road, 1024, 128, '#d9c27a', 'serif', 72); RMAT['lb' + spec.short] = lb;
-  for (const s of [-1, 1]) gb.add('lb' + spec.short, new THREE.PlaneGeometry(11, 0.42), M(0, 3.38, s * (hw + 0.005), 0, s > 0 ? 0 : Math.PI, 0));
-  const nmat = textDecal(String(num), 256, 96, '#d9c27a', 'serif', 64); const nk = 'cn' + num; RMAT[nk] = nmat;
+  const lk = 'lb' + (T ? trim : spec.short);
+  RMAT[lk] = textDecal(T ? T.road : spec.road, 1024, 128, gold, 'serif', 72);
+  for (const s of [-1, 1]) gb.add(lk, new THREE.PlaneGeometry(11, 0.42), M(0, 3.38, s * (hw + 0.005), 0, s > 0 ? 0 : Math.PI, 0));
+  const nmat = textDecal(String(num), 256, 96, gold, 'serif', 64); const nk = 'cn' + num + trim; RMAT[nk] = nmat;
   for (const s of [-1, 1]) gb.add(nk, new THREE.PlaneGeometry(1.0, 0.36), M(-7.5, 1.65, s * (hw + 0.005), 0, s > 0 ? 0 : Math.PI, 0));
   // clerestory roof
   const rs = new THREE.Shape(); rs.moveTo(-hw - 0.06, 0); rs.quadraticCurveTo(-hw * 0.9, 0.42, -0.82, 0.5); rs.lineTo(-0.82, 0.88); rs.quadraticCurveTo(0, 1.02, 0.82, 0.88); rs.lineTo(0.82, 0.5); rs.quadraticCurveTo(hw * 0.9, 0.42, hw + 0.06, 0); rs.lineTo(-hw - 0.06, 0);
   const rL = observation ? 24.5 : 23.8, rg = new THREE.ExtrudeGeometry(rs, { depth: rL, bevelEnabled: false, curveSegments: 10 }); rg.rotateY(Math.PI / 2); rg.translate(11.9 - rL, 3.72, 0); gb.add('roof', rg);   // the observation roof overhangs the platform
-  for (let i = 0; i < 12; i++) for (const s of [-1, 1]) gb.box('win', 0.5, 0.2, 0.02, -9.5 + i * 1.7, 4.42, s * 0.825);
+  for (let i = 0; i < 12; i++) for (const s of [-1, 1]) gb.box(win, 0.5, 0.2, 0.02, -9.5 + i * 1.7, 4.42, s * 0.825);
   for (let i = 0; i < 5; i++) gb.cyl('roof', 0.12, 0.14, 0.22, 10, -8 + i * 4, 4.72, 0);
   // vestibules: doors, steps, diaphragms
   for (const e of [-1, 1]) {
     const xe = e * (L / 2 - 0.62);
-    gb.box('green', 0.08, 2.5, 2 * hw, e * 11.72, 2.45, 0);
+    gb.box(body, 0.08, 2.5, 2 * hw, e * 11.72, 2.45, 0);
     for (const s of [-1, 1]) {
-      gb.box('green', 0.85, 0.3, 0.05, e * 11.3, 1.2, s * (hw)); gb.box('win', 0.4, 0.7, 0.04, e * 11.2, 2.7, s * (hw + 0.005));
+      gb.box(body, 0.85, 0.3, 0.05, e * 11.3, 1.2, s * (hw)); gb.box(win, 0.4, 0.7, 0.04, e * 11.2, 2.7, s * (hw + 0.005));
+      if (T) addWreath(gb, 0.15, 0.035, M(e * 11.2, 2.74, s * (hw + 0.025), 0, s > 0 ? 0 : Math.PI, 0));   // a wreath on each vestibule door
       gb.box('dark', 0.5, 0.05, 0.35, e * 11.25, 0.75, s * (hw - 0.05)); gb.box('dark', 0.5, 0.05, 0.35, e * 11.25, 0.45, s * (hw - 0.05));
       for (const d of [-0.27, 0.27]) gb.box('dark', 0.04, 0.82, 0.35, e * 11.25 + d, 0.82, s * (hw - 0.05));   // step stringers up to the sill
     }
@@ -887,10 +1007,34 @@ function coachModel(spec, num, observation) {
     for (const z of [-1.4, -0.7, 0, 0.7, 1.4]) gb.cyl('brass', 0.02, 0.02, 1.05, 6, -12.55, 1.7, z);
     gb.add('brass', new THREE.CylinderGeometry(0.03, 0.03, 2.9, 8).rotateX(Math.PI / 2).translate(-12.55, 2.2, 0));
     gb.cyl('roof', 0.12, 0.12, 0.3, 8, -12.3, 3.62, 0);
-    const dh = decalMat(256, 256, (g, w, h) => { g.fillStyle = '#e9dfc2'; g.beginPath(); g.arc(128, 128, 122, 0, TAU); g.fill(); g.strokeStyle = '#6b1f1a'; g.lineWidth = 10; g.stroke(); g.fillStyle = '#6b1f1a'; g.font = '600 30px "Times New Roman", serif'; g.textAlign = 'center'; const t = { NKP: ['THE', 'NICKEL PLATE', 'LIMITED'], PM: ['THE', 'PERE', 'MARQUETTE'], 'S&S': ['THE', 'SCIOTO', 'LIMITED'] }[spec.short] || ['THE', 'LAKE SHORE', 'LIMITED']; g.fillText(t[0], 128, 92); g.font = '700 34px "Times New Roman", serif'; g.fillText(t[1], 128, 134); g.font = '600 30px "Times New Roman", serif'; g.fillText(t[2], 128, 176); });
-    RMAT.drumhead = dh; dh.emissive = new THREE.Color(0xffd9a0); dh.emissiveMap = dh.map; dh.emissiveIntensity = 0; SCN.winMats.push(dh);
-    gb.add('drumhead', new THREE.CircleGeometry(0.42, 28), M(-12.575, 1.85, 0, 0, -Math.PI / 2, 0));
+    const ink = T ? '#8a1219' : '#6b1f1a';
+    const dh = decalMat(256, 256, (g, w, h) => {
+      g.fillStyle = '#e9dfc2'; g.beginPath(); g.arc(128, 128, 122, 0, TAU); g.fill(); g.strokeStyle = ink; g.lineWidth = 10; g.stroke(); g.fillStyle = ink; g.font = '600 30px "Times New Roman", serif'; g.textAlign = 'center';
+      const t = T ? T.drum : { NKP: ['THE', 'NICKEL PLATE', 'LIMITED'], PM: ['THE', 'PERE', 'MARQUETTE'], 'S&S': ['THE', 'SCIOTO', 'LIMITED'] }[spec.short] || ['THE', 'LAKE SHORE', 'LIMITED'];
+      g.fillText(t[0], 128, 92); g.font = '700 34px "Times New Roman", serif'; g.fillText(t[1], 128, 134); g.font = '600 30px "Times New Roman", serif'; g.fillText(t[2], 128, 176);
+      if (T) {   // a gold star over the name and a sprig of holly under it
+        g.fillStyle = '#c8962e'; g.beginPath(); for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, r = i % 2 ? 7 : 17; g.lineTo(128 + Math.cos(a) * r, 52 + Math.sin(a) * r); } g.closePath(); g.fill();
+        g.fillStyle = '#1f5a2c'; for (const d of [-1, 1]) { g.beginPath(); g.ellipse(128 + d * 16, 208, 16, 7, d * 0.4, 0, TAU); g.fill(); }
+        g.fillStyle = '#c8161e'; for (const d of [-6, 0, 6]) { g.beginPath(); g.arc(128 + d, 204 + Math.abs(d) * 0.5, 5, 0, TAU); g.fill(); }
+      }
+    });
+    const dk = 'drumhead' + trim; RMAT[dk] = dh; dh.emissive = new THREE.Color(0xffd9a0); dh.emissiveMap = dh.map; dh.emissiveIntensity = 0; SCN.winMats.push(dh);
+    gb.add(dk, new THREE.CircleGeometry(0.42, 28), M(-12.575, 1.85, 0, 0, -Math.PI / 2, 0));
+    if (T) addWreath(gb, 0.5, 0.06, M(-12.56, 1.85, 0, 0, -Math.PI / 2, 0));   // the drumhead ringed with fir
     gb.add('brass', new THREE.TorusGeometry(0.43, 0.025, 6, 28).rotateY(Math.PI / 2).translate(-12.56, 1.85, 0));
+  }
+  if (T) {
+    // gold lining under the windows and along the sill, garland swagged between the window pairs, snow on the roof
+    for (const s of [-1, 1]) for (const y of [2.13, 1.32]) gb.box('gold', 21.8, 0.035, 0.012, 0, y, s * (hw + 0.006));
+    const xs = []; for (let i = 0; i <= 13; i++) xs.push(-9.5 - 0.79 + i * 1.58);
+    for (const s of [-1, 1]) addSwags(gb, xs, 3.13, 0.09, s * (hw + 0.035), 0.04);
+    const yR = 3.72, Ls = rL - 0.5, x0 = 11.9 - rL + 0.25;
+    gb.add('snow', snowCap(quadPts([-0.82, 0.88], [0, 1.02], [0.82, 0.88], 16).map(([z, y]) => [z, y + yR]), 0.045, Ls, 0.3).translate(x0, 0, 0));
+    for (const s of [-1, 1]) {   // the lower roof, from the eaves' shoulder in to the clerestory wall
+      const pts = quadPts([s * (hw + 0.06), 0], [s * hw * 0.9, 0.42], [s * 0.82, 0.5], 12, 0.5, 1).map(([z, y]) => [z, y + yR]);
+      if (s > 0) pts.reverse();
+      gb.add('snow', snowCap(pts, 0.04, Ls, 0.22).translate(x0, 0, 0));
+    }
   }
   const couplers = carCouplers(gb, root, L, -0.55, 0.955, 1.08);
   root.add(gb.build(RMAT));

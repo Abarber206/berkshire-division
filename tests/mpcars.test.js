@@ -59,7 +59,9 @@ test('a car token says what the car is and reads back the same', () => {
   const t = sim.carToken(v);
   assert.equal(t, '~tank.21047.S&S.0..30');
   const k = sim.carTokenIn(t);
-  assert.deepEqual({ ...k }, { flip: true, type: 'tank', num: 21047, rs: 'S&S', flag: false, rk: '', tons: 30 });
+  assert.deepEqual({ ...k }, { flip: true, type: 'tank', num: 21047, rs: 'S&S', flag: false, tr: '', rk: '', tons: 30 });
+  assert.equal(sim.carTokenIn('coach.3010.PM.1p.1225.82').tr, 'polar');   // a coach in the holiday trim
+  assert.equal(sim.carTokenIn('coach.3010.PM.1x.1225.82'), null);
   for (const bad of ['locomotive.1.NKP.0..60', 'box.1.<b>.0..60', 'box.x.NKP.0..60', 'box.1.NKP.0', 'box.1.NKP.0..9999']) assert.equal(sim.carTokenIn(bad), null, bad);
 });
 

@@ -42,9 +42,11 @@ PLACE.newCar = function (type, quiet) {
   PLACE.cancel();
   if (!CARS.geo) CARS.geo = { tg: truckGeos(), a6: plainAxle(0.457), a4: plainAxle(0.419) };
   const n = ++PLACE.made, num = type === 'coach' ? 3300 + n * 7 : 40000 + n * 11;
-  const m = type === 'coach' ? coachModel(LOCO_SPEC[GAME.train.locoKey], num, false) : freightModel(type, num, rng(num));
+  const tr = type === 'coach' && GAME.train.trim || '';
+  const m = type === 'coach' ? coachModel(LOCO_SPEC[GAME.train.locoKey], num, false, tr) : freightModel(type, num, rng(num));
   scene.add(m.root); linearizeObject(m.root);
   const v = carVehicle(m); v.yard = true; v.placed = true; v.hb = true; v.made = { type, num, rk: GAME.train.locoKey, rs: ROAD_SHORT };
+  if (tr) v.made.tr = tr;
   v.brake = { AR: 0, BC: 0, BP: 0, emerg: false, released: true };
   const c = new Cut(scene, [v]); c.setVisible(false);
   PLACE.ghost = { c, kind: 'new', type, fit: null };

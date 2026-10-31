@@ -102,16 +102,16 @@ CARS.yard = function (road) {
 const CAR_TYPES = ['box', 'hopper', 'tank', 'gon', 'caboose', 'coach'];
 function carToken(v) {
   const m = v.made || {};
-  return `${v.flip ? '~' : ''}${CAR_TYPES.includes(m.type) ? m.type : CAR_TYPES.includes(v.kind) ? v.kind : 'box'}.${(m.num | 0) || 0}.${m.rs || ''}.${m.flag ? 1 : 0}.${m.rk || ''}.${Math.round((v.mass || 0) / STON)}`;
+  return `${v.flip ? '~' : ''}${CAR_TYPES.includes(m.type) ? m.type : CAR_TYPES.includes(v.kind) ? v.kind : 'box'}.${(m.num | 0) || 0}.${m.rs || ''}.${m.flag ? 1 : 0}${m.tr === 'polar' ? 'p' : ''}.${m.rk || ''}.${Math.round((v.mass || 0) / STON)}`;
 }
-/* a token read back, checked: { flip, type, num, rs, flag, rk, tons }, or null */
+/* a token read back, checked: { flip, type, num, rs, flag, tr, rk, tons }, or null. The flag field carries a 'p' for a coach in the holiday trim. */
 function carTokenIn(t) {
   if (typeof t !== 'string' || t.length > 48) return null;
   const flip = t[0] === '~', p = (flip ? t.slice(1) : t).split('.');
   if (p.length !== 6 || !CAR_TYPES.includes(p[0])) return null;
   const num = +p[1], tons = +p[5];
-  if (!Number.isInteger(num) || num < 0 || num > 999999 || !/^[A-Z0-9&]{0,6}$/.test(p[2]) || !/^[a-z0-9]{0,8}$/i.test(p[4]) || !(tons >= 0 && tons <= 300)) return null;
-  return { flip, type: p[0], num, rs: p[2], flag: p[3] === '1', rk: LOCO_SPEC[p[4]] ? p[4] : '', tons };
+  if (!Number.isInteger(num) || num < 0 || num > 999999 || !/^[A-Z0-9&]{0,6}$/.test(p[2]) || !/^[a-z0-9]{0,8}$/i.test(p[4]) || !(tons >= 0 && tons <= 300) || !/^[01]p?$/.test(p[3])) return null;
+  return { flip, type: p[0], num, rs: p[2], flag: p[3][0] === '1', tr: p[3][1] === 'p' ? 'polar' : '', rk: LOCO_SPEC[p[4]] ? p[4] : '', tons };
 }
 /* the engine's own vehicles in a train: everything a light engine of the same kind is built with */
 const trainPower = T => T.vehicles.filter(v => isPower(v) || (T.elec && T.units && T.units.some(m => m.vehicle === v)));
@@ -123,11 +123,11 @@ function trainCode(T) {
 /* a car built from its token (not on the track yet) */
 function carFromToken(k) {
   let m;
-  if (k.type === 'coach') m = coachModel(LOCO_SPEC[k.rk] || LOCO_SPEC['765'], k.num, k.flag);
+  if (k.type === 'coach') m = coachModel(LOCO_SPEC[k.rk] || LOCO_SPEC['765'], k.num, k.flag, k.tr || '');
   else { const was = ROAD_SHORT; if (k.rs) ROAD_SHORT = k.rs; try { m = freightModel(k.type, k.num, () => 0.5); } finally { ROAD_SHORT = was; } }
   scene.add(m.root); linearizeObject(m.root);
   const v = carVehicle(m);
-  v.made = { type: k.type, num: k.num, rs: k.rs || undefined, flag: k.flag || undefined, rk: k.rk || undefined };
+  v.made = { type: k.type, num: k.num, rs: k.rs || undefined, flag: k.flag || undefined, rk: k.rk || undefined, tr: k.tr || undefined };
   if (k.tons) v.mass = k.tons * STON;
   v.flip = k.flip;
   return v;
