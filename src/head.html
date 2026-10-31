@@ -493,6 +493,12 @@ details.keys kbd{color:var(--brass)}
 #edSel .btn{padding:7px 9px;font-size:10.5px}
 #edSel .btn.warn{border-color:rgba(238,75,61,.6);color:#f3c4be}
 #edSel .btn[aria-pressed="true"]{border-color:var(--brass);color:#f6e2ad}
+#edPos{display:flex;gap:5px}
+#edPos label{flex:1;display:flex;flex-direction:column;gap:2px;font-size:9.5px;color:var(--ink-dim);text-transform:uppercase;letter-spacing:.8px}
+#edPos input{width:100%;min-width:0;height:30px;font:500 12px var(--f-num);padding:0 6px;box-sizing:border-box}
+#edGhost{display:flex;gap:5px;align-items:center;flex-wrap:wrap;border-bottom:1px solid var(--rule);padding-bottom:6px}
+#edGhostTxt{flex:1 1 160px;font:500 11px var(--f-num);color:var(--ink-dim)}
+#edGhost .btn{padding:7px 10px;font-size:11px}
 #edSt{display:flex;flex-direction:column;gap:6px;border-top:1px solid var(--rule);padding-top:8px}
 #btList{display:flex;flex-wrap:wrap;gap:6px;font-size:12px}
 #btList span{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--rule);border-radius:12px;padding:3px 9px}
@@ -655,6 +661,10 @@ details.keys kbd{color:var(--brass)}
   <div id="edMsg" role="status" aria-live="polite"></div>
   <div id="edSel" class="hud-box" hidden></div>
   <div id="edDock" class="hud-box">
+    <div id="edGhost" hidden><span id="edGhostTxt"></span>
+      <button class="btn" id="edGhostL" type="button" aria-label="Turn left">⟲</button><button class="btn" id="edGhostR" type="button" aria-label="Turn right">⟳</button>
+      <button class="btn" id="edGhostF" type="button">Flip end</button><button class="btn" id="edGhostX" type="button">Cancel</button>
+      <button class="btn prim" id="edGhostOk" type="button" disabled>Place</button></div>
     <div id="edTabs" role="tablist"></div>
     <div id="edPal"></div>
   </div>
