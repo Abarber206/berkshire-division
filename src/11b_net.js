@@ -149,7 +149,7 @@ function mpClean(r) {
     o.lk = LOCO_SPEC[r.lk] ? r.lk : '765'; o.ck = CONSISTS[r.ck] ? r.ck : 'light';
     o.u = Math.round(n(r.u, 1, 3, 1)); o.lv = LIVERIES[r.lv] ? r.lv : 'ss'; o.mx = r.mx ? 1 : 0;
     o.cu = Array.isArray(r.cu) && r.cu.length === 3 ? r.cu.map(c => Math.round(n(c, 0, 0xffffff))) : null;
-    o.no = Math.round(n(r.no, 0, 9999));
+    o.no = Math.round(n(r.no, 0, 9999)); o.tm = r.tm === 'polar' ? 'polar' : '';
     o.vh = Number.isInteger(r.vh) && r.vh > 0 ? r.vh >>> 0 : 0;
     o.vs = o.vh && typeof r.vs === 'string' && r.vs.length < 12000 && mpHash(r.vs) === o.vh ? r.vs : null;
     o.s = n(r.s, 0, 1e5); o.o = r.o < 0 ? -1 : 1; o.v = n(r.v, -60, 60); o.rv = n(r.rv, -1, 1);
@@ -183,7 +183,7 @@ function mpEnds(T, front, rear) {
 function mpShade(h, k) { const r = (h >> 16) & 255, g = (h >> 8) & 255, b = h & 255; return (Math.round(r * k) << 16) | (Math.round(g * k) << 8) | Math.round(b * k); }
 function mpOpts(st) {
   const cu = st.cu ? { body: st.cu[0], accent: st.cu[1], letter: st.cu[2], rail: st.cu[1], roof: mpShade(st.cu[0], 0.78) } : null;
-  return { units: st.u, livery: st.lv, mix: !!st.mx, custom: cu, number: st.lv === 'custom' ? (st.no || 4401) : null };
+  return { units: st.u, livery: st.lv, mix: !!st.mx, custom: cu, number: st.lv === 'custom' ? (st.no || 4401) : null, trim: st.tm || '' };
 }
 function mpLocoLabel(st) {
   if (st && st.other) return 'On another railroad';
@@ -224,7 +224,7 @@ function mpCompose(T, code) {
 class RemoteTrain {
   constructor(peer, st, extra) {
     this.peer = peer;
-    this.key = `${st.lk}|${st.ck}|${st.u}`; this.paint = `${st.lv}|${st.mx}|${st.cu}|${st.no}`;
+    this.key = `${st.lk}|${st.ck}|${st.u}|${st.tm || ''}`; this.paint = `${st.lv}|${st.mx}|${st.cu}|${st.no}`;
     const code = extra && extra.code;
     this.train = new Train(scene, st.lk, code ? 'light' : st.ck, Object.assign(mpOpts(st), { remote: true }));
     if (code) { try { mpCompose(this.train, code); } catch (e) { this.train.disposeDeep(); throw e; } }
@@ -493,9 +493,9 @@ MP.receive = function (raw) {
   // what their train is made up of: the cars come with the state now and then, and are kept until they change
   if (st.vs) p.vs = { h: st.vh, code: st.vs };
   const code = st.vh ? (p.vs && p.vs.h === st.vh ? p.vs.code : null) : null;
-  const key = `${st.lk}|${st.ck}|${st.u}|${st.vh ? (code ? st.vh : '?') : ''}`;
+  const key = `${st.lk}|${st.ck}|${st.u}|${st.tm || ''}|${st.vh ? (code ? st.vh : '?') : ''}`;
   // until the list of cars comes in, the train they had is kept on show
-  if (p.rt && p.rt.key !== key && !(st.vh && !code && p.rt.key.startsWith(`${st.lk}|${st.ck}|${st.u}|`))) { p.rt.dispose(); p.rt = null; }
+  if (p.rt && p.rt.key !== key && !(st.vh && !code && p.rt.key.startsWith(`${st.lk}|${st.ck}|${st.u}|${st.tm || ''}|`))) { p.rt.dispose(); p.rt = null; }
   if (!p.rt) {
     try { p.rt = new RemoteTrain(p, st, code ? { code } : undefined); p.rt.key = key; }
     catch (e) { console.warn('remote train', e); if (!code) return; try { p.rt = new RemoteTrain(p, st); p.rt.key = key; } catch (e2) { return; } }
@@ -526,7 +526,7 @@ MP.state = function () {
     const held = PLACE.on && PLACE.ghost && PLACE.ghost.kind === 'train' ? PLACE.ghost.orig : null;
     const f = held ? held[0] : T.pts[0].tp;
     Object.assign(st, {
-      lk: T.locoKey, ck: T.consistKey, u: T.nUnits || 1, lv: g.livery, mx: g.mix ? 1 : 0, cu: g.livery === 'custom' ? [g.custom.body, g.custom.accent, g.custom.letter] : 0, no: g.livery === 'custom' ? (+g.number || 0) : 0,
+      lk: T.locoKey, ck: T.consistKey, u: T.nUnits || 1, lv: g.livery, mx: g.mix ? 1 : 0, cu: g.livery === 'custom' ? [g.custom.body, g.custom.accent, g.custom.letter] : 0, no: g.livery === 'custom' ? (+g.number || 0) : 0, tm: T.trim || '',
       e: f.e.id, s: +f.s.toFixed(2), o: f.o, v: PLACE.on ? 0 : +S.v.toFixed(2), rv: +S.reverser.toFixed(2), wh: +S.whistle.toFixed(2), bl: S.bell ? 1 : 0, hl: S.light, dl: S.ditch ? 1 : 0,
       ex: T.diesel ? +S.load.toFixed(2) : (S.Psc > 6 && S.cut > 0 && S.throttle > 0.02 ? +clamp((S.Psc / 245) * (0.35 + S.cut * 1.25), 0, 1.3).toFixed(2) : 0),
       rpm: T.diesel && !T.elec && S.engineRun ? Math.round(S.rpm) : 0, dr: S.derailed ? 1 : 0,

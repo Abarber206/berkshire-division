@@ -178,7 +178,8 @@ GAME.swapLive = function () {
   if (LOCO_SPEC[g.loco].set && JOB.activeId()) toast('A trainset cannot work this job. Resume makes up the trainset and ends the job, or pick a steam or diesel engine to stay on it.', 'warn', 6000, 'swap');
   if (MP.needSpawn || (j ? j.id : '') !== JOB.activeId()) return false;
   const ck = JOB.consist(), units = +g.units || 1, setNew = !!LOCO_SPEC[g.loco].set;
-  const newLoco = old.locoKey !== g.loco || (old.diesel && !old.elec && old.nUnits !== units);
+  const tw = LOCO_SPEC[g.loco].diesel ? '' : trimWanted(), newTrim = !LOCO_SPEC[g.loco].diesel && (old.trim || '') !== tw;
+  const newLoco = old.locoKey !== g.loco || (old.diesel && !old.elec && old.nUnits !== units) || newTrim;
   // a trainset is the whole train: it drops the cars it replaces, and the cars come back when an engine replaces it
   const newCars = setNew ? newLoco : old.elec ? ck !== 'light' || newLoco : old.consistKey !== ck;
   if (!newLoco && !newCars) return true;
@@ -186,7 +187,7 @@ GAME.swapLive = function () {
   const t = new Train(scene, g.loco, ck, dieselOpts());
   const power = t.vehicles.filter(isPower), built = t.vehicles.filter(v => !isPower(v));
   // a new road reletters the cars that came with the train
-  const road = LOCO_SPEC[g.loco].short !== LOCO_SPEC[old.locoKey].short;
+  const road = LOCO_SPEC[g.loco].short !== LOCO_SPEC[old.locoKey].short || newTrim;
   const V = newCars || !road ? old.vehicles : old.vehicles.map(v => v.made && !v.yard ? relettered(t, old, v) : v);
   const plan = CARS.swapPlan(V, power, newCars ? built : null);
   // room around the joint that stays put: the end of the track, standing cars, other players' trains
@@ -229,7 +230,8 @@ GAME.swapLive = function () {
   CARS.gen++; if (CARS.onChange) CARS.onChange();
   if (MP.on) MP.dirty = true;
   const what = t.elec ? `the ${HSR[LOCO_SPEC[g.loco].set].name}` : t.diesel ? (t.nUnits > 1 ? `${t.nUnits} diesels` : 'the diesel') : `${LOCO_SPEC[g.loco].short} ${g.loco}`, cars = { passenger: 'the passenger train', freight: 'the manifest freight' }[ck] || 'the train';
-  if (t.elec) toast(`Now running ${what}.`, 'good', 3200, 'swap');
+  if (newTrim && old.locoKey === g.loco && !newCars) toast(tw ? 'Dressed for the Polar Limited: wreaths, garland and snow on the roofs.' : 'Holiday trim taken down.', 'good', 3600, 'swap');
+  else if (t.elec) toast(`Now running ${what}.`, 'good', 3200, 'swap');
   else if (old.elec) toast(`Now ${what} on ${cars}.`, 'good', 3200, 'swap');
   else toast(newLoco && newCars ? `Now ${what} on ${cars}.` : newLoco ? `${what[0].toUpperCase() + what.slice(1)} coupled on.` : ck === 'light' ? 'Cut off from the train: running light.' : `Now running ${cars}.`, 'good', 3200, 'swap');
   return true;
@@ -237,9 +239,10 @@ GAME.swapLive = function () {
 /* the same car, lettered for the road of train t */
 function relettered(t, old, v) {
   const { type, num, flag } = v.made;
-  const m = type === 'coach' ? coachModel(LOCO_SPEC[t.locoKey], num, flag) : freightModel(type, num, rng(num));
+  const m = type === 'coach' ? coachModel(LOCO_SPEC[t.locoKey], num, flag, t.trim) : freightModel(type, num, rng(num));
   scene.add(m.root);
-  return Object.assign(carVehicle(m), { made: { ...v.made, rk: t.locoKey, rs: LOCO_SPEC[t.locoKey].short }, flip: v.flip, hb: v.hb, brake: v.brake, roll: old.dist * (v.flip ? -1 : 1) + (v.roll || 0) });
+  const made = { ...v.made, rk: t.locoKey, rs: LOCO_SPEC[t.locoKey].short }; delete made.tr; if (type === 'coach' && t.trim) made.tr = t.trim;
+  return Object.assign(carVehicle(m), { made, flip: v.flip, hb: v.hb, brake: v.brake, roll: old.dist * (v.flip ? -1 : 1) + (v.roll || 0) });
 }
 /* steam to diesel or back: the run keeps its speed, air and lights; the new engine comes with full
    supplies and its throttle shut, and the reverser keeps its direction */
@@ -251,7 +254,7 @@ function carryOver() {
 }
 function dieselOpts() {
   const g = GAME.settings, custom = g.livery === 'custom';
-  return { units: +g.units || 1, livery: g.livery, mix: !!g.mix, custom: g.custom, number: custom ? (+g.number || 4401) : null };
+  return { units: +g.units || 1, livery: g.livery, mix: !!g.mix, custom: g.custom, number: custom ? (+g.number || 4401) : null, trim: trimWanted() };
 }
 function applyLiveriesLive() {
   const t = GAME.train; if (!t || !t.diesel) return;
@@ -261,7 +264,7 @@ function applyLiveriesLive() {
 const SAVE_KEYS = ['job', 'traffic', 'loco', 'consist', 'time', 'cycle', 'weather', 'fire', 'units', 'livery', 'mix', 'finish', 'custom', 'number'];
 function saveSettings() { try { const o = {}; for (const k of SAVE_KEYS) o[k] = GAME.settings[k]; localStorage.setItem('bd_settings', JSON.stringify(o)); } catch (e) {} }
 function loadSettings() { try { const o = JSON.parse(localStorage.getItem('bd_settings') || 'null'); if (o) for (const k of SAVE_KEYS) if (o[k] !== undefined) GAME.settings[k] = o[k]; } catch (e) {} if (!LOCO_SPEC[GAME.settings.loco]) GAME.settings.loco = '765'; if (!LIVERIES[GAME.settings.livery]) GAME.settings.livery = 'ss'; if (!DN.starts[GAME.settings.time]) GAME.settings.time = 'morning'; if (!DN.rates[GAME.settings.cycle]) GAME.settings.cycle = 'x30'; }
-GAME.needNewTrain = function () { const t = GAME.train, g = GAME.settings, j = JOB.wanted(); return !t || MP.needSpawn || t.locoKey !== g.loco || (!t.elec && t.consistKey !== JOB.consist()) || (j ? j.id : '') !== JOB.activeId() || (t.diesel && !t.elec && t.nUnits !== (+g.units || 1)); };
+GAME.needNewTrain = function () { const t = GAME.train, g = GAME.settings, j = JOB.wanted(); return !t || MP.needSpawn || t.locoKey !== g.loco || (!t.elec && t.consistKey !== JOB.consist()) || (j ? j.id : '') !== JOB.activeId() || (t.diesel && !t.elec && t.nUnits !== (+g.units || 1)) || (!t.diesel && (t.trim || '') !== trimWanted()); };
 function buildWhistleIfReady() { if (!AU.on) return; buildWhistle(WHISTLES[LOCO_SPEC[GAME.settings.loco].whistle]); }
 
 /* ---------------- menu ---------------- */
@@ -288,7 +291,7 @@ function buildMenu() {
   segButtons('optUnits', { 1: { name: '1 unit', sub: '4,400 hp' }, 2: { name: '2 units', sub: '8,800 hp' }, 3: { name: '3 units', sub: '13,200 hp' } }, 'units', k => { GAME.settings.units = +k; GAME.swapLive(); startLabel(); refreshMenuGroups(); saveSettings(); });
   segButtons('optMix', { matched: { name: 'Matched', sub: 'All one scheme' }, mixed: { name: 'Mixed', sub: 'Run-through power' } }, 'mixKey', k => { GAME.settings.mix = k === 'mixed'; applyLiveriesLive(); saveSettings(); });
   [...$('optMix').children].forEach(c => c.setAttribute('aria-pressed', String(c.id === 'optMix_' + (GAME.settings.mix ? 'mixed' : 'matched'))));
-  segButtons('optFinish', { standard: { name: 'As delivered', sub: 'Graphite smokebox' }, white: { name: 'White trim', sub: 'Excursion style' }, black: { name: 'All black', sub: 'Plain' } }, 'finish', k => { applySteamFinish(k); saveSettings(); });
+  segButtons('optFinish', { standard: { name: 'As delivered', sub: 'Graphite smokebox' }, white: { name: 'White trim', sub: 'Excursion style' }, black: { name: 'All black', sub: 'Plain' }, polar: { name: 'Polar Limited', sub: 'Holiday trim · wreaths & snow' } }, 'finish', k => { applySteamFinish(k); GAME.swapLive(); startLabel(); saveSettings(); });
   const cc = GAME.settings.custom;
   $('cBody').value = hexCss(cc.body); $('cAccent').value = hexCss(cc.accent); $('cLetter').value = hexCss(cc.letter); $('cNum').value = GAME.settings.number;
   const onCustom = () => {

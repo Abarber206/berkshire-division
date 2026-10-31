@@ -214,10 +214,12 @@ class Train extends Consist {
       L = this.units[0];
       this.tender = null;
     } else {
-      L = buildBerkshire(locoKey);
+      // a holiday trim (see TRIM) is built into a steam train and the coaches it brings
+      this.trim = TRIM[opts.trim] ? opts.trim : '';
+      L = buildBerkshire(locoKey, this.trim);
       scene.add(L.root); scene.add(L.leadTruck);
       this.vehicles.push({ kind: 'loco', model: L, root: L.root, len: LG.len, frame: [LG.aD[0], LG.aD[3]], trucks: [], mass: engMass, axles: 10, area: 125, brakeA: 0.55, cpl: L.couplers });
-      const T = buildTender(locoKey);
+      const T = buildTender(locoKey, this.trim);
       scene.add(T.root);
       this.tender = T;
       this.vehicles.push({ kind: 'tender', model: T, root: T.root, len: T.len, frame: T.frame, trucks: T.trucks, mass: 0, axles: 6, area: 0, brakeA: 0.6, cpl: T.couplers });
@@ -228,9 +230,10 @@ class Train extends Consist {
     let n = 0;
     for (const [type, flag] of list) {
       const num = type === 'coach' ? 3010 + (n++) * 7 : 10000 + ((r() * 89999) | 0);
-      const m = type === 'coach' ? coachModel(spec, num, !!flag) : freightModel(type, num, r);
+      const m = type === 'coach' ? coachModel(spec, num, !!flag, this.trim) : freightModel(type, num, r);
       scene.add(m.root);
       const v = carVehicle(m); v.made = { type, num, flag: !!flag, rk: locoKey, rs: spec.short };
+      if (type === 'coach' && this.trim) v.made.tr = this.trim;
       this.vehicles.push(v);
     }
     // tender mass varies with water & coal

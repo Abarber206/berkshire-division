@@ -48,7 +48,7 @@ function consistOut(c, power = []) {
 function carIn(o) {
   const m0 = o.m || { type: 'box', num: 0 };
   let m;
-  if (m0.type === 'coach') m = coachModel(LOCO_SPEC[m0.rk] || LOCO_SPEC['765'], m0.num, !!m0.flag);
+  if (m0.type === 'coach') m = coachModel(LOCO_SPEC[m0.rk] || LOCO_SPEC['765'], m0.num, !!m0.flag, TRIM[m0.tr] ? m0.tr : '');
   else { const road = ROAD_SHORT; if (m0.rs) ROAD_SHORT = m0.rs; m = freightModel(m0.type, m0.num, () => 0.5); ROAD_SHORT = road; }
   scene.add(m.root);
   const v = carVehicle(m); v.made = m0;
