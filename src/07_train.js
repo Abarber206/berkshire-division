@@ -251,6 +251,8 @@ class Train extends Consist {
     } else { this.head = null; this.fireLight = null; this.cabLight = null; }
     this.markerMats = [];
     for (const v of this.vehicles) this.markerLamps(v);
+    // the train as built, so a room is only sent the cars when they differ from what this engine and train make up
+    this.code0 = trainCode(this);
   }
   /* red marker lamps on a caboose or observation car */
   markerLamps(v) {

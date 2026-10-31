@@ -189,3 +189,18 @@ function peekPath(tp, dir, maxD, visit) {
     e = nx.edge; o = nx.end === 0 ? 1 : -1; s = nx.end === 0 ? 0 : e.len;
   }
 }
+
+/* signed distance along the track from a to b, in a's facing sense; null if not within reach */
+function trackDelta(a, b, maxD = 70) {
+  if (a.e === b.e) return (b.s - a.s) * a.o;
+  for (const dir of [1, -1]) {
+    const c = a.clone(); let acc = 0;
+    for (let hop = 0; hop < 3 && acc < maxD; hop++) {
+      const toEnd = (c.o * dir > 0) ? c.e.len - c.s : c.s, step = toEnd + 1e-3;
+      if (c.advance(dir * step, null)) break;
+      acc += step;
+      if (c.e === b.e) { const r = (b.s - c.s) * c.o * dir; if (r > -0.5) return dir * (acc + r); break; }
+    }
+  }
+  return null;
+}

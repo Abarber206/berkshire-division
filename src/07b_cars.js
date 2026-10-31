@@ -54,18 +54,26 @@ function freeVehicle(v) {
 }
 
 /* ---------------- making up the yard ---------------- */
-CARS.clear = function (oldTrain) {
+CARS.clear = function (oldTrain, all) {
+  // in a room the cars standing about belong to everyone (11h_mpcars.js): a new train leaves them be
+  if (MP.on && !all) { if (oldTrain) for (const v of oldTrain.vehicles) if (v.yard) freeVehicle(v); return; }
   for (const c of CARS.cuts) { c.dispose(); c.vehicles.forEach(freeVehicle); }
   if (oldTrain) for (const v of oldTrain.vehicles) if (v.yard) freeVehicle(v);
   CARS.cuts = []; CARS.gen++;
 };
 CARS.setup = function () {
   if (MP.on || WORLD.custom) return;
+  CARS.yard();
+};
+/* the cuts spotted around the yard, as every new run (and every room) starts with them. In a room each car is
+   lettered alike for everyone (road), and each cut is known by its place in YARD_CUTS ('y0', 'y1', ...). */
+CARS.yard = function (road) {
   if (!CARS.geo) { CARS.geo = { tg: truckGeos(), a6: plainAxle(0.457), a4: plainAxle(0.419) }; }
-  const r = rng(1959);
+  const r = rng(1959), was = ROAD_SHORT;
+  if (road) ROAD_SHORT = road;
   let num = 21000;
-  for (const def of YARD_CUTS) {
-    const line = ROUTE.lines[def.line]; if (!line) continue;
+  YARD_CUTS.forEach((def, i) => {
+    const line = ROUTE.lines[def.line]; if (!line) return;
     const vehicles = def.cars.map(type => {
       const m = freightModel(type, num += 7 + ((r() * 40) | 0), r);
       scene.add(m.root); linearizeObject(m.root);
@@ -80,11 +88,50 @@ CARS.setup = function () {
     if (foul) console.warn('cut on', def.line, 'fouls a switch');
     const loc = line.locate(sF);
     c.place(new TrackPos(loc.edge, loc.s, 1));
-    c.home = def.line;
+    c.home = def.line; c.mid = 'y' + i;
     for (const end of ['front', 'rear']) setKn(endCoupler(c, end), KN_OPEN);   // the crew left the end knuckles open
     CARS.cuts.push(c);
-  }
+  });
+  ROAD_SHORT = was;
 };
+
+/* ---------------- what a car is, as a few characters ---------------- */
+/* A car as type.number.road.flag.engine.tons (with ~ in front when it stands turned), so another player can
+   build the same car: the road it is lettered for, an observation car's flag, the engine a coach was built to
+   match, and its weight. In a train, the engine's own vehicles are #0, #1, ... in the order the engine builds them. */
+const CAR_TYPES = ['box', 'hopper', 'tank', 'gon', 'caboose', 'coach'];
+function carToken(v) {
+  const m = v.made || {};
+  return `${v.flip ? '~' : ''}${CAR_TYPES.includes(m.type) ? m.type : CAR_TYPES.includes(v.kind) ? v.kind : 'box'}.${(m.num | 0) || 0}.${m.rs || ''}.${m.flag ? 1 : 0}.${m.rk || ''}.${Math.round((v.mass || 0) / STON)}`;
+}
+/* a token read back, checked: { flip, type, num, rs, flag, rk, tons }, or null */
+function carTokenIn(t) {
+  if (typeof t !== 'string' || t.length > 48) return null;
+  const flip = t[0] === '~', p = (flip ? t.slice(1) : t).split('.');
+  if (p.length !== 6 || !CAR_TYPES.includes(p[0])) return null;
+  const num = +p[1], tons = +p[5];
+  if (!Number.isInteger(num) || num < 0 || num > 999999 || !/^[A-Z0-9&]{0,6}$/.test(p[2]) || !/^[a-z0-9]{0,8}$/i.test(p[4]) || !(tons >= 0 && tons <= 300)) return null;
+  return { flip, type: p[0], num, rs: p[2], flag: p[3] === '1', rk: LOCO_SPEC[p[4]] ? p[4] : '', tons };
+}
+/* the engine's own vehicles in a train: everything a light engine of the same kind is built with */
+const trainPower = T => T.vehicles.filter(v => isPower(v) || (T.elec && T.units && T.units.some(m => m.vehicle === v)));
+/* the whole train front to back as tokens joined by commas */
+function trainCode(T) {
+  const power = trainPower(T);
+  return T.vehicles.map(v => { const i = power.indexOf(v); return i >= 0 ? '#' + i : carToken(v); }).join(',');
+}
+/* a car built from its token (not on the track yet) */
+function carFromToken(k) {
+  let m;
+  if (k.type === 'coach') m = coachModel(LOCO_SPEC[k.rk] || LOCO_SPEC['765'], k.num, k.flag);
+  else { const was = ROAD_SHORT; if (k.rs) ROAD_SHORT = k.rs; try { m = freightModel(k.type, k.num, () => 0.5); } finally { ROAD_SHORT = was; } }
+  scene.add(m.root); linearizeObject(m.root);
+  const v = carVehicle(m);
+  v.made = { type: k.type, num: k.num, rs: k.rs || undefined, flag: k.flag || undefined, rk: k.rk || undefined };
+  if (k.tons) v.mass = k.tons * STON;
+  v.flip = k.flip;
+  return v;
+}
 
 /* ---------------- what is on the track ahead ---------------- */
 /* every coupler face and tracked point of every consist, by edge */
@@ -241,7 +288,7 @@ CARS.contact = function (A, dir, hit) {
 CARS.settle = function () {
   let idx = null;
   for (const c of [GAME.train, ...CARS.cuts]) {
-    if (!c || !c.vehicles.length) continue;
+    if (!c || !c.vehicles.length || (CARS.driven && CARS.driven(c))) continue;
     for (const end of ['front', 'rear']) {
       const e = endCoupler(c, end);
       if (knOf(e) !== KN_LIFTED) continue;
@@ -254,7 +301,6 @@ CARS.settle = function () {
 /* the trainman works the coupler at one end of a consist: lifts the pin to open a closed knuckle, or
    pushes an open one shut */
 CARS.knuckle = function (c, end) {
-  if (MP.on) { toast('Car work is not shared with the room yet, so couplers stay locked in multiplayer.', 'warn', 4000, 'mpcars'); return; }
   const e = endCoupler(c, end), s = knOf(e);
   setKn(e, s === KN_CLOSED ? KN_LIFTED : KN_CLOSED);
   if (s === KN_CLOSED) CARS.settle();
@@ -273,7 +319,6 @@ CARS.canCut = function (T, j) {
 };
 CARS.uncouple = function (j, c0) {
   const T = c0 || GAME.train;
-  if (MP.on) { toast('Car work is not shared with the room yet, so couplers stay locked in multiplayer.', 'warn', 4000, 'mpcars'); return; }
   if (!T || !CARS.canCut(T, j)) return;
   if (!CARS.geo) CARS.geo = { tg: truckGeos(), a6: plainAxle(0.457), a4: plainAxle(0.419) };
   const ours = T === GAME.train, vT = velOf(T);
@@ -335,6 +380,7 @@ CARS.step = function (h) {
   CARS.settle();
   for (const c of CARS.cuts.slice()) {
     if (!c.rolling || !CARS.cuts.includes(c)) continue;
+    if (CARS.driven && CARS.driven(c)) continue;   // another player in the room is moving these cars (11h_mpcars.js)
     for (const v of c.vehicles) for (const p of v.fp) p.tp.pose(p.F);
     let M = 0, Fg = 0, Fr = 0, Fb = 0;
     const av = Math.abs(c.v), vm = av / MPH, shoe = 1.25 - 0.5 * smooth(0, 35, av);
@@ -364,6 +410,11 @@ CARS.step = function (h) {
     }
     c.stopT = 0;
     const d = c.v * h;
+    if (CARS.wall && CARS.wall(c, d)) {
+      const p = c.vehicles[0].pos, g = p ? 1 / (1 + Math.pow(p.distanceTo(camera.position) / 30, 1.3)) : 0;
+      if (Math.abs(c.v) > 0.3) sndClunk(clamp(Math.abs(c.v) / COUPLE_OK, 0.3, 1.4) * g, 0);
+      c.v = 0; c.dirty = true; continue;
+    }
     const lim = CARS.limit(c, d);
     c.move(lim.d, {
       onRunThrough: sw => { MP.noteThrow(sw); toast(`A rolling cut ran through ${sw.name} and forced the points over.`, 'bad', 3800, 'crt' + sw.id); },

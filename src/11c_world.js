@@ -86,6 +86,7 @@ MP.layoutSlot = function (need) {
   for (const p of MP.peers.values()) if (p.rt && p.rt.tp && !p.rt.placed) p.rt.frame(0, p.st, camera.position, true);
   const others = [];
   for (const p of MP.peers.values()) if (p.rt && p.rt.placed) for (let i = 0; i < p.rt.polyN; i++) others.push(p.rt.poly[i]);
+  for (const c of CARS.cuts) for (const q of c.pts) others.push(q.F.p);   // cars set down on the layout
   const cands = [];
   const st = layoutStart(PLAY_LAYOUT); cands.push(new TrackPos(st.edge, st.s, st.o));
   for (const e of [...NET.edges].sort((a, b) => b.len - a.len)) for (let s = e.len - 20; s > 20; s -= 80) { cands.push(new TrackPos(e, s, 1)); cands.push(new TrackPos(e, e.len - s, -1)); }

@@ -366,7 +366,7 @@ function carPanel() {
     carPanelState.key = key;
     let h = '';
     V.forEach((v, i) => {
-      if (i > 0) h += CARS.canCut(T, i) && !MP.on ? `<button class="cj" type="button" data-j="${i}" aria-label="Pull the pin between ${carName(T, V[i - 1])} ${i} and ${carName(T, v)} ${i + 1}">${KNUCKLE}</button>` : '<span class="cjx"></span>';
+      if (i > 0) h += CARS.canCut(T, i) ? `<button class="cj" type="button" data-j="${i}" aria-label="Pull the pin between ${carName(T, V[i - 1])} ${i} and ${carName(T, v)} ${i + 1}">${KNUCKLE}</button>` : '<span class="cjx"></span>';
       h += `<div class="cv ${isPower(v) ? 'pw' : v.kind}${v.job ? ' wb' : ''}">${v.job ? `<i title="Waybilled to ${v.job.to}">${v.job.tag}</i>` : ''}<b>${carName(T, v)}</b></div>`;
     });
     strip.innerHTML = h;
@@ -379,8 +379,7 @@ function carPanel() {
   $('carSum').innerHTML = `<b>${cars.length ? cars.length + ' car' + (cars.length > 1 ? 's' : '') : 'Light engine'}</b>${ahead ? ` · ${ahead} ahead of the engine` : ''} · ${tons} tons · front on the left`;
   const charging = cars.filter(v => v.brake.AR < 62).length;
   const moving = Math.abs(S.v) > 0.6;
-  $('carHint').innerHTML = MP.on ? 'Car work is single player for now: couplers stay locked in a room.'
-    : !cars.length ? 'Back gently into a cut of cars to couple: one knuckle has to be open, or the cars are only shoved. Tap a coupler on the cars to open or close it.'
+  $('carHint').innerHTML = !cars.length ? 'Back gently into a cut of cars to couple: one knuckle has to be open, or the cars are only shoved. Tap a coupler on the cars to open or close it.'
     : (moving ? '<b>Moving:</b> pulling a pin kicks the cars. Brake right after and they roll free.' : '<b>Stopped:</b> tap a coupler here, or the cut lever on the cars themselves, to cut cars off. They are set out and tied down where they stand.')
       + (charging ? ` <b>${charging}</b> car${charging > 1 ? 's' : ''} still charging air (amber).` : '');
 }

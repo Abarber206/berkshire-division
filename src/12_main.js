@@ -363,7 +363,7 @@ GAME.start = function () {
 };
 GAME.intro = function () {
   if (JOB.run) JOB.intro();
-  else if (MP.on) setTimeout(() => toast(`Made up on ${GAME.spawnName}. The switches are shared with everyone in the room.`, '', 5600), 600);
+  else if (MP.on) setTimeout(() => toast(`Made up on ${GAME.spawnName}. The switches and the cars standing about are shared with everyone in the room.`, '', 5600), 600);
   else if (WORLD.custom) setTimeout(() => toast(`On ${GAME.spawnName}. Every switch is lined straight: tap one or use Throw to change it.`, '', 5000), 600);
   else if (WORLD.mtn) setTimeout(() => toast('Riverton Yard, at the foot of Laurel Mountain. The ladder is lined out to the main; the climb starts past Hollins and runs 1.9 per cent to Summit.', '', 6500), 600);
   else setTimeout(() => toast('Yard 2, Bellevue. The ladder is lined out to the main.', '', 5000), 600);
@@ -647,7 +647,7 @@ function renderStep(dt, T) {
   CAB.frame(dt, T);
   AI.render(dt);
   MP.frame(dt);
-  if (GAME.running && !S.paused && !S.derailed) MP.contact(T);
+  if (GAME.running && !S.paused && !S.derailed && !PLACE.on) MP.contact(T);
   // headlight & glows, brightening through dusk
   const night = SKY.dark, darkH = Math.max(night, smooth(0.3, 0.7, SKY.boreK || 0));   // in a tunnel the headlight works as it does at night
   T.head.intensity = S.light === 0 ? 0 : (S.light === 1 ? lerp(0.4, 1.6, darkH) : lerp(1.4, 6, darkH));
