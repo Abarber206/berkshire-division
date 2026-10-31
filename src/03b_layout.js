@@ -22,6 +22,11 @@ const TURNOUTS = {
   par:  { name: 'Siding turnout', sub: 'Parallel at 4.5 m', R: 235, off: 4.5, lim: 30 },
 };
 const STRAIGHTS = [25, 50, 100, 200];
+const DOUBLE = 4.5;   // m between the two tracks of double track, as the siding turnout lays them
+const XOVER = { R: 235, lead: 4, lim: 30 };   // crossover: a reverse curve between two tracks DOUBLE apart
+/* which side a station platform stands: on double track always outside the pair */
+const stSide = p => p.dbl ? (p.dbl > 0 ? 1 : -1) : (p.st.side || 1);
+const pieceExt = p => p.t === 'turnout' ? 3 : p.t === 'xover' || p.dbl ? 4 : 2;   // external ends
 const CURVE_R = [180, 300, 500, 800, 1200];
 const CURVE_DEG = [7.5, 15, 30, 45];
 const wrapPi = a => { a = (a + Math.PI) % TAU; if (a < 0) a += TAU; return a - Math.PI; };
@@ -36,7 +41,36 @@ function pieceGeom(p) {
   const endOf = b => ({ X: b.X, N: b.N, h: b.h });
   if (p.t === 'straight' || p.t === 'curve') {
     const b = run(P0, b => p.t === 'straight' ? b.straight(p.L) : b.arc(p.dir * p.R, p.deg));
-    return { ports: [start, endOf(b)], paths: [{ pts: b.pts, a: 0, b: 1, R: p.t === 'curve' ? p.R : 0 }] };
+    const g = { ports: [start, endOf(b)], paths: [{ pts: b.pts, a: 0, b: 1, R: p.t === 'curve' ? p.R : 0 }] };
+    if (p.dbl) {   // double track: a second track DOUBLE m to the dbl side, concentric on a curve, ends square with the first
+      const sd = p.dbl > 0 ? 1 : -1, o = { X: p.X - Math.sin(p.h) * sd * DOUBLE, N: p.N + Math.cos(p.h) * sd * DOUBLE, h: p.h };
+      const R2 = p.t === 'curve' ? p.R - p.dir * sd * DOUBLE : 0;
+      const b2 = run(o, b => p.t === 'straight' ? b.straight(p.L) : b.arc(p.dir * R2, p.deg));
+      g.ports.push({ X: o.X, N: o.N, h: o.h + Math.PI }, endOf(b2));
+      g.paths.push({ pts: b2.pts, a: 2, b: 3, R: R2 });
+    }
+    return g;
+  }
+  if (p.t === 'xover') {
+    /* two parallel tracks with a crossover between them: from the first track (from 0) or the second
+       (from 1) the reverse curve leaves forward at one set of points and arrives at the other */
+    const sd = p.side > 0 ? 1 : -1, jl = jogLen(DOUBLE, XOVER.R), L = 2 * XOVER.lead + jl;
+    const o2 = { X: p.X - Math.sin(p.h) * sd * DOUBLE, N: p.N + Math.cos(p.h) * sd * DOUBLE, h: p.h };
+    const f = p.from ? 1 : 0, O = [P0, o2], to = 1 - f;
+    const aF = run(O[f], b => b.straight(XOVER.lead)), pF = aF.pose(), bF = run(pF, b => b.straight(L - XOVER.lead));
+    const aT = run(O[to], b => b.straight(XOVER.lead + jl)), pT = aT.pose(), bT = run(pT, b => b.straight(XOVER.lead));
+    const jog = run(pF, b => b.jog((f ? -sd : sd) * DOUBLE, XOVER.R));
+    // ports: A1 B1 A2 B2, then the points on the from track (4) and on the to track (5)
+    const A = [], B = [];
+    A[f] = aF; B[f] = bF; A[to] = aT; B[to] = bT;
+    const pts = [pF, pT];
+    const ports = [{ X: P0.X, N: P0.N, h: P0.h + Math.PI }, endOf(B[0]), { X: o2.X, N: o2.N, h: o2.h + Math.PI }, endOf(B[1]),
+      { ...pts[0], internal: true }, { ...pts[1], internal: true }];
+    const pa = [0, 2][f], pb = [1, 3][f], qa = [0, 2][to], qb = [1, 3][to];
+    const paths = [{ pts: aF.pts, a: pa, b: 4 }, { pts: bF.pts, a: 4, b: pb }, { pts: aT.pts, a: qa, b: 5 }, { pts: bT.pts, a: 5, b: qb }, { pts: jog.pts, a: 4, b: 5, R: XOVER.R }];
+    // points on the from track face the way the piece runs; on the to track they trail
+    const sws = [{ port: 4, trunk: [0, 1], normal: [1, 0], reverse: [4, 0], lim: XOVER.lim }, { port: 5, trunk: [3, 0], normal: [2, 1], reverse: [4, 1], lim: XOVER.lim }];
+    return { ports, paths, sw: sws[0], sws };
   }
   if (p.t === 'turnout') {
     const T = TURNOUTS[p.k];
@@ -48,6 +82,7 @@ function pieceGeom(p) {
       ports: [start, endOf(thru), endOf(div), { X: pts.X, N: pts.N, h: pts.h, internal: true }],
       paths: [{ pts: lead.pts, a: 0, b: 3 }, { pts: thru.pts, a: 3, b: 1 }, { pts: div.pts, a: 3, b: 2, R: T.R }],
       sw: { port: 3, trunk: 0, normal: 1, reverse: 2, lim: T.lim },
+      sws: [{ port: 3, trunk: [0, 1], normal: [1, 0], reverse: [2, 0], lim: T.lim }],
     };
   }
   if (p.t === 'flex') {
@@ -150,7 +185,7 @@ function layoutGraph(map) {
     }
   }
   let len = 0, minR = Infinity, nSw = 0;
-  for (const P of pieces) { for (const path of P.g.paths) { len += path.pts[path.pts.length - 1].s; if (path.R) minR = Math.min(minR, path.R); } if (P.g.sw) nSw++; }
+  for (const P of pieces) { for (const path of P.g.paths) { len += path.pts[path.pts.length - 1].s; if (path.R) minR = Math.min(minR, path.R); } nSw += (P.g.sws || []).length; }
   const open = ports.filter(q => !q.internal && q.mate < 0);
   return { pieces, ports, open, issues, len, minR, nSw };
 }
@@ -215,14 +250,14 @@ function buildLayoutRoute(map) {
   // switches
   let swN = 0;
   G.pieces.forEach((P, pi) => {
-    const sw = P.g.sw; if (!sw) return;
     const pid = j => paths.findIndex(x => x.pi === pi && x.j === j);
-    const k = jn(P.base + sw.port);
-    const trunk = endAtt.get(pid(sw.trunk) + ':1'), normal = endAtt.get(pid(sw.normal) + ':0'), reverse = endAtt.get(pid(sw.reverse) + ':0');
-    if (!trunk || !normal || !reverse) return;
-    const T = TURNOUTS[P.p.k];
-    const s = NET.addSwitch(nodeOf(k), trunk, normal, reverse, P.p.name || ('Switch ' + (++swN)), ['Straight', 'Diverging']);
-    s.divLimit = T.lim; s.layoutKind = P.p.k; s.pieceId = P.p.id;
+    for (const sw of P.g.sws || []) {
+      const k = jn(P.base + sw.port), leg = ([j, end]) => endAtt.get(pid(j) + ':' + end);
+      const trunk = leg(sw.trunk), normal = leg(sw.normal), reverse = leg(sw.reverse);
+      if (!trunk || !normal || !reverse) continue;
+      const s = NET.addSwitch(nodeOf(k), trunk, normal, reverse, P.p.name || ('Switch ' + (++swN)), ['Straight', 'Diverging']);
+      s.divLimit = sw.lim; s.layoutKind = P.p.t === 'xover' ? 'xover' : P.p.k; s.pieceId = P.p.id;
+    }
   });
   for (const nd of NET.nodes) if (nd.att.length === 1) ROUTE.bumpers.push(nd);
   // stations (with a water column for steam) on straights the editor marked
@@ -230,7 +265,7 @@ function buildLayoutRoute(map) {
   G.pieces.forEach((P, pi) => {
     const st = P.p.st; if (!st) return;
     const pl = placed.get(paths.findIndex(x => x.pi === pi)); if (!pl) return;
-    const s = (pl.s0 + pl.s1) / 2, side = (st.side || 1) * (pl.rev ? -1 : 1), line = lineOf(pl.edge);
+    const s = (pl.s0 + pl.s1) / 2, side = stSide(P.p) * (pl.rev ? -1 : 1), line = lineOf(pl.edge);
     ROUTE.stations.push({ name: st.name || 'Station', line, sLine: s, edge: pl.edge, s, side, kind: st.big ? 'depot' : 'small' });
     const sw = clamp(s + (pl.s1 - pl.s0) * 0.3, 4, pl.edge.len - 4);
     ROUTE.water.push({ line, sLine: sw, edge: pl.edge, s: sw, side, kind: 'column' });
@@ -246,6 +281,98 @@ function buildLayoutRoute(map) {
   ROUTE.mainLen = G.len;
   ROUTE.layout = { map, graph: G, placed, paths, lineOf };
   return G;
+}
+
+/* ---------- placement helpers the editor snaps with (pure, tested in tests/editor.test.js) ----------
+   A rigid move is { a, tx, tn }: a plan point P goes to R(a)·P + t. Moving every piece of a joined
+   group by the same move keeps its joints flush, because each piece is rebuilt from its own pose. */
+const SNAP = {
+  track: 4.5,       // m between parallel track centres, as the siding turnout lays them
+  endAng: Math.PI / 4,   // an end only pulls a piece onto it when they already face within 45°
+  parR: 30,         // m: how near an existing track a free piece lines up parallel with it
+  parAng: Math.PI / 18,  // once turned by hand, a piece only lines up when within 10°
+};
+const rigidAt = (T, X, N) => { const c = Math.cos(T.a), s = Math.sin(T.a); return { X: c * X - s * N + T.tx, N: s * X + c * N + T.tn }; };
+/* a move that turns by a about (cx, cn), then shifts by (dx, dn) */
+function rigidAbout(a, cx, cn, dx = 0, dn = 0) { const c = Math.cos(a), s = Math.sin(a); return { a, tx: cx - (c * cx - s * cn) + dx, tn: cn - (s * cx + c * cn) + dn }; }
+/* T followed by an extra turn b about (px, pn) and a shift (dx, dn) */
+function rigidThen(T, b, px, pn, dx, dn) { const U = rigidAbout(b, px, pn, dx, dn), o = rigidAt(U, T.tx, T.tn); return { a: T.a + b, tx: o.X, tn: o.N }; }
+function movePiece(p, T) {
+  const o = rigidAt(T, p.X, p.N), q = { ...p, X: o.X, N: o.N, h: wrapPi(p.h + T.a) };
+  if (p.b) { const b = rigidAt(T, p.b.X, p.b.N); q.b = { X: b.X, N: b.N, h: p.b.h + T.a }; }
+  if (p.st) q.st = { ...p.st };
+  return q;
+}
+/* every piece joined, directly or through others, to piece index pi */
+function layoutGroup(G, pi) {
+  const out = new Set([pi]), todo = [pi];
+  while (todo.length) {
+    const P = G.pieces[todo.pop()];
+    for (let k = 0; k < P.g.ports.length; k++) { const q = G.ports[P.base + k]; if (q.mate < 0) continue; const o = G.ports[q.mate].pi; if (!out.has(o)) { out.add(o); todo.push(o); } }
+  }
+  return out;
+}
+/* the open end among `ends` that one of `mine` (outward ports of what is being placed) lands on,
+   within r metres and facing it within SNAP.endAng: { E, q, d } or null */
+function nearestEnd(mine, ends, r) {
+  let best = null;
+  for (const q of mine) for (const E of ends) {
+    const d = Math.hypot(q.X - E.X, q.N - E.N); if (d > r || (best && d >= best.d)) continue;
+    if (Math.abs(wrapPi(q.h - E.h - Math.PI)) > SNAP.endAng) continue;
+    best = { E, q, d };
+  }
+  return best;
+}
+/* the closest point of laid track to (X, N) within r: { X, N, h, d, lat } with lat + to the left of h */
+function nearestTrack(G, X, N, r, skip) {
+  let best = null;
+  for (let pi = 0; pi < G.pieces.length; pi++) {
+    if (skip && skip.has(pi)) continue;
+    for (const path of G.pieces[pi].g.paths) for (const q of path.pts) {
+      const d = Math.hypot(q.X - X, q.N - N); if (d > r || (best && d >= best.d)) continue;
+      best = { X: q.X, N: q.N, h: q.h, d, lat: -Math.sin(q.h) * (X - q.X) + Math.cos(q.h) * (N - q.N) };
+    }
+  }
+  return best;
+}
+/* Where a free piece lands for a pointer at (X, N), heading h, with snapping on:
+   1. any end of the piece near an open end facing it attaches there, flush;
+   2. near laid track it lines up parallel, a whole number of track spacings to the side
+      (any heading with o.alignAny, else only one already within SNAP.parAng);
+   3. otherwise the grid (step metres).
+   Returns { p, how, E?, j?, lat? }. */
+function snapFree(spec, X, N, h, G, o = {}) {
+  const step = o.step || 1, r = o.r || 8, ext = pieceExt(spec);
+  const p0 = { ...spec, X, N, h };
+  if (o.ends !== false) {
+    const ports = pieceGeom(p0).ports.slice(0, ext).map((q, j) => ({ ...q, j }));
+    const hit = nearestEnd(ports, G.open, r);
+    if (hit) return { p: attachPiece(spec, hit.q.j, hit.E), how: 'end', E: hit.E, j: hit.q.j };
+  }
+  if (o.parallel !== false && G.pieces.length) {
+    const t = nearestTrack(G, X, N, SNAP.parR);
+    if (t) {
+      const flip = Math.abs(wrapPi(h - t.h)) > Math.PI / 2, ht = flip ? wrapPi(t.h + Math.PI) : wrapPi(t.h);
+      if (o.alignAny || Math.abs(wrapPi(h - ht)) <= SNAP.parAng) {
+        const n = Math.max(1, Math.round(Math.abs(t.lat) / SNAP.track)) * (t.lat < 0 ? -1 : 1), lat = n * SNAP.track;
+        return { p: { ...spec, X: t.X - Math.sin(t.h) * lat, N: t.N + Math.cos(t.h) * lat, h: ht }, how: 'parallel', lat };
+      }
+    }
+  }
+  return { p: { ...spec, X: Math.round(X / step) * step, N: Math.round(N / step) * step, h }, how: 'grid' };
+}
+/* Snap a group being dragged by move T: if one of its open ends comes within r of another open end
+   and faces it, turn and shift the whole group so that joint is flush. Returns { T, E?, q? }. */
+function snapGroup(G, group, T, r) {
+  const mine = [], ends = [];
+  for (const q of G.open) {
+    if (group.has(q.pi)) { const o = rigidAt(T, q.X, q.N); mine.push({ X: o.X, N: o.N, h: q.h + T.a }); }
+    else ends.push(q);
+  }
+  const hit = nearestEnd(mine, ends, r);
+  if (!hit) return { T };
+  const b = wrapPi(hit.E.h + Math.PI - hit.q.h);
+  return { T: rigidThen(T, b, hit.q.X, hit.q.N, hit.E.X - hit.q.X, hit.E.N - hit.q.N), E: hit.E, q: hit.q };
 }
 
 /* superelevation that runs in and out over about 40 m instead of stepping at a joint */

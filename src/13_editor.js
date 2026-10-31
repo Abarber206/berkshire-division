@@ -8,14 +8,21 @@ const ED = {
   map: null, G: null, idx: new Map(), view: { cx: 0, cn: 2500, sc: 0.4 }, W: 0, H: 0,
   active: null, sel: null, armed: null, attach: 0, rot: 0, join: null, ghost: null, hoverEnd: null,
   undo: [], redo: [], curveR: 300, curveDeg: 15, tab: 'straight', warned: false, dirty: true, open: false,
+  snap: true, drag: null, pin: false, dbl: 0,
 };
-const ED_PORT_NAMES = ['A', 'B', 'C'];
+/* grid the free pieces and moves round to at this zoom, and how far (m) an end pulls a piece onto it */
+const edStep = () => ED.view.sc > 3 ? 1 : ED.view.sc > 0.6 ? 5 : 10;
+const edPull = touch => (touch ? 34 : 24) / ED.view.sc;
+const edDeg = h => Math.round(((h * 180 / Math.PI) % 360 + 360) % 360 * 10) / 10;
+const ED_PORT_NAMES = ['A', 'B', 'C', 'D'];
 
 function edBlank(name) { return { v: 1, id: LAYOUTS.newId(), name: name || 'My railroad', pieces: [], nid: 1, start: null }; }
-const edExt = spec => spec.t === 'turnout' ? 3 : 2;   // external ends of a piece
+const edExt = pieceExt;   // external ends of a piece
 function edLabel(p) {
-  if (p.t === 'straight') return { h: `Straight ${p.L} m`, s: `${Math.round(p.L / FT)} ft of tangent track` };
-  if (p.t === 'curve') return { h: `Curve ${p.dir > 0 ? 'left' : 'right'}`, s: `Radius ${p.R} m · ${p.deg}° · ${(p.R * p.deg * Math.PI / 180).toFixed(1)} m long` };
+  const two = p.dbl ? `Double track, second track on the ${p.dbl > 0 ? 'left' : 'right'} · ` : '';
+  if (p.t === 'straight') return { h: `${p.dbl ? 'Double straight' : 'Straight'} ${p.L} m`, s: two + `${Math.round(p.L / FT)} ft of tangent track` };
+  if (p.t === 'curve') return { h: `${p.dbl ? 'Double curve' : 'Curve'} ${p.dir > 0 ? 'left' : 'right'}`, s: two + `Radius ${p.R}${p.dbl ? ' and ' + (p.R - p.dir * p.dbl * DOUBLE) : ''} m · ${p.deg}° · ${(p.R * p.deg * Math.PI / 180).toFixed(1)} m long` };
+  if (p.t === 'xover') return { h: 'Crossover', s: `Double track, second track on the ${p.side > 0 ? 'left' : 'right'} · ${(2 * XOVER.lead + jogLen(DOUBLE, XOVER.R)).toFixed(0)} m · ${XOVER.lim} mph across` };
   if (p.t === 'turnout') { const T = TURNOUTS[p.k]; return { h: `${T.name}, ${p.dir > 0 ? 'left' : 'right'} hand`, s: `${T.sub} · diverging route ${T.lim} mph` }; }
   if (p.t === 'flex') { const f = flexPath(p, p.b); return { h: 'Join curve', s: `${f.len.toFixed(1)} m · tightest radius ${f.minR === Infinity ? 'straight' : Math.round(f.minR) + ' m'}` }; }
   return { h: 'Piece', s: '' };
@@ -83,12 +90,16 @@ function edPlace(spec, E, j, X, N, h) {
   return E ? attachPiece(base, j % edExt(spec), E) : { ...base, X, N, h };
 }
 function edAdd(spec, E, j, X, N, h) {
-  const p = edPlace(spec, E, j, X, N, h);
+  return edPut(edPlace(spec, E, j, X, N, h), E ? j % edExt(spec) : -1, !!E);
+}
+/* lay a piece already posed; jj is the end it was attached by (-1 when free) */
+function edPut(p, jj, E) {
+  const spec = p;
   if (!edInBounds(p)) { edMsg('That would run off the edge of the world.', 'bad'); return null; }
   edCommit(() => { ED.map.pieces.push(p); });
   // carry on from the far end of the new piece
-  const P = ED.G.pieces[ED.idx.get(p.id)], jj = E ? j % edExt(spec) : -1;
-  const order = spec.t === 'turnout' ? (jj === 0 ? [1, 2] : [0, 1, 2]) : [1, 0];
+  const P = ED.G.pieces[ED.idx.get(p.id)];
+  const order = spec.t === 'turnout' ? (jj === 0 ? [1, 2] : [0, 1, 2]) : edExt(spec) === 4 ? (jj === 0 || jj === 2 ? [1, 3] : jj < 0 ? [1, 3, 0, 2] : [0, 2]) : [1, 0];
   ED.active = null;
   for (const k of order) { if (k === jj) continue; const q = ED.G.ports[P.base + k]; if (q.mate < 0) { ED.active = { pid: p.id, j: k }; break; } }
   if (!ED.active && E) edMsg('Joined up: that closes the track.', 'good');
@@ -130,17 +141,20 @@ function edJoin(a, b) {
   ED.active = null; ED.join = null; edMsg(`Joined with a ${f.len.toFixed(0)} m curve, radius ${f.minR === Infinity ? 'straight' : Math.round(f.minR) + ' m'} at its tightest.`, 'good');
   edPanels();
 }
-function edRotateSel(dir) {
+/* Turn the selected piece, and everything joined to it, about the middle of that piece. */
+function edRotateSel(dir, deg = 15) {
   const i = ED.idx.get(ED.sel); if (i === undefined) return;
-  const P = ED.G.pieces[i];
-  for (let k = 0; k < edExt(P.p); k++) if (ED.G.ports[P.base + k].mate >= 0) { edMsg('Only a piece that is not joined to anything can be turned.', 'bad'); return; }
-  if (P.p.t === 'flex') return;
-  // turn about the middle of the piece
-  const g = P.g, mid = g.paths[0].pts[(g.paths[0].pts.length / 2) | 0], a = dir * Math.PI / 12, c = Math.cos(a), s = Math.sin(a);
-  const dx = P.p.X - mid.X, dn = P.p.N - mid.N;
-  const np = { ...P.p, X: mid.X + c * dx - s * dn, N: mid.N + s * dx + c * dn, h: wrapPi(P.p.h + a) };
-  if (!edInBounds(np)) { edMsg('That would run off the edge of the world.', 'bad'); return; }
-  edUpdatePiece(ED.sel, p => { p.X = np.X; p.N = np.N; p.h = np.h; });
+  const g = ED.G.pieces[i].g, mid = g.paths[0].pts[(g.paths[0].pts.length / 2) | 0];
+  edMoveGroup(i, rigidAbout(dir * deg * Math.PI / 180, mid.X, mid.N));
+}
+/* Move the group piece index i belongs to by rigid move T, as one undoable change. */
+function edMoveGroup(i, T, joined) {
+  const grp = layoutGroup(ED.G, i), ids = new Set([...grp].map(k => ED.G.pieces[k].p.id));
+  const moved = new Map(); for (const k of grp) { const p = ED.G.pieces[k].p; moved.set(p.id, movePiece(p, T)); }
+  for (const p of moved.values()) if (!edInBounds(p)) { edMsg('That would run off the edge of the world.', 'bad'); return false; }
+  edCommit(() => { ED.map.pieces = ED.map.pieces.map(p => ids.has(p.id) ? moved.get(p.id) : p); });
+  if (joined) edMsg('Joined flush.', 'good');
+  return true;
 }
 
 /* ---------- view ---------- */
@@ -185,13 +199,13 @@ function edDrawPiece(g, P, mode) {
       for (let i = 0; i < pts.length; i++) { const q = pts[i], c = Math.cos(q.h), s = Math.sin(q.h); g.moveTo(edTX(q.X + s * 1.3), edTY(q.N - c * 1.3)); g.lineTo(edTX(q.X - s * 1.3), edTY(q.N + c * 1.3)); }
       g.stroke();
     }
-    const railC = bad ? '#ffb4ab' : ghost ? '#a9f0c4' : P.p.t === 'turnout' ? '#e6d3a1' : P.p.t === 'flex' ? '#b9d4df' : '#c9d2d6';
+    const railC = bad ? '#ffb4ab' : ghost ? '#a9f0c4' : P.p.t === 'turnout' || P.p.t === 'xover' ? '#e6d3a1' : P.p.t === 'flex' ? '#b9d4df' : '#c9d2d6';
     g.strokeStyle = railC;
     if (sc > 2.2) { g.lineWidth = Math.max(1, 0.15 * sc); edStroke(g, pts, RAIL_OFF, step); edStroke(g, pts, -RAIL_OFF, step); }
     else { g.lineWidth = sc > 0.6 ? 1.6 : 1.2; edStroke(g, pts, 0, step); }
   }
   // the points of a turnout
-  if (P.g.sw && !ghost) { const q = P.g.ports[3]; g.fillStyle = bad ? '#ffb4ab' : '#cfa651'; g.beginPath(); g.arc(edTX(q.X), edTY(q.N), clamp(1.2 * sc, 2.5, 6), 0, TAU); g.fill(); }
+  if (P.g.sws && !ghost) for (const sw of P.g.sws) { const q = P.g.ports[sw.port]; g.fillStyle = bad ? '#ffb4ab' : '#cfa651'; g.beginPath(); g.arc(edTX(q.X), edTY(q.N), clamp(1.2 * sc, 2.5, 6), 0, TAU); g.fill(); }
 }
 function edDraw() {
   const c = $('edCanvas'), dpr = Math.min(2, devicePixelRatio || 1), W = innerWidth, H = innerHeight;
@@ -218,14 +232,16 @@ function edDraw() {
   // stations under the track
   for (const P of G.pieces) {
     if (!P.p.st || !vis(P)) continue;
-    const pts = P.g.paths[0].pts, side = P.p.st.side || 1;
+    const pts = P.g.paths[0].pts, side = stSide(P.p);
     g.strokeStyle = 'rgba(207,166,81,0.55)'; g.lineWidth = Math.max(2, 4 * sc); g.lineCap = 'butt';
     edStroke(g, pts.slice(Math.floor(pts.length * 0.15), Math.ceil(pts.length * 0.85)), -side * 4.4, 1);
     const m = pts[(pts.length / 2) | 0], off = -side * (12 + 14 / Math.max(sc, 0.05));
     g.fillStyle = '#cfa651'; g.font = '600 12px "IBM Plex Sans Condensed", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
     g.fillText((P.p.st.name || 'Station').toUpperCase(), edTX(m.X - Math.sin(m.h) * off), edTY(m.N + Math.cos(m.h) * off));
   }
-  for (const P of G.pieces) if (vis(P)) edDrawPiece(g, P, P.p.id === ED.sel ? 'sel' : '');
+  const D = ED.drag;
+  G.pieces.forEach((P, k) => { if (vis(P) && !(D && D.grp.has(k))) edDrawPiece(g, P, P.p.id === ED.sel ? 'sel' : ''); });
+  if (D) for (const P of D.geo) edDrawPiece(g, P, D.ok ? 'sel' : 'bad');
   // joints: a hairline across the rails where two pieces meet flush
   if (sc > 1.5) {
     g.strokeStyle = 'rgba(0,0,0,0.55)'; g.lineWidth = 1; g.beginPath();
@@ -239,11 +255,27 @@ function edDraw() {
     g.fillStyle = '#ffe08a'; g.strokeStyle = '#000'; g.lineWidth = 1.5; g.beginPath();
     g.moveTo(x + c * r, y - s * r); g.lineTo(x - c * r * 0.7 - s * r * 0.6, y + s * r * 0.7 - c * r * 0.6); g.lineTo(x - c * r * 0.7 + s * r * 0.6, y + s * r * 0.7 + c * r * 0.6); g.closePath(); g.fill(); g.stroke();
   }
-  // ghost of the piece about to be placed
-  if (ED.ghost) edDrawPiece(g, { p: ED.ghost.p, g: pieceGeom(ED.ghost.p) }, ED.ghost.ok ? 'ghost' : 'bad');
+  // ghost of the piece about to be placed, with what it snapped to
+  const GH = ED.ghost;
+  if (GH) {
+    const gg = pieceGeom(GH.p);
+    if (GH.how === 'parallel') {   // a rung across to the track it lines up with
+      const o = gg.ports[0], lat = GH.lat, x0 = edTX(o.X + Math.sin(GH.p.h) * lat), y0 = edTY(o.N - Math.cos(GH.p.h) * lat);
+      g.save(); g.setLineDash([4, 4]); g.strokeStyle = 'rgba(169,240,196,0.8)'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(x0, y0); g.lineTo(edTX(o.X), edTY(o.N)); g.stroke(); g.restore();
+    }
+    edDrawPiece(g, { p: GH.p, g: gg }, GH.ok ? 'ghost' : 'bad');
+    if (GH.E) edRing(g, GH.E, '#a9f0c4');
+    // its ends, so it is plain which end goes where
+    for (let k = 0; k < edExt(GH.p); k++) { const q = gg.ports[k]; g.fillStyle = k === GH.jj ? '#a9f0c4' : 'rgba(169,240,196,0.55)'; g.beginPath(); g.arc(edTX(q.X), edTY(q.N), 3.5, 0, TAU); g.fill(); }
+    const lab = edGhostText(GH), m = gg.paths[0].pts[(gg.paths[0].pts.length / 2) | 0];
+    edTag(g, lab, edTX(m.X), edTY(m.N) - 18);
+  }
+  if (D && D.E) edRing(g, D.E, '#a9f0c4');
+  if (D) { const m = D.geo[0].g.paths[0].pts[0]; edTag(g, D.E ? 'Snaps flush onto the end' : `Moving ${D.grp.size} piece${D.grp.size === 1 ? '' : 's'} · ${D.T.tx.toFixed(0)} m E, ${D.T.tn.toFixed(0)} m N`, edTX(m.X), edTY(m.N) - 18); }
   // open ends
   const r = 6;
   for (const q of G.open) {
+    if (D && D.grp.has(q.pi)) continue;
     const x = edTX(q.X), y = edTY(q.N); if (x < -20 || y < -20 || x > W + 20 || y > H + 20) continue;
     const isA = ED.active && edPort(ED.active) === q, isJ = ED.join && edPort(ED.join) === q, hov = ED.hoverEnd === q;
     const c = Math.cos(q.h), s = Math.sin(q.h);
@@ -266,6 +298,19 @@ function edDraw() {
   const bx = 14, by = H - (innerWidth <= 600 ? 150 : 132) ;
   g.fillStyle = '#dfe4e6'; g.fillRect(bx, by, bw, 2); g.fillRect(bx, by - 4, 1.5, 6); g.fillRect(bx + bw - 1.5, by - 4, 1.5, 6);
   g.font = '500 11px "IBM Plex Mono", monospace'; g.textAlign = 'left'; g.textBaseline = 'bottom'; g.fillText(nice >= 1000 ? nice / 1000 + ' km' : nice + ' m', bx, by - 5);
+}
+
+function edRing(g, q, col) {
+  g.strokeStyle = col; g.lineWidth = 2.5; g.beginPath(); g.arc(edTX(q.X), edTY(q.N), 13, 0, TAU); g.stroke();
+}
+/* a small label on the plan */
+function edTag(g, t, x, y) {
+  if (!t) return;
+  g.font = '500 11px "IBM Plex Mono", monospace'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  x = clamp(x, 10 + g.measureText(t).width / 2, ED.W - 10 - g.measureText(t).width / 2); y = clamp(y, 80, ED.H - 160);
+  const w = g.measureText(t).width + 12;
+  g.fillStyle = 'rgba(10,14,17,0.85)'; g.fillRect(x - w / 2, y - 9, w, 18);
+  g.fillStyle = '#dfe4e6'; g.fillText(t, x, y);
 }
 
 /* ---------- panels ---------- */
@@ -293,9 +338,10 @@ function edPanels() {
   let hint;
   if (ED.join) hint = '<b>Join:</b> now tap the open end to join it to. The editor draws the smoothest curve between them.';
   else if (ED.tab === 'tools' && ED.joinArmed) hint = '<b>Join:</b> tap the first of two open ends.';
-  else if (ED.armed) hint = `Tap the map to put it down, or tap an amber end to attach it there. <b>Turn</b> and <b>Flip end</b> are under Tools. Attaching by end <b>${ED_PORT_NAMES[ED.attach % edExt(ED.armed)]}</b>.`;
+  else if (ED.armed) hint = `${ED.lastPtr && !ED.lastPtr.touch ? 'Click to lay it where the preview shows.' : 'Tap the map to see where it goes, drag the preview to adjust, then <b>Place</b>.'} Near an amber end it snaps flush; near laid track it lines up ${SNAP.track} m beside it. Attaching by end <b>${ED_PORT_NAMES[ED.attach % edExt(ED.armed)]}</b>.`;
   else if (ED.active) hint = 'Tap a piece below to add it at the highlighted end. Tap any other amber end to build from there, or a piece to select it.';
   else if (!G.pieces.length) hint = 'Pick a piece below and tap the map to lay it down. Then keep picking pieces: each one snaps flush onto the open end.';
+  else if (ED.sel != null) hint = 'Drag the highlighted track to move it with everything joined to it. Bring an open end near another and it snaps flush. Arrow keys nudge 1 m.';
   else hint = 'Tap an amber end to build from it, or tap a piece to select it.';
   $('edHint').innerHTML = hint;
   edPalState(); edSelCard();
@@ -305,7 +351,7 @@ function edSelCard() {
   const i = ED.sel != null ? ED.idx.get(ED.sel) : undefined;
   if (i === undefined) { box.hidden = true; return; }
   const P = ED.G.pieces[i], p = P.p, lab = edLabel(p);
-  const free = [...Array(edExt(p)).keys()].every(k => ED.G.ports[P.base + k].mate < 0);
+  const grp = layoutGroup(ED.G, i).size;
   const isStart = ED.map.start && ED.map.start.id === p.id;
   const canStation = p.t === 'straight' && p.L >= 50;
   box.hidden = false;
@@ -314,11 +360,13 @@ function edSelCard() {
       <button class="btn warn" type="button" data-a="del">Delete</button>
       ${p.t !== 'turnout' ? `<button class="btn" type="button" data-a="start" aria-pressed="${!!isStart}">${isStart ? 'Start: turn around' : 'Start here'}</button>` : ''}
       ${canStation ? `<button class="btn" type="button" data-a="st" aria-pressed="${!!p.st}">${p.st ? 'Remove station' : 'Add station'}</button>` : ''}
-      ${free && p.t !== 'flex' ? '<button class="btn" type="button" data-a="rl">Turn ⟲</button><button class="btn" type="button" data-a="rr">Turn ⟳</button>' : ''}
+      <button class="btn" type="button" data-a="rl" aria-label="Turn left 15 degrees">Turn ⟲</button><button class="btn" type="button" data-a="rr" aria-label="Turn right 15 degrees">Turn ⟳</button>
       <button class="btn" type="button" data-a="close">Done</button>
     </div>
+    <div id="edPos"><label>East<input class="mpIn" id="edPX" inputmode="decimal" value="${p.X.toFixed(1)}"></label><label>North<input class="mpIn" id="edPN" inputmode="decimal" value="${p.N.toFixed(1)}"></label><label>Heading°<input class="mpIn" id="edPH" inputmode="decimal" value="${edDeg(p.h)}"></label></div>
+    <div class="sub" style="margin:0">End A of this piece, in metres. ${grp > 1 ? `Moving or turning it takes the ${grp - 1} joined piece${grp === 2 ? '' : 's'} with it.` : 'Drag it on the plan to move it.'}</div>
     ${p.st ? `<div id="edSt"><input class="mpIn" id="edStName" maxlength="24" value="${(p.st.name || '').replace(/"/g, '&quot;')}" placeholder="Station name" aria-label="Station name">
-      <div class="acts"><button class="btn" type="button" data-a="sl" aria-pressed="${p.st.side < 0}">Left side</button><button class="btn" type="button" data-a="sr" aria-pressed="${p.st.side > 0}">Right side</button>
+      <div class="acts">${p.dbl ? '' : `<button class="btn" type="button" data-a="sl" aria-pressed="${p.st.side < 0}">Left side</button><button class="btn" type="button" data-a="sr" aria-pressed="${p.st.side > 0}">Right side</button>`}
       <button class="btn" type="button" data-a="big" aria-pressed="${!!p.st.big}">Town</button><button class="btn" type="button" data-a="small" aria-pressed="${!p.st.big}">Halt</button></div></div>` : ''}
     ${p.t === 'straight' && p.L < 50 ? '<div class="sub" style="margin:0">Stations go on straights of 50 m or more.</div>' : ''}`;
   box.querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
@@ -331,6 +379,12 @@ function edSelCard() {
     else if (a === 'big' || a === 'small') edUpdatePiece(p.id, x => { x.st.big = a === 'big'; });
     else if (a === 'rl' || a === 'rr') edRotateSel(a === 'rl' ? 1 : -1);
   }));
+  for (const id of ['edPX', 'edPN', 'edPH']) $(id).addEventListener('change', () => {
+    const X = parseFloat($('edPX').value), N = parseFloat($('edPN').value), H = parseFloat($('edPH').value);
+    if (![X, N, H].every(isFinite)) { edSelCard(); return; }
+    const a = wrapPi(H * Math.PI / 180 - p.h);
+    if (!edMoveGroup(i, rigidAbout(a, p.X, p.N, X - p.X, N - p.N))) edSelCard();
+  });
   const nm = $('edStName');
   if (nm) nm.addEventListener('change', () => edUpdatePiece(p.id, x => { x.st.name = nm.value.trim().slice(0, 24) || 'Station'; }));
 }
@@ -348,7 +402,7 @@ function edIcon(cv, spec) {
   let x0 = Infinity, x1 = -Infinity, n0 = Infinity, n1 = -Infinity;
   for (const path of geo.paths) for (const q of path.pts) { x0 = Math.min(x0, q.X); x1 = Math.max(x1, q.X); n0 = Math.min(n0, q.N); n1 = Math.max(n1, q.N); }
   const span = Math.max(x1 - x0, (n1 - n0) * 1.9, 30), s = 48 / span, cx = (x0 + x1) / 2, cn = (n0 + n1) / 2;
-  g.lineCap = 'round'; g.strokeStyle = spec.t === 'turnout' ? '#e6d3a1' : '#c9d2d6'; g.lineWidth = 2.4;
+  g.lineCap = 'round'; g.strokeStyle = spec.t === 'turnout' || spec.t === 'xover' ? '#e6d3a1' : '#c9d2d6'; g.lineWidth = spec.dbl || spec.t === 'xover' ? 1.8 : 2.4;
   for (const path of geo.paths) { g.beginPath(); path.pts.forEach((q, i) => { const x = 28 + (q.X - cx) * s, y = 15 - (q.N - cn) * s; i ? g.lineTo(x, y) : g.moveTo(x, y); }); g.stroke(); }
 }
 const ED_TABS = { straight: 'Straight', curve: 'Curve', turnout: 'Turnout', tools: 'Tools' };
@@ -374,34 +428,44 @@ function edPalette() {
     for (const v of vals) { const c = document.createElement('button'); c.type = 'button'; c.className = 'chip'; c.textContent = fmt(v); c.setAttribute('aria-pressed', String(v === cur)); c.addEventListener('click', () => { set(v); edPalette(); }); row.appendChild(c); }
     host.appendChild(w);
   };
-  if (ED.tab === 'straight') { const g = grp(); for (const L of STRAIGHTS) piece(g, { t: 'straight', L }, L + ' m', Math.round(L / FT) + ' ft'); }
+  const dbl = spec => ED.dbl ? { ...spec, dbl: ED.dbl } : spec;
+  const tracks = host => chips(host, 'Track', [0, 1, -1], ED.dbl, v => v ? 'Double ' + (v > 0 ? 'L' : 'R') : 'Single', v => { ED.dbl = v; if (ED.armed && ED.armed.t !== 'turnout' && ED.armed.t !== 'xover') edPick(dbl({ ...ED.armed, dbl: undefined }), true); });
+  if (ED.tab === 'straight') { tracks(grp()); const g = grp(); for (const L of STRAIGHTS) piece(g, dbl({ t: 'straight', L }), L + ' m', Math.round(L / FT) + ' ft'); }
   else if (ED.tab === 'curve') {
-    const a = grp(); chips(a, 'Radius', CURVE_R, ED.curveR, v => v + ' m', v => { ED.curveR = v; }); chips(a, 'Angle', CURVE_DEG, ED.curveDeg, v => v + '°', v => { ED.curveDeg = v; });
+    const a = grp(); tracks(a); chips(a, 'Radius', CURVE_R, ED.curveR, v => v + ' m', v => { ED.curveR = v; }); chips(a, 'Angle', CURVE_DEG, ED.curveDeg, v => v + '°', v => { ED.curveDeg = v; });
     const b = grp();
-    piece(b, { t: 'curve', R: ED.curveR, deg: ED.curveDeg, dir: 1 }, 'Left', `R ${ED.curveR} · ${ED.curveDeg}°`);
-    piece(b, { t: 'curve', R: ED.curveR, deg: ED.curveDeg, dir: -1 }, 'Right', `R ${ED.curveR} · ${ED.curveDeg}°`);
+    piece(b, dbl({ t: 'curve', R: ED.curveR, deg: ED.curveDeg, dir: 1 }), 'Left', `R ${ED.curveR} · ${ED.curveDeg}°`);
+    piece(b, dbl({ t: 'curve', R: ED.curveR, deg: ED.curveDeg, dir: -1 }), 'Right', `R ${ED.curveR} · ${ED.curveDeg}°`);
   } else if (ED.tab === 'turnout') {
     for (const k of ['main', 'par', 'yard']) { const g = grp(), T = TURNOUTS[k]; for (const dir of [1, -1]) piece(g, { t: 'turnout', k, dir }, `${T.name.split(' ')[0]} ${dir > 0 ? 'L' : 'R'}`, T.sub); }
+    const x = grp();
+    for (const side of [1, -1]) for (const from of [0, 1]) piece(x, { t: 'xover', side, from }, `Crossover ${side > 0 ? 'L' : 'R'}${from ? ' ⟵' : ''}`, `double · ${side > 0 ? 'left' : 'right'}`);
   } else {
     const g = grp();
     const tool = (name, sub, fn, pressed) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'pc'; b.style.minWidth = '74px'; b.innerHTML = `<span style="font-size:18px;line-height:30px">${sub}</span><span>${name}</span>`; if (pressed) b.setAttribute('aria-pressed', 'true'); b.addEventListener('click', fn); g.appendChild(b); return b; };
+    tool(ED.snap ? 'Snap on' : 'Snap off', '⌖', () => edSnapToggle(), ED.snap);
     tool('Join ends', '⤳', () => { ED.joinArmed = !ED.joinArmed; ED.join = null; ED.armed = null; ED.ghost = null; edPalette(); edPanels(); }, ED.joinArmed);
-    tool('Flip end', '⇄', () => { ED.attach = (ED.attach + 1) % 3; edMsg(`New pieces attach by end ${ED_PORT_NAMES[ED.attach]}${ED.attach ? ': the far end of a straight or curve, or the straight / diverging end of a turnout.' : ', the usual end.'}`); edPanels(); edGhostAt(ED.lastPtr); });
-    tool('Turn ⟲', '⟲', () => { if (ED.sel != null) edRotateSel(1); else { ED.rot = wrapPi(ED.rot + Math.PI / 12); edGhostAt(ED.lastPtr); edMsg(`Free pieces point ${Math.round((ED.rot * 180 / Math.PI + 360) % 360)}° from east.`); } });
-    tool('Turn ⟳', '⟳', () => { if (ED.sel != null) edRotateSel(-1); else { ED.rot = wrapPi(ED.rot - Math.PI / 12); edGhostAt(ED.lastPtr); edMsg(`Free pieces point ${Math.round((ED.rot * 180 / Math.PI + 360) % 360)}° from east.`); } });
+    tool('Flip end', '⇄', () => { ED.attach = (ED.attach + 1) % 4; edMsg(`New pieces attach by end ${ED_PORT_NAMES[ED.attach]}${ED.attach ? ': the far end of a straight or curve, or the straight / diverging end of a turnout.' : ', the usual end.'}`); edPanels(); edGhostAt(edGhostPtr()); });
+    tool('Turn ⟲', '⟲', () => { if (ED.sel != null) edRotateSel(1); else { ED.turned = true; ED.rot = wrapPi(ED.rot + Math.PI / 12); edGhostAt(edGhostPtr()); edMsg(`Free pieces point ${Math.round((ED.rot * 180 / Math.PI + 360) % 360)}° from east.`); } });
+    tool('Turn ⟳', '⟳', () => { if (ED.sel != null) edRotateSel(-1); else { ED.turned = true; ED.rot = wrapPi(ED.rot - Math.PI / 12); edGhostAt(edGhostPtr()); edMsg(`Free pieces point ${Math.round((ED.rot * 180 / Math.PI + 360) % 360)}° from east.`); } });
     tool('Delete', '⌫', () => edDeleteKey());
   }
   edPalState();
 }
+const edGhostPtr = () => ED.ghost && ED.pin ? { x: edTX(ED.ghost.wx), y: edTY(ED.ghost.wn), touch: true } : ED.lastPtr;
 function edPalState() {
   for (const b of document.querySelectorAll('#edPal .pc')) if (b.spec) b.setAttribute('aria-pressed', String(!!ED.armed && JSON.stringify(ED.armed) === JSON.stringify(b.spec)));
 }
-function edPick(spec) {
+function edPick(spec, swap) {
   ED.joinArmed = false; ED.join = null;
-  if (ED.active) { const E = edPort(ED.active); if (E) { ED.armed = null; ED.ghost = null; edAdd(spec, E, ED.attach); return; } }
-  ED.armed = (ED.armed && JSON.stringify(ED.armed) === JSON.stringify(spec)) ? null : spec;
-  if (!ED.armed) ED.ghost = null; else edGhostAt(ED.lastPtr);
-  edPanels();
+  if (!swap && ED.active) { const E = edPort(ED.active); if (E) { ED.armed = null; ED.ghost = null; edAdd(spec, E, ED.attach); return; } }
+  spec = JSON.parse(JSON.stringify(spec));
+  ED.armed = (!swap && ED.armed && JSON.stringify(ED.armed) === JSON.stringify(spec)) ? null : spec;
+  ED.sel = null; ED.turned = false;
+  if (!ED.armed) { ED.ghost = null; ED.pin = false; }
+  else if (ED.pin && ED.ghost) edGhostAt(edGhostPtr());   // swap the piece, keep the spot
+  else edGhostAt(ED.lastPtr && !ED.lastPtr.touch ? ED.lastPtr : null);
+  edGhostBar(); edPanels();
 }
 function edDeleteKey() {
   if (ED.sel != null) { edDelete(ED.sel); return; }
@@ -423,14 +487,67 @@ function edPieceAt(x, y) {
   }
   return best;
 }
+/* Where the armed piece would go for a pointer at screen (x, y): onto the amber end under the
+   pointer by the chosen end, or (snapping on) pulled onto an end it nears, lined up beside laid
+   track, or on the grid. */
 function edGhostAt(ptr) {
-  if (!ptr || !ED.armed) { ED.ghost = null; ED.dirty = true; return; }
-  const E = edEndAt(ptr.x, ptr.y, ptr.touch ? 34 : 26);
-  let p;
-  if (E) p = edPlace(ED.armed, E, ED.attach);
-  else p = edPlace(ED.armed, null, 0, Math.round(edWX(ptr.x)), Math.round(edWN(ptr.y)), ED.rot);
-  ED.ghost = { p, E, ok: edInBounds(p) };
+  if (!ptr || !ED.armed) { ED.ghost = null; ED.dirty = true; edGhostBar(); return; }
+  const E = edEndAt(ptr.x, ptr.y, ptr.touch ? 34 : 26), X = edWX(ptr.x), N = edWN(ptr.y);
+  let p, how, jj = -1, end = null, lat = 0;
+  if (E) { p = edPlace(ED.armed, E, ED.attach); how = 'end'; jj = ED.attach % edExt(ED.armed); end = E; }
+  else if (ED.snap) {
+    const r = snapFree({ ...ED.armed, id: edNewId() }, X, N, ED.rot, ED.G, { step: edStep(), r: edPull(ptr.touch), alignAny: !ED.turned });
+    p = r.p; how = r.how; lat = r.lat || 0; if (r.E) { jj = r.j; end = r.E; }
+    if (how === 'parallel' && !ED.turned) ED.rot = p.h;   // later pieces keep the heading the track gave this one
+  } else { p = edPlace(ED.armed, null, 0, Math.round(X), Math.round(N), ED.rot); how = 'free'; }
+  ED.ghost = { p, E: end, jj, how, lat, ok: edInBounds(p), wx: X, wn: N, touch: ptr.touch };
+  ED.dirty = true; edGhostBar();
+}
+function edPlaceGhost() {
+  const G = ED.ghost; if (!G || !ED.armed) return;
+  if (!G.ok) { edMsg('That would run off the edge of the world.', 'bad'); return; }
+  ED.armed = null; ED.ghost = null; ED.pin = false;
+  edPut(G.p, G.jj, !!G.E);
+  edGhostBar();
+}
+function edGhostText(G) {
+  if (!G) return '';
+  if (G.how === 'end') return 'Snaps flush onto the end';
+  if (G.how === 'parallel') return `Parallel, ${Math.abs(G.lat).toFixed(1)} m ${G.lat > 0 ? 'left of' : 'right of'} the track`;
+  return `${Math.round(G.p.X)} E · ${Math.round(G.p.N)} N · heading ${edDeg(G.p.h)}°${G.how === 'grid' ? ` · ${edStep()} m grid` : ''}`;
+}
+/* the bar above the pieces while one is armed: where it goes, and Place for touch screens */
+function edGhostBar() {
+  const bar = $('edGhost'); if (!bar) return;
+  bar.hidden = !ED.armed;
+  if (!ED.armed) return;
+  $('edGhostTxt').textContent = ED.ghost ? edGhostText(ED.ghost) : (ED.lastPtr && !ED.lastPtr.touch ? 'Point at the map' : 'Tap the map to see where it goes');
+  $('edGhostOk').disabled = !ED.ghost || !ED.ghost.ok;
+}
+function edNearGhost(x, y, rad) {
+  const g = pieceGeom(ED.ghost.p);
+  for (const path of g.paths) for (let i = 0; i < path.pts.length; i += 2) { const q = path.pts[i]; if (Math.hypot(edTX(q.X) - x, edTY(q.N) - y) < rad) return true; }
+  return false;
+}
+/* dragging the selected track: follow the pointer on the grid, and pull flush onto an end it nears */
+function edDragTo(grab, X, N) {
+  const st = ED.snap ? edStep() : 0.1;
+  let T = { a: 0, tx: Math.round((X - grab.X) / st) * st, tn: Math.round((N - grab.N) / st) * st }, E = null;
+  if (ED.snap) { const r = snapGroup(ED.G, grab.grp, T, edPull(grab.touch)); T = r.T; E = r.E || null; }
+  const geo = [...grab.grp].map(k => { const p = movePiece(ED.G.pieces[k].p, T); return { p, g: pieceGeom(p) }; });
+  ED.drag = { grp: grab.grp, i: grab.i, T, E, geo, ok: geo.every(P => edInBounds(P.p)) };
   ED.dirty = true;
+}
+function edDrop() {
+  const d = ED.drag; ED.drag = null; ED.dirty = true;
+  if (!d || (Math.abs(d.T.tx) < 1e-9 && Math.abs(d.T.tn) < 1e-9 && Math.abs(d.T.a) < 1e-12)) return;
+  edMoveGroup(d.i, d.T, !!d.E);
+}
+function edSnapToggle() {
+  ED.snap = !ED.snap;
+  edMsg(ED.snap ? 'Snapping on: pieces pull onto nearby ends, line up beside track and sit on the grid.' : 'Snapping off: pieces go exactly where you tap, to the metre.');
+  if (ED.tab === 'tools') edPalette();
+  edGhostAt(edGhostPtr());
 }
 function edTap(x, y, touch) {
   const E = edEndAt(x, y, touch ? 30 : 20);
@@ -441,9 +558,10 @@ function edTap(x, y, touch) {
     edJoin(a, edRefOf(E)); return;
   }
   if (ED.armed) {
-    const spec = ED.armed; ED.armed = null; ED.ghost = null;
-    if (E) edAdd(spec, E, ED.attach);
-    else edAdd(spec, null, 0, Math.round(edWX(x)), Math.round(edWN(y)), ED.rot);
+    // a mouse click lays it where the preview shows; a tap shows the preview first, and Place lays it
+    edGhostAt({ x, y, touch });
+    if (touch) { ED.pin = true; return; }
+    edPlaceGhost();
     return;
   }
   if (E) { ED.active = edRefOf(E); ED.sel = null; edPanels(); ED.dirty = true; return; }
@@ -452,11 +570,21 @@ function edTap(x, y, touch) {
   ED.sel = null; ED.active = null; edPanels(); ED.dirty = true;
 }
 function edInput() {
-  const c = $('edCanvas'), ptrs = new Map(); let tap = null, pinch = null;
+  const c = $('edCanvas'), ptrs = new Map(); let tap = null, pinch = null, grab = null;
   c.addEventListener('pointerdown', e => {
     c.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    tap = ptrs.size === 1 && e.button === 0 ? { x: e.clientX, y: e.clientY, touch: e.pointerType !== 'mouse' } : null;
-    if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), sc: ED.view.sc, mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2 }; }
+    const touch = e.pointerType !== 'mouse';
+    tap = ptrs.size === 1 && e.button === 0 ? { x: e.clientX, y: e.clientY, touch } : null;
+    grab = null; ED.drag = null;
+    if (tap) {
+      // press on the preview (touch) drags the preview; press on the selected track drags it and all joined to it
+      if (ED.armed && ED.pin && ED.ghost && edNearGhost(e.clientX, e.clientY, touch ? 30 : 16)) grab = { kind: 'ghost', ox: edTX(ED.ghost.wx) - e.clientX, oy: edTY(ED.ghost.wn) - e.clientY, touch };
+      else if (!ED.armed && !ED.joinArmed && ED.sel != null) {
+        const P = edPieceAt(e.clientX, e.clientY), i = ED.idx.get(ED.sel);
+        if (P && i !== undefined) { const grp = layoutGroup(ED.G, i); if (grp.has(ED.G.pieces.indexOf(P))) grab = { kind: 'move', i, grp, X: edWX(e.clientX), N: edWN(e.clientY), touch }; }
+      }
+    }
+    if (ptrs.size === 2) { grab = null; ED.drag = null; const [a, b] = [...ptrs.values()]; pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), sc: ED.view.sc, mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2 }; }
   });
   c.addEventListener('pointermove', e => {
     ED.lastPtr = { x: e.clientX, y: e.clientY, touch: e.pointerType !== 'mouse' };
@@ -466,6 +594,11 @@ function edInput() {
     }
     const p = ptrs.get(e.pointerId), dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
     if (tap && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) > 7) tap = null;
+    if (grab && !tap && ptrs.size === 1) {
+      if (grab.kind === 'ghost') edGhostAt({ x: e.clientX + grab.ox, y: e.clientY + grab.oy, touch: grab.touch });
+      else edDragTo(grab, edWX(e.clientX), edWN(e.clientY));
+      return;
+    }
     if (ptrs.size === 2 && pinch) {
       const [a, b] = [...ptrs.values()], d = Math.hypot(a.x - b.x, a.y - b.y), mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
       edZoom(pinch.sc * d / pinch.d / ED.view.sc, mx, my);
@@ -474,7 +607,9 @@ function edInput() {
   });
   const up = e => {
     if (tap && ptrs.size === 1 && e.type === 'pointerup') edTap(e.clientX, e.clientY, tap.touch);
-    ptrs.delete(e.pointerId); tap = null; if (ptrs.size < 2) pinch = null;
+    else if (grab && grab.kind === 'move' && ED.drag && e.type === 'pointerup') edDrop();
+    if (ED.drag) { ED.drag = null; ED.dirty = true; }
+    ptrs.delete(e.pointerId); tap = null; grab = null; if (ptrs.size < 2) pinch = null;
   };
   c.addEventListener('pointerup', up); c.addEventListener('pointercancel', up);
   c.addEventListener('pointerleave', e => { if (e.pointerType === 'mouse' && ED.armed) { ED.ghost = null; ED.dirty = true; } });
@@ -488,9 +623,15 @@ function edInput() {
     if (mod && k === 'z') edUndo(e.shiftKey);
     else if (mod && k === 'y') edUndo(true);
     else if (k === 'delete' || k === 'backspace') edDeleteKey();
-    else if (k === 'escape') { ED.armed = null; ED.ghost = null; ED.join = null; ED.joinArmed = false; ED.sel = null; edPalette(); edPanels(); ED.dirty = true; }
-    else if (k === 'q' || k === 'e') { const d = k === 'q' ? 1 : -1; if (ED.sel != null) edRotateSel(d); else { ED.rot = wrapPi(ED.rot + d * Math.PI / 12); edGhostAt(ED.lastPtr); } }
-    else if (k === 'f') { ED.attach = (ED.attach + 1) % 3; edPanels(); edGhostAt(ED.lastPtr); }
+    else if (k === 'escape') { ED.armed = null; ED.ghost = null; ED.pin = false; ED.active = null; edGhostBar(); ED.join = null; ED.joinArmed = false; ED.sel = null; edPalette(); edPanels(); ED.dirty = true; }
+    else if (k === 'q' || k === 'e') { const d = k === 'q' ? 1 : -1, deg = e.shiftKey ? 1 : 15; if (ED.sel != null && !ED.armed) edRotateSel(d, deg); else { ED.turned = true; ED.rot = wrapPi(ED.rot + d * deg * Math.PI / 180); edGhostAt(edGhostPtr()); } }
+    else if (k.startsWith('arrow') && ED.sel != null && !ED.armed) {
+      const st = e.shiftKey ? 10 : 1, d = { arrowleft: [-st, 0], arrowright: [st, 0], arrowup: [0, st], arrowdown: [0, -st] }[k];
+      edMoveGroup(ED.idx.get(ED.sel), { a: 0, tx: d[0], tn: d[1] });
+    }
+    else if (k === 's' && !mod) { edSnapToggle(); }
+    else if (k === 'enter' && ED.armed && ED.ghost) edPlaceGhost();
+    else if (k === 'f') { ED.attach = (ED.attach + 1) % 4; edPanels(); edGhostAt(edGhostPtr()); }
     else if (k === 'j') { ED.tab = 'tools'; ED.joinArmed = !ED.joinArmed; ED.join = null; edPalette(); edPanels(); }
     else used = false;
     if (used) { e.preventDefault(); e.stopImmediatePropagation(); }
@@ -533,9 +674,11 @@ function edValidImport(o) {
     const q = { id: p.id | 0, t: p.t, X: p.X, N: p.N, h: p.h };
     if (p.t === 'straight' && STRAIGHTS.includes(p.L)) q.L = p.L;
     else if (p.t === 'curve' && CURVE_R.includes(p.R) && CURVE_DEG.includes(p.deg) && (p.dir === 1 || p.dir === -1)) Object.assign(q, { R: p.R, deg: p.deg, dir: p.dir });
+    else if (p.t === 'xover' && (p.side === 1 || p.side === -1)) Object.assign(q, { side: p.side, from: p.from ? 1 : 0 });
     else if (p.t === 'turnout' && TURNOUTS[p.k] && (p.dir === 1 || p.dir === -1)) Object.assign(q, { k: p.k, dir: p.dir });
     else if (p.t === 'flex' && p.b && num(p.b.X) && num(p.b.N) && num(p.b.h)) q.b = { X: p.b.X, N: p.b.N, h: p.b.h };
     else return null;
+    if ((q.t === 'straight' || q.t === 'curve') && (p.dbl === 1 || p.dbl === -1)) q.dbl = p.dbl;
     if (p.st && q.t === 'straight') q.st = { name: String(p.st.name || 'Station').slice(0, 24), side: p.st.side < 0 ? -1 : 1, big: !!p.st.big };
     pieces.push(q);
   }
@@ -622,6 +765,10 @@ function edInit() {
   $('edUndo').addEventListener('click', () => edUndo(false));
   $('edRedo').addEventListener('click', () => edUndo(true));
   $('edFit').addEventListener('click', edFit);
+  $('edGhostOk').addEventListener('click', edPlaceGhost);
+  $('edGhostX').addEventListener('click', () => { ED.armed = null; ED.ghost = null; ED.pin = false; edGhostBar(); edPanels(); ED.dirty = true; });
+  $('edGhostF').addEventListener('click', () => { ED.attach = (ED.attach + 1) % 4; edPanels(); edGhostAt(edGhostPtr()); });
+  for (const [id, d] of [['edGhostL', 1], ['edGhostR', -1]]) $(id).addEventListener('click', () => { ED.turned = true; ED.rot = wrapPi(ED.rot + d * Math.PI / 12); edGhostAt(edGhostPtr()); });
   $('edName').addEventListener('change', () => { const v = $('edName').value.trim().slice(0, 32) || 'My railroad'; if (v !== ED.map.name) edCommit(() => { ED.map.name = v; }); });
   $('edFileBtn').addEventListener('click', () => edFiles(true));
   $('edFilesClose').addEventListener('click', () => edFiles(false));

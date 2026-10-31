@@ -128,4 +128,4 @@ function run(sim, T, seconds, until, dt = 1 / 30) {
   return t;
 }
 
-module.exports = { Anything, load, train, trainset, vehicle, stubConsist, run, FREIGHT_CAR, Vector3 };
+module.exports = { Anything, THREE, load, train, trainset, vehicle, stubConsist, run, FREIGHT_CAR, Vector3 };
