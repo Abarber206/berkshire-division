@@ -242,7 +242,7 @@ class Train extends Consist {
     // to the scene would recompile every shader, and its lamp glow is drawn without them.
     this.remote = !!opts.remote;
     if (!this.remote) {
-      this.head = new THREE.SpotLight(0xfff0d0, 0, 420, 0.2, 0.55, 1.3);
+      this.head = new THREE.SpotLight(0xfff0d0, 0, 480, 0.3, 0.65, 1.1);
       this.head.castShadow = false;
       scene.add(this.head); scene.add(this.head.target);
       this.fireLight = new THREE.PointLight(0xff7a2a, 0, 7, 2);
@@ -266,7 +266,7 @@ class Train extends Consist {
     L.root.updateMatrixWorld(true);
     if (this.head) {
       this.head.position.copy(L.headlightPos).applyMatrix4(L.root.matrixWorld);
-      this.head.target.position.copy(L.headlightPos).add(new THREE.Vector3(60, -3.2, 0)).applyMatrix4(L.root.matrixWorld);
+      this.head.target.position.copy(L.headlightPos).add(new THREE.Vector3(70, -L.headlightPos.y + 0.6, 0)).applyMatrix4(L.root.matrixWorld);   // aimed down the rails, meeting them about 70 m out
     }
   }
   worldOf(local, out = new THREE.Vector3()) { return out.copy(local).applyMatrix4(this.loco.root.matrixWorld); }

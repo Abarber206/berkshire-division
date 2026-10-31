@@ -371,9 +371,7 @@ function buildE5Car(def, idx) {
     }
     lens = lenses[0];
     const hy = 1.3;
-    const beamG = new THREE.ConeGeometry(7, 70, 24, 1, true); beamG.translate(0, -35, 0); beamG.rotateZ(Math.PI / 2);
-    beam = new THREE.Mesh(beamG, new THREE.MeshBasicMaterial({ color: 0xfff2c8, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: true }));
-    beam.position.set(x(0.5), hy, 0); beam.rotation.z = -0.03; body.add(beam);
+    beam = headBeam(x(0.5), hy); body.add(beam);
     halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: haloTex(), color: 0xffffff, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0 }));
     halo.position.set(x(0.2), 0.95, 0); halo.scale.set(2.2, 1.4, 1); body.add(halo);
     // obstacle deflector (snow plough) under the tip
@@ -655,9 +653,7 @@ function buildAcelaCar(def, idx) {
       ditch.push({ lens: dl, halo: dh });
     }
     lens = lenses[0];
-    const beamG = new THREE.ConeGeometry(7, 70, 24, 1, true); beamG.translate(0, -35, 0); beamG.rotateZ(Math.PI / 2);
-    beam = new THREE.Mesh(beamG, new THREE.MeshBasicMaterial({ color: 0xfff2c8, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: true }));
-    beam.position.set(x(0.3), 1.12, 0); beam.rotation.z = -0.03; body.add(beam);
+    beam = headBeam(x(0.3), 1.12); body.add(beam);
     halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: haloTex(), color: 0xffffff, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0 }));
     halo.position.set(x(0.2), 1.12, 0); halo.scale.set(2.2, 1.6, 1); body.add(halo);
     // pilot and snow plow below the nose

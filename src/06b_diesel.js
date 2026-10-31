@@ -329,9 +329,7 @@ function buildDiesel(opts) {
   body.add(statics);
   // headlight beam & halo
   const hlY = 2.91;
-  const beamG = new THREE.ConeGeometry(7, 70, 24, 1, true); beamG.translate(0, -35, 0); beamG.rotateZ(Math.PI / 2);
-  const beam = new THREE.Mesh(beamG, new THREE.MeshBasicMaterial({ color: 0xfff2c8, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: true }));
-  beam.position.set(dx(N0 - 0.05), hlY, 0); beam.rotation.z = -0.03; body.add(beam);
+  const beam = headBeam(dx(N0 - 0.05), hlY); body.add(beam);
   const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: haloTex(), color: 0xffffff, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0 }));
   halo.position.set(dx(N0 - 0.08), hlY, 0); halo.scale.set(2.0, 2.6, 1); body.add(halo);
   /* ---- Hi-Ad style trucks (swivel; placed by the train) ---- */
@@ -387,8 +385,4 @@ function buildDiesel(opts) {
 let _louverTex = null;
 function louverTex() {
   return _louverTex || (_louverTex = canvasTex(64, 64, (g, w, h) => { g.fillStyle = '#d6d6d6'; g.fillRect(0, 0, w, h); for (let y = 0; y < h; y += 6) { g.fillStyle = '#3c3c3c'; g.fillRect(0, y, w, 2); g.fillStyle = '#f2f2f2'; g.fillRect(0, y + 2, w, 1); } g.fillStyle = '#5a5a5a'; g.fillRect(0, 0, 2, h); g.fillRect(w - 2, 0, 2, h); }));
-}
-let _haloTex = null;
-function haloTex() {
-  return _haloTex || (_haloTex = canvasTex(64, 64, g => { const gr = g.createRadialGradient(32, 32, 0, 32, 32, 32); gr.addColorStop(0, 'rgba(255,248,225,1)'); gr.addColorStop(0.25, 'rgba(255,236,190,0.55)'); gr.addColorStop(1, 'rgba(255,220,160,0)'); g.fillStyle = gr; g.fillRect(0, 0, 64, 64); }));
 }
