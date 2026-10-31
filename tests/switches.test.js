@@ -55,3 +55,10 @@ test('a train spanning the points holds the switch', () => {
   stand(sim, T, y.normal, 49);                         // just the tender's rear coupler is back on the trunk
   assert.equal(T.fouls(y.sw), true);
 });
+
+test('the diverging route only derails well past its posted speed', () => {
+  const sim = h.load();
+  assert.equal(sim.turnoutDerailMph(15), 35, 'a 15 mph yard turnout holds to 35 mph');
+  assert.equal(sim.turnoutDerailMph(30), 60, 'a 30 mph main turnout holds to 60 mph');
+  for (const lim of [10, 15, 20, 30, 40]) assert.ok(sim.turnoutDerailMph(lim) >= lim + 20, `${lim} mph turnout keeps a 20 mph margin`);
+});

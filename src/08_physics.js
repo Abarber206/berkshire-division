@@ -238,6 +238,12 @@ function curveUnbalanced(tp, v) {
   return Math.abs(v * v * e.curv(tp.s) - 9.81 * Math.sin(c));
 }
 
+/* Turnout overspeed. The posted diverging speed has a wide safety margin built in: a few mph over is a rules
+   violation (warned and docked), but the wheels only climb the frog or the points and come off well past it,
+   at twice the limit and never less than 20 mph over (35 mph through a 15 mph yard turnout, 60 through a 30). */
+const TURNOUT_WARN_OVER = 4;
+const turnoutDerailMph = limit => Math.max(limit * 2, limit + 20);
+
 /* A high-speed set runs at its own top speed on main track (and straight through the turnouts there), with
    each curve posted for 1.5 m/s2 of lateral acceleration, rounded down to 5 mph. Everything else (yards,
    sidings, crossovers) keeps its own limit. */
