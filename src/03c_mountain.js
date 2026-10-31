@@ -1,12 +1,12 @@
 /* ============================================================================
-   Laurel Mountain: the second railroad. A single-track mountain division,
+   Laurel Mountain: the second railroad. A double-track mountain division,
    35 miles from Riverton Yard up the river, round the Laurel Run horseshoe,
    along the valley wall to Summit tunnel and down Pine Creek to Ashby. A
    turning loop at each end; the ruling grade is 1.9 per cent eastward.
    ========================================================================== */
 const ROUTES = {
   ohio: { name: 'Berkshire Division', sub: 'Ohio farm country · 13.8 mi double-track loop' },
-  laurel: { name: 'Laurel Mountain', sub: 'Mountain grades · 35.6 mi single track, horseshoe curve, tunnel' },
+  laurel: { name: 'Laurel Mountain', sub: 'Mountain grades · 35.6 mi double track, horseshoe curve, tunnel' },
 };
 /* ?route= picks the railroad; without it, the one last driven. A layout from the editor overrides both. */
 const ROUTE_KEY = (() => {
@@ -107,6 +107,29 @@ function buildMountainRoute() {
   ROUTE.tunnels = [{ line: main, s0: tunnel[0], s1: tunnel[1], name: 'SUMMIT' }];
   for (const [a] of limits.slice(1)) main.cut(a);
 
+  /* ---------- the second main track ----------
+     Track 2 runs 4.5 m to the left of track 1 from just past Riverton Yard to just short of Ashby, leaving
+     and rejoining it on long easy reverse curves. Right-hand running, as on the Berkshire Division: track 1
+     carries eastward (+s) trains up the mountain and track 2 westward ones. Beyond the two junctions the
+     terminals, their yards and the turning loops are single track. */
+  const DT = 4.5, JL = 150, sW = 2480, sE = F.ashby + 40;
+  const nW = main.cut(sW), nE = main.cut(sE);
+  const main2 = new Line('Main 2', alongside(main, sW, sE, DT, JL), { kind: 'main', startNode: nW, endNode: nE });
+  const S2 = main2.pts.map(p => p.s), SM2 = main2.pts.map(p => p.sm);
+  const remap = (A, B) => s => {
+    if (s <= A[0]) return B[0]; if (s >= A[A.length - 1]) return B[B.length - 1];
+    let lo = 0, hi = A.length - 1; while (hi - lo > 1) { const m = (lo + hi) >> 1; if (A[m] <= s) lo = m; else hi = m; }
+    return B[lo] + (B[hi] - B[lo]) * (s - A[lo]) / ((A[hi] - A[lo]) || 1);
+  };
+  const to2 = remap(SM2, S2), to1 = main2.mainS;
+  main2.opt.limitAt = s => limitAt(to1(s));
+  main2.opt.bridges = main.opt.bridges.map(([a, b]) => [to2(a), to2(b)]);
+  main2.opt.tunnels = [[to2(tunnel[0]), to2(tunnel[1])]];
+  for (const [a] of limits.slice(1)) if (a > sW + JL && a < sE - JL) main2.cut(to2(a));
+  ROUTE.main2 = main2; ROUTE.to2 = to2; ROUTE.to1 = to1; ROUTE.spacing = DT;
+  ROUTE.span2 = [sW + JL, sE - JL];   // where the two tracks run side by side at full spacing
+  ROUTE.tunnels[0].off = ROUTE.viaduct.off = DT / 2;   // both are built round the middle of the two tracks
+
   /* ---------- sidings, yards and terminals ---------- */
   const lines = [];
   const side = (name, parent, sA, sB, off, opt, back = true, L = 90) => {
@@ -120,13 +143,22 @@ function buildMountainRoute() {
   for (let k = 2; k <= 4; k++) { const p = yards[k - 2]; yards.push(side('Riverton ' + k, p, 125, p.len - 125, -4.5, YARD)); }
   const eng = side('Riverton Engine Track', yards[3], 140, 700, -9, { kind: 'yard', limit: 10 }, false, 110);
   ROUTE.features.engine = eng;
-  // passing sidings: [name, from, to, which side]
+  /* passing sidings: [name, from, to (on track 1), which side]. Those on the left come off track 2, for
+     westward trains; Big Laurel and Pine Flats, on the right, come off track 1, so a slow freight on the
+     climb can be put away there for a faster train to go by. */
   const sid = {};
-  for (const [nm, a, b, o] of [['Hollins', F.hollins + 200, F.hollins + 1900, 4.5], ['Big Laurel', 16200, 17950, 4.5], ['Glen Iron', 29600, 31350, 4.5], ['Summit', 38150, 39480, 4.5], ['Pine Flats', 49150, 50950, -4.5]])
-    sid[nm] = side(nm + ' Siding', main, a, b, o, SIDING);
+  for (const [nm, a, b, o] of [['Hollins', F.hollins + 200, F.hollins + 1900, 4.5], ['Big Laurel', 16200, 17950, -4.5], ['Glen Iron', 29600, 31350, 4.5], ['Summit', 38150, 39480, 4.5], ['Pine Flats', 49150, 50950, -4.5]])
+    sid[nm] = o > 0 ? side(nm + ' Siding', main2, to2(a), to2(b), o, SIDING) : side(nm + ' Siding', main, a, b, o, SIDING);
   const ashby = side('Ashby 1', main, F.ashby + 120, main.len - 330, -4.5, YARD);
   const ashby2 = side('Ashby 2', ashby, 125, ashby.len - 125, -4.5, YARD);
-  // turning loops beyond each terminal
+  /* crossovers between the main tracks, on tangent track: A takes an eastward train from track 1 over to
+     track 2 and B, just beyond, brings one back, each on a reverse curve as long as the junctions' */
+  const xos = [];
+  for (const [place, s] of [['Riverton', 3400], ['Big Laurel', 15120], ['Bear Run', 22450], ['Glen Iron', 28300], ['Summit', 37100], ['Pine Flats', 51100], ['Ashby', 54600]]) {
+    const sB = s + JL + 50;
+    xos.push({ line: new Line(place + ' crossover A', alongside(main, s, s + JL, DT, JL, true, false), { kind: 'main', limit: 40, cant: false, startNode: main.cut(s), endNode: main2.cut(to2(s + JL)) }), from: main, to: main2 });
+    xos.push({ line: new Line(place + ' crossover B', alongside(main, sB, sB + JL, DT, JL, false, true), { kind: 'main', limit: 40, cant: false, startNode: main2.cut(to2(sB)), endNode: main.cut(sB + JL) }), from: main2, to: main });
+  }  // turning loops beyond each terminal
   const p0 = main.poseAt(0), pE = main.poseAt(main.len);
   const nLW = main.startNode = NET.node(), nLE = main.endNode = NET.node();
   const loopW = new Line('Riverton Loop', balloonPts(p0.X, p0.N, p0.h + Math.PI), { kind: 'yard', limit: 15, startNode: nLW, endNode: nLW });
@@ -134,6 +166,8 @@ function buildMountainRoute() {
 
   /* ---------- build edges ---------- */
   main.build(s => mainY(s));
+  main2.build(s => mainY(to1(s)));
+  for (const x of xos) x.line.build(s => mainY(x.line.mainS(s)));
   for (const l of lines) l.build(s => mainY(l.mainS(s)));
   loopW.build(() => 0); loopE.build(() => mainY(main.len));
 
@@ -149,42 +183,61 @@ function buildMountainRoute() {
     SW('Riverton ladder E' + (k + 1), yards[k].endNode, yards[k - 1], yards[k], false, ['Riverton ' + k, 'Riverton ' + (k + 1)]);
   }
   SW('Riverton Engine Terminal', eng.startNode, yards[3], eng, true, ['Riverton 4', 'Engine track']);
-  for (const nm in sid) { SW(nm + ' West', sid[nm].startNode, main, sid[nm], true, ['Main', 'Siding']); SW(nm + ' East', sid[nm].endNode, main, sid[nm], false, ['Main', 'Siding']); }
+  SW('Riverton Jct', nW, main, main2, true, ['Track 1', 'Track 2']); SW('Ashby Jct', nE, main, main2, false, ['Track 1', 'Track 2']);
+  for (const nm in sid) { const on = main2.map.has(sid[nm].startNode) ? main2 : main;
+    SW(nm + ' West', sid[nm].startNode, on, sid[nm], true, ['Main', 'Siding']); SW(nm + ' East', sid[nm].endNode, on, sid[nm], false, ['Main', 'Siding']); }
+  // the two switches of a crossover are thrown together
+  for (let i = 0; i < xos.length; i += 2) for (const x of [xos[i], xos[i + 1]]) {
+    const a = SW(x.line.name, x.line.startNode, x.from, x.line, true, [x.from === main ? 'Track 1' : 'Track 2', 'Crossover']);
+    const b = SW(x.line.name, x.line.endNode, x.to, x.line, false, [x.to === main ? 'Track 1' : 'Track 2', 'Crossover']);
+    a.mate = b; b.mate = a;
+  }
   SW('Ashby West', ashby.startNode, main, ashby, true, ['Main', 'Ashby 1']); SW('Ashby East', ashby.endNode, main, ashby, false, ['Main', 'Ashby 1']);
   SW('Ashby ladder W', ashby2.startNode, ashby, ashby2, true, ['Ashby 1', 'Ashby 2']); SW('Ashby ladder E', ashby2.endNode, ashby, ashby2, false, ['Ashby 1', 'Ashby 2']);
   // the loops' switches are sprung: a train coming round trails through without being thrown
   for (const [nm, node, loop, trunk] of [['Riverton Loop', nLW, loopW, main.first()], ['Ashby Loop', nLE, loopE, main.last()]])
     NET.addSwitch(node, trunk, loop.first(), loop.last(), nm, ['Loop', 'Loop return']).spring = true;
-  for (const sw of NET.switches) { const dk = sw.legs[1].edge.kind; sw.divLimit = dk === 'siding' ? 30 : 15; }
+  for (const sw of NET.switches) { const dk = sw.legs[1].edge.kind; sw.divLimit = dk === 'main' ? 40 : dk === 'siding' ? 30 : 15; }
   for (const nd of NET.nodes) if (nd.att.length === 1) ROUTE.bumpers.push(nd);
 
   /* ---------- stations, water, signals, mileposts ---------- */
   const st = (name, line, s, side, kind, across = 0) => { const loc = line.locate(s); ROUTE.stations.push({ name, line, sLine: s, edge: loc.edge, s: loc.s, side, kind, across }); };
   st('Riverton', main, 1500, -1, 'depot');
-  st('Hollins', main, F.hollins + 1100, -1, 'depot', 4.5);   // beyond the siding
-  st('Big Laurel', main, 17000, -1, 'small', 4.5);
-  st('Glen Iron', main, 30400, 1, 'small', 4.5);
-  st('Summit', main, 38800, -1, 'small', 4.5);
-  st('Pine Flats', main, 50000, 1, 'depot', 4.5);
+  // across: how much further out than usual, past track 2 and any siding beyond it
+  st('Hollins', main, F.hollins + 1100, -1, 'depot', 2 * DT);
+  st('Big Laurel', main, 17000, -1, 'small', DT);
+  st('Glen Iron', main, 30400, 1, 'small');
+  st('Summit', main, 38800, -1, 'small', 2 * DT);
+  st('Pine Flats', main, 50000, 1, 'depot', DT);
   st('Ashby', main, F.ashby + 700, -1, 'depot');
   const wc = (line, s, side, kind) => { const loc = line.locate(s); ROUTE.water.push({ line, sLine: s, edge: loc.edge, s: loc.s, side, kind }); };
-  wc(main, 17500, 1, 'column'); wc(main, 39100, 1, 'column'); wc(main, 50400, -1, 'column');   // on the side away from the siding
+  // beside the track they serve, never between the two mains: Big Laurel's for trains in the siding on the climb
+  wc(sid['Big Laurel'], 1300, 1, 'column'); wc(main, 39100, 1, 'column'); wc(main2, to2(50400), -1, 'column');
   wc(eng, 160, 1, 'tower'); wc(main, F.ashby + 1000, -1, 'column');
   ROUTE.coal = { line: eng, sLine: 260, edge: eng.locate(260).edge, s: eng.locate(260).s };
-  /* Single track, signalled both ways: a home signal 400 m out from each end of every siding and
-     automatic block signals in between, staggered. Dwarfs govern moves off the sidings and Riverton 1. */
+  /* Signals, as on the Berkshire Division: track 1 for eastward running and track 2 for westward. A home
+     signal 350 m short of each place with switches on that track, automatic block signals between them
+     about every 2.5 km. Into each junction from the single track at the terminals, one home signal on the
+     main. Dwarfs govern moves off the sidings and Riverton 1 and Ashby 1 onto the main. */
   const sig = (line, sLine, dir, kind = 'mast') => ROUTE.signals.push({ line, sLine, dir, kind });
-  const ends = [[2420, 2420], ...Object.values(sid).map(l => [l.mainS(0), l.mainS(l.len)]), [F.ashby + 120, F.ashby + 120]];
-  for (let i = 0; i < ends.length; i++) {
-    const [a, b] = ends[i];
-    if (i > 0) sig(main, a - 420, 1);
-    if (i < ends.length - 1) sig(main, b + 420, -1);
-    if (i < ends.length - 1) {   // automatic signals between this siding and the next, about every 3 km
-      const g0 = b + 420, g1 = ends[i + 1][0] - 420, n = Math.floor((g1 - g0) / 3000);
-      for (let k = 1; k <= n; k++) { const s = g0 + (g1 - g0) * k / (n + 1); sig(main, s - 40, 1); sig(main, s + 40, -1); }
+  const swAt = ln => NET.switches.filter(sw => ln.map.has(sw.node)).map(sw => { const m = ln.map.get(sw.node); return m.after ? m.after.edge.lineS0 : m.before.edge.lineS0 + m.before.edge.len; });
+  // nothing on the bridges or in the bore: a signal that would stand there goes back to the near end of it
+  const structs = [...main.opt.bridges.map(([a, b]) => [a - 40, b + 40]), [tunnel[0] - 90, tunnel[1] + 90]];
+  const clear = (ln, s, dir) => { for (let g = 0; g < 3; g++) for (const [a, b] of structs) { const m = ln === main2 ? to1(s) : s; if (m > a && m < b) s = ln === main2 ? to2(dir > 0 ? a : b) : dir > 0 ? a : b; } return s; };
+  for (const [ln, dir] of [[main, 1], [main2, -1]]) {
+    // the places, each the switches within 2 km of each other (a siding's two ends make one place)
+    const at = swAt(ln).filter(s => ln === main2 || (s > 2000 && s < sE + 100)).sort((a, b) => (a - b) * dir), places = [];
+    for (const s of at) if (places.length && (s - places[places.length - 1].last) * dir < 2000) places[places.length - 1].last = s; else places.push({ first: s, last: s });
+    let prev = null;
+    for (const pl of places) {
+      const into = ln === main2 && pl === places[0], home = into ? sE + 350 : clear(ln, pl.first - dir * 350, dir);
+      if (prev !== null) { const n = Math.floor(Math.abs(home - prev) / 2500); for (let k = 1; k <= n; k++) sig(ln, clear(ln, prev + (home - prev) * k / (n + 1), dir), dir); }
+      sig(into ? main : ln, home, dir);
+      prev = pl.last;
     }
   }
   for (const l of [...Object.values(sid), yards[0], ashby]) { sig(l, 80, -1, 'dwarf'); sig(l, l.len - 80, 1, 'dwarf'); }
+  ROUTE.crossovers = xos.map(x => x.line);
   for (let m = 1; m * MILE < main.len; m++) ROUTE.mileposts.push({ line: main, sLine: m * MILE, num: m });
   ROUTE.yardLimits = [[2700, -1], [F.ashby - 50, 1]];
   ROUTE.startLine = yards[1]; ROUTE.startS = 260;

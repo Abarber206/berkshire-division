@@ -117,7 +117,7 @@ function jobIn(o, V) {
   carPanelState.key = '';
   JOB.ui();
 }
-const aiOut = () => AI.trains.map(a => ({ id: a.id, f: tpOut(a.train.endTP('front')), fl: lineOut(a.train.endTP('front')), v: rnd(a.v), dwell: rnd(a.dwell), odo: rnd(a.odo) }));
+const aiOut = () => AI.trains.map(a => ({ id: a.id, f: tpOut(a.train.endTP('front')), fl: lineOut(a.train.endTP('front')), v: rnd(a.v), dwell: rnd(a.dwell), odo: rnd(a.odo), d: a.dir }));
 /* the timetable trains, each where it was; each asks the signals for its road again, so one that had
    a clear road carries on at the speed it can still stop from */
 function aiIn(list, E) {
@@ -127,7 +127,7 @@ function aiIn(list, E) {
     const def = TRAFFIC[o.id]; if (!def) continue;
     const tp = tpIn(o.f, E) || lineIn(o.fl); if (!tp) continue;
     const a = new AITrain(o.id, def);
-    a.place(tp); a.odo = o.odo || 0; a.dwell = o.dwell || 0;
+    a.place(tp); a.odo = o.odo || 0; a.dwell = o.dwell || 0; if (o.d) a.dir = o.d;
     AI.trains.push(a); IX.idx = null;
   }
   for (const a of AI.trains) {

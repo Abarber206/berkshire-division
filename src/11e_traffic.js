@@ -1,6 +1,7 @@
 /* ============================================================================
    Traffic: the interlocking (routes locked for AI trains, signal aspects)
-   and AI trains running the timetable on the Berkshire Division
+   and AI trains running the timetable on the Berkshire Division and over
+   Laurel Mountain
    ========================================================================== */
 const IX = { res: new Map(), idx: null, idxAt: -1 };
 const AI = { trains: [] };
@@ -153,7 +154,8 @@ IX.playerTick = function () {
   else P.passed = null;
   // running against the current of traffic there are no signals for us: hold the main ahead instead
   const f = S.v >= 0 ? T.endTP('front') : T.endTP('rear'), dir = (S.v >= 0 ? 1 : -1) * f.o;
-  const ln = f.e.line, against = (ln === ROUTE.main && dir < 0) || (ln === ROUTE.main2 && dir > 0);
+  const ln = f.e.line, sp = ROUTE.span2, two = !sp || ln !== ROUTE.main || (f.e.lineS0 + f.s > sp[0] - 200 && f.e.lineS0 + f.s < sp[1] + 200);   // the mountain's terminals are single track
+  const against = two && ((ln === ROUTE.main && dir < 0) || (ln === ROUTE.main2 && dir > 0));
   if (against && av > 0.5) {
     routeWalk(f.e, f.s, dir, 900 + av * av / 0.8, (e, a, b) => { want.push({ e, a, b }); }, (nd, d, facing, lined) => { sws.push(nd.sw); return !lined; });
     if (!P.againstT || S.time - P.againstT > 120) toast(`Running against the current of traffic on track ${ln === ROUTE.main ? 1 : 2}. Trains coming the other way are held for you: keep it moving.`, 'warn', 5200, 'against');
@@ -180,10 +182,20 @@ const TRAFFIC = {
   no5: { name: 'No. 5', sub: 'Eastward express', loco: 'diesel', units: 2, livery: 'kn', consist: 'passenger', dir: 1, vmax: 70, accel: 0.32, brake: 0.6, stops: true, seed: 5 },
   x2210: { name: 'Extra 2210 East', sub: 'Manifest freight', loco: 'diesel', units: 2, livery: 'fle', consist: 'freight', dir: 1, vmax: 45, accel: 0.12, brake: 0.32, seed: 2210 },
 };
+/* Over Laurel Mountain the trains run from end to end, turn on the loop at the terminal and come back on
+   the other track. Speeds are held down by the mountain's limits more than by the trains. */
+Object.assign(TRAFFIC, {
+  m22: { name: 'No. 22', sub: 'Westward local', loco: '1225', consist: 'passenger', dir: -1, vmax: 45, accel: 0.28, brake: 0.55, stops: true, seed: 22, mtn: true },
+  m21: { name: 'No. 21', sub: 'Eastward mail and express', loco: 'diesel', units: 2, livery: 'kn', consist: 'passenger', dir: 1, vmax: 50, accel: 0.3, brake: 0.6, stops: true, seed: 21, mtn: true },
+  m90: { name: 'Extra 2214 East', sub: 'Coal empties', loco: 'diesel', units: 3, livery: 'fle', consist: 'freight', dir: 1, vmax: 30, accel: 0.08, brake: 0.3, seed: 2214, mtn: true },
+});
 /* free running: where each train is on the road when you start (distance along track 1) */
 const FREE_TRAFFIC = [['no12', 13800], ['x2210', 7700], ['no5', 20400]];
-const PASSING = { 1: 'Kenton East', '-1': 'Fostoria East' };
-const DWELL = 35;
+const MTN_TRAFFIC = [['m90', 12500], ['m22', 31000], ['m21', 43500]];
+/* the facing switch of the passing siding each way: a slow train with a faster one behind it goes in there */
+const PASSING = { 1: 'Kenton East', '-1': 'Fostoria East' }, MTN_PASSING = { 1: 'Big Laurel West', '-1': 'Glen Iron East' };
+const passingSw = dir => (WORLD.mtn ? MTN_PASSING : PASSING)[dir];
+const DWELL = 35, TERMINAL_DWELL = 90;
 
 class AITrain extends RemoteTrain {
   constructor(id, def) {
@@ -194,6 +206,7 @@ class AITrain extends RemoteTrain {
     this.id = id; this.def = def; this.name = def.name;
     this.st = Object.assign(st, { hl: 2, wh: 0, bl: false, dl: true, rpm: 300, ex: 0, rv: 0.6 });
     this.train.ai = this; this.train.v = 0;
+    this.dir = def.dir;   // the way it is running now: on the mountain it changes on the loops
     this.line = def.dir > 0 ? ROUTE.main : ROUTE.main2;
     this.route = []; this.sws = []; this.signalsAhead = []; this.endSig = null; this.end = null;
     this.authLeft = 0; this.odo = 0; this.events = []; this.askT = 0; this.held = 0; this.heldWhy = ''; this.dwell = 0;
@@ -237,7 +250,7 @@ class AITrain extends RemoteTrain {
       if (nd.sw) {
         const sw = nd.sw, facing = sw.trunk.edge === e && sw.trunk.end === end;
         const leg = facing ? this.choose(sw) : (sw.legs[0].edge === e && sw.legs[0].end === end ? 0 : 1);
-        out.sws.push({ sw, state: leg, d });
+        if (facing || !sw.spring) out.sws.push({ sw, state: leg, d });   // a sprung loop switch is trailed through as it lies
         nx = facing ? sw.legs[leg] : sw.trunk;
       } else nx = nd.next(e, end, null);
       if (!nx) { out.len = d - 12; return out; }   // end of track: stop short of the bumper
@@ -245,9 +258,13 @@ class AITrain extends RemoteTrain {
     }
     out.len = d; return out;
   }
-  /* which way to take a facing switch: straight on, unless it is our passing siding and we should let a faster train by */
+  /* which way to take a facing switch: straight on, unless it is our passing siding and we should let a faster
+     train by, or a junction where the double track starts, where we take our own track */
   choose(sw) {
-    if (sw.name !== PASSING[this.def.dir] || this.yieldTo) return this.yieldTo && sw.name === PASSING[this.def.dir] ? 1 : 0;
+    const L = sw.legs.map(l => l.edge.line);
+    if (L[0] === ROUTE.main && L[1] === ROUTE.main2) return this.dir > 0 ? 0 : 1;
+    const ps = passingSw(this.dir);
+    if (sw.name !== ps || this.yieldTo) return this.yieldTo && sw.name === ps ? 1 : 0;
     const f = this.follower();
     if (f) { this.yieldTo = f; this.yieldT = 0; return 1; }
     return 0;
@@ -258,7 +275,7 @@ class AITrain extends RemoteTrain {
     if (!hit) return null;
     const c = hit.c, them = c === GAME.train ? Math.abs(S.v) : Math.abs(c.v || 0);
     if (c === GAME.train) return them > 6 && hit.d < 3500 ? c : null;
-    if (c.ai && c.ai.def.dir === this.def.dir && c.ai.def.vmax > this.def.vmax + 8) return c;
+    if (c.ai && c.ai.dir === this.dir && c.ai.def.vmax > this.def.vmax + 8) return c;
     return null;
   }
   /* why the route can't be had, or '' */
@@ -300,9 +317,9 @@ class AITrain extends RemoteTrain {
       const L = Math.abs(p.b - p.a);
       this.events.push({ at: base + d, limit: p.e.limit * MPH });
       if (this.def.stops) for (const st of ROUTE.stations) {
-        const m = this.stopMark(st); if (!m || m.e !== p.e) continue;
+        const m = this.stopMark(st, p); if (!m || m.e !== p.e) continue;
         const k = (m.s - p.a) * Math.sign(p.b - p.a || 1);
-        if (k >= 0 && k <= L) this.events.push({ at: base + d + k + 18, stop: st.name });   // the cab on the mark
+        if (k >= 0 && k <= L) this.events.push({ at: base + d + k + 18, stop: st.name, dwell: m.dwell });   // the cab on the mark
       }
       for (const c of SCN.crossings) if (c.edge === p.e) { const k = (c.s - p.a) * Math.sign(p.b - p.a || 1); if (k >= 0 && k <= L) this.events.push({ at: base + d + k - 380, horn: 'crossing' }); }
       d += L;
@@ -313,17 +330,24 @@ class AITrain extends RemoteTrain {
     this.heldWhy = '';
     return true;
   }
-  /* a station's mark on our track */
-  stopMark(st) {
+  /* a station's mark on the track of piece p (which runs from p.a toward p.b) */
+  stopMark(st, p) {
     if (st.kind !== 'depot' && st.kind !== 'small') return null;
-    if (this.line === ROUTE.main) return st.line === ROUTE.main ? { e: st.edge, s: st.s } : null;
+    const sp = ROUTE.span2;
+    if (sp && st.line === ROUTE.main && (st.sLine < sp[0] || st.sLine > sp[1])) {
+      // a terminal on the mountain's single track: stop on the way in, not again once round the loop
+      const dir = Math.sign(p.b - p.a || 1), inbound = st.sLine < sp[0] ? dir < 0 : dir > 0;
+      return inbound ? { e: st.edge, s: st.s, dwell: TERMINAL_DWELL } : null;
+    }
+    if (p.e.line === ROUTE.main) return st.line === ROUTE.main ? { e: st.edge, s: st.s } : null;
+    if (p.e.line !== ROUTE.main2) return null;
     const loc = ROUTE.main2.locate(ROUTE.to2(st.sLine)); return { e: loc.edge, s: loc.s };
   }
   inSiding() { const k = this.train.endTP('front').e.kind; return k === 'siding' || k === 'yard'; }
   /* the train t has gone past us: its rear is ahead of our front along the main */
   passedBy(t) {
     if (!t || (t !== GAME.train && !AI.trains.some(a => a.train === t))) return true;
-    const dir = this.def.dir, L = ROUTE.mainLen, wrap = x => ((x % L) + L * 1.5) % L - L / 2;
+    const dir = this.dir, L = ROUTE.mainLen, wrap = x => ((x % L) + L * 1.5) % L - L / 2;
     const me = AI.along(this.train.endTP('front'), dir), f = AI.along(t.endTP('front'), dir), b = AI.along(t.endTP('rear'), dir);
     if (me === null || f === null || b === null) return false;
     return wrap(f - me) > 30 && wrap(b - me) > 30;
@@ -332,6 +356,8 @@ class AITrain extends RemoteTrain {
   /* ---- running ---- */
   tick(dt) {
     const T = this.train, def = this.def;
+    // round a turning loop and back on the main, it runs the other way, on the other track
+    { const f = T.endTP('front'), ln = f.e.line; if (ln === ROUTE.main || ln === ROUTE.main2) { this.dir = f.o; this.line = f.o > 0 ? ROUTE.main : ROUTE.main2; } }
     // keep asking for the road while it is closer than our stopping distance and a bit
     this.askT -= dt;
     const stopD = this.v * this.v / (2 * def.brake);
@@ -376,7 +402,7 @@ class AITrain extends RemoteTrain {
     this.accel = (nv - v) / Math.max(dt, 1e-3);
     this.v = nv;
     // station stops
-    for (const ev of this.events) if (ev.stop && !ev.done && ahead(ev.at) < 2 && this.v < 0.05) { ev.done = true; this.dwell = DWELL; this.st.bl = true; }
+    for (const ev of this.events) if (ev.stop && !ev.done && ahead(ev.at) < 2 && this.v < 0.05) { ev.done = true; this.dwell = ev.dwell || DWELL; this.st.bl = true; }
     // horn for road crossings, ringing the bell through towns
     for (const ev of this.events) if (ev.horn && !ev.done && ahead(ev.at) < 0) { ev.done = true; if (this.v > 3) this.toot([2.2, 0.35, 2.2, 0.35, 0.8, 0.35, 2.6]); }
     if (this.st.bl && this.v > 13) this.st.bl = false;
@@ -460,7 +486,7 @@ AI.along = function (tp, dir) {
    memo keeps, for each end of T, how far a's rear has still to run to reach it, and an end counts as passed
    when that distance wraps round from nearly nothing to nearly a whole lap. */
 AI.gone = function (a, T, memo) {
-  const dir = a.def.dir, L = ROUTE.mainLen, r = AI.along(a.train.endTP('rear'), dir);
+  const dir = a.dir, L = ROUTE.mainLen, r = AI.along(a.train.endTP('rear'), dir);
   if (r === null) return false;
   let all = true;
   for (const k of ['front', 'rear']) {
@@ -474,7 +500,7 @@ AI.gone = function (a, T, memo) {
 };
 
 /* ---------------- the traffic on the railroad ---------------- */
-AI.enabled = () => !MP.on && !WORLD.custom && !WORLD.mtn && GAME.settings.traffic !== 'off';
+AI.enabled = () => !MP.on && !WORLD.custom && GAME.settings.traffic !== 'off';
 AI.clear = function () {
   for (const a of AI.trains) a.dispose();
   AI.trains = []; IX.clear();
@@ -483,7 +509,7 @@ AI.clear = function () {
 AI.setup = function () {
   AI.clear();
   if (!AI.enabled()) return;
-  const job = JOB.wanted(), list = job ? job.traffic || [] : FREE_TRAFFIC;
+  const job = JOB.wanted(), list = job ? job.traffic || [] : WORLD.mtn ? MTN_TRAFFIC : FREE_TRAFFIC;
   for (const [id, s] of list) AI.spawn(id, s);
 };
 AI.spawn = function (id, sMain) {
