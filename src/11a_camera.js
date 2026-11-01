@@ -126,6 +126,33 @@ const camGap = (p, skip) => trackGap(p.x, -p.z, skip);
 const camSpotFree = (p, gap) => camGap(p) >= gap && !inFoot(p.x, -p.z, 1.5) && !treesNear(p.x, p.z).some(t => Math.hypot(p.x - t[0], p.z - t[1]) < t[2] + 7);
 
 /* ---------------- views that follow the train ---------------- */
+/* the right-drag slide runs along the train itself: u metres from the lead engine's middle, + toward the
+   back of the consist. Walks the vehicles' centres, so the pivot stays on the train round a curve.
+   Writes the point into out and the train's direction there (toward the back, level) into dirOut. */
+function trainSpan(train) {
+  const V = train.vehicles, li = train.li, d = (a, b) => Math.hypot(a.pos.x - b.pos.x, a.pos.z - b.pos.z);
+  let back = V[V.length - 1].len / 2, front = V[0].len / 2;
+  for (let i = li; i < V.length - 1; i++) back += d(V[i], V[i + 1]);
+  for (let i = li; i > 0; i--) front += d(V[i], V[i - 1]);
+  return [-front, back];
+}
+function trainPointAt(train, u, out, dirOut) {
+  const V = train.vehicles, li = train.li, st = u >= 0 ? 1 : -1;
+  let i = li, left = Math.abs(u);
+  while (V[i + st]) {
+    const a = V[i].pos, b = V[i + st].pos, seg = Math.hypot(b.x - a.x, b.z - a.z);
+    if (left <= seg && seg > 1e-6) { const t = left / seg; out.set(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, a.z + (b.z - a.z) * t); dirOut.set((b.x - a.x) * st, 0, (b.z - a.z) * st).normalize(); return out; }
+    left -= seg; i += st;
+  }
+  // past the last centre: carry on along the end vehicle, up to its end
+  const v = V[i], p = V[i - st];
+  if (p) dirOut.set(v.pos.x - p.pos.x, 0, v.pos.z - p.pos.z); else dirOut.set(-v.fwd.x * st, 0, -v.fwd.z * st);
+  dirOut.normalize();
+  out.set(v.pos.x + dirOut.x * left, v.pos.y, v.pos.z + dirOut.z * left);
+  dirOut.multiplyScalar(st);   // report it toward the back, as the in-between case does
+  return out;
+}
+const _cpv = new THREE.Vector3();
 function orbitView(cam, train, dt, drone) {
   const fwd = train.lead.fwd, pos = train.lead.pos, hdg = Math.atan2(fwd.x, fwd.z);
   if (!CAM.sm) CAM.sm = { yaw: CAM.yaw, pitch: CAM.pitch, dist: CAM.dist, hdg, dyaw: CAM.droneYaw, dpitch: CAM.dronePitch, pan: CAM.pan || 0 };
@@ -138,11 +165,14 @@ function orbitView(cam, train, dt, drone) {
   s.hdg += angWrap(hdg - s.hdg) * camK(drone ? 2 : 3.5, dt);
   const portrait = cam.aspect < 1 ? clamp(1.25 / cam.aspect, 1, 2.2) : 1;
   const lead = clamp(CAM.vs * 0.3, -9, 9);
-  const tgt = _cc.copy(pos).addScaledVector(fwd, drone ? lead - 10 : lead); tgt.y += drone ? 1 : 2.6;
+  // the pivot: on the train, where the right-drag slide has put it (clamped, as the train can shorten under it)
+  const span = trainSpan(train); CAM.pan = clamp(CAM.pan || 0, span[0], span[1]); s.pan = clamp(s.pan, span[0], span[1]);
+  const piv = s.pan ? trainPointAt(train, s.pan, _cc, _cpv) : _cc.copy(pos);
+  if (!s.pan) _cpv.set(-fwd.x, 0, -fwd.z).normalize();
+  CAM.pivot = piv; CAM.pivotDir = _cpv;
+  const tgt = piv.addScaledVector(fwd, drone ? lead - 10 : lead); tgt.y += drone ? 1 : 2.6;
   const yaw = s.hdg + (drone ? s.dyaw : s.yaw), pitch = drone ? s.dpitch : s.pitch, dist = (drone ? s.dist * 3.2 + 40 : s.dist) * portrait;
   const dir = _cb.set(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch));
-  // right-drag side-scroll: slide the aim point along the screen's own left-right
-  if (s.pan) { tgt.x += Math.cos(yaw) * s.pan; tgt.z -= Math.sin(yaw) * s.pan; }
   // pull in at once when something gets between the camera and the engine, ease back out after
   const allowed = camClear(tgt, dir, dist, 4);
   if (!CAM.init || allowed < CAM.dAct) CAM.dAct = allowed; else CAM.dAct += (allowed - CAM.dAct) * camK(1.6, dt);

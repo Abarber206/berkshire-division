@@ -45,12 +45,18 @@ function cycleCamera(to) {
 }
 
 /* ---------------- pointer input on the 3D view ---------------- */
-// how far the right-drag side-scroll may slide the view off the engine, metres
-const CAM_PAN_MAX = 150;
-/* metres of sideways slide per pixel of drag, so the ground near the engine keeps pace with the pointer */
-function camPanScale(camera) {
-  const d = CAM.dAct || CAM.dist || 24, fov = (camera && camera.fov) || 52;
-  return 2 * d * Math.tan(fov * Math.PI / 360) / Math.max(1, innerHeight);
+/* right-drag slides the pivot along the train (CAM.pan, metres from the engine, + toward the back): the part of
+   the drag that runs along the train's own line on screen moves it, so the train keeps pace with the pointer.
+   When the train runs into the screen, a pixel would be many metres, so the rate is capped. */
+const _pa = new THREE.Vector3(), _pb = new THREE.Vector3();
+function camPanAlong(camera, dx, dy) {
+  if (!CAM.pivot || !CAM.pivotDir || !camera) return 0;
+  _pa.copy(CAM.pivot).project(camera); _pb.copy(CAM.pivot).add(CAM.pivotDir).project(camera);
+  // pixels the screen moves for one metre along the train
+  const sx = (_pb.x - _pa.x) * innerWidth / 2, sy = -(_pb.y - _pa.y) * innerHeight / 2, per = Math.hypot(sx, sy);
+  if (!(per > 1e-6) || _pa.z > 1 || _pb.z > 1) return 0;
+  const along = (dx * sx + dy * sy) / per;   // pixels of drag along the train's line on screen
+  return -along / Math.max(per, 3);          // grab the train and pull it: at most 1/3 m per pixel
 }
 function setupViewInput(canvas, camera) {
   const ptrs = new Map(); let pinch0 = 0, dist0 = 0, ang0 = 0, tapStart = null, flick = 0, flickT = 0;
@@ -83,7 +89,7 @@ function setupViewInput(canvas, camera) {
     const k = 0.006, now = performance.now();
     if (p.rmb) {
       // side-scroll: the view slides sideways and the ground follows the pointer; the cab, fixed to the seat, looks round instead
-      if (CAM.mode === 'chase' || CAM.mode === 'drone') { const m = camPanScale(camera); CAM.pan = clamp(CAM.pan - dx * m, -CAM_PAN_MAX, CAM_PAN_MAX); }
+      if (CAM.mode === 'chase' || CAM.mode === 'drone') CAM.pan = (CAM.pan || 0) + camPanAlong(camera, dx, dy);
       else if (CAM.mode === 'cab') { CAB.lookTo = null; CAM.cabYaw = clamp(CAM.cabYaw - dx * k * 0.7, -2.2, 2.2); }
       return;
     }
