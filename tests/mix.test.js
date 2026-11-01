@@ -41,3 +41,15 @@ test('every voice reaches the master through a mixer bus', () => {
   assert.match(sound, /new Loop\(k, B\.wg\)/, "other trains' whistles go through their whistle bus");
   assert.match(sound, /SND\.train = new Emitter\(\{[^}]*bus: 'effects'/);
 });
+
+test('the hill echo comes back late and soft enough not to sound like a second honk', () => {
+  const echo = sound.slice(sound.indexOf('const ECHO_MIN'), sound.indexOf('function makeEcho'));
+  const { ECHO, ECHO_MIN } = vm.runInNewContext(echo + ';({ ECHO, ECHO_MIN })');
+  assert.ok(ECHO_MIN >= 0.8);
+  for (const [t, g] of ECHO.taps) {
+    assert.ok(t >= ECHO_MIN, `an echo at ${t} s lands on the tail of a short toot`);
+    assert.ok(ECHO.send * g <= 0.1, `an echo at ${t} s is too loud (${ECHO.send * g})`);
+  }
+  // each repeat quieter than the one before
+  for (let i = 1; i < ECHO.taps.length; i++) assert.ok(ECHO.taps[i][1] < ECHO.taps[i - 1][1] && ECHO.taps[i][0] > ECHO.taps[i - 1][0]);
+});

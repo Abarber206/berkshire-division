@@ -27,7 +27,7 @@ function audioInit() {
   AU.master = ctx.createGain(); AU.master.gain.value = volGain('master'); AU.master.connect(comp);
   // reverb (open-country echo)
   const len = ctx.sampleRate * 3.2, ir = ctx.createBuffer(2, len, ctx.sampleRate);
-  for (let c = 0; c < 2; c++) { const d = ir.getChannelData(c); for (let i = 0; i < len; i++) { const t = i / ctx.sampleRate; d[i] = (Math.random() * 2 - 1) * Math.exp(-t * 1.6) * (t < 0.08 ? t / 0.08 : 1) * (1 + 0.6 * Math.exp(-((t - 0.9) ** 2) * 40)); } }
+  for (let c = 0; c < 2; c++) { const d = ir.getChannelData(c); for (let i = 0; i < len; i++) { const t = i / ctx.sampleRate; d[i] = (Math.random() * 2 - 1) * Math.exp(-t * 1.6) * (t < 0.08 ? t / 0.08 : 1) * (1 + 0.25 * Math.exp(-((t - 0.9) ** 2) * 40)); } }
   AU.verb = ctx.createConvolver(); AU.verb.buffer = ir; AU.verbIn = ctx.createGain(); AU.verbIn.gain.value = 0.5; AU.verbIn.connect(AU.verb); AU.verb.connect(AU.master);
   // noise
   const nb = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate), nd = nb.getChannelData(0);
