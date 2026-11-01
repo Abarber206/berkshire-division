@@ -39,6 +39,7 @@ function hsIntMaterials() {
   RMAT.hsSeatCab = lit(0x30353b, 0.0, 0.8);
   RMAT.hsScrOff = new THREE.MeshStandardMaterial({ color: 0x07090a, metalness: 0.3, roughness: 0.2 });
   RMAT.hsBtn = mk(0x2c7a3c, 0.2, 0.4);
+  for (const [k, c] of Object.entries({ G: 0x34d058, A: 0xffb02e, R: 0xe8402c, W: 0xf2f2e8 })) RMAT['hsLamp' + k] = new THREE.MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: 0.55, roughness: 0.3 });
 }
 
 /* ---------------- the lining: the inside face of the wall ----------------
@@ -368,6 +369,72 @@ function hsCab(gb, body, ib, o) {
         tap: d.tap, label: () => d.name + ' · ' + d.txt() });
       K.hit(pt, c, 0.07, 0.07, 0.08, 0, 0.02, 0);
     });
+  }
+  /* ---- the rest of a working cab: a glare hood over the screens, standby gauges either side of them, banks of
+     lit push buttons on the panel beyond, an indicator strip along the top of the dash, a padded front edge, a
+     footrest and pedals under the desk, a ceiling panel with its lights and vents, a breaker panel and jump seat on
+     the back wall, a coat hook, the fire extinguisher, and a ribbed mat under the driver's feet ---- */
+  const slA = t => lerp(P[i1][0], P[i0][0], t), slY = t => lerp(P[i1][1], P[i0][1], t);
+  const room = (t, z, pad) => Math.abs(z) + pad < inner(slA(t), slY(t)) - 0.04;
+  {
+    const hood = panelFrame(1.0, o.drv, 0), hw = Math.min(0.62, inner(P[i0][0], P[i0][1] + 0.06) - Math.abs(o.drv) - 0.12);
+    if (hw > 0.6) {   // only where the dash is wide enough for a hood over all three screens
+      ib.add('hsDeskTop', new THREE.BoxGeometry(2 * hw, 0.012, 0.13).translate(0, 0.0, 0.065), hood);
+      for (const e of [-1, 1]) ib.add('hsDeskTop', new THREE.BoxGeometry(0.012, sLen * 0.95, 0.1).translate(e * hw, -sLen * 0.47, 0.05), hood);
+    }
+  }
+  [-1, 1].forEach((e, i) => {
+    const z = o.drv + e * 0.74;
+    if (!room(0.5, z, 0.09)) return;
+    const p = s0.clone().addScaledVector(up, 0.5 * sLen).setZ(z);
+    K.dial(i ? { kind: 'bpbc', p, n: sn, r: 0.062, depth: 0.03, hands: [[() => GAME.train ? GAME.train.lead.brake.BP : 90], [() => S.BCloco || 0, true]], read: () => CAB_READ.bpbc(GAME.train) }
+             : { kind: 'mreq', p, n: sn, r: 0.062, depth: 0.03, hands: [[() => S.MR, true], [() => S.ER]], read: CAB_READ.mreq });
+  });
+  const lamps = ['hsLampG', 'hsLampA', 'hsLampW', 'hsLampR', 'hsLampG', 'hsLampW'], btn = new THREE.CylinderGeometry(0.013, 0.013, 0.012, 10).rotateX(Math.PI / 2);
+  for (const e of [-1, 1]) for (let c = 0; c < 6; c++) {
+    const z = o.drv + e * (0.88 + c * 0.075);
+    for (let r = 0; r < 3; r++) {
+      const t = 0.25 + r * 0.25;
+      if (!room(t, z, 0.04)) continue;
+      const m = panelFrame(t, z, 0);
+      ib.add('hsDeskTop', new THREE.BoxGeometry(0.066, 0.07, 0.006).translate(0, 0, 0.003), m);
+      ib.add(lamps[(c + r * 2 + (e > 0 ? 3 : 0)) % lamps.length], btn.clone().translate(0, 0, 0.012), m);
+    }
+  }
+  {   // the indicator strip along the top edge of the dash, beyond the screens
+    const a = P[i0][0] - 0.03, y = P[i0][1] + 0.012, n = 14, w = 1.1;
+    ib.box('hsDeskTop', 0.05, 0.02, w + 0.04, dx(a), y, o.drv);
+    for (let i = 0; i < n; i++) ib.box(['hsLampG', 'hsLampA', 'hsLampR', 'hsLampW'][i % 4], 0.03, 0.012, w / n - 0.02, dx(a), y + 0.016, o.drv - w / 2 + (i + 0.5) * w / n);
+  }
+  {   // padded front edge of the desk, the footrest and pedals
+    const hw = Math.min(1.45, inner(dA1, dTop) - 0.06);
+    ib.add('hsSeatCab', new THREE.CylinderGeometry(0.035, 0.035, 2 * hw, 12).rotateX(Math.PI / 2).translate(dx(dA1), dTop - 0.03, 0));
+    const aR = P[P.length - 1][0] + 0.14, zf = 0.32;
+    ib.add('dSteel', barGeo(0.018, [dx(aR), o.yF + 0.14, o.drv - zf], [dx(aR), o.yF + 0.14, o.drv + zf], 8));
+    for (const e of [-1, 1]) ib.box('dSteel', 0.15, 0.03, 0.03, dx(aR - 0.075), o.yF + 0.14, o.drv + e * zf);
+    for (const [dz, k] of [[-0.14, 'hsDeskTop'], [0.14, 'hsDeskTop']]) {
+      ib.box('hsDesk', 0.22, 0.03, 0.14, dx(aR + 0.25), o.yF + 0.015, o.drv + dz);
+      ib.add(k, new THREE.BoxGeometry(0.2, 0.02, 0.11).applyMatrix4(M(dx(aR + 0.25), o.yF + 0.06, o.drv + dz, 0, 0, -0.3)));
+    }
+    ib.box('hsCabFloor', 0.9, 0.006, 0.8, dx(o.seatA - 0.25), o.yF + 0.003, o.drv);
+    for (let i = 0; i < 9; i++) ib.box('dMat', 0.03, 0.006, 0.74, dx(o.seatA - 0.65 + i * 0.1), o.yF + 0.009, o.drv);
+  }
+  {   // ceiling: a panel over the driver with two lamps and an air vent
+    const a = Math.min(o.seatA + 0.7, o.st[o.st.length - 1].a - 0.6), zc = o.drv * 0.5;
+    const yc = Math.min(o.sect(a - 0.47).yt, o.sect(a + 0.47).yt) - HS_TH - 0.12;   // under the roof's crown, clear of its curve
+    ib.box('hsCabLine', 0.9, 0.02, 0.5, dx(a), yc, zc);
+    for (const d of [-0.25, 0.25]) ib.box('hsLight', 0.24, 0.012, 0.16, dx(a + d), yc - 0.016, zc);
+    ib.box('grille', 0.3, 0.012, 0.1, dx(a), yc - 0.016, zc + 0.17);
+  }
+  {   // back wall: a breaker panel with rows of switches, a fold-down jump seat, a coat hook, the extinguisher
+    const l = o.st[o.st.length - 1], xw = o.ref - l.a + 0.02, zp = o.door > 0 ? o.door - 0.78 : o.door + 0.78, sd = zp > o.door ? 1 : -1;
+    ib.box('hsDesk', 0.06, 0.5, 0.42, xw + 0.03, o.yF + 0.98, zp);
+    for (let r = 0; r < 4; r++) for (let c = 0; c < 6; c++) ib.box(r === 0 ? 'hsLampW' : 'knob', 0.02, 0.035, 0.018, xw + 0.07, o.yF + 0.8 + r * 0.11, zp - 0.15 + c * 0.06);
+    ib.box('hsSeatCab', 0.08, 0.36, 0.4, xw + 0.04, o.yF + 0.47, zp);
+    for (const e of [-1, 1]) ib.box('dSteel', 0.06, 0.04, 0.03, xw + 0.03, o.yF + 0.31, zp + e * 0.18);
+    ib.add('dSteel', barGeo(0.008, [xw + 0.0, o.yF + 1.5, o.door + sd * 0.42], [xw + 0.09, o.yF + 1.55, o.door + sd * 0.42], 5));
+    ib.cyl('redKnob', 0.06, 0.06, 0.4, 12, xw + 0.09, o.yF + 0.25, o.door - sd * 0.45);
+    ib.box('dSteel', 0.04, 0.12, 0.08, xw + 0.02, o.yF + 0.3, o.door - sd * 0.45);
   }
   // seats on pedestals: the driver's, and for the Acela the second man's across the cab
   const seatTop = o.eye.y - 0.78, sa = o.seatA;
