@@ -293,10 +293,11 @@ class RemoteTrain {
     const hl = st.hl;
     L.beam.material.opacity = hl === 0 ? 0 : Math.max(night * (hl === 2 ? 0.075 : 0.035), wxBeam());
     L.halo.material.opacity = hl === 0 ? 0 : lerp(0.35, 1, night) * (hl === 2 ? 1 : 0.6) * lampFacing(L, cam);
-    if (T.diesel) {
-      const ph = Math.floor(performance.now() / 385) % 2, flash = st.wh > 0.05 || st.bl, on = st.dl && hl > 0;
+    if (L.ditch && L.ditch.length) {
+      const ph = Math.floor(performance.now() / 385) % 2, flash = st.wh > 0.05 || st.bl, on = (T.diesel ? st.dl : 1) && hl > 0;
       L.ditch.forEach((dd, k) => { const b = !on ? 0.12 : (flash ? (ph === k ? 1 : 0.15) : 0.85); dd.lens.material.color.setScalar(0.25 + 0.75 * b); dd.halo.material.opacity = b * lerp(0.45, 1, night); });
-    } else {
+    }
+    if (!T.diesel) {
       const fl = 0.85 + 0.15 * Math.sin(performance.now() * 0.023);
       L.fire.material.color.setRGB(fl, 0.4 * fl + 0.1, 0.1); L.ash.material.opacity = night * 0.3 * fl;
     }

@@ -179,7 +179,10 @@ GAME.swapLive = function () {
   if (!GAME.ready || !old) return false;
   if (!GAME.running) { if (!MP.on) makeTrain(); return true; }   // the train on show behind the menu
   if (LOCO_SPEC[g.loco].set && JOB.activeId()) toast('A trainset cannot work this job. Resume makes up the trainset and ends the job, or pick a steam or diesel engine to stay on it.', 'warn', 6000, 'swap');
-  if (MP.needSpawn || (j ? j.id : '') !== JOB.activeId()) return false;
+  if (MP.needSpawn) return false;
+  // Free run picked in the menu while a job is still running: drop the job where the train stands and carry on
+  if (!j && JOB.activeId()) { JOB.end(); toast('Job dropped. Free running from here.', 'warn', 3600, 'jobDrop'); }
+  else if ((j ? j.id : '') !== JOB.activeId()) return false;
   const ck = JOB.consist(), units = +g.units || 1, setNew = !!LOCO_SPEC[g.loco].set;
   const tw = LOCO_SPEC[g.loco].diesel ? '' : trimWanted(), newTrim = !LOCO_SPEC[g.loco].diesel && (old.trim || '') !== tw;
   const newLoco = old.locoKey !== g.loco || (old.diesel && !old.elec && old.nUnits !== units) || newTrim;
@@ -424,7 +427,8 @@ GAME.start = function () {
   const wait = MP.spawnWait();
   if (wait > 0) { $('btnStart').disabled = true; $('btnStart').textContent = 'Joining…'; setTimeout(() => { $('btnStart').disabled = false; GAME.start(); }, wait); return; }
   audioInit(); buildWhistleIfReady();
-  if (!GAME.running || GAME.needNewTrain()) {
+  // a change made in the menu happens where the train stands; only a new job, a room to join or no room makes up a new train
+  if (!GAME.running || (GAME.needNewTrain() && !(GAME.swapLive() && !GAME.needNewTrain()))) {
     const job = JOB.wanted();
     if (JOB.run) JOB.end();
     makeTrain();
@@ -736,14 +740,16 @@ function renderStep(dt, T) {
   T.head.intensity = S.light === 0 ? 0 : (S.light === 1 ? lerp(0.4, 5, darkH) : lerp(1.4, 16, darkH));
   RMAT.lens.color.setScalar(S.light === 0 ? 0.25 : (S.light === 1 ? 0.75 : 1.0)); RMAT.hlLens.color.copy(RMAT.lens.color);
   const flick = 0.85 + 0.15 * Math.sin(S.time * 23) * Math.sin(S.time * 7.3);
-  if (T.diesel) {
-    T.fireLight.intensity = 0;
+  // ditch lights: the diesels' have their own switch, the Big Boy's pilot lamps come on with the headlight
+  if (T.loco.ditch && T.loco.ditch.length) {
     if (S.whistle > 0.05 || S.bell) S.ditchFlash = 15;
     S.ditchFlash = Math.max(0, S.ditchFlash - dt);
-    const ph = Math.floor(S.time * 2.6) % 2, on = S.ditch && S.light > 0;
+    const ph = Math.floor(S.time * 2.6) % 2, on = (T.diesel ? S.ditch : true) && S.light > 0;
     const lv = (k) => !on ? 0.12 : (S.ditchFlash > 0 ? (ph === k ? 1 : 0.15) : 0.85);
-    T.loco.ditch.forEach((d, k) => { const b = lv(k); d.lens.material.color.setScalar(0.25 + 0.75 * b); d.halo.material.opacity = b * lerp(0.45, 1, night); });
-  } else T.fireLight.intensity = S.fire * lerp(0.18, 2.4, night) * flick * (CAM.mode === 'cab' ? 1 : 0.6);
+    T.loco.ditch.forEach((d, k) => { const b = lv(k); d.lens.material.color.setScalar(0.25 + 0.75 * b); d.halo.material.opacity = b * lerp(0.45, 1, night) * (T.diesel ? 1 : lampFacing(T.loco, camera)); });
+  }
+  if (T.diesel) T.fireLight.intensity = 0;
+  else T.fireLight.intensity = S.fire * lerp(0.18, 2.4, night) * flick * (CAM.mode === 'cab' ? 1 : 0.6);
   T.loco.beam.material.opacity = S.light === 0 ? 0 : Math.max(night * (S.light === 2 ? 0.075 : 0.035), wxBeam());
   T.loco.halo.material.opacity = S.light === 0 ? 0 : lerp(0.35, 1, night) * (S.light === 2 ? 1 : 0.6) * lampFacing(T.loco, camera);
   if (!T.diesel) {
