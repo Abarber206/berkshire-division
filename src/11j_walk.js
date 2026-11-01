@@ -124,17 +124,102 @@ const isCoach = v => v.kind === 'coach' && v.model && v.model.root;
 const isObs = v => !!(v.model && v.model.root.userData.markers);
 /* the vestibule doors of a coach, in its own frame: [x, side] */
 const coachDoors = v => { const xd = (CH.xb + CH.xv) / 2, out = []; for (const e of isObs(v) ? [1] : [1, -1]) for (const s of [-1, 1]) out.push([e * xd, s]); return out; };
+
+/* ---------------- the cars he can ride in ----------------
+   A plan of each: the frame it is laid out in (a coach's own; a trainset car's body, which turns with a reversed
+   car and leans with the Acela's tilt), floor height, outside half width, doors [x, side, inside z], seats (cushion
+   centre, height, the way it faces, where in the aisle you stand to take it), the room to walk, the open ends. */
+function walkPlan(v) {
+  const m = v && v.model; if (!m || !m.root) return null;
+  if (m._wp !== undefined) return m._wp;
+  return (m._wp = v.kind === 'coach' ? coachPlan(v) : m.set && m.walk ? hsPlan(m) : null);
+}
+const walkable = v => !!walkPlan(v);
+function coachPlan(v) {
+  const obs = isObs(v), xr = [-CH.xv + 0.2, CH.xv - 0.2];
+  const seats = coachSeats().map(q => Object.assign(q, { yaw: Math.PI / 2, ax: q.x + 0.35, sx: q.x + 0.42, look: Math.PI / 2 + (q.z > 0 ? 0.55 : -0.55) }));
+  return {
+    coach: true, obs, yF: COACH_IN.yF, hw: CH.hw, mid: 0, seats, xr, ends: [!obs, true], frame: v.root,
+    doors: coachDoors(v).map(([x, s]) => [x, s, CH.hw - 0.45]),
+    atDoor: l => Math.abs(l.x) > CH.xb + 0.2 && Math.abs(l.z) > CH.hw - 0.7,
+    inVest: l => Math.abs(l.x) > CH.xb + 0.2,
+    nearDoor: l => Math.abs(l.x) > CH.xb - 2,
+    atEnd: l => Math.abs(l.x) > CH.xv - 0.22 && Math.abs(l.z) < 0.3,
+    room: (l, prev) => coachRoom(l, prev, obs),
+    cam: c => {
+      const vest = Math.abs(c.x) > CH.xb - 0.1, zl = (vest ? CH.hw - 0.12 : COACH_IN.hi - 0.08);
+      c.x = clamp(c.x, -(CH.xv - 0.1), CH.xv - 0.1); c.z = clamp(c.z, -zl, zl); c.y = clamp(c.y, COACH_IN.yF + 0.3, CH.eave + 0.45);
+    },
+  };
+}
+/* a trainset car (06e_hsr, 06f_hsint): the aisle down the saloon, a doorway at each end wall, the vestibules with the
+   side doors, and the doorway through the gangway to the next car */
+function hsPlan(m) {
+  const W = m.walk, S = W.saloon, [vf, vb] = W.vest, R = 0.2, dz = HS_DOOR.w / 2 - 0.16;
+  const ra = Math.min(R, (S.aisle[1] - S.aisle[0]) / 2 - 0.02), A = [S.aisle[0] + ra, S.aisle[1] - ra], mid = (S.aisle[0] + S.aisle[1]) / 2;
+  const xr = [vb ? vb.xEnd + 0.02 : S.x1 + 0.3, vf ? vf.xEnd - 0.02 : S.x0 - 0.3];
+  const door = [-dz, dz], vestOf = x => (vf && x > S.x0 ? vf : vb && x < S.x1 ? vb : null);
+  const zr = x => {
+    const v = vestOf(x + 0.25) || vestOf(x - 0.25);
+    if (!v) return A;
+    if (Math.abs(x - (v === vf ? S.x0 : S.x1)) < 0.25 || Math.abs(x - v.xa) < 0.25 || (v === vf ? x > v.xa : x < v.xa)) return door;
+    return [-(v.zw - R), v.zw - R];
+  };
+  const seats = S.seats.map(q => Object.assign({}, q, { sx: q.ax, look: q.yaw + 0.3 * Math.sign(q.z - mid) * -Math.sign(Math.sin(q.yaw)) }));
+  const doors = [];
+  for (const v of [vf, vb]) if (v) for (const x of v.doors) for (const s of [-1, 1]) doors.push([x, s, v.zw - 0.35]);
+  const slide = []; m.inner.traverse(o => { if (o.isMesh && (o.name === 'hsSlide' || o.name === 'hsSlidePane')) slide.push(o); });
+  return {
+    hs: true, yF: W.yF, hw: W.hw, mid, seats, xr, ends: [!!vb, !!vf], frame: m.body, doors, slide, open: 0, A,
+    atDoor: l => { const v = vestOf(l.x); return !!v && Math.abs(l.z) > v.zw - 0.6 && v.doors.some(x => Math.abs(l.x - x) < 0.65); },
+    inVest: l => !!vestOf(l.x),
+    nearDoor: l => l.x > S.x0 - 2 || l.x < S.x1 + 2,
+    nearEndDoor: l => l.x > S.x0 - 3 || l.x < S.x1 + 3,
+    atEnd: l => (l.x > xr[1] - 0.15 || l.x < xr[0] + 0.15) && Math.abs(l.z) < 0.3,
+    inSaloon: l => l.x < S.x0 && l.x > S.x1,
+    room: (l, prev) => {
+      l.x = clamp(l.x, xr[0], xr[1]);
+      const [lo, hi] = zr(l.x);
+      if (l.z < lo || l.z > hi) {
+        // into a narrower part (a doorway, the aisle) off its line: hold him there and edge him across to it
+        if (prev.z < lo - 0.01 || prev.z > hi + 0.01) { const st = Math.hypot(l.x - prev.x, l.z - prev.z), t = clamp(prev.z, lo, hi); l.x = prev.x; l.z = prev.z + Math.sign(t - prev.z) * Math.min(st, Math.abs(t - prev.z)); }
+        else l.z = clamp(l.z, lo, hi);
+      }
+      return l;
+    },
+    cam: c => {
+      c.x = clamp(c.x, xr[0] + 0.1, xr[1] - 0.1);
+      const v = vestOf(c.x), zl = v ? v.zw - 0.1 : S.zWall - 0.2;
+      // in the saloon, under the luggage racks along the walls
+      c.z = clamp(c.z, -zl, zl); c.y = clamp(c.y, W.yF + 0.3, v ? v.ceil - 0.1 : Math.abs(c.z) > S.zWall - 0.55 ? W.yF + 1.45 : W.yF + 1.95);
+    },
+  };
+}
+/* the trainset cars' sliding doors open while he is near an end of the car he is in */
+function hsSlideFrame(dt) {
+  const r = WALK.on && WALK.ride;
+  for (const c of camConsists()) for (const v of c.vehicles) {
+    const P = v.model && v.model._wp; if (!P || !P.hs) continue;
+    const want = r && r.v === v && !r.seat && P.nearEndDoor(r.l) ? 1 : 0;
+    if (P.open === want) continue;
+    P.open = clamp(P.open + Math.sign(want - P.open) * dt * 1.6, 0, 1);
+    const k = smooth(0, 1, P.open) * 0.84;
+    for (const o of P.slide) o.position.z = k;
+  }
+}
 function trainName(c) {
   if (c === GAME.train) return 'your train';
   if (c.ai) return c.ai.name;
   if (MP.on) for (const p of MP.peers.values()) if (p.rt && p.rt.train === c) return `${p.st.nm}'s train`;
   return 'the cars';
 }
-const local2world = (v, l, out) => out.copy(l).applyMatrix4(v.root.matrixWorld);
-const world2local = (v, w, out) => out.copy(w).applyMatrix4(_kM.copy(v.root.matrixWorld).invert());
+/* a car's walking frame: a coach's own, a trainset car's body */
+const vFrame = v => { const P = walkPlan(v); return (P ? P.frame : v.root).matrixWorld; };
+const local2world = (v, l, out) => out.copy(l).applyMatrix4(vFrame(v));
+const world2local = (v, w, out) => out.copy(w).applyMatrix4(_kM.copy(vFrame(v)).invert());
 /* a direction's yaw between the world and a vehicle's frame (whose +X is ahead and +Z to the right) */
-function yawToLocal(v, th) { yawDir(th, _kA); _kB.copy(_kA).transformDirection(_kM.copy(v.root.matrixWorld).invert()); return Math.atan2(_kB.x, _kB.z); }
-function yawToWorld(v, th) { yawDir(th, _kA); _kA.transformDirection(v.root.matrixWorld); return Math.atan2(_kA.x, _kA.z); }
+function yawToLocal(v, th) { yawDir(th, _kA); _kB.copy(_kA).transformDirection(_kM.copy(vFrame(v)).invert()); return Math.atan2(_kB.x, _kB.z); }
+function yawToWorld(v, th) { yawDir(th, _kA); _kA.transformDirection(vFrame(v)); return Math.atan2(_kA.x, _kA.z); }
 
 /* ---------------- getting on and off ---------------- */
 WALK.rigReady = function () {
@@ -176,9 +261,9 @@ WALK.toCab = function (quiet) {
   if (!quiet) toast('Back in the cab.', '', 1800, 'walk');
 };
 WALK.board = function (c, v, door) {
-  const [x, s] = door, sp = Math.abs(walkSpeedOf(c));
+  const [x, s, zi] = door, sp = Math.abs(walkSpeedOf(c));
   if (sp > 0.4) { toast('Wait for it to stop.', 'warn', 1800, 'walk'); return; }
-  WALK.ride = { c, v, l: new THREE.Vector3(x, COACH_IN.yF, s * (CH.hw - 0.45)), seat: null, yaw: s > 0 ? Math.PI : 0 };
+  WALK.ride = { c, v, l: new THREE.Vector3(x, walkPlan(v).yF, s * zi), seat: null, yaw: s > 0 ? Math.PI : 0 };
   WALK.lookYaw = WALK.ride.yaw; WALK.mode = 'ride'; WALK.vy = 0;
   WALK.showInterior(v, true);
   toast(`You climb aboard ${trainName(c)}.`, 'good', 2600, 'walk');
@@ -188,10 +273,10 @@ WALK.board = function (c, v, door) {
 WALK.alight = function () {
   const r = WALK.ride; if (!r) return;
   if (Math.abs(walkSpeedOf(r.c)) > 0.3) { toast('Not while the train is moving.', 'warn', 2000, 'walk'); return; }
-  let best = null;
-  for (const [x, s] of coachDoors(r.v)) {
-    const w = local2world(r.v, _kA.set(x, 0, s * (CH.hw + 0.75)), new THREE.Vector3()), f = floorAt(w.x, w.z, w.y + 0.4);
-    const d = Math.hypot(r.l.x - x, r.l.z - s * CH.hw) - (f.y > w.y - 0.6 ? 6 : 0);   // a platform beats walking a little further
+  let best = null; const P = walkPlan(r.v);
+  for (const [x, s] of P.doors) {
+    const w = local2world(r.v, _kA.set(x, 0, s * (P.hw + 0.75)), new THREE.Vector3()), f = floorAt(w.x, w.z, w.y + 0.4);
+    const d = Math.hypot(r.l.x - x, r.l.z - s * P.hw) - (f.y > w.y - 0.6 ? 6 : 0);   // a platform beats walking a little further
     if (!best || d < best.d) best = { d, w, f, s };
   }
   WALK.p.set(best.w.x, best.f.y, best.w.z); WALK.vy = 0;
@@ -207,12 +292,12 @@ WALK.reset = function () { if (WALK.on) WALK.setOn(false); for (const [v] of WAL
 WALK.findAction = function () {
   const T = GAME.train;
   if (WALK.mode === 'ride') {
-    const r = WALK.ride, l = r.l, moving = Math.abs(walkSpeedOf(r.c)) > 0.3;
+    const r = WALK.ride, l = r.l, P = walkPlan(r.v), moving = Math.abs(walkSpeedOf(r.c)) > 0.3;
     if (r.seat) return { label: 'Stand up', sub: 'Take a walk through the train', go: () => WALK.stand() };
-    const inVest = Math.abs(l.x) > CH.xb + 0.2;
-    if (inVest && Math.abs(l.z) > CH.hw - 0.7) return moving ? { label: 'Get off', sub: 'Wait for a stop', off: true } : { label: 'Get off', sub: 'Step down here', go: () => WALK.alight() };
+    const inVest = P.inVest(l);
+    if (P.atDoor(l)) return moving ? { label: 'Get off', sub: 'Wait for a stop', off: true } : { label: 'Get off', sub: 'Step down here', go: () => WALK.alight() };
     let near = null;
-    if (!inVest) for (const s of coachSeats()) { const d = Math.abs(s.x + 0.35 - l.x); if (d < 0.75 && (!near || d < near.d || (d === near.d && Math.abs(s.z) < Math.abs(near.s.z)))) near = { s, d }; }
+    if (!inVest) for (const s of P.seats) { const d = Math.abs(s.ax - l.x), dm = Math.abs(s.z - P.mid); if (d < (P.hs ? 0.5 : 0.75) && (!near || d < near.d - 0.01 || (Math.abs(d - near.d) <= 0.01 && dm < near.dm))) near = { s, d, dm }; }
     if (near) { const taken = WALK.seatTaken(r.v, near.s); return { label: 'Sit down', sub: taken ? 'Next seat over is free' : 'Window seat', go: () => WALK.sit(near.s) }; }
     return moving ? { label: 'Riding', sub: 'Find a seat', off: true } : { label: 'Get off', sub: 'By the nearest door', go: () => WALK.alight() };
   }
@@ -222,8 +307,9 @@ WALK.findAction = function () {
     const sp = Math.abs(walkSpeedOf(c));
     for (const v of c.vehicles) {
       if (!v.pos || Math.abs(v.pos.x - WALK.p.x) > v.len || Math.abs(v.pos.z - WALK.p.z) > v.len) continue;
-      if (isCoach(v)) for (const d of coachDoors(v)) {
-        const w = local2world(v, _kA.set(d[0], 0.6, d[1] * (CH.hw + 0.3)), _kC), dd = Math.hypot(w.x - WALK.p.x, w.z - WALK.p.z);
+      const P = walkPlan(v);
+      if (P) for (const d of P.doors) {
+        const w = local2world(v, _kA.set(d[0], 0.6, d[1] * (P.hw + 0.3)), _kC), dd = Math.hypot(w.x - WALK.p.x, w.z - WALK.p.z);
         if (dd < 1.9 && Math.abs(WALK.p.y - w.y) < 2.2 && (!best || dd < best.dd)) best = { dd, label: 'Board', sub: trainName(c), wait: sp > 0.4, go: () => WALK.board(c, v, d) };
       }
       if (c === T && v === T.lead && T.loco.cabEye) {
@@ -241,18 +327,20 @@ WALK.seatTaken = function (v, s) { for (const p of WALK.peers.values()) if (p.se
 WALK.sit = function (s) {
   const r = WALK.ride; if (!r) return;
   // the window seat if it is free, else the one by the aisle
-  const row = coachSeats().filter(q => Math.abs(q.x - s.x) < 0.01 && Math.sign(q.z) === Math.sign(s.z)).sort((a, b) => Math.abs(b.z) - Math.abs(a.z));
+  const P = walkPlan(r.v), side = q => Math.sign(q.z - P.mid);
+  const row = P.seats.filter(q => Math.abs(q.x - s.x) < 0.01 && side(q) === side(s)).sort((a, b) => Math.abs(b.z - P.mid) - Math.abs(a.z - P.mid));
   const free = row.find(q => !WALK.seatTaken(r.v, q)) || row[0];
-  r.seat = free; r.l.set(free.x, COACH_IN.yF, free.z); r.yaw = Math.PI / 2; WALK.lookYaw = Math.PI / 2 + (free.z > 0 ? 0.55 : -0.55); WALK.lookPitch = -0.05;
+  r.seat = free; r.l.set(free.x, P.yF, free.z); r.yaw = free.yaw; WALK.lookYaw = free.look; WALK.lookPitch = -0.05;
   WALK.ui();
 };
-WALK.stand = function () { const r = WALK.ride; if (!r || !r.seat) return; r.l.set(r.seat.x + 0.42, COACH_IN.yF, 0); r.seat = null; WALK.ui(); };
+WALK.stand = function () { const r = WALK.ride; if (!r || !r.seat) return; const P = walkPlan(r.v); r.l.set(r.seat.sx, P.yF, P.hs ? clamp(P.mid, P.A[0], P.A[1]) : 0); r.seat = null; WALK.ui(); };
 WALK.doAction = function () { const a = WALK.act; if (a && a.go) a.go(); };
 
 /* ---------------- each frame ---------------- */
 WALK.frame = function (dt) {
   WALK.peersFrame(dt);
   WALK.interiorsFrame(dt);
+  hsSlideFrame(dt);
   if (!WALK.on) return;
   WALK.t += dt;
   const live = GAME.running && !S.paused && !PLACE.on;
@@ -327,25 +415,30 @@ WALK.rideStep = function (dt, f, s, m) {
   WALK.speed = Math.min(WALK.speed, WALK_V);
   r.l.addScaledVector(_kC, sp * dt);
   r.yaw += angWrap((WALK.fp ? WALK.lookYaw : yawOf(_kC)) - r.yaw) * Math.min(1, dt * 10);
-  // through the end door to the next car: the one coupled on at this end
-  if (Math.abs(r.l.x) > CH.xv - 0.22 && Math.abs(r.l.z) < 0.3) {
-    const i = r.c.vehicles.indexOf(r.v), n = r.c.vehicles[i + ((r.l.x > 0) !== !!r.v.flip ? -1 : 1)];
-    if (n && isCoach(n) && n.pos && n.pos.distanceTo(r.v.pos) < (n.len + r.v.len) / 2 + 1.5) {
-      const w = local2world(r.v, r.l, _kA), wy = yawToWorld(r.v, r.yaw), wl = yawToWorld(r.v, WALK.lookYaw);
-      world2local(n, w, r.l); r.l.y = COACH_IN.yF; r.l.x = Math.sign(r.l.x) * (CH.xv - 0.3);
+  // through the end door to the next car: whichever car coupled on next to this one has an open end right here
+  const P = walkPlan(r.v);
+  if (P.atEnd(r.l)) {
+    const i = r.c.vehicles.indexOf(r.v), w = local2world(r.v, r.l, _kA);
+    for (const n of [r.c.vehicles[i - 1], r.c.vehicles[i + 1]]) {
+      const N = walkPlan(n); if (!N || !n.pos || n.pos.distanceTo(r.v.pos) > (n.len + r.v.len) / 2 + 1.5) continue;
+      n.root.updateMatrixWorld();
+      const q = world2local(n, w, _kB);
+      if (Math.abs(q.x) > n.len / 2 + 1.5 || Math.abs(q.x) < n.len / 2 - 3 || Math.abs(q.z) > 1.2 || !N.ends[q.x > 0 ? 1 : 0]) continue;
+      const wy = yawToWorld(r.v, r.yaw), wl = yawToWorld(r.v, WALK.lookYaw);
+      r.l.set(clamp(q.x, N.xr[0] + 0.3, N.xr[1] - 0.3), N.yF, clamp(q.z, -0.2, 0.2));
       WALK.showInterior(n, true);
       r.v = n; r.yaw = yawToLocal(n, wy); WALK.lookYaw = yawToLocal(n, wl);
       return;
     }
   }
-  coachRoom(r.l, prev, isObs(r.v));
+  P.room(r.l, prev);
 };
 /* put the figure where he is and pose him */
 WALK.place = function () {
   const rig = WALK.rigReady(), R = rig.root, r = WALK.ride;
   if (r) {
     local2world(r.v, r.l, R.position);
-    R.quaternion.setFromRotationMatrix(_kM.extractRotation(r.v.root.matrixWorld)).multiply(_kQQ.setFromAxisAngle(_kU, r.yaw));
+    R.quaternion.setFromRotationMatrix(_kM.extractRotation(vFrame(r.v))).multiply(_kQQ.setFromAxisAngle(_kU, r.yaw));
   } else { R.position.copy(WALK.p); R.quaternion.setFromAxisAngle(_kU, WALK.yaw); }
   rig.pose({ phase: WALK.phase, speed: WALK.speed, sit: r && r.seat ? r.seat.h : 0, wave: WALK.wave, look: WALK.lookPitch, t: WALK.t });
   R.visible = !WALK.fp;
@@ -358,8 +451,8 @@ WALK.holdTrains = function (dt) {
     if (!(a.dwell > 0) || !a.train.lead.pos) { WALK.holds.delete(a); continue; }
     let h = WALK.holds.get(a); if (!h) WALK.holds.set(a, h = { t: 0 });
     let near = false;
-    if (WALK.mode === 'ride' && WALK.ride.c === a.train) near = !WALK.ride.seat && Math.abs(WALK.ride.l.x) > CH.xb - 2;
-    else if (WALK.mode === 'foot') for (const v of a.train.vehicles) if (isCoach(v) && v.pos.distanceTo(WALK.p) < 26) { near = true; break; }
+    if (WALK.mode === 'ride' && WALK.ride.c === a.train) near = !WALK.ride.seat && walkPlan(WALK.ride.v).nearDoor(WALK.ride.l);
+    else if (WALK.mode === 'foot') for (const v of a.train.vehicles) if (walkable(v) && v.pos && v.pos.distanceTo(WALK.p) < 26) { near = true; break; }
     if (near && a.dwell < 6 && h.t < 45) { h.t += dt; a.dwell = 6; }
   }
 };
@@ -371,14 +464,13 @@ WALK.camera = function (cam, dt) {
   let fov = WALK.fp ? 66 : 56;
   if (cam.aspect < 1) fov = Math.min(84, fov * 1.25);
   if (r) {
-    const M4 = r.v.root.matrixWorld, sitH = r.seat ? r.seat.h + PD.seatHip + 0.7 : PD.eye;
+    const M4 = vFrame(r.v), sitH = r.seat ? r.seat.h + PD.seatHip + 0.7 : PD.eye;
     const head = _kA.copy(r.l); head.y += WALK.fp ? sitH : (r.seat ? sitH - 0.1 : 1.55);
     const d = _kB.set(Math.sin(WALK.lookYaw) * Math.cos(P), Math.sin(P), Math.cos(WALK.lookYaw) * Math.cos(P));
     if (WALK.fp) { _kC.copy(head).addScaledVector(d, 0.1); head.addScaledVector(d, 0.1); }
     else {
       _kC.copy(head).addScaledVector(d, -Math.min(WALK.dist, 2.2));
-      const vest = Math.abs(_kC.x) > CH.xb - 0.1, zl = (vest ? CH.hw - 0.12 : COACH_IN.hi - 0.08);
-      _kC.x = clamp(_kC.x, -(CH.xv - 0.1), CH.xv - 0.1); _kC.z = clamp(_kC.z, -zl, zl); _kC.y = clamp(_kC.y, COACH_IN.yF + 0.3, CH.eave + 0.45);
+      walkPlan(r.v).cam(_kC);
     }
     const tgt = head.addScaledVector(d, WALK.fp ? 1 : 0.0);
     cam.position.copy(_kC).applyMatrix4(M4);
@@ -412,6 +504,7 @@ WALK.toggleView = function () { WALK.fp = !WALK.fp; if (WALK.fp && !WALK.ride) W
 /* ---------------- coach interiors near the camera ---------------- */
 WALK.showInterior = function (v, on) {
   const have = WALK.interiors.get(v);
+  if (on && !have && !(walkPlan(v) || {}).coach) return;   // a trainset car has its inside built in
   if (on && !have) {
     const g = coachInterior(isObs(v)); linearizeObject(g); v.model.root.add(g);
     const wins = []; v.model.root.traverse(o => { if (o.isMesh && (o.name === 'win' || o.name === 'holWin')) { wins.push([o, o.material]); o.material = RMAT.ciGlass; } });
@@ -541,7 +634,7 @@ WALK.net = function () {
     const r = WALK.ride, c = r.c; let owner = null;
     if (c === GAME.train) owner = MP.id; else for (const p of MP.peers.values()) if (p.rt && p.rt.train === c) owner = p.id;
     if (!owner) return null;
-    const si = r.seat ? coachSeats().findIndex(s => s === r.seat || (Math.abs(s.x - r.seat.x) < 0.01 && Math.abs(s.z - r.seat.z) < 0.01)) : -1;
+    const si = r.seat ? walkPlan(r.v).seats.findIndex(s => s === r.seat || (Math.abs(s.x - r.seat.x) < 0.01 && Math.abs(s.z - r.seat.z) < 0.01)) : -1;
     return [2, owner, c.vehicles.indexOf(r.v), +r.l.x.toFixed(2), +r.l.z.toFixed(2), +r.yaw.toFixed(2), sp, fl, si];
   }
   return [1, +WALK.p.x.toFixed(2), +WALK.p.y.toFixed(2), +WALK.p.z.toFixed(2), +WALK.yaw.toFixed(2), sp, fl];
@@ -550,7 +643,7 @@ function walkClean(a) {
   if (!Array.isArray(a)) return null;
   const n = (x, lo, hi) => (typeof x === 'number' && isFinite(x)) ? clamp(x, lo, hi) : 0;
   if (a[0] === 1 && a.length >= 7) return [1, n(a[1], -1e5, 1e5), n(a[2], -2000, 5000), n(a[3], -1e5, 1e5), n(a[4], -10, 10), n(a[5], 0, 6), a[6] ? 1 : 0];
-  if (a[0] === 2 && a.length >= 9 && typeof a[1] === 'string' && /^[a-z0-9]{6,16}$/.test(a[1])) return [2, a[1], Math.round(n(a[2], 0, 200)), n(a[3], -13, 13), n(a[4], -2, 2), n(a[5], -10, 10), n(a[6], 0, 6), a[7] ? 1 : 0, Math.round(n(a[8], -1, 200))];
+  if (a[0] === 2 && a.length >= 9 && typeof a[1] === 'string' && /^[a-z0-9]{6,16}$/.test(a[1])) return [2, a[1], Math.round(n(a[2], 0, 200)), n(a[3], -14, 14), n(a[4], -2, 2), n(a[5], -10, 10), n(a[6], 0, 6), a[7] ? 1 : 0, Math.round(n(a[8], -1, 200))];
   return null;
 }
 WALK.peersFrame = function (dt) {
@@ -575,11 +668,12 @@ WALK.peersFrame = function (dt) {
     } else {
       const owner = av[1] === MP.id ? GAME.train : (MP.peers.get(av[1]) && MP.peers.get(av[1]).rt ? MP.peers.get(av[1]).rt.train : null);
       const v = owner && owner.vehicles[av[2]];
-      if (!v || !isCoach(v)) { R.visible = false; continue; }
+      const P = walkPlan(v);
+      if (!P) { R.visible = false; continue; }
       v.root.updateMatrixWorld();
-      w.seatOf = v; w.seat = av[8] >= 0 ? coachSeats()[av[8]] || null : null;
-      local2world(v, _kA.set(av[3], COACH_IN.yF, av[4]), R.position);
-      R.quaternion.setFromRotationMatrix(_kM.extractRotation(v.root.matrixWorld)).multiply(_kQQ.setFromAxisAngle(_kU, av[5]));
+      w.seatOf = v; w.seat = av[8] >= 0 ? P.seats[av[8]] || null : null;
+      local2world(v, _kA.set(av[3], P.yF, av[4]), R.position);
+      R.quaternion.setFromRotationMatrix(_kM.extractRotation(vFrame(v))).multiply(_kQQ.setFromAxisAngle(_kU, av[5]));
       w.pos.copy(R.position); w.init = true; w.toldAt = '';
     }
     if (av[6] > 0.05) w.phase = (w.phase + TAU * av[6] / lerp(1.5, 2.9, smooth(1.9, 3.4, av[6])) * dt) % (TAU * 1000);
