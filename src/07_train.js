@@ -240,7 +240,7 @@ class Train extends Consist {
     this.tenderEmpty = 92000;
     for (const v of this.vehicles) { v.brake = v.brake || { AR: 90, BC: 0, BP: 90, emerg: false, released: true }; v.kn = v.kn || [0, 0]; this.track(v); }
     this.layout();
-    this.buildInstances({ tg: truckGeos(), a6: plainAxle(0.457), a4: plainAxle(0.419) });
+    this.buildInstances(carGeos());
     // headlight. Another player's train (opts.remote) gets no real lights: adding lights
     // to the scene would recompile every shader, and its lamp glow is drawn without them.
     this.remote = !!opts.remote;

@@ -334,7 +334,7 @@ function buildDiesel(opts) {
   halo.position.set(dx(N0 - 0.08), hlY, 0); halo.scale.set(2.0, 2.6, 1); body.add(halo);
   /* ---- Hi-Ad style trucks (swivel; placed by the train) ---- */
   const trucks = [], wheels = [];
-  const ax = plainAxle(DG.rW);
+  const ax = plainAxle(DG.rW, true, RAIL_OFF, 1.16);
   for (let t = 0; t < 2; t++) {
     const grp = new THREE.Group(), tg = new GeoBin();
     for (const s of [-1, 1]) {

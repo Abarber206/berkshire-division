@@ -40,7 +40,7 @@ PLACE.exit = function () {
 /* ---------------- what is held ---------------- */
 PLACE.newCar = function (type, quiet) {
   PLACE.cancel();
-  if (!CARS.geo) CARS.geo = { tg: truckGeos(), a6: plainAxle(0.457), a4: plainAxle(0.419) };
+  if (!CARS.geo) CARS.geo = carGeos();
   const n = ++PLACE.made, num = type === 'coach' ? 3300 + n * 7 : 40000 + n * 11;
   const tr = type === 'coach' && GAME.train.trim || '';
   const m = type === 'coach' ? coachModel(LOCO_SPEC[GAME.train.locoKey], num, false, tr) : freightModel(type, num, rng(num));
