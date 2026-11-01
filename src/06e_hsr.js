@@ -73,6 +73,8 @@ function hsMaterials() {
   RMAT.hsTail = new THREE.MeshBasicMaterial({ color: 0xff2a1e });
   RMAT.hsTailOff = mk(0x5a1612, 0.4, 0.2);
   RMAT.hsLamp = mk(0xd9dde0, 0.6, 0.12);     // lamp housing behind the lens
+  // brake dust and road grime underneath, a lightly used sheen on the steel
+  wear(RMAT.hsUnder, 0.6, 41); wear(RMAT.hsBogie, 0.6, 42); wear(RMAT.hsSteel, 0.3, 43); wear(RMAT.hsPan);
 }
 
 /* ---------------- lofted bodies ----------------

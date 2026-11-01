@@ -63,7 +63,7 @@ function liveryMaterials(L, num) {
   const mk = (c, m, r, extra = {}) => new THREE.MeshStandardMaterial({ color: c, metalness: m, roughness: r, ...extra });
   const t = liveryTextures(L, num);
   const dec = map => new THREE.MeshStandardMaterial({ map, transparent: true, alphaTest: 0.35, metalness: 0.2, roughness: 0.5, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 });
-  return {
+  return wearSkin({
     lBody: mk(L.body, 0.3, 0.42, { side: THREE.DoubleSide }),
     lRoof: mk(L.roof, 0.3, 0.55, { side: THREE.DoubleSide }),
     lAccent: mk(L.accent, 0.2, 0.5, { side: THREE.DoubleSide }),
@@ -73,8 +73,10 @@ function liveryMaterials(L, num) {
     lPilot: mk(0xffffff, 0.25, 0.5, { map: t.pilot }),
     lRoad: dec(t.road), lNum: dec(t.number), lHerald: dec(t.herald),
     lBoard: new THREE.MeshBasicMaterial({ map: t.board }),
-  };
+  });
 }
+/* road wear on a livery: a mottled sheen on the paint, exhaust soot on the roof, brake dust on the pilot */
+function wearSkin(k) { for (const n of ['lBody', 'lAccent', 'lRail', 'lNose', 'lPilot', 'lLouver']) wear(k[n]); wear(k.lRoof, 0.6, 31); return k; }
 function applyLivery(model, L, num) {
   const M = model.skin, t = liveryTextures(L, num);
   const set = (m, hex) => { m.color.set(hex).convertSRGBToLinear(); m.userData.lin = true; };
@@ -106,6 +108,7 @@ function dieselMaterials() {
   RMAT.mesh = mk(0x1a1b1c, 0.5, 0.6, { map: canvasTex(64, 64, (g, w, h) => { g.fillStyle = '#0a0b0c'; g.fillRect(0, 0, w, h); g.strokeStyle = '#4a4e50'; g.lineWidth = 2; for (let x = 0; x < w; x += 8) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, h); g.stroke(); } for (let y = 0; y < h; y += 8) { g.beginPath(); g.moveTo(0, y); g.lineTo(w, y); g.stroke(); } }, { repeat: true }) });
   RMAT.fan = mk(0x161718, 0.5, 0.6, { map: canvasTex(128, 128, (g, w, h) => { g.fillStyle = '#0a0b0c'; g.fillRect(0, 0, w, h); g.strokeStyle = '#4a4e50'; g.lineWidth = 2; for (let r = 8; r < 64; r += 7) { g.beginPath(); g.arc(64, 64, r, 0, TAU); g.stroke(); } for (let a = 0; a < 12; a++) { g.beginPath(); g.moveTo(64, 64); g.lineTo(64 + Math.cos(a / 12 * TAU) * 62, 64 + Math.sin(a / 12 * TAU) * 62); g.stroke(); } g.fillStyle = '#2a2d2f'; g.beginPath(); g.arc(64, 64, 9, 0, TAU); g.fill(); }) });
   RMAT.headOff = mk(0x2a2a28, 0.6, 0.2);
+  wear(RMAT.dDeck, 0.5, 32); wear(RMAT.dUnder, 0.6, 33); wear(RMAT.dSteel, 0.35, 34); wear(RMAT.dSafety, 0.35, 35); wear(RMAT.grille); wear(RMAT.mesh); wear(RMAT.fan);
 }
 
 function buildDiesel(opts) {

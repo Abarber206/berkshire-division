@@ -52,6 +52,9 @@ function rollingMaterials() {
   RMAT.dWall = S(0x141516, 0.25, 0.5);     // outer face of driver & engine-truck tires
   for (const k of ['black', 'blackMatte', 'graphite', 'dark', 'tire', 'rod', 'brass', 'green', 'roof', 'oxide', 'oxide2', 'caboose', 'tank', 'steel', 'backhead', 'cabInt', 'wood']) RMAT[k].side = THREE.DoubleSide;
   trimMaterials();
+  // worn paint on the engines' black, the smokebox's heat-dulled graphite, oily running gear, dirty frames and trucks
+  wear(RMAT.black); wear(RMAT.blackMatte, 0.6, 21); wear(RMAT.graphite, 0.35, 22); wear(RMAT.dark, 0.5, 23); wear(RMAT.rod); wear(RMAT.steel, 0.35, 24);
+  wear(RMAT.tire, 0.7, 25); wear(RMAT.backhead, 0.6, 26); wear(RMAT.rbEdge); wear(RMAT.dWall); wear(RMAT.roof, 0.5, 27); wear(RMAT.tank); wear(RMAT.green); wear(RMAT.caboose); wear(RMAT.oxide); wear(RMAT.oxide2);
 }
 function decalMat(w, h, draw) { return new THREE.MeshStandardMaterial({ map: canvasTex(w, h, draw), transparent: true, alphaTest: 0.35, metalness: 0.2, roughness: 0.55, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }); }
 function romanText(g, txt, x, y, size, color = '#efede4', spacing = 0.06) {
