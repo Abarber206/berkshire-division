@@ -1,6 +1,6 @@
 # Berkshire Division
 
-A 3D railway simulator that runs in the browser, phone or desktop. Drive a Lima-built 2-8-4 Berkshire or a modern six-axle AC diesel over a 13.8-mile Nickel Plate–style division.
+A 3D railway simulator that runs in the browser, phone or desktop. Drive a Lima-built 2-8-4 Berkshire or a modern six-axle AC diesel over a 30-mile Nickel Plate–style division.
 
 **Play:** https://abarber206.github.io/berkshire-division/
 
@@ -24,14 +24,14 @@ Rooms connect through free public MQTT relay servers (HiveMQ and EMQX), so there
 
 ## The railroad
 
-- Two 7,200 m (4.5 mi) tangents joined by spiral-eased 1,200 m curves with superelevation
+- A 30.3-mile double-track loop: east from Bellevue past Fostoria, over Kenton Hill and the Sandusky River to Delphos, then out the Van Wert extension over the moraine to Middle Point and Van Wert, round the far curve and back through Willshire and Spencerville. Spiral-eased curves with superelevation
 - Bellevue Yard: four-track ladder and an engine terminal with water tower, coaling tower, sand house and engine house
-- Fostoria and Kenton passing sidings, an elevator spur, and a quarry branch with a runaround
-- 18 switches with moving points, frogs, guard rails and rotating switch-stand targets
-- Kenton Hill (0.9% grade), a two-span through-truss bridge over the Sandusky River
+- Fostoria, Kenton, Van Wert and Spencerville passing sidings, crossovers between the main tracks, an elevator spur, and a quarry branch with a runaround
+- Switches with moving points, frogs, guard rails and rotating switch-stand targets
+- Kenton Hill (0.9% grade) and the moraine out west (0.62% each side), two-span through-truss bridges over the Sandusky River and the Little Auglaize
 - Color-light signals that follow the switch they protect, mileposts, whistle posts, grade crossings, a pole line
 - Ohio farm country in October: standing corn, crop rows and fall plowing drawn per pixel, roadside grass, goldenrod and asters, sumac, fenced pastures with cattle, round hay bales
-- Small towns at Bellevue, Fostoria, Kenton and Delphos with a main street, houses, a church and a water tower
+- Towns at Bellevue, Fostoria, Kenton, Delphos, Middle Point, Van Wert, Willshire and Spencerville with a main street, houses, a church and a water tower
 
 ## The simulation
 

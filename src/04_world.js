@@ -3,7 +3,7 @@
    ========================================================================== */
 const MAT = {};
 const TEX = {};
-const WORLD = { pieces: [], tiles: [], treeMeshes: [], switchVis: [], lattice: null, riverPts: [], lake: { X: -1010, N: 1180, r: 290 }, roadsX: [3300, 600, -1700], roadN: -62 };
+const WORLD = { pieces: [], tiles: [], treeMeshes: [], switchVis: [], lattice: null, riverPts: [], lake: { X: -1010, N: 1180, r: 290 }, roadsX: [3300, 600, -1700, -5600, -8600, -11000, -13900, -16300], pavedX: [600, -13900], roadN: -62 };
 
 /* value noise that wraps at the edges of a w x w texture: octaves are [cells across, weight] */
 function tileNoise(w, octs, seed) {
@@ -194,18 +194,31 @@ function naturalH(X, N) {
   h += 15.5 * Math.exp(-(((X - 1900) / 1150) ** 2 + ((N - 2400) / 820) ** 2));
   // rolling ridge north of the line, higher hills at the horizon
   h += 11 * smooth(3400, 6200, N) * (0.6 + 0.4 * Noise.fbm(X / 1800, N / 1800 + 4, 3));
-  const er = Math.hypot(X / 9000, (N - 2200) / 7600);
+  // the moraine out west: a long low north-south swell the extension climbs over on both sides of the loop
+  h += 9.6 * Math.exp(-(((X - VW.moraineX) / (1250 + 250 * Noise.fbm(N / 2200 + 7, 1.3, 2))) ** 2)) * (0.85 + 0.25 * Noise.fbm(X / 900 - 2, N / 1400, 3));
+  // the horizon hills stand off both ends of the division: east of the old map and west of the extension
+  const ex = X >= -3000 ? X / 9000 : X > -18000 ? -1 / 3 : (X + 15000) / 9000;
+  const er = Math.hypot(ex, (N - 2200) / 7600);
   h += 70 * smooth(0.9, 1.6, er) * (0.55 + 0.45 * Noise.fbm(X / 2600 - 5, N / 2600, 3));
   return h;
+}
+/* the Little Auglaize: out of its lake inside the loop and north under the line at Van Wert */
+function river2X(N) { const A = n => 150 * Math.sin(n / 650 + 2) + 60 * Math.sin(n / 210 + 0.3); return VW.riverX + A(N) - A(VW.riverN); }
+/* a river's centre at N: the meandering course north of the line, eased in from its lake south of it */
+function riverCourse(N, xAt, nTrack, lake) {
+  if (N > nTrack - 40) return xAt(N);
+  if (N > lake.N) { const t = (N - lake.N) / (nTrack - lake.N); return lerp(lake.X, xAt(nTrack), smooth(0, 1, t)); }
+  return null;
 }
 function riverDist(X, N) {
   if (WORLD.custom) return 1e9;
   if (WORLD.mtn) return mtRiverDist(X, N);
   let d = 1e9;
-  if (N > 2402 - 40) d = Math.abs(X - riverX(N));
-  else if (N > WORLD.lake.N) { const t = (N - WORLD.lake.N) / (2402 - WORLD.lake.N); const x = lerp(WORLD.lake.X, riverX(2402), smooth(0, 1, t)); d = Math.abs(X - x); }
-  const dl = Math.hypot(X - WORLD.lake.X, N - WORLD.lake.N) - WORLD.lake.r;
-  return Math.min(d, Math.max(dl + 22, 0));
+  for (const [xAt, nT, lake] of [[riverX, 2402, WORLD.lake], [river2X, VW.riverN, VW.lake]]) {
+    const x = riverCourse(N, xAt, nT, lake); if (x !== null) d = Math.min(d, Math.abs(X - x));
+    d = Math.min(d, Math.max(Math.hypot(X - lake.X, N - lake.N) - lake.r + 22, 0));
+  }
+  return d;
 }
 /* custom layouts sit in open, gently rolling farm country with hills only at the horizon */
 function layoutH(X, N) {
@@ -268,12 +281,12 @@ function groundAt(X, N) { // continuous sampler; exact terrain triangles once th
   if (WORLD.patches) { const p = patchAt(X, N); if (p !== null) return p; }
   if (X < L.x0 || X > L.x1 || N < L.n0 || N > L.n1) return heightRaw(X, N);
   const HG = WORLD.hgrid;
-  if (HG && (HG.ready || WORLD.mtn)) {
+  if (HG && (HG.ready || WORLD.lazy)) {
     const fx = (X - L.x0) / L.step, fn = (N - L.n0) / L.step;
     let i = Math.floor(fx), j = Math.floor(fn); if (i >= HG.nx - 1) i = HG.nx - 2; if (j >= HG.nn - 1) j = HG.nn - 2;
     const tx = fx - i, tn = fn - j, k = j * HG.nx + i, H = HG.h;
-    // the mountain's terrain is built as the camera nears it, so its grid heights are worked out when first asked for
-    if (WORLD.mtn) for (const q of [k, k + 1, k + HG.nx, k + HG.nx + 1]) if (H[q] !== H[q]) { const vx = L.x0 + (q % HG.nx) * L.step, vn = L.n0 + Math.floor(q / HG.nx) * L.step; H[q] = groundH(vx, vn, latticeAt(vx, vn)); }
+    // a big world's terrain is built as the camera nears it, so its grid heights are worked out when first asked for
+    if (WORLD.lazy) for (const q of [k, k + 1, k + HG.nx, k + HG.nx + 1]) if (H[q] !== H[q]) { const vx = L.x0 + (q % HG.nx) * L.step, vn = L.n0 + Math.floor(q / HG.nx) * L.step; H[q] = groundH(vx, vn, latticeAt(vx, vn)); }
     const a = H[k], b = H[k + 1], d = H[k + HG.nx], e = H[k + HG.nx + 1];
     return tx + tn <= 1 ? a + (b - a) * tx + (d - a) * tn : e + (d - e) * (1 - tx) + (b - e) * (1 - tn);
   }
@@ -497,7 +510,7 @@ function terrainGeo(x0, n0, size, step) {
   return geo;
 }
 function buildFarTerrain(scene) {
-  const st = 250, [x0, x1, n0, n1] = WORLD.mtn ? [INNER.x0 - 15000, INNER.x1 + 15000, INNER.n0 - 15000, INNER.n1 + 15000] : [-22000, 22000, -18000, 24000];
+  const st = 250, [x0, x1, n0, n1] = WORLD.mtn ? [INNER.x0 - 15000, INNER.x1 + 15000, INNER.n0 - 15000, INNER.n1 + 15000] : [Math.min(-22000, INNER.x0 - 16000), 22000, -18000, 24000];
   const nx = Math.round((x1 - x0) / st) + 1, nn = Math.round((n1 - n0) / st) + 1;
   const pos = new Float32Array(nx * nn * 3), col = new Float32Array(nx * nn * 3), uv = new Float32Array(nx * nn * 2), crop = new Float32Array(nx * nn), c = [0, 0, 0, 0];
   for (let j = 0; j < nn; j++) for (let i = 0; i < nx; i++) {
@@ -578,18 +591,23 @@ function waterRibbon(P, w, foam = () => 0) {
 }
 function buildWater(scene) {
   if (WORLD.mtn) { mtBuildWater(scene); return; }
-  const pts = [];
-  for (let N = 8600; N >= 2402; N -= 25) pts.push([riverX(N), N]);
-  for (let t = 1; t >= 0; t -= 0.04) { const N = lerp(WORLD.lake.N, 2402, t); pts.push([lerp(WORLD.lake.X, riverX(2402), smooth(0, 1, t)), N]); }
-  WORLD.riverPts = pts;
-  const river = new THREE.Mesh(waterRibbon(pts.map(p => ({ X: p[0], N: p[1], y: -3.5 })), 42), MAT.water); river.renderOrder = 1; scene.add(river);
-  // the lake: still water, clear toward its shore
-  const lg = new THREE.CircleGeometry(WORLD.lake.r + 24, 64, 0, TAU);
-  lg.rotateX(-Math.PI / 2); lg.translate(WORLD.lake.X, -3.5, -WORLD.lake.N);
-  const lp = lg.attributes.position, luv = [], le = [], lf = [];
-  for (let i = 0; i < lp.count; i++) { const x = lp.getX(i), z = lp.getZ(i); luv.push(x / 9, -z / 9); le.push(i === 0 ? 0 : 1); lf.push(0); }
-  lg.setAttribute('uv', new THREE.Float32BufferAttribute(luv, 2)); lg.setAttribute('aEdge', new THREE.Float32BufferAttribute(le, 1)); lg.setAttribute('aFoam', new THREE.Float32BufferAttribute(lf, 1));
-  const lake = new THREE.Mesh(lg, MAT.water); lake.renderOrder = 1; scene.add(lake);
+  WORLD.rivers = [];
+  for (const [xAt, nT, L] of [[riverX, 2402, WORLD.lake], [river2X, VW.riverN, VW.lake]]) {
+    const pts = [];
+    for (let N = 8600; N >= nT; N -= 25) pts.push([xAt(N), N]);
+    // into the lake, stopping a little inside its shore so the two water surfaces don't lie doubled
+    for (let t = 1; t >= 0; t -= 0.04) { const N = lerp(L.N, nT, t), X = lerp(L.X, xAt(nT), smooth(0, 1, t)); pts.push([X, N]); if (Math.hypot(X - L.X, N - L.N) < L.r - 6) break; }
+    WORLD.rivers.push({ pts, lake: L });
+    const river = new THREE.Mesh(waterRibbon(pts.map(p => ({ X: p[0], N: p[1], y: -3.5 })), 42), MAT.water); river.renderOrder = 1; scene.add(river);
+    // the lake: still water, clear toward its shore
+    const lg = new THREE.CircleGeometry(L.r + 24, 64, 0, TAU);
+    lg.rotateX(-Math.PI / 2); lg.translate(L.X, -3.5, -L.N);
+    const lp = lg.attributes.position, luv = [], le = [], lf = [];
+    for (let i = 0; i < lp.count; i++) { const x = lp.getX(i), z = lp.getZ(i); luv.push(x / 9, -z / 9); le.push(i === 0 ? 0 : 1); lf.push(0); }
+    lg.setAttribute('uv', new THREE.Float32BufferAttribute(luv, 2)); lg.setAttribute('aEdge', new THREE.Float32BufferAttribute(le, 1)); lg.setAttribute('aFoam', new THREE.Float32BufferAttribute(lf, 1));
+    const lake = new THREE.Mesh(lg, MAT.water); lake.renderOrder = 1; scene.add(lake);
+  }
+  WORLD.riverPts = WORLD.rivers.flatMap(r => r.pts);
 }
 
 /* ---------------- track geometry ---------------- */
@@ -928,7 +946,7 @@ function updateTrackLOD(cam) {
   for (const t of WORLD.tiles) {
     const d = t.c.distanceTo(cp) - t.r; let near = d < 2300;
     if (near && !t.hi) { if (hiBudget-- > 0) tileHi(t, scene); else near = false; }
-    else if (!near && t.hi && WORLD.mtn && d > 3800) tileDrop(t);
+    else if (!near && t.hi && WORLD.lazy && d > 3800) tileDrop(t);
     if (t.hi) t.hi.visible = near; t.lo.visible = !near;
   }
   const tN = LOD.treeNear.value, tF = LOD.treeFar.value;

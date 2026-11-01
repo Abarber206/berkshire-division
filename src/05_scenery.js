@@ -441,7 +441,7 @@ function yardOffice(pl) {
   doorLamp(gb, base, -1.6, 2.95, 2.5);
   keep(pl.X, pl.N, 9);
 }
-function grainElevator(pl) {
+function grainElevator(pl, name = 'FOSTORIA GRAIN CO.') {
   const base = baseM(pl.X, pl.y - 0.3, pl.N, pl.yaw + (pl.lat < 0 ? Math.PI : 0));
   const gb = binAt(pl.X, pl.N);
   for (let i = 0; i < 5; i++) for (let j = 0; j < 2; j++) gb.add('concrete', new THREE.CylinderGeometry(3.4, 3.4, 30, 24), P(base, -12 + i * 6.8, 15, 3.4 + j * 6.8));
@@ -459,8 +459,8 @@ function grainElevator(pl) {
   gb.add('steel', new THREE.BoxGeometry(1.2, 1.2, 14), P(base, 21, 30.98, -2.58, -0.8, 0, 0));
   gb.add('steel', new THREE.CylinderGeometry(0.3, 0.3, 16, 8), P(base, 14, 20, -5.5, Math.PI / 2 - 0.75, 0, 0));
   keep(pl.X, pl.N, 34);
-  const nb = nameBoard('FOSTORIA GRAIN CO.'); SMAT.nbGrain = nb;
-  gb.add('nbGrain', new THREE.PlaneGeometry(8.4, 1.47), P(base, 21, 43.6, 1.79, 0, Math.PI, 0));
+  const nk = 'nbGrain' + name; if (!SMAT[nk]) SMAT[nk] = nameBoard(name);
+  gb.add(nk, new THREE.PlaneGeometry(8.4, 1.47), P(base, 21, 43.6, 1.79, 0, Math.PI, 0));
 }
 /* ---------- the customers on the two industry spurs ----------
    Each is laid out in a frame on its spur: local x along the track, z outward (away from the main), y = 0 at the
@@ -652,9 +652,10 @@ function farmstead(X, N, yaw, r) {
 }
 
 /* -------- bridge (two through-truss Pratt spans) -------- */
-function buildBridge(scene) {
+function buildBridge(scene) { for (const b of ROUTE.bridges || [ROUTE.bridge]) trussBridge(scene, b); }
+function trussBridge(scene, b) {
   // one double-track truss carries both main tracks: track 1 at z = +h2, track 2 at -h2
-  const b = ROUTE.bridge, main = b.line || ROUTE.main, h2 = (ROUTE.spacing || 0) / 2, tracks = h2 ? [h2, -h2] : [0];
+  const main = b.line || ROUTE.main, h2 = (ROUTE.spacing || 0) / 2, tracks = h2 ? [h2, -h2] : [0];
   const c = linePlace(main, b.s, -h2);
   const base = baseM(c.X, c.y, c.N, c.yaw);
   const gb = new GeoBin();
@@ -691,8 +692,8 @@ function buildBridge(scene) {
       const lean = Math.atan2(pw, H + 0.75), px = sOff + s * (span / 2 - pw / 2 - (H / 2 - 0.9) * pw / (H + 0.75));
       const pm = P(base, px, H - 1.1, 0, 0, 0, s * lean);
       gb.add('steel', new THREE.BoxGeometry(0.3, 1.4, 2 * W), pm);
-      const nm = nameBoard(b.name || 'NICKEL PLATE · SANDUSKY RIVER'); SMAT.nbBridge = nm;
-      gb.add('nbBridge', new THREE.PlaneGeometry(4.8, 0.62), pm.clone().multiply(M(s * 0.157, 0, 0, 0, s * Math.PI / 2, 0)));
+      const nk = 'nbBridge' + (b.name || ''); if (!SMAT[nk]) SMAT[nk] = nameBoard(b.name || 'NICKEL PLATE · SANDUSKY RIVER');
+      gb.add(nk, new THREE.PlaneGeometry(4.8, 0.62), pm.clone().multiply(M(s * 0.157, 0, 0, 0, s * Math.PI / 2, 0)));
     }
   }
   // piers & abutments
@@ -735,7 +736,7 @@ function buildBridge(scene) {
   for (const z of [-2.2 - h2, 2.2 + h2]) {
     gb.add('wood', boxT(2 * span, 0.06, 0.66), P(base, 0, -0.2, z));
   }
-  const vis = gb.build({ steel: MAT.bridge, concrete: SMAT.concrete, tie: MAT.tie, wood: SMAT.wood, nbBridge: SMAT.nbBridge, ballast: MAT.ballast });
+  const vis = gb.build({ steel: MAT.bridge, concrete: SMAT.concrete, tie: MAT.tie, wood: SMAT.wood, ['nbBridge' + (b.name || '')]: SMAT['nbBridge' + (b.name || '')], ballast: MAT.ballast });
   scene.add(vis);
   keep(c.X, c.N, 80);
 }
@@ -799,8 +800,8 @@ function xingMast(scene, xg, X, N, face, roadW) {
 }
 function buildRoads(scene) {
   const roads = [];
-  for (const X of WORLD.roadsX) roads.push({ dir: 'N', c: X, a: -3500, b: 8000, w: X === 600 ? 7 : 6, mat: X === 600 ? 'road' : 'gravel' });
-  roads.push({ dir: 'E', c: WORLD.roadN, a: -7800, b: 7800, w: 7.4, mat: 'road' });
+  for (const X of WORLD.roadsX) { const paved = (WORLD.pavedX || []).includes(X); roads.push({ dir: 'N', c: X, a: -3500, b: 8000, w: paved ? 7 : 6, mat: paved ? 'road' : 'gravel' }); }
+  roads.push({ dir: 'E', c: WORLD.roadN, a: Math.min(-7800, INNER.x0), b: 7800, w: 7.4, mat: 'road' });
   // find crossings
   for (const r of roads) {
     r.cross = [];
@@ -1088,6 +1089,11 @@ function buildStations() {
   let sJ = 0; for (const e of lineMain.edges) if (e.a === sw.node) sJ = e.lineS0;
   const tp = linePlace(lineMain, sJ - 60, -11 - ROUTE.spacing); tp.lat = -1; interlockingTower(tp, 'QJ');
   quarry();
+  // out on the extension: the tower at the Van Wert crossovers and the elevator on the Spencerville siding
+  const xv = NET.switches.find(s => s.name === 'Van Wert crossover A');
+  const vt = linePlace(lineMain, lineMain.cuts.find(c => c.node === xv.node).s - 70, 11); vt.lat = 1; interlockingTower(vt, 'VW');
+  const sp = ROUTE.lines['Spencerville Siding'];
+  const ge2 = linePlace(sp, 1500, -24); ge2.lat = -1; grainElevator(ge2, 'SPENCERVILLE ELEVATOR');
 }
 function quarry() {
   const br = ROUTE.branch;
@@ -1183,7 +1189,9 @@ function buildTrees(scene) {
   const autumn = (r) => { const x = r(); if (x < 0.55) return [0.28 + r() * 0.1, 0.42 + r() * 0.12, 0.17 + r() * 0.06]; if (x < 0.8) return [0.72 + r() * 0.15, 0.55 + r() * 0.15, 0.16]; if (x < 0.93) return [0.7 + r() * 0.1, 0.27 + r() * 0.1, 0.12]; return [0.55, 0.4, 0.2]; };
   const r = rng(2024), rw = rng(4202);
   // woodlots
-  for (let i = Math.floor((INNER.x0 + 40000) / FIELD.w); i <= Math.floor((INNER.x1 + 40000) / FIELD.w); i++)
+  // the old map's columns first, then the extension's, so the trees that were there stay where they were
+  const iA = Math.floor((INNER.x0 + 40000) / FIELD.w), iB = Math.floor((INNER.x1 + 40000) / FIELD.w), iO = Math.max(iA, Math.floor((-6000 + 40000) / FIELD.w));
+  for (const i of [...Array(iB - iO + 1).keys()].map(k => iO + k).concat([...Array(iO - iA).keys()].map(k => iA + k)))
     for (let j = Math.floor((INNER.n0 + 40000) / FIELD.h); j <= Math.floor((INNER.n1 + 40000) / FIELD.h); j++) {
       const X0 = i * FIELD.w - 40000, N0 = j * FIELD.h - 40000;
       const f = fieldAt(X0 + 1, N0 + 1);
@@ -1244,9 +1252,14 @@ function buildFarms() {
   SCN.farms = [];
   const r = rng(808);
   const cand = [];
-  for (const X of WORLD.roadsX) for (let N = -1800; N < 6800; N += 520 + r() * 500) cand.push([X + (r() < 0.5 ? -1 : 1) * (28 + r() * 10), N, X]);
+  for (const X of WORLD.roadsX) if (X > -4000) for (let N = -1800; N < 6800; N += 520 + r() * 500) cand.push([X + (r() < 0.5 ? -1 : 1) * (28 + r() * 10), N, X]);
   for (let X = -5600; X < 5600; X += 600 + r() * 500) cand.push([X, WORLD.roadN - 30 - r() * 10, null]);
-  for (const [X, N, rx] of cand) {
+  // the extension's farms come after, on their own stream, so the old map's farms stay as they were
+  const r2 = rng(1808), cand2 = [];
+  for (const X of WORLD.roadsX) if (X <= -4000) for (let N = -1800; N < 6800; N += 520 + r2() * 500) cand2.push([X + (r2() < 0.5 ? -1 : 1) * (28 + r2() * 10), N, X, r2]);
+  for (let X = INNER.x0 + 900; X < -5600; X += 600 + r2() * 500) cand2.push([X, WORLD.roadN - 30 - r2() * 10, null, r2]);
+  for (const c of cand) c.push(r);
+  for (const [X, N, rx, r] of [...cand, ...cand2]) {
     const lat = latticeAt(X, N); if (lat && lat.d < 90) continue;
     if (riverDist(X, N) < 120 || kept(X, N, 30)) continue;
     const f = fieldAt(X, N); if (f.t.n === 'woods') continue;

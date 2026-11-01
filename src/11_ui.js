@@ -298,7 +298,7 @@ function drawNet(g, W, H, cx, cn, sc, opt) {
   }
   // river
   if (opt.river && WORLD.mtn) for (const r of MT.rivers) { g.strokeStyle = 'rgba(70,120,140,0.6)'; g.lineWidth = Math.max(1.5, 2 * r.halfW * sc); g.beginPath(); r.pts.forEach((p, i) => { if (i % 4 && i < r.pts.length - 1) return; const x = tx(p.X), y = ty(p.N); i ? g.lineTo(x, y) : g.moveTo(x, y); }); g.stroke(); }
-  else if (opt.river) { g.strokeStyle = 'rgba(70,120,140,0.55)'; g.lineWidth = Math.max(2, 50 * sc); g.beginPath(); WORLD.riverPts.forEach((p, i) => { const x = tx(p[0]), y = ty(p[1]); i ? g.lineTo(x, y) : g.moveTo(x, y); }); g.stroke(); g.fillStyle = 'rgba(70,120,140,0.55)'; g.beginPath(); g.arc(tx(WORLD.lake.X), ty(WORLD.lake.N), WORLD.lake.r * sc, 0, TAU); g.fill(); }
+  else if (opt.river) for (const rv of WORLD.rivers || []) { g.strokeStyle = 'rgba(70,120,140,0.55)'; g.lineWidth = Math.max(2, 50 * sc); g.beginPath(); rv.pts.forEach((p, i) => { const x = tx(p[0]), y = ty(p[1]); i ? g.lineTo(x, y) : g.moveTo(x, y); }); g.stroke(); g.fillStyle = 'rgba(70,120,140,0.55)'; g.beginPath(); g.arc(tx(rv.lake.X), ty(rv.lake.N), rv.lake.r * sc, 0, TAU); g.fill(); }
   // stations
   if (opt.labels) {
     g.font = `600 ${opt.fs}px "IBM Plex Sans Condensed", sans-serif`; g.textAlign = 'center';
