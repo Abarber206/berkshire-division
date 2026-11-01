@@ -2,7 +2,7 @@
    Game: boot, world loading, main loop, rules, HUD
    ========================================================================== */
 const GAME = {
-  settings: { traffic: 'on', loco: '765', consist: 'passenger', time: 'morning', cycle: 'x30', weather: 'clear', fire: 'auto', units: 1, livery: 'ss', mix: false, finish: 'standard', job: '', custom: { body: 0x2c5f8a, roof: 0x24384a, accent: 0xf0f0ea, letter: 0xf0f0ea, rail: 0xf0f0ea }, number: 4401, coach: 'pullman', coachColor: 0x2a3a2a },
+  settings: { traffic: 'on', loco: '765', consist: 'passenger', time: 'morning', cycle: 'x30', weather: 'clear', fire: 'easy', fireV: 2, units: 1, livery: 'ss', mix: false, finish: 'standard', job: '', custom: { body: 0x2c5f8a, roof: 0x24384a, accent: 0xf0f0ea, letter: 0xf0f0ea, rail: 0xf0f0ea }, number: 4401, coach: 'pullman', coachColor: 0x2a3a2a },
   train: null, running: false, ready: false, stats: { runThrough: 0 },
   events: {}, stopped: 0, lastStation: null, filling: null,
 };
@@ -90,7 +90,7 @@ function resetState() {
   Object.assign(S, { throttle: 0, reverser: 0, brakeH: 0.12, indH: 0.6, sander: false, cocks: true, bell: false, light: SKY.night ? 2 : 1, injector: false, blower: 0.35, stoker: 0.45, whistle: 0,
     v: 0, vw: 0, slip: false, slide: false, slideN: 0, theta: 0, odo: 0, P: 238, Psc: 0, W: 0.62, fire: 0.55, coal: 19958, water: 83280, sand: 1800, MR: 140, ER: 90, pumping: false,
     safety: false, lowWater: false, priming: false, dead: false, derailed: false, paused: false });
-  S.autoFire = GAME.settings.fire === 'auto';
+  applyFireSetting(GAME.settings.fire);
   Object.assign(S, { notch: 0, dyn: 0, dbLoad: 0, DBF: 0, rpm: 300, engineRun: true, crank: 0, load: 0, fuel: 18927, turbo: 0.15, ditch: true, ditchFlash: 0, slipCtl: false, amps: 0 });
   Object.assign(S, { pan: 1, panUp: true, vcb: true, vcbT: 0, kW: 0, kWh: 0, rbMax: 0, blend: 0 });   // a trainset comes with its pantograph up and the breaker in
   if (LOCO_SPEC[GAME.settings.loco].diesel) { S.cocks = false; S.light = SKY.night ? 2 : 2; }
@@ -262,9 +262,12 @@ function applyLiveriesLive() {
   const o = dieselOpts();
   t.units.forEach((m, u) => { const lv = dieselLiveryFor(o, u); applyLivery(m, lv, (o.number || lv.num) + u); });
 }
-const SAVE_KEYS = ['job', 'traffic', 'loco', 'consist', 'time', 'cycle', 'weather', 'fire', 'units', 'livery', 'mix', 'finish', 'custom', 'number', 'coach', 'coachColor'];
+const SAVE_KEYS = ['job', 'traffic', 'loco', 'consist', 'time', 'cycle', 'weather', 'fire', 'fireV', 'units', 'livery', 'mix', 'finish', 'custom', 'number', 'coach', 'coachColor'];
 function saveSettings() { try { const o = {}; for (const k of SAVE_KEYS) o[k] = GAME.settings[k]; localStorage.setItem('bd_settings', JSON.stringify(o)); } catch (e) {} }
-function loadSettings() { try { const o = JSON.parse(localStorage.getItem('bd_settings') || 'null'); if (o) for (const k of SAVE_KEYS) if (o[k] !== undefined) GAME.settings[k] = o[k]; } catch (e) {} if (!LOCO_SPEC[GAME.settings.loco]) GAME.settings.loco = '765'; if (!LIVERIES[GAME.settings.livery]) GAME.settings.livery = 'ss'; if (!DN.starts[GAME.settings.time]) GAME.settings.time = 'morning'; if (!DN.rates[GAME.settings.cycle]) GAME.settings.cycle = 'x30'; if (!COACH_PAINT[GAME.settings.coach]) GAME.settings.coach = 'pullman'; }
+function loadSettings() { try { const o = JSON.parse(localStorage.getItem('bd_settings') || 'null'); if (o) for (const k of SAVE_KEYS) if (o[k] !== undefined) GAME.settings[k] = o[k]; } catch (e) {}
+  // easy steam came in as the default after 'auto' had been saved by everyone: move them up to it once
+  if (GAME.settings.fireV !== 2) { if (GAME.settings.fire === 'auto') GAME.settings.fire = 'easy'; GAME.settings.fireV = 2; }
+  if (!['easy', 'auto', 'hand'].includes(GAME.settings.fire)) GAME.settings.fire = 'easy'; if (!LOCO_SPEC[GAME.settings.loco]) GAME.settings.loco = '765'; if (!LIVERIES[GAME.settings.livery]) GAME.settings.livery = 'ss'; if (!DN.starts[GAME.settings.time]) GAME.settings.time = 'morning'; if (!DN.rates[GAME.settings.cycle]) GAME.settings.cycle = 'x30'; if (!COACH_PAINT[GAME.settings.coach]) GAME.settings.coach = 'pullman'; }
 GAME.needNewTrain = function () { const t = GAME.train, g = GAME.settings, j = JOB.wanted(); return !t || MP.needSpawn || t.locoKey !== g.loco || (!t.elec && t.consistKey !== JOB.consist()) || (j ? j.id : '') !== JOB.activeId() || (t.diesel && !t.elec && t.nUnits !== (+g.units || 1)) || (!t.diesel && (t.trim || '') !== trimWanted()); };
 function buildWhistleIfReady() { if (!AU.on) return; buildWhistle(WHISTLES[LOCO_SPEC[GAME.settings.loco].whistle]); }
 
@@ -319,7 +322,7 @@ function buildMenu() {
   segButtons('optTime', DN.starts, 'time', k => { if (GAME.ready) applyLook(k, null); saveSettings(); });
   segButtons('optCycle', DN.rates, 'cycle', () => saveSettings());
   segButtons('optWeather', WEATHER, 'weather', k => { if (GAME.ready) { applyLook(null, k); FX.snow.visible = SKY.snow; } });
-  segButtons('optFire', { auto: { name: 'Fireman', sub: 'Stoker & water handled' }, hand: { name: 'Hand fired', sub: 'You run the boiler' } }, 'fire', k => { S.autoFire = k === 'auto'; GAME.refreshKeys(); saveSettings(); });
+  segButtons('optFire', { easy: { name: 'Easy', sub: 'Fireman, and the reverser hooks up for you' }, auto: { name: 'Fireman', sub: 'Stoker & water handled, you work the reverser' }, hand: { name: 'Hand fired', sub: 'You run the boiler' } }, 'fire', k => { applyFireSetting(k); GAME.refreshKeys(); saveSettings(); });
   segButtons('optTraffic', { on: { name: 'Timetable', sub: ROUTE_KEY === 'laurel' ? 'No. 21, No. 22 and coal trains on the mountain' : 'No. 5, No. 12 and freights on the road' }, off: { name: 'Clear road', sub: 'Just you and the signals' } }, 'traffic', () => { if (GAME.ready && GAME.train) AI.setup(); saveSettings(); });
   specGrid();
   jobSetup();
@@ -367,7 +370,7 @@ GAME.start = function () {
     else if (GAME.running) toast(`New train made up on ${WORLD.custom || WORLD.mtn ? GAME.spawnName : 'Yard 2'}.`, 'good');
     GAME.intro();
   }
-  GAME.running = true; S.paused = false; S.autoFire = GAME.settings.fire === 'auto';
+  GAME.running = true; S.paused = false; applyFireSetting(GAME.settings.fire);
   $('menu').hidden = true; $('hud').hidden = false;
   FX.snow.visible = SKY.snow;
   if (SKY.snow) { const a = FX.snow.geometry.attributes.position.array; for (let i = 0; i < a.length; i += 3) { a[i] += camera.position.x; a[i + 1] += camera.position.y - 20; a[i + 2] += camera.position.z; } }
@@ -446,7 +449,9 @@ GAME.rerail = function () {
   S.ER = 90;
 };
 GAME.event = function (k) {
-  if (k === 'slip') toast('Drivers slipping! Ease the throttle or use sand.', 'warn', 2600, 'slip');
+  if (k === 'slip') toast(S.railP > 0.3 ? 'Drivers slipping on a greasy rail! Sand (X) or ease the throttle.' : 'Drivers slipping! Ease the throttle or use sand (X).', 'warn', 2600, 'slip');
+  else if (k === 'cocksShut') toast('Rolling: cylinder cocks shut.', '', 2200, 'cocks');
+  else if (k === 'lowSteam') toast('Steam pressure falling: hook the reverser up (↓) toward 25 to 35% cutoff now you are rolling, or pick Easy firing.', 'warn', 6000, 'lowSteam');
   else if (k === 'slipCtl') toast('Wheel slip control is trimming power. Sand helps on a wet rail.', 'warn', 3000, 'slipCtl');
   else if (k === 'started') { toast('Prime mover running.', 'good', 2200, 'start'); GAME.refreshKeys(); }
   else if (k === 'noFuel') { toast('Out of fuel. The engine has shut down.', 'bad', 4000, 'fuel'); GAME.refreshKeys(); }
@@ -456,7 +461,7 @@ GAME.event = function (k) {
 };
 GAME.controlTouched = function () { };
 GAME.manualFire = function (what) {
-  if (S.autoFire) { S.autoFire = false; GAME.settings.fire = 'hand'; toast('You have the fire now: watch the pressure and the water glass.', 'warn', 4500); const b = $('optFire_hand'); if (b) b.click(); }
+  if (S.autoFire) { applyFireSetting('hand'); GAME.settings.fire = 'hand'; toast('You have the fire now: watch the pressure and the water glass.', 'warn', 4500); const b = $('optFire_hand'); if (b) b.click(); }
 };
 GAME.isDiesel = () => !!(GAME.train && GAME.train.diesel);
 GAME.refreshKeys = function () {
