@@ -203,6 +203,7 @@ function crewDrive(T, cr, h) {
   S.reverser = dir * (power ? 1 : Math.max(0.5, Math.abs(S.reverser)));
   if (T.elec) S.panUp = true;
   if (T.diesel && !S.engineRun && S.crank <= 0 && S.fuel > 0) S.crank = 6;   // the prime mover was shut down: start it
+  if (T.turb && S.engineRun && !S.tOn && S.tStart <= 0 && S.oil > 0 && S.tspd <= GTE.cool + 0.02) S.tStart = GTE.startT;   // and the gas turbine
   S.bailoff = false; S.whistle = 0;
   // standing at the stop, or waiting for the way to clear
   if (sv < 0.1 && sv > -0.1 && (vA < 1.2 || stopD < 3)) {
@@ -288,6 +289,7 @@ FLEET.blocked = function () {
 FLEET.name = function (T) {
   const sp = LOCO_SPEC[T.locoKey] || {};
   if (sp.set) return HSR[sp.set].name;
+  if (T.turb) return `UP ${(T.loco && T.loco.number) || 18} gas turbine`;
   if (T.diesel) return `${T.nUnits > 1 ? T.nUnits + ' × ' : ''}${sp.short || 'Diesel'} ${(T.loco && T.loco.number) || sp.num || ''}`.trim();
   return `${sp.short} ${T.locoKey}`;
 };
@@ -315,6 +317,7 @@ FLEET.status = function (T) {
 FLEET.supplies = function (T) {
   const st = T === GAME.train ? S : T.parkS; if (!st) return '';
   if (T.elec) return st.panUp ? 'Pantograph up' : 'Pantograph down';
+  if (T.turb) return `${Math.round((st.oil || 0) / 3.785).toLocaleString()} gal Bunker C · turbine ${st.tOn ? 'running' : 'off'}`;
   if (T.diesel) return `${Math.round(st.fuel / 3.785).toLocaleString()} gal fuel`;
   return `${Math.round(st.P)} psi · ${Math.round(st.water / 3.785 / 100) / 10}k gal · ${(st.coal / 907.2).toFixed(1)} t coal`;
 };

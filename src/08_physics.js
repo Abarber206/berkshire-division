@@ -11,6 +11,7 @@ const S = {
   TE: 0, use: 0, gen: 0, cut: 0, mu: 0.27, grade: 0, limit: 70,
   dead: false, derailed: false, paused: false, time: 0, warnTimer: 0,
   notch: 0, dyn: 0, dbLoad: 0, DBF: 0, rpm: 300, engineRun: true, crank: 0, load: 0, fuel: 18927, turbo: 0.15, ditch: true, ditchFlash: 0, slipCtl: false, amps: 0,
+  tOn: false, tStart: 0, tspd: 0, oil: 0, egt: 90,
   pan: 1, panUp: true, vcb: true, vcbT: 0, kW: 0, kWh: 0, rbMax: 0, blend: 0,
 };
 const ENV = { mu: 0.27, wind: new THREE.Vector3(-1.2, 0, 0.6) };
@@ -43,6 +44,7 @@ function physicsStep(dt, train) {
   let TEcmd = 0;
   const nU = DSL ? train.nUnits : 1;
   if (train.elec) TEcmd = electricPower(dt, spec);
+  else if (train.turb) TEcmd = turbinePower(dt, spec);
   else if (DSL) TEcmd = dieselPower(dt) * nU;
   else {
   /* ----------------- boiler & front end ----------------- */
@@ -154,7 +156,8 @@ function physicsStep(dt, train) {
   let Frail;
   if (DSL) {
     // AC traction with creep control: wheel slip is caught and power trimmed instead of spinning
-    const muD = ENV.mu * 1.45 + (S.sander && S.sand > 0 ? 0.06 : 0);
+    // (the gas turbine's DC motors only have a wheel slip relay: a wet or greasy rail costs it the most)
+    const muD = train.turb ? ENV.mu * (1.04 - 0.2 * S.railP) + (S.sander && S.sand > 0 ? 0.06 : 0) : ENV.mu * 1.45 + (S.sander && S.sand > 0 ? 0.06 : 0);
     const lim = muD * Wd * 0.97;
     S.slipCtl = Math.abs(TEcmd) > lim;
     Frail = clamp(TEcmd, -lim, lim);
@@ -188,7 +191,7 @@ function physicsStep(dt, train) {
   let gradeLead = 0, limit = 99;
   for (let i = 0; i < V.length; i++) {
     const v = V[i];
-    const mass = v.kind === 'tender' ? train.tenderEmpty + S.water + S.coal : v.mass;
+    const mass = v.kind === 'tender' ? (train.turb ? turbineTenderMass(train) : train.tenderEmpty + S.water + S.coal) : v.mass;
     M += mass;
     const f = v.fp[0].F && v.fp[1].F ? _v1.addVectors(v.fp[0].F.f, v.fp[1].F.f).multiplyScalar(0.5) : _v1.set(1, 0, 0);
     Fgrade -= mass * 9.81 * f.y;

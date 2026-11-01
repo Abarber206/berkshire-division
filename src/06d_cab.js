@@ -7,10 +7,11 @@
 
 /* ---------------- controls shared by the HUD levers and the cab ----------------
    t is lever travel: 0 at the top of a HUD lever, 1 at the bottom. */
+const nN = () => (GAME.notches ? GAME.notches() : 8);   // running notches on the throttle: 8, or the gas turbine's 20
 const CTL = {
-  throttle: { get: () => S.throttle, set: v => { S.throttle = v; }, fromT: t => GAME.isDiesel() ? Math.round((1 - t) * 8) / 8 : 1 - t, toT: v => 1 - v,
-    label: v => GAME.isDiesel() ? (Math.round(v * 8) ? (GAME.train && GAME.train.elec ? 'P' : 'N') + Math.round(v * 8) : (GAME.train && GAME.train.elec ? 'OFF' : 'IDLE')) : Math.round(v * 100) + '%',
-    ticks: () => GAME.isDiesel() ? [...Array(9)].map((_, i) => [i / 8, '']) : [[0, ''], [0.25, ''], [0.5, ''], [0.75, ''], [1, '']] },
+  throttle: { get: () => S.throttle, set: v => { S.throttle = v; }, fromT: t => GAME.isDiesel() ? Math.round((1 - t) * nN()) / nN() : 1 - t, toT: v => 1 - v,
+    label: v => GAME.isDiesel() ? (Math.round(v * nN()) ? (GAME.train && GAME.train.elec ? 'P' : 'N') + Math.round(v * nN()) : (GAME.train && GAME.train.elec ? 'OFF' : 'IDLE')) : Math.round(v * 100) + '%',
+    ticks: () => GAME.isDiesel() ? [...Array(nN() + 1)].map((_, i) => [i / nN(), '']) : [[0, ''], [0.25, ''], [0.5, ''], [0.75, ''], [1, '']] },
   reverser: { get: () => S.reverser, set: v => { S.reverser = v; },
     fromT: t => { if (GAME.isDiesel()) return t < 0.34 ? 1 : (t > 0.66 ? -1 : 0); let r = 1 - 2 * t; if (Math.abs(r) < 0.06) r = 0; return Math.round(r * 17) / 17; }, toT: v => (1 - v) / 2,
     label: v => GAME.isDiesel() ? (v > 0.5 ? 'FWD' : v < -0.5 ? 'REV' : 'N') : (v === 0 ? 'N' : (v > 0 ? 'F ' : 'R ') + Math.round(Math.abs(v) * 85) + '%'), ticks: [[0, 'F'], [0.5, 'N'], [1, 'R']] },
@@ -62,7 +63,11 @@ const DIALS = {
   chest: { max: 300, major: 50, minor: 10, label: 'STEAM CHEST' },
   mreq: { max: 160, major: 20, minor: 5, label: 'MAIN RES', label2: 'EQUAL RES', two: true },
   bpbc: { max: 160, major: 20, minor: 5, label: 'BRAKE PIPE', label2: 'BRAKE CYL', two: true },
-  speed: { max: 100, major: 10, minor: 2, label: 'MPH', small: true },
+  speed: { max: 100, major: 10, minor: 2, label: 'MPH', small: true, unit: '' },
+  // the gas turbine's panel (06j_turbine.js)
+  load: { max: 1500, major: 300, minor: 50, label: 'LOAD', small: true, unit: 'AMPERES', red: 1250 },
+  tspd: { max: 120, major: 20, minor: 5, label: 'TURBINE', small: true, unit: 'PER CENT SPEED', red: 104 },
+  egt: { max: 1000, major: 200, minor: 50, label: 'EXHAUST', small: true, unit: 'DEG F', red: 850 },
 };
 function dialMaterial(kind) {
   const key = 'dial_' + kind; if (RMAT[key]) return RMAT[key];
@@ -80,7 +85,7 @@ function dialMaterial(kind) {
     g.font = '600 15px "IBM Plex Sans Condensed", Arial, sans-serif'; g.textAlign = 'center';
     if (o.two) { g.fillStyle = '#b8261c'; g.fillText(o.label, c, c + r * 0.36); g.fillStyle = '#1b1b1b'; g.fillText(o.label2, c, c + r * 0.52); }
     else { g.fillStyle = '#3a3a3a'; g.fillText(o.label, c, c + r * 0.42); }
-    g.fillStyle = '#5b5b5b'; g.font = '600 12px "IBM Plex Sans Condensed", Arial, sans-serif'; g.fillText(kind === 'speed' ? '' : 'LBS PER SQ IN', c, c - r * 0.3);
+    g.fillStyle = '#5b5b5b'; g.font = '600 12px "IBM Plex Sans Condensed", Arial, sans-serif'; g.fillText(o.unit !== undefined ? o.unit : 'LBS PER SQ IN', c, c - r * 0.3);
   });
   const m = new THREE.MeshStandardMaterial({ map, metalness: 0, roughness: 0.45, emissive: 0xffffff, emissiveMap: map, emissiveIntensity: 0 });
   CAB.lamps.push(m);

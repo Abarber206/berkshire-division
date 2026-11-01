@@ -555,5 +555,43 @@
    0.08,
    1.8
   ]
+ },
+ {
+  "name": "gt_whine",
+  "kind": "bed",
+  "src": "turbine/jet-planes-starting-pordic.flac",
+  "start": 46,
+  "end": 68,
+  "db": -18,
+  "hp": 1700,
+  "lp": 9000
+ },
+ {
+  "name": "gt_roar",
+  "kind": "bed",
+  "src": "turbine/large-air-turbine-kaunas.flac",
+  "start": 8,
+  "end": 50,
+  "db": -16,
+  "hp": 40
+ },
+ {
+  "name": "wh_s5t",
+  "kind": "loop",
+  "src": "horn/commons-leslie-s5t.ogg",
+  "start": 13.2,
+  "end": 15.6,
+  "len": 2.0,
+  "db": -14,
+  "hp": 120
+ },
+ {
+  "name": "wh_s5t_on",
+  "kind": "shot",
+  "src": "horn/commons-leslie-s5t.ogg",
+  "start": 10.25,
+  "end": 10.95,
+  "db": -14,
+  "hp": 120
  }
 ]

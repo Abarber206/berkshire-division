@@ -342,6 +342,7 @@ SND.init = function () {
     blower: new Bed('blower', L), safety: new Bed('safety', L, { seg: [1.4, 2.8], xf: 0.5 }), injector: new Bed('injector', L),
     cocks: new Bed('cocks', L, { seg: [1, 2], xf: 0.4 }), fire: new Bed('fire', L), bpx: new Bed('bpx', L, { seg: [1, 2], xf: 0.4 }),
     turbo: new Bed('turbo', L), dyn: new Bed('dyn', L), comp: new Bed('comp', L), motor: new Bed('motor', L),
+    gtWhine: new Bed('gt_whine', L, { seg: [1.4, 2.8], xf: 0.6 }), gtRoar: new Bed('gt_roar', L, { seg: [2, 4], xf: 0.9 }),
     roll: new Bed('roll', W, { seg: [2, 4], xf: 0.9 }), flange: new Bed('flange', W, { seg: [1.2, 2.6], xf: 0.5, vary: 0.05 }), squeal: new Bed('squeal', W, { seg: [1, 2], xf: 0.4, vary: 0.04 }),
     wind: new Bed('wind', A, { seg: [3, 6], xf: 1.2 }), crickets: new Bed('crickets', A, { seg: [6, 11], xf: 1.8 }), birds: new Bed('birds', A, { seg: [6, 11], xf: 1.8 }), night: new Bed('night', A, { seg: [6, 11], xf: 1.8 }),
     dawn: new Bed('dawn', A, { seg: [6, 11], xf: 1.8 }), frogs: new Bed('frogs', A, { seg: [6, 11], xf: 1.8 }),
@@ -387,6 +388,7 @@ function soundMix(dt, T, fx, tv) {
   duo(Vv.roll, AU.roar, 0.32 * Math.min(1, v / 22), Math.min(1, v / 18) ** 1.2 * (inCab ? 0.7 : 1), clamp(0.55 + v / 30, 0.6, 1.6), 0.2);
   updateDieselAudio(DSL && !T.elec, inCab, T.nUnits || 1);
   updateElectricAudio(T, inCab);
+  turbineRec(T, inCab);
   // brake pipe venting at the brake valve, heard in and around the cab
   const b0 = T.lead.brake, vent = b0.dBP < -0.3 ? Math.min(1, -b0.dBP * 0.12) : 0;
   duo(Vv.bpx, AU.bpExhaust, Math.min(0.5, vent * 0.5), vent * (inCab ? 0.9 : 0.5), 1, 0.05);
@@ -410,7 +412,7 @@ function soundMix(dt, T, fx, tv) {
     for (const x of T.vehicles) {
       const dv = x.pos.distanceTo(cp); if (dv > 110 && !(inCab && x.kind === 'loco')) continue;
       const g = Math.min(1, v / 7) / (1 + Math.pow((inCab ? Math.max(4, dv) : dv) / 13, 1.4)) * (inCab ? 0.7 : 1);
-      const pts = (x.kind === 'loco' || x.kind === 'loco2') ? (DSL ? [[x.fp[0], x.emu ? 2 : 3, x.emu ? x.model.wb : DG.axle], [x.fp[1], x.emu ? 2 : 3, x.emu ? x.model.wb : DG.axle]] : [[x.leadPt, 1, 0], [x.fp[0], 4, 1.855]]) : x.tp.map((p, i) => [p, x.trucks[i].type === 'four' ? 2 : 3, x.trucks[i].sp || (x.trucks[i].type === 'four' ? 1.73 : 1.676)]);
+      const pts = (x.kind === 'loco' || x.kind === 'loco2') ? (DSL ? [[x.fp[0], x.emu ? 2 : 3, x.model.wb || DG.axle], [x.fp[1], x.emu ? 2 : 3, x.model.wb || DG.axle]] : [[x.leadPt, 1, 0], [x.fp[0], 4, 1.855]]) : x.tp.map((p, i) => [p, x.trucks[i].type === 'four' ? 2 : 3, x.trucks[i].sp || (x.trucks[i].type === 'four' ? 1.73 : 1.676)]);
       for (const [p, axles, sp] of pts) {
         const j = Math.floor(p.tp.s / 11.89), prev = mem.get(p);
         if (prev && prev.e === p.tp.e && prev.j !== j) for (let a = 0; a < axles; a++) sndJoint(g * (a === 0 ? 1 : 0.8), a * sp / v, inCab ? null : x.pos, v);
@@ -530,8 +532,9 @@ function dzRate(D, d, rpm) {
    each sped up or slowed to match it, so notching up runs smoothly through them */
 function dieselRec(on, inCab, units) {
   const D = SND.dz; if (!D.length || !D[0].bed.ok) return false;
-  const Vv = SND.v, rpm = S.rpm, running = on && rpm > 20;
-  const k = 1 + 0.28 * (units - 1), cab = inCab ? 0.6 : 1;
+  const Vv = SND.v, rpm = S.rpm, running = on && rpm > 20, turb = GAME.isTurbine && GAME.isTurbine();
+  // the gas turbine's 850 hp auxiliary diesel is one small engine inside the cab unit, under the turbine's noise
+  const k = turb ? 0.4 : 1 + 0.28 * (units - 1), cab = inCab ? 0.6 : 1;
   let lo = 0; while (lo < D.length - 2 && rpm > D[lo + 1].rpm) lo++;
   const hi = Math.min(D.length - 1, lo + 1), w = hi === lo ? 0 : clamp((rpm - D[lo].rpm) / (D[hi].rpm - D[lo].rpm), 0, 1);
   const lvl = running ? (0.55 + 0.45 * S.load) * k * cab * Math.min(1, rpm / 250) : 0;
@@ -549,6 +552,18 @@ function dieselRec(on, inCab, units) {
   if (SND.wasPumping && !pumping && on) SND.shot('purge', AU.loco, { gain: (SND_GAIN.purge || 1) * cab, delay: 0.4 });
   SND.wasPumping = pumping;
   return true;
+}
+
+/* The gas turbine: the compressor's whine rising and falling with the shaft speed (a jet engine spooling, its
+   whine tones match a turbine's), and the roar of the exhaust and the air rushing in, which grows with the fuel
+   burnt. Both come from the B unit, so in the cab they sound from behind and muffled. Cranking, the whine winds
+   up slowly from a low growl; shut down it winds away to the cool-down crank. */
+function turbineRec(T, inCab) {
+  const Vv = SND.v, on = !!T.turb;
+  const cab = inCab ? 0.45 : 1, tsp = on ? S.tspd : 0, lit = on && (S.tOn || (S.tStart > 0 && tsp >= GTE.lite));
+  const burn = lit ? 0.3 + 0.7 * clamp(Math.abs(S.TE * S.v) / GTP.P, 0, 1) : 0;
+  duo(Vv.gtWhine, null, 0, on ? smooth(0.03, 0.35, tsp) * (0.45 + 0.55 * tsp) * cab : 0, clamp(0.3 + 0.7 * tsp, 0.3, 1.05), 0.25);
+  duo(Vv.gtRoar, null, 0, lit ? (0.35 + 0.65 * burn) * cab * smooth(GTE.lite, GTE.idle, tsp) : 0, clamp(0.8 + 0.25 * tsp + 0.1 * burn, 0.8, 1.2), 0.4);
 }
 
 /* one exhaust beat from the recorded takes: four to a turn of the drivers, each

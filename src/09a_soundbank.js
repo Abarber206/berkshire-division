@@ -40,9 +40,13 @@ const SND_FILES = {
   rain_lt: ['rain_lt_0.mp3'],
   rain_hvy: ['rain_hvy_0.mp3'],
   thunder: ['thunder_0.mp3', 'thunder_1.mp3', 'thunder_2.mp3', 'thunder_3.mp3', 'thunder_4.mp3', 'thunder_5.mp3', 'thunder_6.mp3'],
+  gt_whine: ['gt_whine_0.mp3'],
+  gt_roar: ['gt_roar_0.mp3'],
+  wh_s5t: ['wh_s5t_0.wav'],
+  wh_s5t_on: ['wh_s5t_on_0.mp3'],
 };
 // end SND_FILES (written by audio/tools/prepare.py)
-const SND_GAIN = { chuff: 1, chuff_hard: 0.9, fire: 0.6, comp: 0.5, purge: 0.6, dump: 0.8, squeal: 0.5, bell: 0.8, crickets: 0.45, dawn: 0.5, frogs: 0.3, joint: 0.9, roll: 0.7, flange: 0.35, wind: 0.8, birds: 0.5, night: 0.5, blower: 0.5, safety: 0.9, pump: 0.6, cocks: 0.6, bpx: 0.7, injector: 0.5, dz: 1, wh_deep6: 1, wh_chime6: 1, wh_k5: 1, rain_lt: 0.7, rain: 0.65, rain_hvy: 0.6, thunder: 1 };
+const SND_GAIN = { gt_whine: 0.55, gt_roar: 0.8, chuff: 1, chuff_hard: 0.9, fire: 0.6, comp: 0.5, purge: 0.6, dump: 0.8, squeal: 0.5, bell: 0.8, crickets: 0.45, dawn: 0.5, frogs: 0.3, joint: 0.9, roll: 0.7, flange: 0.35, wind: 0.8, birds: 0.5, night: 0.5, blower: 0.5, safety: 0.9, pump: 0.6, cocks: 0.6, bpx: 0.7, injector: 0.5, dz: 1, wh_deep6: 1, wh_chime6: 1, wh_k5: 1, rain_lt: 0.7, rain: 0.65, rain_hvy: 0.6, thunder: 1 };
 // idle (a freight engine in Houston), mid throttle (a CSX freight at a crawl) and full throttle
 // (a UP freight drawing near); notching up crossfades between them (see dieselRec)
 const SND_DZ = [{ rpm: 300 }, { rpm: 650, load: 0.6 }, { rpm: 1050, load: 1 }];
@@ -55,4 +59,5 @@ const WHISTLE_REC = {
   nkp6: { quill: 0.05, attack: 0.05, release: 0.12, on: 1.2, take: 'deep6', rate: 0.93 },
   chime6: { quill: 0.05, attack: 0.05, release: 0.12, on: 1.2, xf: 0.03 },
   k5: { quill: 0, attack: 0.02, release: 0.08, on: 1.2 },
+  s5t: { quill: 0, attack: 0.03, release: 0.1, on: 0.7 },   // Leslie S-5T-R, the gas turbine's horn
 };

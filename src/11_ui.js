@@ -171,9 +171,9 @@ function setupButtons() {
   tog('btnBell', () => { S.bell = !S.bell; });
   tog('btnClass', () => { S.classLamps = !S.classLamps; });
   tog('btnSand', () => { S.sander = !S.sander; });
-  tog('btnCocks', () => { if (GAME.isDiesel()) S.ditch = !S.ditch; else S.cocks = !S.cocks; });
+  tog('btnCocks', () => { if (GAME.isTurbine()) turbineSwitch(); else if (GAME.isDiesel()) S.ditch = !S.ditch; else S.cocks = !S.cocks; });
   tog('btnLight', () => { S.light = (S.light + 1) % 3; });
-  tog('btnInj', () => { if (GAME.train && GAME.train.elec) { S.panUp = !S.panUp; toast(S.panUp ? 'Raising the pantograph…' : 'Pantograph down: main breaker open.', S.panUp ? '' : 'warn', 2200, 'eng'); } else if (GAME.isDiesel()) { if (S.engineRun) { S.engineRun = false; toast('Engine shut down.', 'warn', 2200, 'eng'); } else if (S.crank <= 0 && S.fuel > 0) { S.crank = 6.5; toast('Cranking the prime mover…', '', 2200, 'eng'); } } else { GAME.manualFire('injector'); S.injector = !S.injector; } });
+  tog('btnInj', () => { if (GAME.train && GAME.train.elec) { S.panUp = !S.panUp; toast(S.panUp ? 'Raising the pantograph…' : 'Pantograph down: main breaker open.', S.panUp ? '' : 'warn', 2200, 'eng'); } else if (GAME.isDiesel()) { if (S.engineRun) { S.engineRun = false; toast(GAME.isTurbine() ? 'Auxiliary diesel shut down: no dynamic brake, and the turbine cannot be started.' : 'Engine shut down.', 'warn', 2200, 'eng'); } else if (S.crank <= 0 && S.fuel > 0) { S.crank = 6.5; toast(GAME.isTurbine() ? 'Cranking the auxiliary diesel…' : 'Cranking the prime mover…', '', 2200, 'eng'); } } else { GAME.manualFire('injector'); S.injector = !S.injector; } });
   tog('btnFire', () => { GAME.manualFire('stoker'); const steps = [0, 0.25, 0.5, 0.75, 1]; let i = steps.findIndex(s => s > S.stoker + 0.05); S.stoker = i < 0 ? 0 : steps[i]; });
   tog('btnBlower', () => { GAME.manualFire('blower'); S.blower = S.blower > 0.3 ? 0 : 0.65; });
   $('gaugeWrap').addEventListener('click', () => { const g = $('gaugeWrap'); g.classList.toggle('min'); try { localStorage.setItem('bd_gmin', g.classList.contains('min') ? '1' : ''); } catch (e) {} });
@@ -200,8 +200,8 @@ function setupButtons() {
     if (e.code === 'Enter' || e.code === 'NumpadEnter') { WALK.leaveCab(); return; }
     keys[e.code] = true;
     switch (e.code) {
-      case 'KeyW': S.throttle = GAME.isDiesel() ? clamp(Math.round(S.throttle * 8 + 1) / 8, 0, 1) : clamp(S.throttle + 0.04, 0, 1); break;
-      case 'KeyS': S.throttle = GAME.isDiesel() ? clamp(Math.round(S.throttle * 8 - 1) / 8, 0, 1) : clamp(S.throttle - 0.06, 0, 1); break;
+      case 'KeyW': S.throttle = GAME.isDiesel() ? clamp(Math.round(S.throttle * GAME.notches() + 1) / GAME.notches(), 0, 1) : clamp(S.throttle + 0.04, 0, 1); break;
+      case 'KeyS': S.throttle = GAME.isDiesel() ? clamp(Math.round(S.throttle * GAME.notches() - 1) / GAME.notches(), 0, 1) : clamp(S.throttle - 0.06, 0, 1); break;
       case 'KeyD': if (GAME.isDiesel()) S.dyn = clamp(S.dyn < 0.06 ? 0.06 : S.dyn + 0.1, 0, 1); break;
       case 'KeyA': if (GAME.isDiesel()) S.dyn = S.dyn <= 0.07 ? 0 : clamp(S.dyn - 0.1, 0.06, 1); break;
       case 'ArrowUp': S.reverser = GAME.isDiesel() ? clamp(Math.round(S.reverser) + 1, -1, 1) : clamp(Math.round((S.reverser + 1 / 17) * 17) / 17, -1, 1); e.preventDefault(); break;
@@ -214,7 +214,7 @@ function setupButtons() {
       case 'KeyB': S.bell = !S.bell; break;
       case 'KeyJ': if (!GAME.isDiesel() && !(GAME.train && GAME.train.elec)) S.classLamps = !S.classLamps; break;
       case 'KeyX': S.sander = !S.sander; break;
-      case 'KeyK': if (GAME.isDiesel()) S.ditch = !S.ditch; else S.cocks = !S.cocks; break;
+      case 'KeyK': if (GAME.isTurbine()) turbineSwitch(); else if (GAME.isDiesel()) S.ditch = !S.ditch; else S.cocks = !S.cocks; break;
       case 'KeyH': S.light = (S.light + 1) % 3; break;
       case 'KeyI': $('btnInj').click(); break;
       case 'KeyF': if (GAME.isDiesel()) break; GAME.manualFire('stoker'); S.stoker = clamp(S.stoker + 0.25, 0, 1.0001) > 1 ? 0 : S.stoker + 0.25; break;
@@ -261,6 +261,7 @@ function drawGauges() {
   // the end car farthest from the engine, which may be ahead of it when shoving
   const lastBP = b ? (T.li > b.length - 1 - T.li ? b[0] : b[b.length - 1]).brake.BP : 90;
   if (T && T.elec) { drawElectricGauges(g, dial, b, lastBP); return; }
+  if (GAME.isTurbine()) { drawTurbineGauges(g, dial, b, lastBP); return; }
   if (GAME.isDiesel()) { drawDieselGauges(g, dial, b, lastBP); return; }
   dial(108, 112, 96, 300, 'BOILER PSI', [[S.P, HT.g.needle]], [245, 300], 50, 10);
   g.font = '600 18px "IBM Plex Mono", monospace'; g.fillStyle = S.safety ? '#ee4b3d' : HT.g.acc; g.textAlign = 'center'; g.fillText(S.safety ? 'POPPING' : 'CHEST ' + Math.round(S.Psc), 108, 224);
@@ -472,6 +473,38 @@ function drawDieselGauges(g, dial, b, lastBP) {
   g.fillStyle = HT.g.txt; g.fillText(S.notch ? 'N' + S.notch : 'IDLE', 604, 118); g.fillStyle = HT.g.dim; g.fillText('notch', 604, 138);
   g.fillStyle = S.dyn > 0.06 ? '#f2b33d' : HT.g.txt; g.fillText(S.dyn > 0.06 ? Math.round(S.dbLoad * 100) + '%' : 'OFF', 604, 176); g.fillStyle = HT.g.dim; g.fillText('dyn brk', 604, 196);
   g.fillStyle = S.sander ? HT.g.acc : HT.g.dim; g.fillText(S.sander ? 'SAND ON' : 'SAND', 604, 222);
+}
+
+/* Union Pacific gas turbine: effort, air, the turbine's speed and exhaust temperature, Bunker C in the tender */
+function drawTurbineGauges(g, dial, b, lastBP) {
+  const te = Math.abs(S.TE) / LBF / 1000, db = S.DBF * 2 / LBF / 1000;
+  dial(108, 112, 96, 250, 'TE · DB  klbf', [[te, HT.g.needle], [db, HT.g.needle2]], [212, 250], 50, 10);
+  g.font = '600 18px "IBM Plex Mono", monospace'; g.textAlign = 'center';
+  g.fillStyle = S.slipCtl ? '#ee4b3d' : HT.g.acc; g.fillText(S.slipCtl ? 'WHEEL SLIP' : (S.notch ? 'N' + S.notch : (S.dyn > 0.06 ? 'DYN BRAKE' : 'IDLE')) + ' · ' + Math.round(S.tspd * GTE.rpm) + ' rpm', 108, 224);
+  dial(296, 86, 70, 160, 'MR · EQ', [[S.MR, HT.g.needle2], [S.ER, HT.g.needle]], null, 40, 10);
+  dial(458, 86, 70, 160, 'BP · BC', [[b ? GAME.train.lead.brake.BP : 90, HT.g.needle], [S.BCloco || 0, HT.g.needle2]], null, 40, 10);
+  g.font = '600 17px "IBM Plex Mono", monospace'; g.fillStyle = HT.g.dim;
+  g.fillText('LOAD ' + Math.round(S.amps) + ' A', 296, 186); g.fillText('REAR ' + Math.round(lastBP), 458, 186);
+  g.fillStyle = S.egt > GTE.egtMax ? '#ee4b3d' : HT.g.dim; g.fillText('EXH ' + Math.round(S.egt) + '°F', 296, 212);
+  const st = turbineState();
+  g.fillStyle = st === 'running' ? '#52d483' : (S.tStart > 0 ? '#f2b33d' : '#ee4b3d'); g.fillText(st.toUpperCase(), 458, 212);
+  const gx = 560, gy0 = 26, gy1 = 200, gw = 26;
+  g.fillStyle = HT.g.cap; g.fillRect(gx - 6, gy0 - 14, gw + 12, 12); g.fillRect(gx - 6, gy1 + 2, gw + 12, 12);
+  g.fillStyle = HT.g.glass; g.fillRect(gx, gy0, gw, gy1 - gy0);
+  const lvl = clamp(S.oil / GTP.oilFull, 0, 1), fy = gy1 - lvl * (gy1 - gy0);
+  const fg = g.createLinearGradient(gx, 0, gx + gw, 0); fg.addColorStop(0, '#191512'); fg.addColorStop(0.5, '#4a3b2a'); fg.addColorStop(1, '#191512');
+  g.fillStyle = fg; g.fillRect(gx, fy, gw, gy1 - fy);
+  g.strokeStyle = lvl < 0.1 ? '#ee4b3d' : HT.g.acc; g.lineWidth = 2; g.strokeRect(gx, gy0, gw, gy1 - gy0);
+  g.font = '600 15px "IBM Plex Sans Condensed", sans-serif'; g.fillStyle = HT.g.dim; g.textAlign = 'center'; g.fillText('BUNKER', gx + gw / 2, 226);
+  g.textAlign = 'left'; g.font = '600 16px "IBM Plex Mono", monospace';
+  g.fillStyle = HT.g.dim; g.fillText('BUNKER C', 604, 32);
+  g.fillStyle = HT.g.txt; g.fillText(Math.round(S.oil / 3.785).toLocaleString() + ' gal', 604, 54);
+  g.fillStyle = HT.g.dim; g.fillText('DIESEL', 604, 80);
+  g.fillStyle = HT.g.txt; g.fillText(Math.round(S.fuel / 3.785).toLocaleString() + ' gal', 604, 102);
+  g.fillStyle = S.engineRun ? HT.g.txt : '#ee4b3d'; g.fillText(S.crank > 0 ? 'CRANK' : S.engineRun ? 'AUX ON' : 'AUX OFF', 604, 128);
+  g.fillStyle = HT.g.txt; g.fillText(S.notch ? 'N' + S.notch + '/20' : 'IDLE', 604, 154);
+  g.fillStyle = S.dyn > 0.06 ? '#f2b33d' : HT.g.txt; g.fillText(S.dyn > 0.06 ? 'DB ' + Math.round(S.dbLoad * 100) + '%' : 'DB OFF', 604, 180);
+  g.fillStyle = S.sander ? HT.g.acc : HT.g.dim; g.fillText(S.sander ? 'SAND ON' : 'SAND', 604, 206);
 }
 
 /* electric set: tractive and regenerative effort, air, line and power from the wire */

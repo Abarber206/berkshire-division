@@ -216,6 +216,22 @@ class Train extends Consist {
       });
       L = this.units[0];
       this.tender = null;
+    } else if (spec.turb) {
+      // Union Pacific's gas turbine: the cab unit, the turbine unit drawbarred behind it, and the fuel tender (06j_turbine.js)
+      this.turb = true;
+      const num = clamp(+opts.number || GT.num, 1, 30);
+      this.units = [buildTurbineUnit({ unit: 'A', number: num }), buildTurbineUnit({ unit: 'B', number: num })]; this.nUnits = 2;
+      this.units.forEach((m, u) => {
+        const wrap = new THREE.Group(); wrap.add(m.root);
+        scene.add(wrap); m.trucks.forEach(t => scene.add(t));
+        this.vehicles.push({ kind: u === 0 ? 'loco' : 'loco2', model: m, root: wrap, len: m.len, frame: m.frame, trucks: [], mass: (u === 0 ? GT.massA : GT.massB) * 0.4536, axles: 6, area: u === 0 ? 125 : 0, brakeA: 0.6, reversed: false, cpl: m.couplers });
+        m.vehicle = this.vehicles[u];
+      });
+      L = this.units[0];
+      const T = buildTurbineTender(num);
+      scene.add(T.root);
+      this.tender = T;
+      this.vehicles.push({ kind: 'tender', model: T, root: T.root, len: T.len, frame: T.frame, trucks: T.trucks, mass: 0, axles: 6, area: 0, brakeA: 0.6, cpl: T.couplers });
     } else if (this.diesel) {
       // a lashup of one to three units; the last unit runs backward so there is a cab at each end
       const n = clamp(opts.units || 1, 1, 3);
