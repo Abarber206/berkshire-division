@@ -44,9 +44,12 @@ class Cut extends Consist {
   dispose() { for (const v of this.vehicles) this.scene.remove(v.root); for (const im of this.inst) this.scene.remove(im); }
 }
 
+/* a train with its own engine: the one being driven, or one standing while you drive another (11l_fleet.js) */
+const isTrainC = c => !!c && (c === GAME.train || !!c.parkS);
 function consistMass(c) {
   let m = 0;
-  for (const v of c.vehicles) m += v.kind === 'tender' ? c.tenderEmpty + S.water + S.coal : v.mass;
+  const st = c.parkS || S;   // a standing train's tender holds what it had when it was left
+  for (const v of c.vehicles) m += v.kind === 'tender' ? c.tenderEmpty + st.water + st.coal : v.mass;
   return m;
 }
 const velOf = c => c === GAME.train ? S.v : c.v;
@@ -57,12 +60,14 @@ function freeVehicle(v) {
 }
 
 /* ---------------- making up the yard ---------------- */
-CARS.clear = function (oldTrain, all) {
+CARS.clear = function (oldTrain, all, keepTrains) {
   // in a room the cars standing about belong to everyone (11h_mpcars.js): a new train leaves them be
   if (MP.on && !all) { if (oldTrain) for (const v of oldTrain.vehicles) if (v.yard) freeVehicle(v); return; }
-  for (const c of CARS.cuts) { c.dispose(); c.vehicles.forEach(freeVehicle); }
+  // keepTrains: the other trains you have made up stay where they stand (only the cars are made up again)
+  const kept = keepTrains ? CARS.cuts.filter(c => c.parkS) : [];
+  for (const c of CARS.cuts) if (!kept.includes(c)) { c.dispose(); c.vehicles.forEach(freeVehicle); }
   if (oldTrain) for (const v of oldTrain.vehicles) if (v.yard) freeVehicle(v);
-  CARS.cuts = []; CARS.gen++;
+  CARS.cuts = kept; CARS.gen++;
 };
 CARS.setup = function () {
   if (MP.on || WORLD.custom) return;
@@ -94,6 +99,8 @@ CARS.yard = function (road) {
     if (foul) console.warn('cut on', def.line, 'fouls a switch');
     const loc = line.locate(sF);
     c.place(new TrackPos(loc.edge, loc.s, 1));
+    // one of your other trains is standing there: the cars are not made up on top of it
+    if (!MP.on && CARS.overlaps(c)) { c.dispose(); vehicles.forEach(freeVehicle); return; }
     c.home = def.line; c.mid = 'y' + i;
     for (const end of ['front', 'rear']) setKn(endCoupler(c, end), KN_OPEN);   // the crew left the end knuckles open
     CARS.cuts.push(c);
@@ -193,6 +200,12 @@ CARS.clearance = function (tp, dir, range, skip) {
   const hit = carFrom(tp, dir, range, carIndex(), skip);
   return hit ? hit.d : Infinity;
 };
+/* the first consist on the rails standing within a metre of c's span, if any (c itself not yet on the railroad) */
+CARS.overlaps = function (c) {
+  const t = c.endTP('rear'); t.advance(-1, null);
+  const hit = carFrom(t, 1, c.length + 2, carIndex(), c);
+  return hit ? hit.c : null;
+};
 /* for the HUD: the cut ahead of the train in the direction of travel */
 CARS.ahead = function (T, dir, range) {
   if (!CARS.cuts.length && !AI.trains.length) return null;
@@ -254,13 +267,17 @@ CARS.contact = function (A, dir, hit) {
     return;
   }
   if (ours && closing > COUPLE_WRECK) {
-    GAME.derail(`Hit a cut of cars at ${mph} mph: the couplers buckled and the cars climbed each other. Shove at a walking pace, 4 mph or less.`, 'Collision');
+    const other = A === T ? B : A;
+    GAME.derail(other.parkS && typeof FLEET !== 'undefined' ? `Ran into ${FLEET.name(other)} at ${mph} mph. Come up on a standing train at a walking pace, 4 mph or less.`
+      : `Hit a cut of cars at ${mph} mph: the couplers buckled and the cars climbed each other. Shove at a walking pace, 4 mph or less.`, 'Collision');
     return;
   }
   const ka = endCoupler(A, aEnd), kb = endCoupler(B, hit.end);
   // a high-speed trainset's nose coupler is under a fairing and only mates with another set: it buffs freight cars
   const sealed = ka.v.noCouple || kb.v.noCouple;
-  const couple = !sealed && (knOf(ka) === KN_OPEN || knOf(kb) === KN_OPEN);
+  // two trains, each with its own engine, only buff: there is one set of controls per train
+  const twoTrains = isTrainC(A) && isTrainC(B);
+  const couple = !sealed && !twoTrains && (knOf(ka) === KN_OPEN || knOf(kb) === KN_OPEN);
   if (!couple) {
     // both knuckles closed (or a lock still lifted against the other car): the cars buff and get shoved along
     const [uA, uB] = buff(consistMass(A), dir * velOf(A), consistMass(B), dir * vB, buffE(closing));
@@ -272,12 +289,14 @@ CARS.contact = function (A, dir, hit) {
     if (closing > COUPLE_DAMAGE) toast(`Slammed the cars at ${mph} mph. Nothing derailed, but that wrecks lading and draft gear.`, 'bad', 4200, 'slam');
     else if (closing > COUPLE_HARD) toast(`Hit the cars hard at ${mph} mph and shoved them along. Ease in at 4 mph or less.`, 'bad', 3800, 'hardshove');
     else if (CARS.cutFrom === X && performance.now() - CARS.cutAt < 6000) toast('Pin pulled, still shoving: the cars part as soon as you ease off or brake.', '', 3600, 'stillshove');
+    else if (twoTrains && closing > 0.3) toast('Two trains do not couple up: each keeps its own engine. Cut the cars off the other train first, then couple to them.', 'warn', 5200, 'twoTrains');
     else if (sealed && closing > 0.15) toast('A trainset\'s coupler sits behind its nose cover and only mates with another trainset, so it can push cars but not pick them up.', 'warn', 4800, 'sealed');
     else if (closing > 0.3) toast('Both knuckles are closed, so the cars are only shoved. Tap a coupler to open its knuckle, then ease in to couple.', 'warn', 4800, 'shove');
     return;
   }
   sndCouple(gain);
-  const K = B === T ? B : A, X = K === A ? B : A;
+  // the train keeps going with the cars added: yours, or another train's engine standing there; else the moving cut
+  const K = B === T ? B : A === T ? A : isTrainC(B) ? B : A, X = K === A ? B : A;
   const kEnd = K === A ? aEnd : hit.end, xEnd = K === A ? hit.end : aEnd;
   const n = absorb(K, kEnd, X, xEnd);
   if (closing > COUPLE_OK) JOB.note('couple', { mph: closing / MPH });
@@ -328,7 +347,7 @@ CARS.uncouple = function (j, c0) {
   if (!T || !CARS.canCut(T, j)) return;
   if (!CARS.geo) CARS.geo = carGeos();
   const ours = T === GAME.train, vT = velOf(T);
-  const V = T.vehicles, behind = ours ? j > T.li : true;
+  const V = T.vehicles, behind = isTrainC(T) ? j > T.li : true;
   const off = behind ? V.slice(j) : V.slice(0, j);
   T.vehicles = behind ? V.slice(0, j) : V.slice(j);
   for (const v of off) T.release(v);

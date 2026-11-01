@@ -209,6 +209,7 @@ function hsSlideFrame(dt) {
 }
 function trainName(c) {
   if (c === GAME.train) return 'your train';
+  if (c.parkS) return FLEET.name(c);
   if (c.ai) return c.ai.name;
   if (MP.on) for (const p of MP.peers.values()) if (p.rt && p.rt.train === c) return `${p.st.nm}'s train`;
   return 'the cars';
@@ -312,10 +313,12 @@ WALK.findAction = function () {
         const w = local2world(v, _kA.set(d[0], 0.6, d[1] * (P.hw + 0.3)), _kC), dd = Math.hypot(w.x - WALK.p.x, w.z - WALK.p.z);
         if (dd < 1.9 && Math.abs(WALK.p.y - w.y) < 2.2 && (!best || dd < best.dd)) best = { dd, label: 'Board', sub: trainName(c), wait: sp > 0.4, go: () => WALK.board(c, v, d) };
       }
-      if (c === T && v === T.lead && T.loco.cabEye) {
+      // your own cab, or the cab of one of your other trains standing about: climbing in takes it over
+      if ((c === T || c.parkS) && v === c.lead && c.loco.cabEye) {
         for (const s of [-1, 1]) {
-          const w = _kA.set(T.loco.cabEye.x - 0.4, 0, s * 2.0).applyMatrix4(T.loco.root.matrixWorld), dd = Math.hypot(w.x - WALK.p.x, w.z - WALK.p.z);
-          if (dd < 2.2 && (!best || dd < best.dd)) best = { dd, label: 'Climb up', sub: 'Into your cab', wait: sp > 0.4, go: () => WALK.toCab() };
+          const w = _kA.set(c.loco.cabEye.x - 0.4, 0, s * 2.0).applyMatrix4(c.loco.root.matrixWorld), dd = Math.hypot(w.x - WALK.p.x, w.z - WALK.p.z);
+          if (dd < 2.2 && (!best || dd < best.dd)) best = c === T ? { dd, label: 'Climb up', sub: 'Into your cab', wait: sp > 0.4, go: () => WALK.toCab() }
+            : { dd, label: 'Climb up', sub: `Take over ${FLEET.name(c)}`, wait: sp > 0.4, go: () => { if (FLEET.select(c, { walk: true })) WALK.toCab(true); } };
         }
       }
     }

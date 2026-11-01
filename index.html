@@ -417,6 +417,37 @@ details.keys kbd{color:var(--brass)}
   #mpWatch{top:calc(env(safe-area-inset-top,0px) + 44px)}
   #btnPlayers{padding:0 6px}
 }
+/* ---------- your trains ---------- */
+#btnTrains{position:relative}
+#btnTrains.on{border-color:var(--brass)}#btnTrains.on svg{stroke:var(--brass)}
+#fleetCount{position:absolute;right:2px;top:1px;font-family:var(--f-num);font-size:10px;font-weight:700;color:var(--brass)}
+#fleetPanel{position:absolute;z-index:7;right:calc(env(safe-area-inset-right,0px) + 10px);top:calc(env(safe-area-inset-top,0px) + 54px);
+  width:min(380px,calc(100vw - 20px));max-height:calc(100vh - 70px);overflow:auto;padding:10px;display:flex;flex-direction:column;gap:8px;box-sizing:border-box}
+#fleetList{display:flex;flex-direction:column;gap:4px}
+.flRow{display:flex;gap:8px;align-items:center;padding:6px;border-radius:5px;background:rgba(255,255,255,.03);border:1px solid transparent}
+.flRow>i{width:10px;height:10px;border-radius:50%;flex:none;background:#d9b45a}
+.flRow.mine{border-color:rgba(207,166,81,.45);background:rgba(207,166,81,.08)}
+.flRow.mine>i{background:#ffe08a;box-shadow:0 0 6px #ffe08a}
+.flBtns{display:flex;gap:4px;align-items:center;flex:none}
+.flBtns em{font-style:normal;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--brass);font-weight:700;padding:0 4px}
+.flBtns .btn,.fcBtns .btn{padding:6px 9px;font-size:10px}
+.btn.warn{border-color:rgba(238,75,61,.6);color:#f3c4be}
+.flBtns .btn:disabled{opacity:.38}
+.flNew{display:flex;flex-direction:column;gap:6px;border-top:1px solid rgba(255,255,255,.08);padding-top:8px}
+.flNew>.lbl{font-size:11px}
+.flNew>.btn{align-self:flex-start;padding:8px 14px;font-size:11px}
+.flNew .pchip:disabled{opacity:.4}
+#fleetPanel kbd{font-family:var(--f-num);font-size:10px;padding:0 4px;border:1px solid var(--rule);border-radius:3px}
+#fleetCard{position:absolute;z-index:8;left:0;top:0;width:min(300px,calc(100vw - 16px));padding:10px;display:flex;flex-direction:column;gap:6px;box-sizing:border-box}
+.fcTop{display:flex;gap:8px;align-items:baseline}
+.fcTop b{font-size:15px;font-weight:600}
+.fcTop small{flex:1;font-size:11px;color:var(--ink-dim)}
+.fcTop .btn{padding:4px 8px;font-size:11px}
+.fcBtns{display:flex;gap:6px;margin-top:2px}
+.fcBtns .btn:disabled{opacity:.5}
+@media (max-height:500px) and (orientation:landscape){
+  #fleetPanel{top:calc(env(safe-area-inset-top,0px) + 42px);right:calc(env(safe-area-inset-right,0px) + 206px);width:min(380px,calc(100vw - 236px));gap:6px;padding:8px;max-height:calc(100vh - 50px)}
+}
 /* ---------- couplers ---------- */
 #carPanel{position:absolute;z-index:7;right:calc(env(safe-area-inset-right,0px) + 10px);top:calc(env(safe-area-inset-top,0px) + 54px);
   width:min(420px,calc(100vw - 20px));padding:10px;display:flex;flex-direction:column;gap:8px;box-sizing:border-box}
@@ -677,6 +708,7 @@ details.keys kbd{color:var(--brass)}
       <button class="icon-btn" id="btnPlayers" hidden aria-label="Players in the room"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"/><path d="M3 19c0-3.3 2.7-6 6-6s6 2.7 6 6"/><circle cx="17" cy="9" r="2.5"/><path d="M15.6 13.3c2.9.3 5.4 2.6 5.4 5.7"/></svg><span id="mpCount">1</span></button>
       <button class="icon-btn" id="btnCars" aria-label="Couplers: cut cars off the train"><svg viewBox="0 0 24 24"><rect x="2" y="7" width="7" height="8" rx="1"/><rect x="15" y="7" width="7" height="8" rx="1"/><path d="M9 11h2.2M12.8 11H15"/><circle cx="6" cy="17.5" r="1.3"/><circle cx="18" cy="17.5" r="1.3"/></svg></button>
       <button class="icon-btn" id="btnPlace" aria-label="Place engines and cars on the track"><svg viewBox="0 0 24 24"><path d="M12 2.5v9M8.5 8l3.5 3.5L15.5 8"/><path d="M2.5 16.5h19M2.5 20h19"/><path d="M6 16.5V20M10 16.5V20M14 16.5V20M18 16.5V20"/></svg></button>
+      <button class="icon-btn" id="btnTrains" aria-label="Your trains: make up another, switch between them (O)"><svg viewBox="0 0 24 24"><path d="M2.5 9.5h8V15h-8zM4.5 9.5V7h3v2.5"/><path d="M13.5 6.5h8V15h-8zM15.5 6.5V4h3v2.5"/><circle cx="4.5" cy="17.3" r="1.3"/><circle cx="8.5" cy="17.3" r="1.3"/><circle cx="15.5" cy="17.3" r="1.3"/><circle cx="19.5" cy="17.3" r="1.3"/></svg><span id="fleetCount"></span></button>
       <button class="icon-btn" id="btnWalk" aria-label="Climb down and walk"><svg viewBox="0 0 24 24"><circle cx="12" cy="4.5" r="2"/><path d="M12 7.5v6M12 13.5l-3 7M12 13.5l3 7M8 10.5l4-2 4 2"/></svg></button>
       <button class="icon-btn" id="btnCam" aria-label="Change camera"><svg viewBox="0 0 24 24"><path d="M3 8h4l2-3h6l2 3h4v11H3z"/><circle cx="12" cy="13" r="3.5"/></svg></button>
       <button class="icon-btn" id="btnMap" aria-label="Open track map"><svg viewBox="0 0 24 24"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/></svg></button>
@@ -726,6 +758,23 @@ details.keys kbd{color:var(--brass)}
     <div id="carStrip"></div>
     <div id="carHint" class="mpStatus"></div>
     <details id="carList"><summary>Switch list</summary><div id="carListBody"></div></details>
+  </div>
+  <div id="fleetPanel" class="hud-box" hidden>
+    <div class="mpHead"><span>Your trains</span><button class="btn" id="fleetClose" aria-label="Close">Close</button></div>
+    <div id="fleetList"></div>
+    <div class="flNew">
+      <div class="lbl">Make up another train</div>
+      <div class="pbRow"><span class="lbl">Engine</span><div class="pbChips" id="fleetEngines"></div></div>
+      <div class="pbRow"><span class="lbl">Train</span><div class="pbChips" id="fleetTrains"></div></div>
+      <button class="btn prim" id="fleetAdd" type="button">Make it up</button>
+    </div>
+    <div class="mpStatus">The train you leave stands with its brakes set. Click any of your trains in the world or on the map to take it over; <kbd>[</kbd> <kbd>]</kbd> step through them.</div>
+  </div>
+  <div id="fleetCard" class="hud-box" hidden role="dialog" aria-label="Train">
+    <div class="fcTop"><b id="fcName"></b><small id="fcWhat"></small><button class="btn" id="fcClose" type="button" aria-label="Close">✕</button></div>
+    <div id="fcStatus" class="mpStatus"></div>
+    <div id="fcSup" class="mpStatus"></div>
+    <div class="fcBtns"><button class="btn prim" id="fcDrive" type="button">Take it over</button><button class="btn" id="fcDelete" type="button">Take off railroad</button></div>
   </div>
   <div id="jobPanel" class="hud-box" hidden>
     <div class="mpHead"><span id="jpTitle">Job</span><button class="btn" id="jpAbandon" type="button">Abandon job</button><button class="btn" id="jpClose" type="button" aria-label="Close">Close</button></div>
@@ -10757,7 +10806,7 @@ function setVehicle(m, i) {
 }
 /* every frame: pantographs up to the wire or folded down, and the tilting coaches leaning into the curves */
 function animateTrainset(T, dt) {
-  const panK = T.remote ? 1 : S.pan, v = T.remote ? 0 : S.v;
+  const ps = T.parkS, panK = T.remote ? 1 : ps ? ps.pan : S.pan, v = T.remote ? 0 : ps ? (T.v || 0) : S.v;
   // the lamps inside: the surfaces glow a little by day, more at night, as the cars' own lighting would show them
   if (RMAT.hsLit) { const d = smooth(0.2, 0.6, SKY.dark || 0); for (const m of RMAT.hsLit) m.emissiveIntensity = lerp(0.12, 0.42, d); RMAT.hsLight.emissiveIntensity = lerp(0.7, 1.1, d); }
   for (const veh of T.vehicles) {
@@ -12501,6 +12550,8 @@ class Train extends Consist {
     super(scene);
     this.locoKey = locoKey; this.consistKey = consistKey;
     this.driverDist = 0;
+    // how it was built, so a train standing in the yard can be saved and made up again (opts.dark: no lamps of its own yet)
+    this.opts = Object.assign({}, opts); delete this.opts.dark;
     const r = rng(opts.seed || 1944);   // car numbers: AI trains bring their own seed
     // locomotive
     const spec = LOCO_SPEC[locoKey];
@@ -12567,7 +12618,7 @@ class Train extends Consist {
     // headlight. Another player's train (opts.remote) gets no real lights: adding lights
     // to the scene would recompile every shader, and its lamp glow is drawn without them.
     this.remote = !!opts.remote;
-    if (!this.remote) {
+    if (!this.remote && !opts.dark) {
       this.head = new THREE.SpotLight(0xfff0d0, 0, 480, 0.3, 0.65, 1.1);
       this.head.castShadow = false;
       scene.add(this.head); scene.add(this.head.target);
@@ -12590,6 +12641,9 @@ class Train extends Consist {
     }
   }
   update(dt, theta = 0, rev = 0) {
+    // a train standing while you drive another (11l_fleet.js): its rods stay where they stopped, and turn if it is shoved
+    const ps = this.parkS;
+    if (ps) { theta = ps.theta - (this.dist - ps.dist0) / (this.diesel ? LG.rD : steamK(LOCO_SPEC[this.locoKey]).rD); rev = ps.reverser; }
     super.update(dt, theta, rev);
     if (this.elec) animateTrainset(this, dt);
     // headlight follows the lamp
@@ -12600,6 +12654,21 @@ class Train extends Consist {
       this.head.position.copy(L.headlightPos).applyMatrix4(hf.matrixWorld);
       this.head.target.position.copy(L.headlightPos).add(new THREE.Vector3(70, -L.headlightPos.y + 0.6, 0)).applyMatrix4(hf.matrixWorld);   // aimed down the rails, meeting them about 70 m out
     }
+  }
+  /* The headlight, firebox glow and cab lamp are the only real lights a train has, and only the train being
+     driven needs them: they move over from the train left standing (adding lights would recompile every shader). */
+  takeLights(from) {
+    const L = this.loco;
+    this.head = from.head; this.fireLight = from.fireLight; this.cabLight = from.cabLight;
+    from.head = from.fireLight = from.cabLight = null;
+    if (this.fireLight) { L.body.add(this.fireLight); if (L.fireLightPos) this.fireLight.position.copy(L.fireLightPos); else this.fireLight.position.set(CABDIM.bh - 0.3, CABDIM.fl + 0.5, 0.1); }
+    if (this.cabLight) { L.body.add(this.cabLight); if (L.cabLightPos) this.cabLight.position.copy(L.cabLightPos); else this.cabLight.position.set(ax(15.8), 4.1, 0); }
+  }
+  /* put this train's lights away (another train has just been made up with its own) */
+  dropLights() {
+    if (this.head) { this.scene.remove(this.head); this.scene.remove(this.head.target); }
+    for (const l of [this.fireLight, this.cabLight]) if (l && l.parent) l.parent.remove(l);
+    this.head = this.fireLight = this.cabLight = null;
   }
   worldOf(local, out = new THREE.Vector3()) { return out.copy(local).applyMatrix4(this.loco.root.matrixWorld); }
   unitWorld(m, local, out = new THREE.Vector3()) { return out.copy(local).applyMatrix4(m.root.matrixWorld); }
@@ -12680,9 +12749,12 @@ class Cut extends Consist {
   dispose() { for (const v of this.vehicles) this.scene.remove(v.root); for (const im of this.inst) this.scene.remove(im); }
 }
 
+/* a train with its own engine: the one being driven, or one standing while you drive another (11l_fleet.js) */
+const isTrainC = c => !!c && (c === GAME.train || !!c.parkS);
 function consistMass(c) {
   let m = 0;
-  for (const v of c.vehicles) m += v.kind === 'tender' ? c.tenderEmpty + S.water + S.coal : v.mass;
+  const st = c.parkS || S;   // a standing train's tender holds what it had when it was left
+  for (const v of c.vehicles) m += v.kind === 'tender' ? c.tenderEmpty + st.water + st.coal : v.mass;
   return m;
 }
 const velOf = c => c === GAME.train ? S.v : c.v;
@@ -12693,12 +12765,14 @@ function freeVehicle(v) {
 }
 
 /* ---------------- making up the yard ---------------- */
-CARS.clear = function (oldTrain, all) {
+CARS.clear = function (oldTrain, all, keepTrains) {
   // in a room the cars standing about belong to everyone (11h_mpcars.js): a new train leaves them be
   if (MP.on && !all) { if (oldTrain) for (const v of oldTrain.vehicles) if (v.yard) freeVehicle(v); return; }
-  for (const c of CARS.cuts) { c.dispose(); c.vehicles.forEach(freeVehicle); }
+  // keepTrains: the other trains you have made up stay where they stand (only the cars are made up again)
+  const kept = keepTrains ? CARS.cuts.filter(c => c.parkS) : [];
+  for (const c of CARS.cuts) if (!kept.includes(c)) { c.dispose(); c.vehicles.forEach(freeVehicle); }
   if (oldTrain) for (const v of oldTrain.vehicles) if (v.yard) freeVehicle(v);
-  CARS.cuts = []; CARS.gen++;
+  CARS.cuts = kept; CARS.gen++;
 };
 CARS.setup = function () {
   if (MP.on || WORLD.custom) return;
@@ -12730,6 +12804,8 @@ CARS.yard = function (road) {
     if (foul) console.warn('cut on', def.line, 'fouls a switch');
     const loc = line.locate(sF);
     c.place(new TrackPos(loc.edge, loc.s, 1));
+    // one of your other trains is standing there: the cars are not made up on top of it
+    if (!MP.on && CARS.overlaps(c)) { c.dispose(); vehicles.forEach(freeVehicle); return; }
     c.home = def.line; c.mid = 'y' + i;
     for (const end of ['front', 'rear']) setKn(endCoupler(c, end), KN_OPEN);   // the crew left the end knuckles open
     CARS.cuts.push(c);
@@ -12829,6 +12905,12 @@ CARS.clearance = function (tp, dir, range, skip) {
   const hit = carFrom(tp, dir, range, carIndex(), skip);
   return hit ? hit.d : Infinity;
 };
+/* the first consist on the rails standing within a metre of c's span, if any (c itself not yet on the railroad) */
+CARS.overlaps = function (c) {
+  const t = c.endTP('rear'); t.advance(-1, null);
+  const hit = carFrom(t, 1, c.length + 2, carIndex(), c);
+  return hit ? hit.c : null;
+};
 /* for the HUD: the cut ahead of the train in the direction of travel */
 CARS.ahead = function (T, dir, range) {
   if (!CARS.cuts.length && !AI.trains.length) return null;
@@ -12890,13 +12972,17 @@ CARS.contact = function (A, dir, hit) {
     return;
   }
   if (ours && closing > COUPLE_WRECK) {
-    GAME.derail(`Hit a cut of cars at ${mph} mph: the couplers buckled and the cars climbed each other. Shove at a walking pace, 4 mph or less.`, 'Collision');
+    const other = A === T ? B : A;
+    GAME.derail(other.parkS && typeof FLEET !== 'undefined' ? `Ran into ${FLEET.name(other)} at ${mph} mph. Come up on a standing train at a walking pace, 4 mph or less.`
+      : `Hit a cut of cars at ${mph} mph: the couplers buckled and the cars climbed each other. Shove at a walking pace, 4 mph or less.`, 'Collision');
     return;
   }
   const ka = endCoupler(A, aEnd), kb = endCoupler(B, hit.end);
   // a high-speed trainset's nose coupler is under a fairing and only mates with another set: it buffs freight cars
   const sealed = ka.v.noCouple || kb.v.noCouple;
-  const couple = !sealed && (knOf(ka) === KN_OPEN || knOf(kb) === KN_OPEN);
+  // two trains, each with its own engine, only buff: there is one set of controls per train
+  const twoTrains = isTrainC(A) && isTrainC(B);
+  const couple = !sealed && !twoTrains && (knOf(ka) === KN_OPEN || knOf(kb) === KN_OPEN);
   if (!couple) {
     // both knuckles closed (or a lock still lifted against the other car): the cars buff and get shoved along
     const [uA, uB] = buff(consistMass(A), dir * velOf(A), consistMass(B), dir * vB, buffE(closing));
@@ -12908,12 +12994,14 @@ CARS.contact = function (A, dir, hit) {
     if (closing > COUPLE_DAMAGE) toast(`Slammed the cars at ${mph} mph. Nothing derailed, but that wrecks lading and draft gear.`, 'bad', 4200, 'slam');
     else if (closing > COUPLE_HARD) toast(`Hit the cars hard at ${mph} mph and shoved them along. Ease in at 4 mph or less.`, 'bad', 3800, 'hardshove');
     else if (CARS.cutFrom === X && performance.now() - CARS.cutAt < 6000) toast('Pin pulled, still shoving: the cars part as soon as you ease off or brake.', '', 3600, 'stillshove');
+    else if (twoTrains && closing > 0.3) toast('Two trains do not couple up: each keeps its own engine. Cut the cars off the other train first, then couple to them.', 'warn', 5200, 'twoTrains');
     else if (sealed && closing > 0.15) toast('A trainset\'s coupler sits behind its nose cover and only mates with another trainset, so it can push cars but not pick them up.', 'warn', 4800, 'sealed');
     else if (closing > 0.3) toast('Both knuckles are closed, so the cars are only shoved. Tap a coupler to open its knuckle, then ease in to couple.', 'warn', 4800, 'shove');
     return;
   }
   sndCouple(gain);
-  const K = B === T ? B : A, X = K === A ? B : A;
+  // the train keeps going with the cars added: yours, or another train's engine standing there; else the moving cut
+  const K = B === T ? B : A === T ? A : isTrainC(B) ? B : A, X = K === A ? B : A;
   const kEnd = K === A ? aEnd : hit.end, xEnd = K === A ? hit.end : aEnd;
   const n = absorb(K, kEnd, X, xEnd);
   if (closing > COUPLE_OK) JOB.note('couple', { mph: closing / MPH });
@@ -12964,7 +13052,7 @@ CARS.uncouple = function (j, c0) {
   if (!T || !CARS.canCut(T, j)) return;
   if (!CARS.geo) CARS.geo = carGeos();
   const ours = T === GAME.train, vT = velOf(T);
-  const V = T.vehicles, behind = ours ? j > T.li : true;
+  const V = T.vehicles, behind = isTrainC(T) ? j > T.li : true;
   const off = behind ? V.slice(j) : V.slice(0, j);
   T.vehicles = behind ? V.slice(0, j) : V.slice(j);
   for (const v of off) T.release(v);
@@ -13198,7 +13286,8 @@ function placeFit(C, front, skip, via) {
   // couplers that now meet another
   // a trainset's nose coupler sits behind its fairing and takes no cars
   const sealed = (c, end) => endCoupler(c, end).v.noCouple;
-  const touch = (from, dir, end) => { const h = carFrom(from, dir, 0.06, idx, skip); if (h && h.end && h.facing && !h.c.ai && !sealed(C, end) && !sealed(h.c, h.end)) out.joins.push({ end, c: h.c, cEnd: h.end }); };
+  // nor do two trains with their own engines couple up (see CARS.contact)
+  const touch = (from, dir, end) => { const h = carFrom(from, dir, 0.06, idx, skip); if (h && h.end && h.facing && !h.c.ai && !sealed(C, end) && !sealed(h.c, h.end) && !(isTrainC(C) && isTrainC(h.c))) out.joins.push({ end, c: h.c, cEnd: h.end }); };
   touch(F, 1, 'front'); touch(R, -1, 'rear');
   out.ok = true;
   return out;
@@ -13215,7 +13304,7 @@ PLACE.commit = function (C, fit) {
     C.v = 0; C.rolling = false; C.stopT = 0;
     for (const v of C.vehicles) v.hb = true;
     if (!CARS.cuts.includes(C)) CARS.cuts.push(C);
-    for (const end of ['front', 'rear']) setKn(endCoupler(C, end), KN_OPEN);
+    if (!C.parkS) for (const end of ['front', 'rear']) setKn(endCoupler(C, end), KN_OPEN);   // another train's couplers stay as they were
   }
   const ends = { front: endCoupler(C, 'front'), rear: endCoupler(C, 'rear') };
   for (const j of fit.joins) {
@@ -13223,7 +13312,8 @@ PLACE.commit = function (C, fit) {
     const g = ends[j.end], cur = [T, ...CARS.cuts].find(c => c && c.vehicles.includes(g.v));
     const curEnd = cur && ['front', 'rear'].find(e => { const x = endCoupler(cur, e); return x.v === g.v && x.k === g.k; });
     if (!curEnd || cur === j.c) continue;
-    if (j.c === T) absorb(T, j.cEnd, cur, curEnd); else absorb(cur, curEnd, j.c, j.cEnd);
+    // a train (yours, or one standing with its engine) takes the cars it meets
+    if (isTrainC(j.c) && !isTrainC(cur)) absorb(j.c, j.cEnd, cur, curEnd); else absorb(cur, curEnd, j.c, j.cEnd);
   }
   if (fit.joins.length && (C === T || fit.joins.some(j => j.c === T))) { S.v = 0; S.vw = 0; }
   PLACE.changed();
@@ -13241,7 +13331,7 @@ PLACE.changed = function () {
 PLACE.split = function (c, v) {
   if (!CARS.geo) CARS.geo = carGeos();
   const V = c.vehicles, i = V.indexOf(v), T = GAME.train;
-  if (i < 0) return null;
+  if (i < 0 || c.parkS) return null;   // another train is picked up whole (PLACE.lift)
   if (c !== T && V.length === 1) { CARS.cuts = CARS.cuts.filter(x => x !== c); PLACE.changed(); return c; }
   const ahead = V.slice(0, i), behind = V.slice(i + 1);
   const keepAhead = c === T ? ahead.some(isPower) : ahead.length > 0;
@@ -16613,7 +16703,7 @@ function setupViewInput(canvas, camera) {
   canvas.addEventListener('pointermove', e => {
     if (PLACE.on) return;
     if (CAB.grab) { if (e.pointerId === CAB.grab.pid) CAB.move(e.clientX, e.clientY); return; }
-    if (!ptrs.size && e.pointerType === 'mouse') { if (WALK.on) return; LTAP.point(null); if (CAB.point(e.clientX, e.clientY)) CPL.point(null); else { CPL.point(e.clientX, e.clientY); if (!CPL.hover) LTAP.point(e.clientX, e.clientY); } return; }
+    if (!ptrs.size && e.pointerType === 'mouse') { if (WALK.on) return; LTAP.point(null); if (CAB.point(e.clientX, e.clientY)) { CPL.point(null); FLEET.point(null); } else { CPL.point(e.clientX, e.clientY); if (!CPL.hover) LTAP.point(e.clientX, e.clientY); if (!CPL.hover && !LTAP.hover && CAM.mode !== 'cab') FLEET.point(e.clientX, e.clientY); else FLEET.point(null); } return; }
     if (!ptrs.has(e.pointerId)) return;
     const p = ptrs.get(e.pointerId), dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
     if (tapStart && Math.hypot(e.clientX - tapStart.x, e.clientY - tapStart.y) > 8) tapStart = null;
@@ -16648,7 +16738,7 @@ function setupViewInput(canvas, camera) {
     ptrs.delete(e.pointerId); if (ptrs.size < 2) pinch0 = 0; tapStart = null;
     if (!ptrs.size) canvas.classList.remove('dragging');
   };
-  canvas.addEventListener('pointerup', up); canvas.addEventListener('pointerleave', () => { if (PLACE.on) return; CPL.point(null); LTAP.point(null); if (!CAB.grab) CAB.point(null); }); canvas.addEventListener('pointercancel', e => { if (CAB.grab && e.pointerId === CAB.grab.pid) CAB.up(); ptrs.delete(e.pointerId); tapStart = null; if (!ptrs.size) canvas.classList.remove('dragging'); });
+  canvas.addEventListener('pointerup', up); canvas.addEventListener('pointerleave', () => { if (PLACE.on) return; CPL.point(null); LTAP.point(null); FLEET.point(null); if (!CAB.grab) CAB.point(null); }); canvas.addEventListener('pointercancel', e => { if (CAB.grab && e.pointerId === CAB.grab.pid) CAB.up(); ptrs.delete(e.pointerId); tapStart = null; if (!ptrs.size) canvas.classList.remove('dragging'); });
   // no browser menu on a right click anywhere in the game; text boxes keep theirs for paste
   document.addEventListener('contextmenu', e => { const t = e.target; if (t && t.closest && t.closest('input,textarea,[contenteditable="true"]')) return; e.preventDefault(); });
   canvas.addEventListener('wheel', e => { if (PLACE.on) return; e.preventDefault(); if (WALK.on) { WALK.zoom(1 + clamp(e.deltaY * (e.deltaMode ? 33 : 1), -120, 120) * 0.0015); return; } zoom(CAM.dist * (1 + clamp(e.deltaY * (e.deltaMode ? 33 : 1), -120, 120) * 0.0012)); }, { passive: false });
@@ -16663,6 +16753,9 @@ function handleTap(x, y, camera) {
   _ray.setFromCamera(v, camera);
   const hits = _ray.intersectObjects(NET.switches.map(s => s.vis.hit), false);
   if (hits.length) { GAME.throwSwitch(hits[0].object.userData.sw); return; }
+  // one of your other trains: its card, to take it over
+  if (CAM.mode !== 'cab' && FLEET.tap(x, y)) return;
+  if (FLEET.card) FLEET.closeCard();
   // tapping the scene in cinematic mode cuts to the next shot
   if (CAM.mode === 'cine') CAM.nextShot();
 }
@@ -16761,6 +16854,9 @@ function setupButtons() {
       case 'KeyN': CAB.nextLook(); break;
       case 'KeyU': carPanelToggle(); break;
       case 'KeyG': PLACE.enter(); break;
+      case 'KeyO': FLEET.toggle(); break;
+      case 'BracketLeft': FLEET.cycle(-1); break;
+      case 'BracketRight': FLEET.cycle(1); break;
       case 'KeyM': MAP.visible ? MAP.close() : MAP.open(); break;
       case 'KeyP': GAME.pause(!S.paused); break;
       case 'Digit1': cycleCamera('chase'); break; case 'Digit2': cycleCamera('cab'); break; case 'Digit3': cycleCamera('side'); break; case 'Digit4': cycleCamera('drone'); break; case 'Digit5': cycleCamera('rear'); break; case 'Digit6': cycleCamera('cine'); break;
@@ -16856,6 +16952,7 @@ function drawNet(g, W, H, cx, cn, sc, opt) {
   // cuts of cars standing or rolling
   g.strokeStyle = '#b5895a'; g.lineWidth = 3.4 * opt.w;
   for (const c of CARS.cuts) { if (!c.vehicles[0].pos) continue; g.beginPath(); c.vehicles.forEach((v, i) => { const x = tx(v.pos.x), y = ty(-v.pos.z); i ? g.lineTo(x, y) : g.moveTo(x, y); }); g.stroke(); }
+  FLEET.drawMap(g, tx, ty, opt);
   // train
   const T = GAME.train;
   if (T) {
@@ -16910,7 +17007,9 @@ function setupMap() {
     else { MAP.cx -= dx / MAP.scale; MAP.cn += dy / MAP.scale; }
     MAP.draw(); });
   c.addEventListener('pointerup', e => {
-    if (tap && ptrs.size === 1) {
+    const fc = tap && ptrs.size === 1 ? FLEET.mapPick(e.clientX, e.clientY) : null;
+    if (fc) { FLEET.select(fc); MAP.draw(); }
+    else if (tap && ptrs.size === 1) {
       let best = null, bd = 26;
       for (const sw of NET.switches) { const d = Math.hypot(MAP.t.tx(sw.node.X) - e.clientX, MAP.t.ty(sw.node.N) - e.clientY); if (d < bd) { bd = d; best = sw; } }
       if (best) { GAME.throwSwitch(best); MAP.draw(); }
@@ -16927,7 +17026,7 @@ function carPanelToggle(open) {
   const p = $('carPanel'); open = open === undefined ? p.hidden : open;
   p.hidden = !open;
   $('btnCars').classList.toggle('on', open);
-  if (open) { $('mpPanel').hidden = true; carPanelState.key = ''; carPanel(); }
+  if (open) { $('mpPanel').hidden = true; if (typeof FLEET !== 'undefined' && !$('fleetPanel').hidden) FLEET.toggle(false); carPanelState.key = ''; carPanel(); }
 }
 function carName(T, v) {
   if (v.kind === 'loco') return T.diesel ? 'Lead' : T.locoKey;
@@ -18076,7 +18175,8 @@ MP.spawnSlot = function (T) {
   for (const p of MP.peers.values()) if (p.rt && p.rt.tp && !p.rt.placed) p.rt.frame(0, p.st, camera.position, true);
   const rts = [...MP.peers.values()].map(p => p.rt).filter(rt => rt && rt.placed && rt.polyN);
   // the cars standing about are shared too, so a new train is not made up on top of them
-  const polys = [...rts.map(rt => rt.poly.slice(0, rt.polyN)), ...CARS.cuts.map(c => c.pts.map(p => p.F.p))];
+  // (and, in single player, nor on top of your other trains or the timetable trains)
+  const polys = [...rts.map(rt => rt.poly.slice(0, rt.polyN)), ...CARS.cuts.map(c => c.pts.map(p => p.F.p)), ...AI.trains.map(a => a.train.pts.map(p => p.F.p))];
   // clear when no other train or car comes within 3.4 m of the track centre anywhere along our length, plus 30 m each end
   const clear = (line, sF) => {
     for (let s = sF + 30; s >= sF - T.length - 30; s -= 3) {
@@ -19578,7 +19678,8 @@ PLACE.newCar = function (type, quiet) {
 PLACE.lift = function (c, v) {
   PLACE.cancel();
   const T = GAME.train;
-  if (c === T && isPower(v)) PLACE.ghost = { c: T, kind: 'train', orig: T.pts.map(p => p.tp.clone()), fit: null };
+  // the engine brings its whole train; another train standing with its engine is always picked up whole
+  if ((c === T && isPower(v)) || c.parkS) PLACE.ghost = { c, kind: 'train', orig: c.pts.map(p => p.tp.clone()), fit: null };
   else { const g = PLACE.split(c, v); if (!g) return; PLACE.ghost = { c: g, kind: 'car', type: v.kind, orig: g.endTP('front'), fit: null }; }
   const C = PLACE.ghost.c, f = C.endTP('front'), r = C.endTP('rear'), a = tpXYZ(f), b = tpXYZ(r);
   PLACE.heading = { x: a[0] - b[0], z: a[2] - b[2] };
@@ -19598,8 +19699,15 @@ PLACE.cancel = function () {
 PLACE.discard = function (c) { c.dispose(); c.vehicles.forEach(freeVehicle); };
 PLACE.remove = function () {
   let g = PLACE.ghost;
-  if (!g && PLACE.pick) { if (isPower(PLACE.pick.v)) { toast('Your engine stays on the railroad. Pick it up to set it down somewhere else.', 'warn', 3600, 'placeEng'); return; } PLACE.lift(PLACE.pick.c, PLACE.pick.v); g = PLACE.ghost; }
+  if (!g && PLACE.pick) {
+    const pc = PLACE.pick.c;
+    // another of your trains: pick it up first, so taking a whole train away is never one slip of a key
+    if (pc.parkS) { PLACE.lift(pc, PLACE.pick.v); toast(`Holding ${FLEET.name(pc)}. Press Remove (or Delete) again to take the whole train off the railroad.`, 'warn', 4200, 'placeDel'); return; }
+    if (isPower(PLACE.pick.v)) { toast('Your engine stays on the railroad. Pick it up to set it down somewhere else.', 'warn', 3600, 'placeEng'); return; }
+    PLACE.lift(pc, PLACE.pick.v); g = PLACE.ghost;
+  }
   if (!g) return;
+  if (g.kind === 'train' && g.c.parkS) { PLACE.ghost = null; FLEET.remove(g.c, true); PLACE.changed(); PLACE.show(); return; }
   if (g.kind === 'train') { toast('Your engine stays on the railroad. Set it down somewhere, or press Put back.', 'warn', 3600, 'placeEng'); return; }
   PLACE.ghost = null; PLACE.discard(g.c);
   toast(`${CAR_NAMES[g.type] || 'Car'} taken off the railroad.`, '', 2200, 'placeDel');
@@ -19703,14 +19811,16 @@ PLACE.again = function () { if (PLACE.last && !PLACE.touch) PLACE.hoverAt(PLACE.
 /* switches under the held vehicle that would have to be thrown for it, if they can be */
 function placeLining(f) {
   for (const { sw } of f.line) for (const s of swPair(sw)) {
-    if (CARS.occupied(s)) return `Cars are standing over ${s.name}`;
-    if (PLACE.ghost.kind !== 'train' && GAME.occupied(s)) return `Your train is on ${s.name}`;
+    const held = PLACE.ghost.c, on = CARS.cuts.find(c => c !== held && c.fouls(s));
+    if (on) return on.parkS ? `${FLEET.name(on)} is on ${s.name}` : `Cars are standing over ${s.name}`;
+    if (held !== GAME.train && GAME.occupied(s)) return `Your train is on ${s.name}`;
     const ai = AI.holding(s); if (ai) return ai.replace(/\.$/, '');
   }
   return null;
 }
 function placeName(c) {
   if (c === GAME.train) return 'your train';
+  if (c.parkS) return FLEET.name(c);
   if (c.ai) return c.ai.name;
   const n = c.vehicles.length, k = c.vehicles[0].kind, same = c.vehicles.every(v => v.kind === k);
   return n === 1 ? `the ${(CAR_NAMES[k] || 'car').toLowerCase()}${c.home ? ' on ' + c.home : ''}` : `the ${n} ${same ? (CAR_NAMES[k] || 'car').toLowerCase() + 's' : 'cars'}${c.home ? ' on ' + c.home : ''}`;
@@ -19743,8 +19853,8 @@ PLACE.drop = function () {
   PLACE.commit(g.c, f);
   PLACE.ghost = null;
   if (joins.length) sndCouple(0.7); else sndClunk(0.35, 0);
-  const what = g.kind === 'train' ? 'Your train' : (CAR_NAMES[g.type] || 'Car');
-  if (g.kind === 'train') {
+  const what = g.kind === 'train' ? (g.c === GAME.train ? 'Your train' : FLEET.name(g.c)) : (CAR_NAMES[g.type] || 'Car');
+  if (g.kind === 'train' && g.c === GAME.train) {
     const T = GAME.train;
     S.v = 0; S.vw = 0; S.limit = Math.min(...T.pts.map(p => p.tp.e.limit));
     GAME.jointMem = new Map(); GAME.filling = null; GAME.lastStation = null;
@@ -19809,19 +19919,19 @@ PLACE.show = function () {
   if (g) {
     const v = placeVerdict(g);
     if (g.fit && g.fit.F) PLACE.ribbonAt(g.fit.F, g.c.length, v ? v[0] : 'ok', true); else PLACE.ribbonAt(null);
-    const name = g.kind === 'train' ? 'Your train' : (CAR_NAMES[g.type] || 'Car');
+    const name = g.kind === 'train' ? (g.c === GAME.train ? 'Your train' : FLEET.name(g.c)) : (CAR_NAMES[g.type] || 'Car');
     label = v ? `<b>${name}</b> · ${v[1]}` : '';
-    hint = !g.fit ? `${touch ? 'Tap' : 'Point at'} the track to put the ${name.toLowerCase()} there.`
+    hint = !g.fit ? `${touch ? 'Tap' : 'Point at'} the track to put ${g.kind === 'train' ? 'it' : 'the ' + name.toLowerCase()} there.`
       : v && v[0] === 'bad' ? `${v[1]}. ${touch ? 'Tap' : 'Try'} somewhere else.`
       : touch ? `${v[1]}. Tap it again or press Place to set it down; Turn swaps its ends.` : `${v[1]}. Click to set it down · F turns it · Esc ${g.kind === 'new' ? 'lets go' : 'puts it back'}.`;
     $('gl').style.cursor = 'crosshair';
   } else {
     const p = PLACE.pick;
     if (p) {
-      const C = p.c, T = GAME.train, train = C === T && isPower(p.v);
+      const C = p.c, T = GAME.train, train = (C === T && isPower(p.v)) || !!C.parkS;
       PLACE.ribbonAt(train ? C.endTP('front') : PLACE.frontOf(C, p.v), train ? C.length : p.v.len, 'pick', train);
       const n = T.vehicles.filter(v => !isPower(v)).length;
-      label = train ? `<b>Your train</b>${n ? ` · ${n} car${n > 1 ? 's' : ''}` : ''} · click to move it` : `<b>${C === T ? carName(T, p.v) + ' in your train' : CAR_NAMES[p.v.kind] || 'Car'}</b> · click to pick it up`;
+      label = C.parkS ? `<b>${FLEET.name(C)}</b> · click to move it` : train ? `<b>Your train</b>${n ? ` · ${n} car${n > 1 ? 's' : ''}` : ''} · click to move it` : `<b>${C === T ? carName(T, p.v) + ' in your train' : CAR_NAMES[p.v.kind] || 'Car'}</b> · click to pick it up`;
     } else PLACE.ribbonAt(null);
     $('gl').style.cursor = p ? 'grab' : '';
     hint = touch ? 'Pick a car or an engine below, or tap one on the track to pick it up. Drag to look around; pinch to zoom and turn.'
@@ -19835,7 +19945,7 @@ PLACE.show = function () {
   for (const b of $('placeCars').children) b.setAttribute('aria-pressed', String(!!g && g.kind !== 'train' && b.dataset.car === g.type));
   for (const b of $('placeEngines').children) b.setAttribute('aria-pressed', String(!!g && g.kind === 'train' && b.dataset.loco === GAME.train.locoKey));
   $('placeFlip').disabled = !g;
-  $('placeRemove').disabled = !g || g.kind === 'train';
+  $('placeRemove').disabled = !(g ? g.kind !== 'train' || g.c.parkS : PLACE.pick && PLACE.pick.c.parkS);
   $('placeBack').disabled = !g; $('placeBack').textContent = g && g.kind === 'new' ? 'Let go' : 'Put back';
   $('placeGo').disabled = !g || !g.fit || !g.fit.F || placeVerdict(g)[0] === 'bad';
 };
@@ -20089,10 +20199,38 @@ const CAM_KEEP = ['yaw', 'pitch', 'dist', 'cabYaw', 'cabPitch', 'droneYaw', 'dro
 /* primitive values of the train state (controls, boiler, air, fuel, the clock) */
 function stateOut() { const o = {}; for (const k in S) { const x = S[k]; if (typeof x === 'number' ? isFinite(x) : typeof x === 'boolean' || typeof x === 'string') o[k] = x; } delete o.paused; return o; }
 
+/* the vehicles a train was built with: its engine (and tender or trailing units), or every car of a trainset */
+const powerOf = T => T.vehicles.filter(v => isPower(v) || (T.elec && T.units.some(m => m.vehicle === v)));
+/* one of your other trains standing about (11l_fleet.js): how it was built, where every car is, and its engine as it was left */
+function fleetOut(c) {
+  return Object.assign(consistOut(c, powerOf(c)), { loco: c.locoKey, ck: c.consistKey, units: c.nUnits || 1, opts: JSON.parse(JSON.stringify(c.opts || {})), cfg: c.cfg || null,
+    ps: c.parkS, cv: rnd(c.v || 0), rolling: !!c.rolling, stopT: rnd(c.stopT || 0), fid: c.fid || 0 });
+}
+/* Build train t's consist again from its record o: the engine as the Train made it, and its cars as they were.
+   t was made up as a light engine, so everything it built is the engine (or the whole trainset). */
+function trainIn(t, o, E) {
+  const power = t.vehicles.slice(), V = [];
+  for (const x of o.v) {
+    const v = x.p !== undefined ? power[x.p] : carIn(x);
+    if (!v) throw new Error('the engine has changed since this save');
+    vehicleIn(v, x);
+    if (!v.ptsAll) t.track(v);
+    t.markerLamps(v);
+    V.push(v);
+  }
+  if (power.some(v => !V.includes(v))) throw new Error('the engine has changed since this save');
+  t.vehicles = V; t.consistKey = o.ck || 'light';
+  t.layout(); t.buildInstances();
+  if (!seatConsist(t, o, E)) throw new Error('the train is not on this railroad');
+  t.update(0);
+  prepareTrain(t, true);
+  return V;
+}
+
 /* the whole run, ready for JSON */
 SAVE.snapshot = function () {
   const T = GAME.train, g = GAME.settings;
-  const power = T.vehicles.filter(v => isPower(v) || (T.elec && T.units.some(m => m.vehicle === v)));   // a trainset's cars are all its own
+  const power = powerOf(T);
   const uid = new Map(); let n = 0;
   for (const c of [T, ...CARS.cuts]) for (const v of c.vehicles) uid.set(v, n++);
   const job = jobOut(uid), settings = {};
@@ -20104,8 +20242,9 @@ SAVE.snapshot = function () {
   return {
     ver: SAVE.VER, at: Date.now(), route: SAVE.routeId(), print: SAVE.print(), settings,
     S: st, sw: NET.switches.map(s => [s.name, s.state]),
-    train: Object.assign(consistOut(T, power), { loco: T.locoKey, ck: T.consistKey, units: T.nUnits || 1 }),
-    cuts: CARS.cuts.map(c => Object.assign(consistOut(c), { cv: rnd(c.v), rolling: !!c.rolling, stopT: rnd(c.stopT || 0), vented: !!c.vented, home: c.home || null })),
+    train: Object.assign(consistOut(T, power), { loco: T.locoKey, ck: T.consistKey, units: T.nUnits || 1, fid: T.fid || 0 }),
+    fleet: CARS.cuts.filter(c => c.parkS).map(fleetOut),
+    cuts: CARS.cuts.filter(c => !c.parkS).map(c => Object.assign(consistOut(c), { cv: rnd(c.v), rolling: !!c.rolling, stopT: rnd(c.stopT || 0), vented: !!c.vented, home: c.home || null })),
     job, ai: aiOut(), sky: { hour: rnd(SKY.hour, 1e5), weather: SKY.weather, wx: wxOut() }, cam, wreck,
     ind: IND.out(),
     misc: { placed: PLACE.made || 0, lastStation: GAME.lastStation || null, spawnName: GAME.spawnName || '' },
@@ -20119,9 +20258,9 @@ SAVE.summary = function (T, job) {
   const cars = T.vehicles.filter(v => !isPower(v)).length;
   let near = null, best = 3000;
   for (const st of ROUTE.stations) { const d = st.p ? st.p.distanceTo(T.lead.pos) : Infinity; if (d < best) { best = d; near = st.name; } }
-  const jd = job && JOB.def(job.id);
+  const jd = job && JOB.def(job.id), more = CARS.cuts.filter(c => c.parkS).length;
   return {
-    title: jd ? jd.name : `${loco}${sp.set ? '' : cars ? ` · ${cars} car${cars > 1 ? 's' : ''}` : ' · light'}`,
+    title: jd ? jd.name : `${loco}${sp.set ? '' : cars ? ` · ${cars} car${cars > 1 ? 's' : ''}` : ' · light'}${more ? ` · +${more} train${more > 1 ? 's' : ''}` : ''}`,
     where: `${S.derailed ? 'Wrecked' : near ? (best < 400 ? 'At ' : 'Near ') + near : 'Out on the line'} · ${SAVE.routeName(SAVE.routeId())}`,
     clock: jd ? fmtClock(JOB.clock()) : dnFmt(SKY.hour),
   };
@@ -20204,21 +20343,8 @@ SAVE.apply = function (d) {
   // the train: its engine as built, and its cars as they were
   const t = new Train(scene, g.loco, 'light', dieselOpts());
   GAME.train = t;
-  const power = t.vehicles.slice(), V = [];   // a light engine: everything built is the engine (or the whole trainset)
-  for (const o of d.train.v) {
-    const v = o.p !== undefined ? power[o.p] : carIn(o);
-    if (!v) throw new Error('the engine has changed since this save');
-    vehicleIn(v, o);
-    if (!v.ptsAll) t.track(v);
-    t.markerLamps(v);
-    V.push(v);
-  }
-  if (power.some(v => !V.includes(v))) throw new Error('the engine has changed since this save');
-  t.vehicles = V; t.consistKey = d.train.ck || 'light';
-  t.layout(); t.buildInstances();
-  if (!seatConsist(t, d.train, E)) throw new Error('the train is not on this railroad');
-  t.update(0);
-  prepareTrain(t, true);
+  const V = trainIn(t, d.train, E);
+  t.fid = d.train.fid || 0;
   // the cars standing about
   if (!CARS.geo) CARS.geo = carGeos();
   const all = [...V];
@@ -20230,6 +20356,19 @@ SAVE.apply = function (d) {
     c.update(0);
     CARS.cuts.push(c); all.push(...cv);
   }
+  // your other trains, standing as they were left; an engine that can no longer be built is left out
+  for (const o of d.fleet || []) {
+    if (!LOCO_SPEC[o.loco]) continue;
+    const c = new Train(scene, o.loco, 'light', Object.assign({}, o.opts, { dark: true }));
+    try { all.push(...trainIn(c, o, E)); }
+    catch (e) { console.warn('fleet train', e); c.disposeDeep(); continue; }
+    Object.assign(c, { parkS: Object.assign({}, o.ps), cfg: o.cfg || null, v: o.cv || 0, rolling: !!o.rolling, stopT: o.stopT || 0, fid: o.fid || 0 });
+    if (c.parkS.dist0 === undefined) c.parkS.dist0 = c.dist;
+    c.update(0); FLEET.dim(c);
+    CARS.cuts.push(c);
+  }
+  ROAD_SHORT = LOCO_SPEC[g.loco].short;
+  FLEET.n = Math.max(FLEET.n, t.fid || 0, ...FLEET.parked().map(c => c.fid || 0));
   CARS.gen++;
   IND.in(d.ind);
   PLACE.made = Math.max(PLACE.made || 0, (d.misc && d.misc.placed) || 0);
@@ -21277,6 +21416,7 @@ function hsSlideFrame(dt) {
 }
 function trainName(c) {
   if (c === GAME.train) return 'your train';
+  if (c.parkS) return FLEET.name(c);
   if (c.ai) return c.ai.name;
   if (MP.on) for (const p of MP.peers.values()) if (p.rt && p.rt.train === c) return `${p.st.nm}'s train`;
   return 'the cars';
@@ -21380,10 +21520,12 @@ WALK.findAction = function () {
         const w = local2world(v, _kA.set(d[0], 0.6, d[1] * (P.hw + 0.3)), _kC), dd = Math.hypot(w.x - WALK.p.x, w.z - WALK.p.z);
         if (dd < 1.9 && Math.abs(WALK.p.y - w.y) < 2.2 && (!best || dd < best.dd)) best = { dd, label: 'Board', sub: trainName(c), wait: sp > 0.4, go: () => WALK.board(c, v, d) };
       }
-      if (c === T && v === T.lead && T.loco.cabEye) {
+      // your own cab, or the cab of one of your other trains standing about: climbing in takes it over
+      if ((c === T || c.parkS) && v === c.lead && c.loco.cabEye) {
         for (const s of [-1, 1]) {
-          const w = _kA.set(T.loco.cabEye.x - 0.4, 0, s * 2.0).applyMatrix4(T.loco.root.matrixWorld), dd = Math.hypot(w.x - WALK.p.x, w.z - WALK.p.z);
-          if (dd < 2.2 && (!best || dd < best.dd)) best = { dd, label: 'Climb up', sub: 'Into your cab', wait: sp > 0.4, go: () => WALK.toCab() };
+          const w = _kA.set(c.loco.cabEye.x - 0.4, 0, s * 2.0).applyMatrix4(c.loco.root.matrixWorld), dd = Math.hypot(w.x - WALK.p.x, w.z - WALK.p.z);
+          if (dd < 2.2 && (!best || dd < best.dd)) best = c === T ? { dd, label: 'Climb up', sub: 'Into your cab', wait: sp > 0.4, go: () => WALK.toCab() }
+            : { dd, label: 'Climb up', sub: `Take over ${FLEET.name(c)}`, wait: sp > 0.4, go: () => { if (FLEET.select(c, { walk: true })) WALK.toCab(true); } };
         }
       }
     }
@@ -21764,6 +21906,387 @@ WALK.peerTag = function (p, w) {
 };
 
 /* ============================================================================
+   Your trains: make up more than one, leave one standing while you drive
+   another, and take any of them over by clicking it in the world, on the
+   map or in the Trains panel (O; [ and ] step through them). A train you
+   leave stands where it is with the throttle shut and the brakes set, its
+   fire kept up. It is an ordinary consist on the rails: it holds its block,
+   holds switches, can be shoved, and cars can be cut off it. Single player.
+   ========================================================================== */
+const FLEET = { MAX: 8, n: 0, card: null, armed: null, hover: null, hoverAt: 0, uiT: 0, newLoco: null, newCk: null };
+/* the parts of S that belong to the railroad and the clock rather than to one engine */
+const FLEET_WORLD = ['time', 'paused', 'autoFire', 'autoCut', 'derailed', 'warnTimer', 'wet', 'railP', 'mu', 'grade', 'limit'];
+/* the menu settings that say how a train was made up */
+const FLEET_CFG = ['loco', 'consist', 'units', 'livery', 'mix', 'custom', 'number', 'finish'];
+
+/* every train you have, the one being driven first, then the others in the order they were made up */
+FLEET.parked = () => CARS.cuts.filter(c => c.parkS);
+FLEET.all = function () {
+  const a = GAME.train ? [GAME.train, ...FLEET.parked()] : FLEET.parked();
+  for (const t of a) if (!t.fid) t.fid = ++FLEET.n;
+  return a;
+};
+const fleetOrder = () => FLEET.all().slice().sort((a, b) => a.fid - b.fid);
+
+function fleetCfgOut() {
+  const g = GAME.settings; if (!g) return null;
+  const o = {}; for (const k of FLEET_CFG) o[k] = k === 'custom' && g.custom ? Object.assign({}, g.custom) : g[k];
+  return o;
+}
+function fleetCfgIn(o) {
+  const g = GAME.settings; if (!g || !o) return;
+  for (const k of FLEET_CFG) if (o[k] !== undefined) g[k] = k === 'custom' ? Object.assign({}, o.custom) : o[k];
+}
+
+/* Leave train T standing: the crew shuts off, sets the train and engine brakes and keeps the fire up. Its
+   controls, boiler, air and supplies are kept with it (T.parkS); it joins the consists standing about. */
+function fleetPark(T) {
+  const st = {};
+  for (const k in S) { const x = S[k]; if (typeof x === 'number' ? isFinite(x) : typeof x === 'boolean' || typeof x === 'string') st[k] = x; }
+  for (const k of FLEET_WORLD) delete st[k];
+  Object.assign(st, { throttle: 0, notch: 0, dyn: 0, whistle: 0, bell: false, sander: false, slip: false, slide: false, brakeH: Math.max(st.brakeH || 0, 0.5), indH: 1, dist0: T.dist });
+  T.parkS = st;
+  T.cfg = fleetCfgOut() || T.cfg || null;
+  T.v = S.v; T.rolling = Math.abs(S.v) > 0.005; T.stopT = 0; T.vented = false;
+  // still moving, it brakes to a stand on its own (CARS.step) and is tied down there
+  for (const v of T.vehicles) { v.hb = !T.rolling; if (v.brake) v.brake.BC = Math.max(v.brake.BC || 0, 50); }
+  if (!CARS.cuts.includes(T)) CARS.cuts.push(T);
+  CARS.gen++; if (typeof IX !== 'undefined') IX.idx = null;
+  return st;
+}
+/* take standing train T over: its controls and boiler come back as they were left, and it moves at whatever
+   speed it has been shoved to */
+function fleetResume(T) {
+  const st = T.parkS; if (!st) return false;
+  CARS.cuts = CARS.cuts.filter(c => c !== T);
+  const theta = st.theta - (T.dist - st.dist0) / (T.diesel ? LG.rD : steamK(LOCO_SPEC[T.locoKey]).rD);
+  for (const k in st) if (k !== 'dist0' && !FLEET_WORLD.includes(k)) S[k] = st[k];
+  S.theta = theta; S.v = S.vw = T.v || 0;
+  T.parkS = null; T.v = 0; T.rolling = false; T.stopT = 0;
+  for (const v of T.vehicles) v.hb = false;
+  GAME.train = T;
+  CARS.gen++; if (typeof IX !== 'undefined') IX.idx = null;
+  return true;
+}
+
+/* why you cannot make up, change or take off a train right now, or '' */
+FLEET.blocked = function () {
+  if (!GAME.ready || !GAME.running || !GAME.train) return 'Start a run first.';
+  if (MP.on) return 'Running several trains is single player for now: leave the room first.';
+  if (JOB.activeId()) return 'A job is worked with one train. Finish it, or abandon it from the job sheet, first.';
+  if (PLACE.on) return 'Finish placing first.';
+  if (S.derailed) return 'Not until your train is back on the rails.';
+  return '';
+};
+
+/* ---------------- names ---------------- */
+FLEET.name = function (T) {
+  const sp = LOCO_SPEC[T.locoKey] || {};
+  if (sp.set) return HSR[sp.set].name;
+  if (T.diesel) return `${T.nUnits > 1 ? T.nUnits + ' × ' : ''}${sp.short || 'Diesel'} ${(T.loco && T.loco.number) || sp.num || ''}`.trim();
+  return `${sp.short} ${T.locoKey}`;
+};
+FLEET.what = function (T) {
+  if (T.elec) return 'trainset';
+  const n = T.vehicles.filter(v => !isPower(v)).length;
+  return n ? `${n} car${n > 1 ? 's' : ''}` : 'light engine';
+};
+FLEET.where = function (T) {
+  const f = T.endTP('front'), line = PLACE.lineOf(f), p = T.lead.pos;
+  let near = null, best = 1500;
+  if (p) for (const st of ROUTE.stations) { const d = st.p ? st.p.distanceTo(p) : Infinity; if (d < best) { best = d; near = st.name; } }
+  const on = line ? `on ${line}` : 'on the line';
+  return near && !line.includes(near) ? `${on} near ${near}` : on;
+};
+FLEET.status = function (T) {
+  const v = T === GAME.train ? S.v : T.v || 0, mph = Math.round(Math.abs(v) / MPH);
+  if (T === GAME.train) return `Driving · ${mph} mph · ${FLEET.where(T)}`;
+  return `${mph >= 1 ? `Rolling, ${mph} mph` : 'Standing, brakes set'} · ${FLEET.where(T)}`;
+};
+/* boiler or fuel, as it was left */
+FLEET.supplies = function (T) {
+  const st = T === GAME.train ? S : T.parkS; if (!st) return '';
+  if (T.elec) return st.panUp ? 'Pantograph up' : 'Pantograph down';
+  if (T.diesel) return `${Math.round(st.fuel / 3.785).toLocaleString()} gal fuel`;
+  return `${Math.round(st.P)} psi · ${Math.round(st.water / 3.785 / 100) / 10}k gal · ${(st.coal / 907.2).toFixed(1)} t coal`;
+};
+
+/* ---------------- taking a train over ---------------- */
+/* the game picks up the train now being driven */
+FLEET.after = function (T) {
+  ROAD_SHORT = LOCO_SPEC[T.locoKey].short;
+  if (!T.diesel) applySteamFinish(GAME.settings.finish);
+  S.limit = Math.min(...T.pts.map(p => p.tp.e.limit));
+  buildWhistleIfReady();
+  GAME.jointMem = new Map(); GAME.filling = null; GAME.scan = null; GAME.lastStation = null;
+  if (IX.PLAYER) Object.assign(IX.PLAYER, { last: null, passed: null });   // the signals the other train was running up to are not this one's
+  CAM.init = false;
+  T.update(0, S.theta, S.reverser);
+  saveSettings(); SAVE.menuSync(); startLabel(); GAME.refreshKeys();
+  carPanelState.key = ''; if (CARS.onChange) CARS.onChange();
+  FLEET.closeCard(); FLEET.ui(true);
+  if (MAP.visible) MAP.draw();
+};
+/* a train left standing shows only a dimmed headlight */
+FLEET.dim = function (T) {
+  const L = T.loco; if (!L) return;
+  if (L.beam) L.beam.material.opacity = 0;
+  if (L.halo) L.halo.material.opacity = T.parkS && T.parkS.light ? 0.22 : 0;
+  if (L.ditch) for (const d of L.ditch) { d.lens.material.color.setScalar(0.25); d.halo.material.opacity = 0; }
+};
+/* take over standing train T (how.walk: he climbed into its cab on foot) */
+FLEET.select = function (T, how = {}) {
+  const old = GAME.train;
+  if (!T || T === old || !T.parkS) return false;
+  const why = FLEET.blocked(); if (why) { toast(why, 'warn', 3600, 'fleet'); return false; }
+  if (WALK.on && !how.walk) WALK.reset();
+  fleetPark(old);
+  fleetResume(T);
+  T.takeLights(old);
+  FLEET.dim(old);
+  fleetCfgIn(T.cfg);
+  FLEET.after(T);
+  old.update(0);
+  if (!how.quiet) toast(`Now driving ${FLEET.name(T)}. ${FLEET.name(old)} stands ${FLEET.where(old)} with its brakes set.`, 'good', 4200, 'fleet');
+  return true;
+};
+/* the next (d = 1) or previous (-1) train, in the order they were made up */
+FLEET.cycle = function (d) {
+  const a = fleetOrder();
+  if (a.length < 2) { toast('You have one train. Press O to make up another.', '', 3000, 'fleet'); return; }
+  const i = a.indexOf(GAME.train);
+  FLEET.select(a[(i + d + a.length) % a.length]);
+};
+/* the standing train nearest T */
+FLEET.nearest = function (T) {
+  let best = null, bd = Infinity;
+  for (const c of FLEET.parked()) { if (c === T) continue; const d = c.lead.pos && T.lead.pos ? c.lead.pos.distanceTo(T.lead.pos) : 0; if (d < bd) { bd = d; best = c; } }
+  return best;
+};
+
+/* ---------------- making one up, taking one off ---------------- */
+/* clear track for a new train t: the usual yard tracks first (see MP.spawnSlot), else anywhere on a layout */
+function fleetSlot(t) {
+  if (WORLD.custom) { const tp = MP.layoutSlot(t.length + 4); return tp ? { tp, name: PLAY_LAYOUT.name || 'your layout' } : null; }
+  const s = MP.spawnSlot(t); if (!s) return null;
+  const loc = s.line.locate(s.s);
+  return { tp: new TrackPos(loc.edge, loc.s, 1), name: s.name };
+}
+/* make up another train (engine key, consist key) on clear track and take it over; the one you were driving stands */
+FLEET.add = function (loco, ck) {
+  const why = FLEET.blocked(); if (why) { toast(why, 'warn', 3600, 'fleet'); return false; }
+  if (!LOCO_SPEC[loco]) return false;
+  if (FLEET.all().length >= FLEET.MAX) { toast(`${FLEET.MAX} trains is as many as the railroad holds. Take one off first.`, 'warn', 4000, 'fleet'); return false; }
+  const old = GAME.train, g = GAME.settings, set = !!LOCO_SPEC[loco].set;
+  if (WALK.on) WALK.reset();
+  fleetPark(old);
+  g.loco = loco; if (!set) g.consist = ck;
+  const t = new Train(scene, loco, set ? 'light' : ck, dieselOpts());
+  const slot = fleetSlot(t);
+  if (!slot) {
+    t.disposeDeep(); fleetCfgIn(old.cfg); fleetResume(old); ROAD_SHORT = LOCO_SPEC[old.locoKey].short;
+    toast('No clear track to make up another train. Move one with Place (G), or take one off the railroad.', 'warn', 5200, 'fleet');
+    return false;
+  }
+  t.place(slot.tp);
+  prepareTrain(t);
+  old.dropLights(); FLEET.dim(old); old.update(0);
+  GAME.train = t; t.fid = ++FLEET.n;
+  resetState();   // a fresh engine: fire up, full tender, brakes released
+  CARS.gen++; IX.idx = null;
+  FLEET.after(t);
+  toast(`${FLEET.name(t)} made up on ${slot.name}. ${FLEET.name(old)} stands with its brakes set: click it, or press O, to go back to it.`, 'good', 5600, 'fleet');
+  return true;
+};
+/* take train T off the railroad (fromPlace: picked up in Place mode, which already holds everything still) */
+FLEET.remove = function (T, fromPlace) {
+  if (!T) return false;
+  if (!fromPlace) { const why = FLEET.blocked(); if (why) { toast(why, 'warn', 3600, 'fleet'); return false; } }
+  if (T === GAME.train) {
+    const next = FLEET.nearest(T);
+    if (!next) { toast('That is your only train. Make up another before you take this one off.', 'warn', 3600, 'fleet'); return false; }
+    if (!FLEET.select(next, { quiet: true })) return false;
+  }
+  if (!T.parkS) return false;
+  const name = FLEET.name(T);
+  if (WALK.ride && WALK.ride.c === T) WALK.reset();
+  if (CPL.hover && CPL.hover.c === T) CPL.point(null);
+  if (FLEET.hover === T) FLEET.point(null);
+  CARS.cuts = CARS.cuts.filter(c => c !== T);
+  T.disposeDeep();
+  CARS.gen++; IX.idx = null; carPanelState.key = ''; if (CARS.onChange) CARS.onChange();
+  FLEET.closeCard(); FLEET.ui(true);
+  if (MAP.visible) MAP.draw();
+  toast(`${name} taken off the railroad.${GAME.train ? ` You are driving ${FLEET.name(GAME.train)}.` : ''}`, '', 3600, 'fleet');
+  return true;
+};
+
+/* ---------------- pointing at a train in the world ---------------- */
+const _flA = new THREE.Vector3();
+/* the standing train under screen point (x, y), within reach */
+FLEET.at = function (x, y) {
+  let best = null, bd = Infinity;
+  const ppm = innerHeight / (2 * Math.tan(camera.fov * Math.PI / 360)), cam = camera.position;
+  for (const c of FLEET.parked()) for (const v of c.vehicles) {
+    if (!v.pos || v.root.visible === false) continue;
+    const dc = v.pos.distanceTo(cam); if (dc > 900) continue;
+    const lim = Math.max(18, 1.6 * ppm / dc);
+    _flA.copy(v.pos).addScaledVector(v.fwd, v.len / 2); _flA.y += 1.9; const a = placeScreen(_flA);
+    _flA.copy(v.pos).addScaledVector(v.fwd, -v.len / 2); _flA.y += 1.9; const b = placeScreen(_flA);
+    if (!a || !b) continue;
+    const dx = b[0] - a[0], dy = b[1] - a[1], L2 = dx * dx + dy * dy || 1, t = clamp(((x - a[0]) * dx + (y - a[1]) * dy) / L2, 0, 1);
+    const d = Math.hypot(a[0] + t * dx - x, a[1] + t * dy - y);
+    if (d < lim && d + dc * 0.01 < bd) { bd = d + dc * 0.01; best = c; }
+  }
+  return best;
+};
+/* a tap or click on a standing train opens its card */
+FLEET.tap = function (x, y) {
+  if (MP.on || !GAME.running) return false;
+  const c = FLEET.at(x, y); if (!c) return false;
+  FLEET.openCard(c, x, y);
+  return true;
+};
+/* mouse hover: say what a click will do (a few times a second: it projects every car) */
+FLEET.point = function (x, y) {
+  const tip = $('cplTip');
+  if (x === null) { if (FLEET.hover) { FLEET.hover = null; tip.hidden = true; $('gl').style.cursor = ''; } return; }
+  const now = performance.now(); if (now - FLEET.hoverAt < 90) return; FLEET.hoverAt = now;
+  const c = MP.on ? null : FLEET.at(x, y);
+  if (!c) { FLEET.point(null); return; }
+  FLEET.hover = c;
+  $('gl').style.cursor = 'var(--cur-hot, pointer)';
+  tip.textContent = `${FLEET.name(c)} · ${FLEET.what(c)} · click to take it over`; tip.hidden = false;
+  tip.style.left = Math.min(innerWidth - tip.offsetWidth - 8, x + 14) + 'px'; tip.style.top = Math.max(8, y - 34) + 'px';
+};
+
+/* ---------------- the card for one train ---------------- */
+FLEET.openCard = function (c, x, y) {
+  FLEET.card = c; FLEET.armed = null;
+  const el = $('fleetCard'); el.hidden = false;
+  FLEET.cardFill();
+  const w = el.offsetWidth, h = el.offsetHeight;
+  el.style.left = clamp((x === undefined ? innerWidth / 2 : x) - w / 2, 8, innerWidth - w - 8) + 'px';
+  el.style.top = clamp((y === undefined ? innerHeight / 3 : y) - h - 18, 8, innerHeight - h - 8) + 'px';
+};
+FLEET.closeCard = function () { FLEET.card = null; FLEET.armed = null; const el = $('fleetCard'); if (el) el.hidden = true; };
+FLEET.cardFill = function () {
+  const c = FLEET.card; if (!c) return;
+  if (c !== GAME.train && !CARS.cuts.includes(c)) { FLEET.closeCard(); return; }
+  const set = (id, t) => { const e = $(id); if (e.textContent !== t) e.textContent = t; };
+  set('fcName', FLEET.name(c)); set('fcWhat', FLEET.what(c));
+  set('fcStatus', FLEET.status(c)); set('fcSup', FLEET.supplies(c));
+  const drive = $('fcDrive'), del = $('fcDelete'), mine = c === GAME.train;
+  drive.disabled = mine; drive.textContent = mine ? 'Driving this one' : 'Take it over';
+  del.textContent = FLEET.armed === c ? 'Tap again to remove' : 'Take off railroad';
+  del.classList.toggle('warn', FLEET.armed === c);
+};
+
+/* ---------------- the Trains panel ---------------- */
+FLEET.toggle = function (open) {
+  const p = $('fleetPanel'), on = open === undefined ? p.hidden : open;
+  if (on && MP.on) { toast('Running several trains is single player for now: leave the room first.', 'warn', 3600, 'fleet'); return; }
+  p.hidden = !on; $('btnTrains').classList.toggle('on', on);
+  if (on) { carPanelToggle(false); $('mpPanel').hidden = true; FLEET.armed = null; FLEET.ui(true); }
+};
+/* the delete button asks twice */
+FLEET.ask = function (c) {
+  if (FLEET.armed === c) { FLEET.armed = null; FLEET.remove(c); return; }
+  FLEET.armed = c; FLEET.ui(true); FLEET.cardFill();
+  setTimeout(() => { if (FLEET.armed === c) { FLEET.armed = null; FLEET.ui(true); FLEET.cardFill(); } }, 3500);
+};
+FLEET.chips = function () {
+  const g = GAME.settings;
+  if (!FLEET.newLoco || !$('optLoco_' + FLEET.newLoco)) FLEET.newLoco = g.loco;
+  if (!FLEET.newCk || !CONSISTS[FLEET.newCk] || CONSISTS[FLEET.newCk].hidden) FLEET.newCk = CONSISTS[g.consist] && !CONSISTS[g.consist].hidden ? g.consist : 'light';
+  const host = $('fleetEngines'), key = [...$('optLoco').children].map(b => b.id).join();
+  if (host.dataset.k !== key) {
+    host.dataset.k = key; host.innerHTML = '';
+    for (const b of $('optLoco').children) {
+      const k = b.id.replace('optLoco_', ''), c = document.createElement('button');
+      c.type = 'button'; c.className = 'pchip'; c.dataset.loco = k; c.textContent = b.firstChild && b.firstChild.nodeType === 3 ? b.firstChild.textContent : b.textContent;
+      c.addEventListener('click', () => { FLEET.newLoco = k; FLEET.chips(); });
+      host.appendChild(c);
+    }
+    const th = $('fleetTrains'); th.innerHTML = '';
+    for (const k in CONSISTS) {
+      if (CONSISTS[k].hidden) continue;
+      const c = document.createElement('button'); c.type = 'button'; c.className = 'pchip'; c.dataset.ck = k; c.textContent = CONSISTS[k].name;
+      c.addEventListener('click', () => { FLEET.newCk = k; FLEET.chips(); });
+      th.appendChild(c);
+    }
+  }
+  const set = !!LOCO_SPEC[FLEET.newLoco].set;
+  for (const c of host.children) c.setAttribute('aria-pressed', String(c.dataset.loco === FLEET.newLoco));
+  for (const c of $('fleetTrains').children) { c.setAttribute('aria-pressed', String(!set && c.dataset.ck === FLEET.newCk)); c.disabled = set; }
+};
+FLEET.ui = function (force) {
+  const b = $('btnTrains'); if (b) b.hidden = MP.on;
+  const n = FLEET.all().length, cnt = $('fleetCount'); if (cnt) { const t = n > 1 ? String(n) : ''; if (cnt.textContent !== t) cnt.textContent = t; }
+  const p = $('fleetPanel'); if (!p || p.hidden) return;
+  const list = $('fleetList'), rows = fleetOrder();
+  const key = rows.map(c => c.fid + (c === GAME.train ? '*' : '') + (FLEET.armed === c ? '!' : '')).join();
+  if (force || list.dataset.k !== key) {
+    list.dataset.k = key; list.innerHTML = '';
+    for (const c of rows) {
+      const mine = c === GAME.train, row = document.createElement('div'); row.className = 'flRow' + (mine ? ' mine' : '');
+      row.innerHTML = '<i></i><div class="mpN"><b></b><span></span></div><div class="flBtns"></div>';
+      row.querySelector('b').textContent = `${FLEET.name(c)} · ${FLEET.what(c)}`;
+      row.querySelector('span').dataset.fid = c.fid;
+      const bx = row.querySelector('.flBtns');
+      if (mine) { const t = document.createElement('em'); t.textContent = 'Driving'; bx.appendChild(t); }
+      else { const d = document.createElement('button'); d.type = 'button'; d.className = 'btn prim'; d.textContent = 'Drive'; d.addEventListener('click', () => FLEET.select(c)); bx.appendChild(d); }
+      const x = document.createElement('button'); x.type = 'button'; x.className = 'btn' + (FLEET.armed === c ? ' warn' : ''); x.textContent = FLEET.armed === c ? 'Sure?' : 'Remove';
+      x.setAttribute('aria-label', `Take ${FLEET.name(c)} off the railroad`); x.disabled = rows.length < 2;
+      x.addEventListener('click', () => FLEET.ask(c)); bx.appendChild(x);
+      list.appendChild(row);
+    }
+    FLEET.chips();
+    $('fleetAdd').disabled = n >= FLEET.MAX;
+  }
+  // what each train is doing, kept fresh while the panel is open
+  for (const s of list.querySelectorAll('span[data-fid]')) { const c = rows.find(r => r.fid === +s.dataset.fid); if (c) { const t = FLEET.status(c); if (s.textContent !== t) s.textContent = t; } }
+};
+/* twice a second while running: the panel and the card follow the trains */
+FLEET.frame = function (dt) {
+  FLEET.uiT += dt; if (FLEET.uiT < 0.5) return; FLEET.uiT = 0;
+  FLEET.ui(); if (FLEET.card) FLEET.cardFill();
+};
+
+/* ---------------- the map ---------------- */
+FLEET.drawMap = function (g, tx, ty, opt) {
+  for (const c of FLEET.parked()) {
+    if (!c.lead.pos) continue;
+    g.strokeStyle = '#d9b45a'; g.lineWidth = 4 * opt.w; g.beginPath();
+    c.vehicles.forEach((v, i) => { const x = tx(v.pos.x), y = ty(-v.pos.z); i ? g.lineTo(x, y) : g.moveTo(x, y); }); g.stroke();
+    const q = c.lead.pos, x = tx(q.x), y = ty(-q.z);
+    g.fillStyle = '#ffe08a'; g.strokeStyle = '#000'; g.lineWidth = 1.5; g.beginPath(); g.arc(x, y, 3.2 * opt.w, 0, TAU); g.fill(); g.stroke();
+    if (opt.labels) { g.font = `700 ${opt.fs}px "IBM Plex Sans Condensed", sans-serif`; g.textAlign = 'left'; g.lineWidth = 3; g.strokeStyle = 'rgba(0,0,0,0.75)'; const t = FLEET.name(c); g.strokeText(t, x + 7, y - 7); g.fillStyle = '#ffe08a'; g.fillText(t, x + 7, y - 7); }
+  }
+};
+/* a tap on the full map near one of your standing trains takes it over */
+FLEET.mapPick = function (x, y) {
+  if (MP.on || !MAP.t) return null;
+  let best = null, bd = 16;
+  for (const c of FLEET.parked()) for (const v of c.vehicles) {
+    if (!v.pos) continue;
+    const d = Math.hypot(MAP.t.tx(v.pos.x) - x, MAP.t.ty(-v.pos.z) - y);
+    if (d < bd) { bd = d; best = c; }
+  }
+  return best;
+};
+
+FLEET.setup = function () {
+  $('btnTrains').addEventListener('click', () => FLEET.toggle());
+  $('fleetClose').addEventListener('click', () => FLEET.toggle(false));
+  $('fleetAdd').addEventListener('click', () => FLEET.add(FLEET.newLoco || GAME.settings.loco, FLEET.newCk || 'light'));
+  $('fcDrive').addEventListener('click', () => { const c = FLEET.card; if (c) FLEET.select(c); });
+  $('fcDelete').addEventListener('click', () => { const c = FLEET.card; if (c) FLEET.ask(c); });
+  $('fcClose').addEventListener('click', () => FLEET.closeCard());
+  FLEET.ui(true);
+};
+
+/* ============================================================================
    Game: boot, world loading, main loop, rules, HUD
    ========================================================================== */
 const GAME = {
@@ -21835,7 +22358,7 @@ async function loadWorld() {
   for (const st of ROUTE.stations) { st.edge.pose(st.s, FR); st.p = FR.p.clone(); }
   for (const w of ROUTE.water) { w.edge.pose(w.s, FR); w.p = FR.p.clone(); }
   if (ROUTE.coal) { const c = ROUTE.coal; c.edge.pose(c.s, FR); c.p = FR.p.clone(); }
-  setupViewInput($('gl'), camera); PLACE.setup($('gl')); setupLevers(); setupButtons(); setupMap(); WALK.setup();
+  setupViewInput($('gl'), camera); PLACE.setup($('gl')); setupLevers(); setupButtons(); setupMap(); WALK.setup(); FLEET.setup();
   linearizeObject(scene);
   makeTrain();
   applyLook(GAME.settings.time, GAME.settings.weather, renderer, scene);
@@ -21862,7 +22385,10 @@ function resetState() {
   else { const k = steamK(LOCO_SPEC[GAME.settings.loco]); Object.assign(S, { P: k.PL - 7, water: k.water, coal: k.coal }); }   // a bigger engine comes with its own pressure and tender
 }
 function makeTrain() {
-  CARS.clear(GAME.train);
+  // your other trains stay where they stand when you make up a new one; a job or a room starts with just the one
+  const others = FLEET.parked().length, keep = others > 0 && !MP.on && !JOB.wanted();
+  CARS.clear(GAME.train, false, keep);
+  if (others && !keep && !MP.on) toast(`Your other ${others > 1 ? others + ' trains were' : 'train was'} put away: a job is worked with one train.`, 'warn', 5200, 'fleet');
   if (GAME.train) GAME.train.dispose();
   const t = new Train(scene, GAME.settings.loco, JOB.consist(), dieselOpts());
   GAME.train = t;
@@ -21877,10 +22403,12 @@ function makeTrain() {
     MP.spawned = true; MP.needSpawn = false; MP.dirty = true;
   } else {
     const sw = name => NET.switches.find(s => s.name === name);
-    for (const s of NET.switches) { s.state = 0; s.anim = 0; }
+    // points under one of your standing trains stay as they are
+    for (const s of NET.switches) if (!keep || !CARS.occupied(s)) { s.state = 0; s.anim = 0; }
     // a job says where its train is made up and how the switches are lined
     for (const n of sp ? sp.lined : WORLD.mtn ? ['Riverton ladder E2', 'Riverton East'] : ['Yard ladder E2', 'Bellevue East']) sw(n).state = sw(n).anim = 1;
     if (sp) { line = sp.line; sFront = sp.s; o = sp.o; GAME.spawnName = sp.name; }
+    else if (keep) { const slot = MP.spawnSlot(t); if (slot) { line = slot.line; sFront = slot.s; GAME.spawnName = slot.name; } }
   }
   const loc = line.locate(sFront);
   t.place(new TrackPos(loc.edge, loc.s, o));
@@ -21889,7 +22417,8 @@ function makeTrain() {
 }
 /* custom layout: the start marker, slid forward until the whole train is on the rails */
 function placeOnLayout(t, light) {
-  if (!MP.on) for (const s of NET.switches) { s.state = 0; s.anim = 0; }
+  const others = FLEET.parked().length > 0;
+  if (!MP.on) for (const s of NET.switches) if (!others || !CARS.occupied(s)) { s.state = 0; s.anim = 0; }
   const st = layoutStart(PLAY_LAYOUT), need = t.length + 4;
   let tp = layoutFit(new TrackPos(st.edge, st.s, st.o), need);
   GAME.spawnName = PLAY_LAYOUT.name || 'your layout';
@@ -21898,10 +22427,10 @@ function placeOnLayout(t, light) {
     toast('That train is longer than the track, so you have a light engine.', 'warn', 5200);
     const t2 = new Train(scene, GAME.settings.loco, 'light', dieselOpts()); GAME.train = t2; placeOnLayout(t2, true); return;
   }
-  if (MP.on) {
-    // in a room, find a stretch of track no other train is on
+  if (MP.on || others) {
+    // in a room, or with your other trains about, find a stretch of track no other train is on
     const slot = MP.layoutSlot(need); if (slot) tp = slot;
-    MP.spawned = true; MP.needSpawn = false; MP.dirty = true;
+    if (MP.on) { MP.spawned = true; MP.needSpawn = false; MP.dirty = true; }
   }
   t.place(tp || new TrackPos(st.edge, st.s, st.o));
   finishTrain(t);
@@ -21987,7 +22516,7 @@ GAME.swapLive = function () {
   t.layout(); t.buildInstances();
   t.place(front);
   prepareTrain(t, true);
-  GAME.train = t;
+  GAME.train = t; t.fid = old.fid;   // the same train in the Trains list
   if (old.diesel !== t.diesel) carryOver();
   else if (old.locoKey !== t.locoKey) {
     S.throttle = 0; S.notch = 0; S.dyn = 0;
@@ -22198,7 +22727,7 @@ GAME.start = function () {
     if (JOB.run) JOB.end();
     makeTrain();
     if (job) JOB.begin(job);
-    else if (GAME.running) toast(`New train made up on ${WORLD.custom || WORLD.mtn ? GAME.spawnName : 'Yard 2'}.`, 'good');
+    else if (GAME.running) toast(`New train made up on ${WORLD.custom || WORLD.mtn || FLEET.parked().length ? GAME.spawnName : 'Yard 2'}.`, 'good');
     GAME.intro();
   }
   GAME.running = true; S.paused = false; applyFireSetting(GAME.settings.fire);
@@ -22406,6 +22935,7 @@ function updateHUD(dt) {
   const cars = CARS.ahead(GAME.train, dir, 500);
   if (cars) $('swMiniTxt').textContent += ` · cars ${fmtFt(cars.d)}`;
   if (act) stl.innerHTML = `<b>${act.label}</b> <button class="btn" id="btnService" style="padding:5px 8px;font-size:10px">${act.btn}</button>`;
+  else if (cars && cars.c.parkS) stl.innerHTML = `<span style="color:var(--approach)">${FLEET.name(cars.c)} standing ${cars.facing ? '' : 'foul '}in <b>${fmtFt(cars.d)}</b>${cars.d < 60 ? ` · ${Math.round(Math.abs(S.v) / MPH * 10) / 10} mph` : ''}</span>`;
   else if (cars && cars.c.ai) stl.innerHTML = `<span style="color:var(--approach)">${cars.c.ai.name} ahead in <b>${fmtFt(cars.d)}</b></span>`;
   else if (cars) stl.innerHTML = cars.facing ? `Coupling in <b>${fmtFt(cars.d)}</b>${cars.d < 60 ? ` · ${Math.round(Math.abs(S.v) / MPH * 10) / 10} mph` : ''}` : `<span style="color:var(--stop)">Cars foul of the route in <b style="color:var(--stop)">${fmtFt(cars.d)}</b></span>`;
   else if (sc.end && sc.end.d < 400) stl.innerHTML = `<span style="color:var(--stop)">End of track in <b style="color:var(--stop)">${fmtMi(sc.end.d)}</b></span>`;
@@ -22541,7 +23071,7 @@ function renderStep(dt, T) {
   MP.post(dt);
   updateFX(dt, camera); precipFrame(camera, dt); rainGlassFrame(dt);
   updateSparks(dt, T, camera);
-  if (GAME.running) updateHUD(dt);
+  if (GAME.running) { updateHUD(dt); FLEET.frame(dt); }
   cloudRender(renderer, camera, dt);
   renderer.render(scene, camera);
 }

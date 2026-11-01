@@ -56,7 +56,8 @@ PLACE.newCar = function (type, quiet) {
 PLACE.lift = function (c, v) {
   PLACE.cancel();
   const T = GAME.train;
-  if (c === T && isPower(v)) PLACE.ghost = { c: T, kind: 'train', orig: T.pts.map(p => p.tp.clone()), fit: null };
+  // the engine brings its whole train; another train standing with its engine is always picked up whole
+  if ((c === T && isPower(v)) || c.parkS) PLACE.ghost = { c, kind: 'train', orig: c.pts.map(p => p.tp.clone()), fit: null };
   else { const g = PLACE.split(c, v); if (!g) return; PLACE.ghost = { c: g, kind: 'car', type: v.kind, orig: g.endTP('front'), fit: null }; }
   const C = PLACE.ghost.c, f = C.endTP('front'), r = C.endTP('rear'), a = tpXYZ(f), b = tpXYZ(r);
   PLACE.heading = { x: a[0] - b[0], z: a[2] - b[2] };
@@ -76,8 +77,15 @@ PLACE.cancel = function () {
 PLACE.discard = function (c) { c.dispose(); c.vehicles.forEach(freeVehicle); };
 PLACE.remove = function () {
   let g = PLACE.ghost;
-  if (!g && PLACE.pick) { if (isPower(PLACE.pick.v)) { toast('Your engine stays on the railroad. Pick it up to set it down somewhere else.', 'warn', 3600, 'placeEng'); return; } PLACE.lift(PLACE.pick.c, PLACE.pick.v); g = PLACE.ghost; }
+  if (!g && PLACE.pick) {
+    const pc = PLACE.pick.c;
+    // another of your trains: pick it up first, so taking a whole train away is never one slip of a key
+    if (pc.parkS) { PLACE.lift(pc, PLACE.pick.v); toast(`Holding ${FLEET.name(pc)}. Press Remove (or Delete) again to take the whole train off the railroad.`, 'warn', 4200, 'placeDel'); return; }
+    if (isPower(PLACE.pick.v)) { toast('Your engine stays on the railroad. Pick it up to set it down somewhere else.', 'warn', 3600, 'placeEng'); return; }
+    PLACE.lift(pc, PLACE.pick.v); g = PLACE.ghost;
+  }
   if (!g) return;
+  if (g.kind === 'train' && g.c.parkS) { PLACE.ghost = null; FLEET.remove(g.c, true); PLACE.changed(); PLACE.show(); return; }
   if (g.kind === 'train') { toast('Your engine stays on the railroad. Set it down somewhere, or press Put back.', 'warn', 3600, 'placeEng'); return; }
   PLACE.ghost = null; PLACE.discard(g.c);
   toast(`${CAR_NAMES[g.type] || 'Car'} taken off the railroad.`, '', 2200, 'placeDel');
@@ -181,14 +189,16 @@ PLACE.again = function () { if (PLACE.last && !PLACE.touch) PLACE.hoverAt(PLACE.
 /* switches under the held vehicle that would have to be thrown for it, if they can be */
 function placeLining(f) {
   for (const { sw } of f.line) for (const s of swPair(sw)) {
-    if (CARS.occupied(s)) return `Cars are standing over ${s.name}`;
-    if (PLACE.ghost.kind !== 'train' && GAME.occupied(s)) return `Your train is on ${s.name}`;
+    const held = PLACE.ghost.c, on = CARS.cuts.find(c => c !== held && c.fouls(s));
+    if (on) return on.parkS ? `${FLEET.name(on)} is on ${s.name}` : `Cars are standing over ${s.name}`;
+    if (held !== GAME.train && GAME.occupied(s)) return `Your train is on ${s.name}`;
     const ai = AI.holding(s); if (ai) return ai.replace(/\.$/, '');
   }
   return null;
 }
 function placeName(c) {
   if (c === GAME.train) return 'your train';
+  if (c.parkS) return FLEET.name(c);
   if (c.ai) return c.ai.name;
   const n = c.vehicles.length, k = c.vehicles[0].kind, same = c.vehicles.every(v => v.kind === k);
   return n === 1 ? `the ${(CAR_NAMES[k] || 'car').toLowerCase()}${c.home ? ' on ' + c.home : ''}` : `the ${n} ${same ? (CAR_NAMES[k] || 'car').toLowerCase() + 's' : 'cars'}${c.home ? ' on ' + c.home : ''}`;
@@ -221,8 +231,8 @@ PLACE.drop = function () {
   PLACE.commit(g.c, f);
   PLACE.ghost = null;
   if (joins.length) sndCouple(0.7); else sndClunk(0.35, 0);
-  const what = g.kind === 'train' ? 'Your train' : (CAR_NAMES[g.type] || 'Car');
-  if (g.kind === 'train') {
+  const what = g.kind === 'train' ? (g.c === GAME.train ? 'Your train' : FLEET.name(g.c)) : (CAR_NAMES[g.type] || 'Car');
+  if (g.kind === 'train' && g.c === GAME.train) {
     const T = GAME.train;
     S.v = 0; S.vw = 0; S.limit = Math.min(...T.pts.map(p => p.tp.e.limit));
     GAME.jointMem = new Map(); GAME.filling = null; GAME.lastStation = null;
@@ -287,19 +297,19 @@ PLACE.show = function () {
   if (g) {
     const v = placeVerdict(g);
     if (g.fit && g.fit.F) PLACE.ribbonAt(g.fit.F, g.c.length, v ? v[0] : 'ok', true); else PLACE.ribbonAt(null);
-    const name = g.kind === 'train' ? 'Your train' : (CAR_NAMES[g.type] || 'Car');
+    const name = g.kind === 'train' ? (g.c === GAME.train ? 'Your train' : FLEET.name(g.c)) : (CAR_NAMES[g.type] || 'Car');
     label = v ? `<b>${name}</b> · ${v[1]}` : '';
-    hint = !g.fit ? `${touch ? 'Tap' : 'Point at'} the track to put the ${name.toLowerCase()} there.`
+    hint = !g.fit ? `${touch ? 'Tap' : 'Point at'} the track to put ${g.kind === 'train' ? 'it' : 'the ' + name.toLowerCase()} there.`
       : v && v[0] === 'bad' ? `${v[1]}. ${touch ? 'Tap' : 'Try'} somewhere else.`
       : touch ? `${v[1]}. Tap it again or press Place to set it down; Turn swaps its ends.` : `${v[1]}. Click to set it down · F turns it · Esc ${g.kind === 'new' ? 'lets go' : 'puts it back'}.`;
     $('gl').style.cursor = 'crosshair';
   } else {
     const p = PLACE.pick;
     if (p) {
-      const C = p.c, T = GAME.train, train = C === T && isPower(p.v);
+      const C = p.c, T = GAME.train, train = (C === T && isPower(p.v)) || !!C.parkS;
       PLACE.ribbonAt(train ? C.endTP('front') : PLACE.frontOf(C, p.v), train ? C.length : p.v.len, 'pick', train);
       const n = T.vehicles.filter(v => !isPower(v)).length;
-      label = train ? `<b>Your train</b>${n ? ` · ${n} car${n > 1 ? 's' : ''}` : ''} · click to move it` : `<b>${C === T ? carName(T, p.v) + ' in your train' : CAR_NAMES[p.v.kind] || 'Car'}</b> · click to pick it up`;
+      label = C.parkS ? `<b>${FLEET.name(C)}</b> · click to move it` : train ? `<b>Your train</b>${n ? ` · ${n} car${n > 1 ? 's' : ''}` : ''} · click to move it` : `<b>${C === T ? carName(T, p.v) + ' in your train' : CAR_NAMES[p.v.kind] || 'Car'}</b> · click to pick it up`;
     } else PLACE.ribbonAt(null);
     $('gl').style.cursor = p ? 'grab' : '';
     hint = touch ? 'Pick a car or an engine below, or tap one on the track to pick it up. Drag to look around; pinch to zoom and turn.'
@@ -313,7 +323,7 @@ PLACE.show = function () {
   for (const b of $('placeCars').children) b.setAttribute('aria-pressed', String(!!g && g.kind !== 'train' && b.dataset.car === g.type));
   for (const b of $('placeEngines').children) b.setAttribute('aria-pressed', String(!!g && g.kind === 'train' && b.dataset.loco === GAME.train.locoKey));
   $('placeFlip').disabled = !g;
-  $('placeRemove').disabled = !g || g.kind === 'train';
+  $('placeRemove').disabled = !(g ? g.kind !== 'train' || g.c.parkS : PLACE.pick && PLACE.pick.c.parkS);
   $('placeBack').disabled = !g; $('placeBack').textContent = g && g.kind === 'new' ? 'Let go' : 'Put back';
   $('placeGo').disabled = !g || !g.fit || !g.fit.F || placeVerdict(g)[0] === 'bad';
 };

@@ -109,7 +109,8 @@ function placeFit(C, front, skip, via) {
   // couplers that now meet another
   // a trainset's nose coupler sits behind its fairing and takes no cars
   const sealed = (c, end) => endCoupler(c, end).v.noCouple;
-  const touch = (from, dir, end) => { const h = carFrom(from, dir, 0.06, idx, skip); if (h && h.end && h.facing && !h.c.ai && !sealed(C, end) && !sealed(h.c, h.end)) out.joins.push({ end, c: h.c, cEnd: h.end }); };
+  // nor do two trains with their own engines couple up (see CARS.contact)
+  const touch = (from, dir, end) => { const h = carFrom(from, dir, 0.06, idx, skip); if (h && h.end && h.facing && !h.c.ai && !sealed(C, end) && !sealed(h.c, h.end) && !(isTrainC(C) && isTrainC(h.c))) out.joins.push({ end, c: h.c, cEnd: h.end }); };
   touch(F, 1, 'front'); touch(R, -1, 'rear');
   out.ok = true;
   return out;
@@ -126,7 +127,7 @@ PLACE.commit = function (C, fit) {
     C.v = 0; C.rolling = false; C.stopT = 0;
     for (const v of C.vehicles) v.hb = true;
     if (!CARS.cuts.includes(C)) CARS.cuts.push(C);
-    for (const end of ['front', 'rear']) setKn(endCoupler(C, end), KN_OPEN);
+    if (!C.parkS) for (const end of ['front', 'rear']) setKn(endCoupler(C, end), KN_OPEN);   // another train's couplers stay as they were
   }
   const ends = { front: endCoupler(C, 'front'), rear: endCoupler(C, 'rear') };
   for (const j of fit.joins) {
@@ -134,7 +135,8 @@ PLACE.commit = function (C, fit) {
     const g = ends[j.end], cur = [T, ...CARS.cuts].find(c => c && c.vehicles.includes(g.v));
     const curEnd = cur && ['front', 'rear'].find(e => { const x = endCoupler(cur, e); return x.v === g.v && x.k === g.k; });
     if (!curEnd || cur === j.c) continue;
-    if (j.c === T) absorb(T, j.cEnd, cur, curEnd); else absorb(cur, curEnd, j.c, j.cEnd);
+    // a train (yours, or one standing with its engine) takes the cars it meets
+    if (isTrainC(j.c) && !isTrainC(cur)) absorb(j.c, j.cEnd, cur, curEnd); else absorb(cur, curEnd, j.c, j.cEnd);
   }
   if (fit.joins.length && (C === T || fit.joins.some(j => j.c === T))) { S.v = 0; S.vw = 0; }
   PLACE.changed();
@@ -152,7 +154,7 @@ PLACE.changed = function () {
 PLACE.split = function (c, v) {
   if (!CARS.geo) CARS.geo = carGeos();
   const V = c.vehicles, i = V.indexOf(v), T = GAME.train;
-  if (i < 0) return null;
+  if (i < 0 || c.parkS) return null;   // another train is picked up whole (PLACE.lift)
   if (c !== T && V.length === 1) { CARS.cuts = CARS.cuts.filter(x => x !== c); PLACE.changed(); return c; }
   const ahead = V.slice(0, i), behind = V.slice(i + 1);
   const keepAhead = c === T ? ahead.some(isPower) : ahead.length > 0;

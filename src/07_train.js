@@ -196,6 +196,8 @@ class Train extends Consist {
     super(scene);
     this.locoKey = locoKey; this.consistKey = consistKey;
     this.driverDist = 0;
+    // how it was built, so a train standing in the yard can be saved and made up again (opts.dark: no lamps of its own yet)
+    this.opts = Object.assign({}, opts); delete this.opts.dark;
     const r = rng(opts.seed || 1944);   // car numbers: AI trains bring their own seed
     // locomotive
     const spec = LOCO_SPEC[locoKey];
@@ -262,7 +264,7 @@ class Train extends Consist {
     // headlight. Another player's train (opts.remote) gets no real lights: adding lights
     // to the scene would recompile every shader, and its lamp glow is drawn without them.
     this.remote = !!opts.remote;
-    if (!this.remote) {
+    if (!this.remote && !opts.dark) {
       this.head = new THREE.SpotLight(0xfff0d0, 0, 480, 0.3, 0.65, 1.1);
       this.head.castShadow = false;
       scene.add(this.head); scene.add(this.head.target);
@@ -285,6 +287,9 @@ class Train extends Consist {
     }
   }
   update(dt, theta = 0, rev = 0) {
+    // a train standing while you drive another (11l_fleet.js): its rods stay where they stopped, and turn if it is shoved
+    const ps = this.parkS;
+    if (ps) { theta = ps.theta - (this.dist - ps.dist0) / (this.diesel ? LG.rD : steamK(LOCO_SPEC[this.locoKey]).rD); rev = ps.reverser; }
     super.update(dt, theta, rev);
     if (this.elec) animateTrainset(this, dt);
     // headlight follows the lamp
@@ -295,6 +300,21 @@ class Train extends Consist {
       this.head.position.copy(L.headlightPos).applyMatrix4(hf.matrixWorld);
       this.head.target.position.copy(L.headlightPos).add(new THREE.Vector3(70, -L.headlightPos.y + 0.6, 0)).applyMatrix4(hf.matrixWorld);   // aimed down the rails, meeting them about 70 m out
     }
+  }
+  /* The headlight, firebox glow and cab lamp are the only real lights a train has, and only the train being
+     driven needs them: they move over from the train left standing (adding lights would recompile every shader). */
+  takeLights(from) {
+    const L = this.loco;
+    this.head = from.head; this.fireLight = from.fireLight; this.cabLight = from.cabLight;
+    from.head = from.fireLight = from.cabLight = null;
+    if (this.fireLight) { L.body.add(this.fireLight); if (L.fireLightPos) this.fireLight.position.copy(L.fireLightPos); else this.fireLight.position.set(CABDIM.bh - 0.3, CABDIM.fl + 0.5, 0.1); }
+    if (this.cabLight) { L.body.add(this.cabLight); if (L.cabLightPos) this.cabLight.position.copy(L.cabLightPos); else this.cabLight.position.set(ax(15.8), 4.1, 0); }
+  }
+  /* put this train's lights away (another train has just been made up with its own) */
+  dropLights() {
+    if (this.head) { this.scene.remove(this.head); this.scene.remove(this.head.target); }
+    for (const l of [this.fireLight, this.cabLight]) if (l && l.parent) l.parent.remove(l);
+    this.head = this.fireLight = this.cabLight = null;
   }
   worldOf(local, out = new THREE.Vector3()) { return out.copy(local).applyMatrix4(this.loco.root.matrixWorld); }
   unitWorld(m, local, out = new THREE.Vector3()) { return out.copy(local).applyMatrix4(m.root.matrixWorld); }
