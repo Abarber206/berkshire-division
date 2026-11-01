@@ -2504,9 +2504,10 @@ function makeMaterials() {
   MAT.ground.extensions = { derivatives: true };
   TEX.ground.repeat.set(1, 1);
   WORLD.snowU = { value: 0 };
+  WORLD.wetU = { value: 0 };   // rain-darkened ground, ballast and ties (0 dry .. 1 soaked)
   WORLD.fieldTex = makeFieldTexture();
   MAT.ground.onBeforeCompile = sh => {
-    sh.uniforms.uSnow = WORLD.snowU;
+    sh.uniforms.uSnow = WORLD.snowU; sh.uniforms.uWet = WORLD.wetU;
     sh.uniforms.uField = { value: WORLD.fieldTex.tex };
     sh.uniforms.uFieldXf = { value: new THREE.Vector4(WORLD.fieldTex.i0, WORLD.fieldTex.j0, WORLD.fieldTex.w, WORLD.fieldTex.h) };
     sh.uniforms.uDetail = { value: TEX.detail }; sh.uniforms.uRock = { value: TEX.rock };
@@ -2516,29 +2517,29 @@ function makeMaterials() {
       .replace('#include <beginnormal_vertex>', '#include <beginnormal_vertex>\nvUp = normal.y; vNrm = normal;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvWPos = (modelMatrix * vec4(transformed, 1.0)).xyz; vCropW = aCrop; vCamD = length((modelViewMatrix * vec4(transformed, 1.0)).xyz);');
     sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', '#include <common>\nuniform float uSnow; varying float vUp; varying vec3 vWPos; varying vec3 vNrm; varying float vCamD; varying float vCropW; uniform sampler2D uField; uniform vec4 uFieldXf; uniform sampler2D uDetail; uniform sampler2D uRock; uniform float uMtn;')
-      .replace('#include <color_fragment>', '#include <color_fragment>\n' + CROP_GLSL + GROUND_GLSL + '\n diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.86,0.89,0.93), uSnow * smoothstep(0.55,0.85,vUp) * (0.85 + 0.15*diffuseColor.g) * (1.0 - 0.6 * smoothstep(0.82, 0.62, vUp)));');
+      .replace('#include <common>', '#include <common>\nuniform float uSnow; uniform float uWet; varying float vUp; varying vec3 vWPos; varying vec3 vNrm; varying float vCamD; varying float vCropW; uniform sampler2D uField; uniform vec4 uFieldXf; uniform sampler2D uDetail; uniform sampler2D uRock; uniform float uMtn;')
+      .replace('#include <color_fragment>', '#include <color_fragment>\n' + CROP_GLSL + GROUND_GLSL + '\n diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.86,0.89,0.93), uSnow * smoothstep(0.55,0.85,vUp) * (0.85 + 0.15*diffuseColor.g) * (1.0 - 0.6 * smoothstep(0.82, 0.62, vUp)));\n diffuseColor.rgb *= 1.0 - 0.34 * uWet;');
   };
   MAT.ballast = new THREE.MeshLambertMaterial({ vertexColors: true, map: TEX.ballast });
   MAT.ballast.onBeforeCompile = sh => {
-    sh.uniforms.uSnow = WORLD.snowU;
+    sh.uniforms.uSnow = WORLD.snowU; sh.uniforms.uWet = WORLD.wetU;
     sh.uniforms.uTieFade = LOD.tieFar;
     sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying float vUp; varying float vCamD;').replace('#include <beginnormal_vertex>', '#include <beginnormal_vertex>\nvUp = normal.y;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvCamD = length((modelViewMatrix * vec4(transformed, 1.0)).xyz);');
     sh.uniforms.uDetail = { value: TEX.detail };
-    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform float uSnow; uniform vec4 uTieFade; uniform sampler2D uDetail; varying float vUp; varying float vCamD;')
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform float uSnow; uniform float uWet; uniform vec4 uTieFade; uniform sampler2D uDetail; varying float vUp; varying float vCamD;')
       .replace('#include <color_fragment>', '#include <color_fragment>\n' + BALLAST_GLSL +
         // past the distance where the ties dissolve, the crown takes on their average colour so the track keeps its look
         ' diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.085,0.062,0.045), 0.5 * (1.0 - smoothstep(1.15, 1.4, abs(vUv.x * 1.4))) * smoothstep(uTieFade.z, uTieFade.w, vCamD));\n' +
-        ' diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.86,0.89,0.93), uSnow * smoothstep(0.55,0.85,vUp) * (0.85 + 0.15*diffuseColor.g));');
+        ' diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.86,0.89,0.93), uSnow * smoothstep(0.55,0.85,vUp) * (0.85 + 0.15*diffuseColor.g));\n diffuseColor.rgb *= 1.0 - 0.3 * uWet;');
   };
   MAT.rail = new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0.85, roughness: 0.42 });
   MAT.tie = new THREE.MeshLambertMaterial({ vertexColors: true, map: TEX.wood });
   MAT.tie.onBeforeCompile = sh => {   // snow settles on the tie tops too
-    sh.uniforms.uSnow = WORLD.snowU;
+    sh.uniforms.uSnow = WORLD.snowU; sh.uniforms.uWet = WORLD.wetU;
     sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying float vUp;').replace('#include <beginnormal_vertex>', '#include <beginnormal_vertex>\n#ifdef USE_INSTANCING\nvUp = (modelMatrix * instanceMatrix * vec4(objectNormal, 0.0)).y;\n#else\nvUp = (modelMatrix * vec4(objectNormal, 0.0)).y;\n#endif');
-    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform float uSnow; varying float vUp;')
-      .replace('#include <color_fragment>', '#include <color_fragment>\n diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.80,0.83,0.87), uSnow * 0.75 * smoothstep(0.6,0.9,vUp));');
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform float uSnow; uniform float uWet; varying float vUp;')
+      .replace('#include <color_fragment>', '#include <color_fragment>\n diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.80,0.83,0.87), uSnow * 0.75 * smoothstep(0.6,0.9,vUp));\n diffuseColor.rgb *= 1.0 - 0.32 * uWet;');
   };
   MAT.plate = new THREE.MeshLambertMaterial({ color: 0x4a3d33 });
   MAT.steelDark = new THREE.MeshStandardMaterial({ color: 0x2b2c2e, metalness: 0.6, roughness: 0.6 });
@@ -5764,13 +5765,13 @@ function genGrass(piece, scene) {
 }
 function updateDetailLOD(cam, scene, dt) {
   DET.timeU.value += dt;
-  DET.windK.value += ((SKY.weather === 'clear' ? 1 : 1.7) - DET.windK.value) * Math.min(1, dt * 0.5);
+  DET.windK.value += (clamp(0.75 + WX.P.wind * 0.2, 0.8, 2.2) - DET.windK.value) * Math.min(1, dt * 0.5);
   const cp = cam.position;
   let budget = 1;
   for (const p of WORLD.pieces) {
     const U = p.userData, d = U.sphere.center.distanceTo(cp) - U.sphere.radius;
     if (!U.grass && d < 360 && budget > 0) { genGrass(p, scene); budget--; }
-    if (U.grass) { U.grass.visible = d < 420; for (const m of U.grass.children) m.visible = d < (m.userData.kind === 'grass' ? (SKY.snow ? -1 : 230) : m.userData.kind === 'bush' ? 420 : 300); }
+    if (U.grass) { U.grass.visible = d < 420; for (const m of U.grass.children) { const k = m.userData.kind; m.visible = k === 'bush' ? d < 420 : !SKY.snow && d < (k === 'grass' ? 230 : 300); } }
   }
   coverUpdate(cam, scene);
   for (const g of DET.cornGroups) g.visible = g.userData.c.distanceTo(cp) - g.userData.r < 3200;
@@ -5839,7 +5840,7 @@ function coverUpdate(cam, scene) {
     const d = Math.hypot(c.c.x - cp.x, c.c.z - cp.z);
     if (d > R + 160) { scene.remove(c.grp); for (const m of c.grp.children) { dropShared(m.geometry); m.dispose(); } COVER.cells.delete(key); continue; }
     c.grp.visible = d < 300;
-    for (const m of c.grp.children) m.visible = !(snow && (m.userData.kind === 'grass' || m.userData.kind === 'fern'));
+    for (const m of c.grp.children) m.visible = !snow;   // snow lies over the tufts and flowers alike
   }
 }
 
@@ -14155,9 +14156,13 @@ const SND_FILES = {
   injector: ['injector_0.mp3'],
   bell: ['bell_0.mp3', 'bell_1.mp3', 'bell_2.mp3', 'bell_3.mp3', 'bell_4.mp3', 'bell_5.mp3', 'bell_6.mp3', 'bell_7.mp3', 'bell_8.mp3', 'bell_9.mp3', 'bell_10.mp3', 'bell_11.mp3'],
   wh_chime6_off: ['wh_chime6_off_0.mp3'],
+  rain: ['rain_0.mp3'],
+  rain_lt: ['rain_lt_0.mp3'],
+  rain_hvy: ['rain_hvy_0.mp3'],
+  thunder: ['thunder_0.mp3', 'thunder_1.mp3', 'thunder_2.mp3', 'thunder_3.mp3', 'thunder_4.mp3', 'thunder_5.mp3', 'thunder_6.mp3'],
 };
 // end SND_FILES (written by audio/tools/prepare.py)
-const SND_GAIN = { chuff: 1, chuff_hard: 0.9, fire: 0.6, comp: 0.5, purge: 0.6, dump: 0.8, squeal: 0.5, bell: 0.8, crickets: 0.45, dawn: 0.5, frogs: 0.3, joint: 0.9, roll: 0.7, flange: 0.35, wind: 0.8, birds: 0.5, night: 0.5, blower: 0.5, safety: 0.9, pump: 0.6, cocks: 0.6, bpx: 0.7, injector: 0.5, dz: 1, wh_deep6: 1, wh_chime6: 1, wh_k5: 1 };
+const SND_GAIN = { chuff: 1, chuff_hard: 0.9, fire: 0.6, comp: 0.5, purge: 0.6, dump: 0.8, squeal: 0.5, bell: 0.8, crickets: 0.45, dawn: 0.5, frogs: 0.3, joint: 0.9, roll: 0.7, flange: 0.35, wind: 0.8, birds: 0.5, night: 0.5, blower: 0.5, safety: 0.9, pump: 0.6, cocks: 0.6, bpx: 0.7, injector: 0.5, dz: 1, wh_deep6: 1, wh_chime6: 1, wh_k5: 1, rain_lt: 0.7, rain: 0.65, rain_hvy: 0.6, thunder: 1 };
 // idle (a freight engine in Houston), mid throttle (a CSX freight at a crawl) and full throttle
 // (a UP freight drawing near); notching up crossfades between them (see dieselRec)
 const SND_DZ = [{ rpm: 300 }, { rpm: 650, load: 0.6 }, { rpm: 1050, load: 1 }];
@@ -14375,6 +14380,7 @@ SND.init = function () {
     roll: new Bed('roll', W, { seg: [2, 4], xf: 0.9 }), flange: new Bed('flange', W, { seg: [1.2, 2.6], xf: 0.5, vary: 0.05 }), squeal: new Bed('squeal', W, { seg: [1, 2], xf: 0.4, vary: 0.04 }),
     wind: new Bed('wind', A, { seg: [3, 6], xf: 1.2 }), crickets: new Bed('crickets', A, { seg: [6, 11], xf: 1.8 }), birds: new Bed('birds', A, { seg: [6, 11], xf: 1.8 }), night: new Bed('night', A, { seg: [6, 11], xf: 1.8 }),
     dawn: new Bed('dawn', A, { seg: [6, 11], xf: 1.8 }), frogs: new Bed('frogs', A, { seg: [6, 11], xf: 1.8 }),
+    rain_lt: new Bed('rain_lt', A, { seg: [5, 9], xf: 1.6 }), rain: new Bed('rain', A, { seg: [5, 9], xf: 1.6 }), rain_hvy: new Bed('rain_hvy', A, { seg: [5, 9], xf: 1.6 }),
   };
   SND.dz = (SND_DZ || []).map((r, i) => ({ rpm: r.rpm, load: r.load || 0, bed: new Bed('dz', L, { i, seg: [1.6, 3.2], xf: 0.6 }) }));
   SND.whistle = null; SND.whKey = null;
@@ -14516,19 +14522,31 @@ function whistleMix(T, tv, inCab) {
 }
 
 /* the countryside: wind (rising past the cab windows with speed), a dawn chorus at first light,
-   birds by day, chorus frogs from dusk, wind in the trees and crickets at night, all hushed by snow */
+   birds by day, chorus frogs from dusk, wind in the trees and crickets at night, all hushed by snow;
+   rain from a patter to a downpour, and thunder rolling in after the lightning */
 let sndChirpT = 2;
 function ambience(dt, inCab, v) {
-  const Vv = SND.v, snow = SKY.snow, night = SKY.night, wet = SKY.weather === 'overcast';
-  const draught = inCab ? 0.9 * Math.min(1, (v / 30) ** 2) : 0;
-  duo(Vv.wind, AU.wind, inCab ? 0.32 * Math.min(1, (v / 30) ** 2) + 0.02 : 0.03, (snow ? 0.32 : wet ? 0.24 : 0.16) * (inCab ? 0.5 : 1) + draught, 1 + (inCab ? 0.25 * Math.min(1, v / 30) : 0), 0.4);
-  const out = inCab ? 0.35 : 1;
-  const dark = SKY.dark, h = SKY.hour, chorus = dnChorus(h, SKY.sunEl), still = snow ? 0 : out, G = k => SND_GAIN[k] || 1;
-  Vv.birds.set(still * (1 - dark) * (1 - 0.5 * chorus) * (wet ? 0.5 : 1) * G('birds'), 1, 3);
-  Vv.dawn.set(still * chorus * (wet ? 0.6 : 1) * G('dawn'), 1, 3);
+  const P = WX.P, Vv = SND.v, snow = SKY.snow || P.snow > 0.3, night = SKY.night, gk = clamp(P.gray / 0.55, 0, 1);
+  const draught = inCab ? 0.9 * Math.min(1, (v / 30) ** 2) : 0, gust = 0.16 + 0.08 * gk + 0.035 * Math.max(0, P.wind - 1.4) + (snow ? 0.12 : 0);
+  duo(Vv.wind, AU.wind, inCab ? 0.32 * Math.min(1, (v / 30) ** 2) + 0.02 : 0.03, gust * (inCab ? 0.5 : 1) + draught, 1 + (inCab ? 0.25 * Math.min(1, v / 30) : 0), 0.4);
+  const out = inCab ? 0.35 : 1, inside = SKY.boreK || 0;
+  const dark = SKY.dark, h = SKY.hour, chorus = dnChorus(h, SKY.sunEl), still = snow ? 0 : out * (1 - inside * 0.8), G = k => SND_GAIN[k] || 1;
+  const hush = (1 - 0.5 * gk) * (1 - 0.9 * Math.min(1, P.rain * 1.5));   // birds go quiet under a grey sky and in the rain
+  Vv.birds.set(still * (1 - dark) * (1 - 0.5 * chorus) * hush * G('birds'), 1, 3);
+  Vv.dawn.set(still * chorus * hush * G('dawn'), 1, 3);
   Vv.night.set(still * dark * G('night'), 1, 3);
-  Vv.crickets.set(still * smooth(0.3, 0.8, dark) * G('crickets'), 1, 3);
+  Vv.crickets.set(still * smooth(0.3, 0.8, dark) * (1 - Math.min(1, P.rain * 2)) * G('crickets'), 1, 3);
   Vv.frogs.set(still * smooth(0.35, 0.85, dark) * (h > 16 || h < 1 ? 1 : 0.35) * G('frogs'), 1, 3);
+  // rain: drumming on the cab roof sounds louder than out in the open; a tunnel keeps most of it out
+  const r = P.rain * (1 - 0.85 * inside), roof = inCab ? 1.15 : 1;
+  Vv.rain_lt.set(smooth(0, 0.3, r) * (1 - smooth(0.35, 0.6, r)) * roof * G('rain_lt'), 1, 2);
+  Vv.rain.set(smooth(0.25, 0.5, r) * (1 - 0.6 * smooth(0.7, 1, r)) * roof * G('rain'), 1, 2);
+  Vv.rain_hvy.set(smooth(0.6, 0.95, r) * roof * G('rain_hvy'), 1, 2);
+  for (const b of WX.bolts) {
+    if (b.heard || b.at < b.dist / C_AIR) continue;
+    b.heard = true;
+    SND.shot('thunder', AU.world, { gain: G('thunder') * clamp(1300 / b.dist, 0.18, 1.15) * (1 - 0.6 * inside), lp: clamp(6000 * 800 / b.dist, 380, 6000), rate: 0.9 + 0.12 * Math.random(), vary: 0 });
+  }
   if (Vv.birds.ok) return;
   sndChirpT -= dt; if (sndChirpT < 0) { sndChirpT = 1.5 + Math.random() * (night ? 2 : 5); if (!inCab && !snow) sndChirp(night); }
 }
@@ -14663,17 +14681,13 @@ function remoteSound(R, dt, st, d, cam) {
 }
 
 /* ============================================================================
-   Sky, sun and moon on the clock, weather, smoke & steam particles, snow
+   Sky, sun and moon on the clock, the weather's light, smoke & steam particles
    ========================================================================== */
 const SKY = { hour: 6 + 40 / 60, weather: 'clear', dark: 0, night: false, look: {}, envKey: '', envAt: -1e9,
   // shared by every fogged material (see the fog chunks below): the sun's glow in the haze, and how
   // the haze thins with height. Plain objects, so each material's copy of the uniform is this one
   fogSun: { x: 0, y: 1, z: 0 }, fogSunC: { x: 0, y: 0, z: 0 }, fogHaze: { x: 0, y: 260, z: 1 } };   // haze base height, thinning scale (m), on
-const WEATHER = {
-  clear: { name: 'Clear', sub: 'Dry rail', mu: 0.27, fogK: 1, sunK: 1, cloud: 0.25, snow: 0, gray: 0 },
-  overcast: { name: 'Overcast', sub: 'Damp rail', mu: 0.2, fogK: 1.9, sunK: 0.32, cloud: 0.95, snow: 0, gray: 0.55 },
-  snow: { name: 'Snow', sub: 'Slippery, low visibility', mu: 0.15, fogK: 3.4, sunK: 0.25, cloud: 1, snow: 1, gray: 0.7 },
-};
+/* the weather itself (WEATHER, WX, the kinds and how they change) is in 10d_weather.js */
 
 /* Haze that behaves like air: brighter and warmer looking toward the sun (light scattered forward
    by the haze, strongest at golden hour and twilight), and thinner higher up, so valleys hold
@@ -14724,20 +14738,6 @@ function buildSky(scene, renderer) {
   dome.renderOrder = -10; dome.frustumCulled = false;
   scene.add(dome);
   SKY.dome = dome; SKY.uni = uni;
-  // clouds: big textured plane
-  const ct = canvasTex(512, 512, (g, w, h) => {
-    const id = g.createImageData(w, h);
-    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-      const n = Noise.fbm(x / 64, y / 64, 5) * 0.5 + 0.5; const n2 = Noise.fbm(x / 22 + 40, y / 22, 3) * 0.5 + 0.5;
-      const a = clamp((n * 0.85 + n2 * 0.25 - 0.52) * 3.2, 0, 1);
-      const i = (y * w + x) * 4; id.data[i] = id.data[i + 1] = id.data[i + 2] = 255; id.data[i + 3] = a * 255;
-    }
-    g.putImageData(id, 0, 0);
-  }, { repeat: true });
-  ct.repeat.set(5, 5);
-  const cm = new THREE.MeshBasicMaterial({ map: ct, transparent: true, depthWrite: false, fog: false, opacity: 0.6 });
-  const clouds = new THREE.Mesh(new THREE.PlaneGeometry(30000, 30000), cm); clouds.rotation.x = Math.PI / 2; clouds.position.y = 1600; clouds.renderOrder = -9; clouds.frustumCulled = false;
-  scene.add(clouds); SKY.clouds = clouds;
   // stars over the whole sphere, turning about the pole star through the night; those near the
   // horizon dim out as starlight does through the thick air there
   const sp = [], mag = []; const r = rng(9);
@@ -14785,22 +14785,45 @@ function buildSky(scene, renderer) {
    to leave it as it is. */
 function applyLook(timeKey, weatherKey) {
   if (timeKey && DN.starts[timeKey]) SKY.hour = DN.starts[timeKey].h;
-  if (weatherKey && WEATHER[weatherKey]) SKY.weather = weatherKey;
-  const W = WEATHER[SKY.weather];
-  SKY.snow = W.snow > 0; WORLD.snowU.value = W.snow;
+  if (weatherKey && WEATHER[weatherKey]) { SKY.weather = weatherKey; wxSet(weatherKey, Date.now() % 1e6); if (CLOUD.on) CLOUD.fresh = 2; }
+  wxGround();
   skyLight(true);
+}
+/* snow lies on the ground in winter: the grass is hidden and the ground goes white */
+function wxGround() {
+  SKY.snow = WX.season === 'winter'; WORLD.snowU.value = SKY.snow ? 1 : 0;
+  if (FX.snow) FX.snow.visible = WX.P.snow > 0.01;
 }
 /* the clock: a job runs on its own railroad clock; otherwise time passes at the chosen rate */
 function skyTick(dt) {
   if (JOB.run && !JOB.run.over) SKY.hour = dnWrap(JOB.clock() / 3600);
   else if (GAME.running && !S.paused) SKY.hour = dnWrap(SKY.hour + dt * ((DN.rates[GAME.settings.cycle] || DN.rates.x30).k) / 3600);
+  // the weather runs on real time whatever the clock does, so a spell lasts minutes at any clock rate
+  if (!S.paused) { wxStep(dt, (1 - SKY.dark) * (1 - CLOUD.shade)); wxNews(); wxWind(dt); }
+  SKY.dt = dt;
   skyLight(false);
+}
+/* a word when the weather turns, and when the rail goes slippery */
+function wxNews() {
+  const c = WX.changed; if (!c || !GAME.running) return;
+  const K = WX_KINDS[c.to], was = WX_KINDS[c.from];
+  if (K.rain > 0 && !was.rain) toast(K.bolt ? 'A thunderstorm is coming in. Wet rail ahead: sand before she slips.' : 'Rain coming on. The rail will be greasy at first: use the sand.', 'warn', 5000, 'wx');
+  else if (K.snow > 0 && !was.snow) toast('Snow starting. Slippery rail and poor visibility.', 'warn', 5000, 'wx');
+  else if (c.to === 'fog') toast('Fog rolling in. Watch the signals.', '', 4000, 'wx');
+  else if ((was.rain || was.snow) && !K.rain && !K.snow) toast('The rain is easing off. The rail will dry slowly.', '', 4000, 'wx');
+}
+/* the weather's wind: its strength, and a direction that veers slowly */
+const WX_WIND = { a: 2.68 };
+function wxWind(dt) {
+  WX_WIND.a += dt * 0.004 * Math.sin(performance.now() * 0.00003);
+  const k = WX.P.wind * (1 + 0.25 * Math.sin(performance.now() * 0.00041) * Math.sin(performance.now() * 0.00017));
+  ENV.wind.set(Math.cos(WX_WIND.a) * k, 0, Math.sin(WX_WIND.a) * k);
 }
 
 const _skC = new THREE.Color(), _skC2 = new THREE.Color(), _skQ = new THREE.Quaternion();
 /* everything the hour and weather decide: sky, sun or moon light, fog, exposure, stars, lit windows */
 function skyLight(force) {
-  const W = WEATHER[SKY.weather], h = SKY.hour;
+  const W = WX.P, h = SKY.hour, gk = clamp(W.gray / 0.55, 0, 1), fl = WX.flash;
   const sb = dnSun(h), mb = dnMoon(h);
   dnDir(sb, SKY.sunDir); dnDir(mb, SKY.moonDir);
   const L = dnLook(sb.el, SKY.look);
@@ -14808,7 +14831,8 @@ function skyLight(force) {
   Object.assign(SKY, { sunEl: sb.el, sunAz: sb.az, moonEl: mb.el, dark, night: dark > 0.5, gray });
   const u = SKY.uni;
   u.uTop.value.setHex(L.top); u.uHor.value.setHex(L.hor);
-  if (W.gray) { u.uTop.value.lerp(_skC.setHex(mixHex(0x8e98a3, 0x0b0f16, dark)), W.gray * 0.8); u.uHor.value.lerp(_skC.setHex(mixHex(0xb9bec2, 0x121820, dark)), W.gray * 0.8); }
+  if (W.gray > 0.005) { const sd = W.dark * 0.35; u.uTop.value.lerp(_skC.setHex(mixHex(mixHex(0x8e98a3, 0x5a6068, sd), 0x0b0f16, dark)), W.gray * 0.8); u.uHor.value.lerp(_skC.setHex(mixHex(mixHex(0xb9bec2, 0x80868c, sd), 0x121820, dark)), W.gray * 0.8); }
+  if (fl > 0) { u.uTop.value.addScalar(fl * 0.35); u.uHor.value.addScalar(fl * 0.4); }
   u.uSun.value.copy(SKY.sunDir); u.uSunC.value.setHex(L.sun).multiplyScalar(smooth(-12, -1, sb.el));
   const mk = dnMoonK(sb.el, mb.el);
   u.uMoon.value.copy(SKY.moonDir); u.uMoonC.value.setHex(0x8ea6d6).multiplyScalar(0.25 * mk);
@@ -14817,38 +14841,48 @@ function skyLight(force) {
   const bySun = sb.el > -1.5;
   SKY.keyDir.copy(bySun ? SKY.sunDir : SKY.moonDir);
   SKY.sun.color.setHex(bySun ? L.sun : 0x8ea6d6).convertSRGBToLinear();
-  SKY.sun.intensity = SKY.sunBase = (bySun ? L.sunI : 0.22 * mk) * W.sunK;
+  // the sun through the weather, and dimmed while a cloud's shadow passes over us
+  SKY.sunBase = (bySun ? L.sunI : 0.22 * mk) * W.sunK * (SKY.cloudSun === undefined ? 1 : SKY.cloudSun);
+  SKY.sun.intensity = SKY.sunBase;
   SKY.hemi.color.setHex(L.hemiS).convertSRGBToLinear(); SKY.hemi.groundColor.setHex(L.hemiG).convertSRGBToLinear();
-  SKY.hemi.intensity = SKY.hemiBase = L.hemiI * (W.gray ? 1.25 : 1);
+  SKY.hemi.intensity = SKY.hemiBase = L.hemiI * (1 + 0.25 * gk) * (1 - 0.3 * W.dark * (1 - dark)) + fl * 2.2;
   // haze
-  _skC.setHex(L.fog); if (W.gray) _skC.lerp(_skC2.setHex(mixHex(0xb3b8bc, 0x0d1218, dark)), W.gray);
+  _skC.setHex(L.fog); if (W.gray > 0.005) _skC.lerp(_skC2.setHex(mixHex(mixHex(0xb3b8bc, 0x8e9498, W.dark * 0.4), 0x0d1218, dark)), W.gray);
+  if (fl > 0) _skC.addScalar(fl * 0.25);
   scene.fog.color.copy(_skC).convertSRGBToLinear(); scene.fog.density = L.fogD * W.fogK;
+  // in thick fog the sky itself is the fog: the dome and the clouds fade into it
+  const fogSky = smooth(3, 40, W.fogK); SKY.fogSky = fogSky;
+  if (fogSky > 0) { u.uTop.value.lerp(_skC, fogSky); u.uHor.value.lerp(_skC, fogSky); u.uGray.value = Math.max(u.uGray.value, fogSky); }
+  // fog lies low in the valleys; ordinary haze thins slowly with height
+  SKY.fogHaze.y = W.haze;
   const glowDir = sb.el > -8 ? SKY.sunDir : SKY.moonDir;
   const glowK = (sb.el > -8 ? smooth(-8, -1, sb.el) * (1 - 0.6 * smooth(10, 40, sb.el)) : mk * 0.2) * (1 - gray * 0.85);
   _skC.setHex(sb.el > -8 ? L.sun : 0x8ea6d6).convertSRGBToLinear().multiplyScalar(glowK);
   Object.assign(SKY.fogSun, { x: glowDir.x, y: glowDir.y, z: glowDir.z }); Object.assign(SKY.fogSunC, { x: _skC.r, y: _skC.g, z: _skC.b });
   renderer.toneMappingExposure = L.exp;
-  SKY.clouds.material.opacity = W.cloud * lerp(1, 0.25, dark); SKY.clouds.material.color.setHex(W.gray ? mixHex(0xb8bcc0, 0x1a2030, dark) : L.cloud);
-  SKY.starU.uAlpha.value = W.gray ? 0 : 0.85 * dnStars(sb.el); SKY.stars.visible = SKY.starU.uAlpha.value > 0.003;
+  SKY.starU.uAlpha.value = 0.85 * dnStars(sb.el) * (1 - 0.7 * gk); SKY.stars.visible = SKY.starU.uAlpha.value > 0.003;
   SKY.stars.quaternion.copy(_skQ.setFromAxisAngle(SKY.pole, -h / 24 * TAU));
-  SKY.moon.visible = mb.el > -1 && !W.gray; SKY.moon.material.opacity = 1 - 0.8 * smooth(-4, 8, sb.el);
-  ENV.mu = W.mu * (SKY.night && !W.gray ? 0.92 : 1);
+  SKY.moon.visible = mb.el > -1; SKY.moon.material.opacity = 1 - 0.8 * smooth(-4, 8, sb.el);
+  // dew on a clear night takes a little off the rail too
+  ENV.mu = wxMu() * (SKY.night ? lerp(0.92, 1, gk) : 1);
+  SKY.railWord = wxRailWord(ENV.mu);
   // windows light up through dusk: not all at once, each material at its own darkness
   // (house and depot windows decide for themselves, window by window: see winMaterial)
-  for (const m of SCN.winMats) { if (m.userData.perWindow) continue; const a = m.userData.litAt !== undefined ? m.userData.litAt : 0.3; m.emissiveIntensity = Math.max(smooth(a, a + 0.1, dark) * (m.userData.litI || 0.95), W.gray ? 0.15 : 0, m.userData.minI || 0); }
-  RMAT.coachWin.emissiveIntensity = Math.max(smooth(0.15, 0.3, dark) * 1.2, W.gray ? 0.25 : 0);
+  for (const m of SCN.winMats) { if (m.userData.perWindow) continue; const a = m.userData.litAt !== undefined ? m.userData.litAt : 0.3; m.emissiveIntensity = Math.max(smooth(a, a + 0.1, dark) * (m.userData.litI || 0.95), 0.15 * gk, m.userData.minI || 0); }
+  RMAT.coachWin.emissiveIntensity = Math.max(smooth(0.15, 0.3, dark) * 1.2, 0.25 * gk);
   lampsLight(dark);
-  const sm = L.smoke, gk = W.gray ? lerp(0.75, 1, dark) : 1;
-  FX.light.setRGB(sm[0] * gk, sm[1] * gk, sm[2] * gk);
+  const sm = L.smoke, sk = lerp(1, lerp(0.75, 1, dark), gk) * (1 + fl);
+  FX.light.setRGB(sm[0] * sk, sm[1] * sk, sm[2] * sk);
+  cloudLight(L, dark, bySun, SKY.keyDir, bySun ? u.uSunC.value : u.uMoonC.value, gray);
   // the environment map (a small canvas cube painted with the same sky): repainted only when the
   // light has moved enough to show, as it costs a few milliseconds
-  const key = `${Math.round(sb.el * 1.5)}|${Math.round(sb.az / 5)}|${SKY.weather}|${bySun}`;
+  const key = `${Math.round(sb.el * 1.5)}|${Math.round(sb.az / 5)}|${Math.round(gray * 12)}|${SKY.snow}|${bySun}`;
   const now = performance.now();
   if (force || (key !== SKY.envKey && now - SKY.envAt > 900)) {
     SKY.envKey = key; SKY.envAt = now;
     if (SKY.envCube) SKY.envCube.dispose();
     const kc = bySun ? u.uSunC.value : u.uMoonC.value;
-    SKY.envCube = makeEnvCube(u.uTop.value, u.uHor.value, SKY.keyDir, kc, gray, mixHex(W.snow ? 0xc3c7cb : 0x55503e, 0x070707, dark));
+    SKY.envCube = makeEnvCube(u.uTop.value, u.uHor.value, SKY.keyDir, kc, gray, mixHex(SKY.snow ? 0xc3c7cb : mixHex(0x55503e, 0x3a382e, WX.wet), 0x070707, dark));
     scene.environment = SKY.envCube;
   }
 }
@@ -14856,7 +14890,8 @@ function skyLight(force) {
 function skyFollow(cam, focus) {
   const c = cam.position;
   SKY.dome.position.copy(c); SKY.stars.position.copy(c);
-  SKY.clouds.position.set(c.x, c.y + 1600, c.z);
+  if (CLOUD.lay) CLOUD.lay.position.copy(c);
+  SKY.cloudSun = cloudSunAt(focus, SKY.dt || 0.016);
   SKY.moon.position.copy(SKY.moonDir).multiplyScalar(7000).add(c);
   SKY.sun.target.position.copy(focus); SKY.sun.position.copy(focus).addScaledVector(SKY.keyDir, 300);
 }
@@ -14919,12 +14954,6 @@ function buildFX(scene) {
   const pts = new THREE.Points(g, mat); pts.frustumCulled = false; pts.renderOrder = 5;
   scene.add(pts);
   Object.assign(FX, { N, g, pos, size, alpha, col, mat, pts, vel: new Float32Array(N * 3), age: new Float32Array(N).fill(1e9), life: new Float32Array(N), s0: new Float32Array(N), s1: new Float32Array(N), a0: new Float32Array(N), base: new Float32Array(N * 3), buoy: new Float32Array(N), drag: new Float32Array(N), next: 0 });
-  // snow
-  const SN = 3500, sp = new Float32Array(SN * 3), r = rng(3);
-  for (let i = 0; i < SN; i++) { sp[i * 3] = (r() - 0.5) * 120; sp[i * 3 + 1] = r() * 60; sp[i * 3 + 2] = (r() - 0.5) * 120; }
-  const sgeo = new THREE.BufferGeometry(); sgeo.setAttribute('position', new THREE.BufferAttribute(sp, 3));
-  FX.snow = new THREE.Points(sgeo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.16, transparent: true, opacity: 0.95, depthWrite: false, map: tex }));
-  FX.snow.frustumCulled = false; FX.snow.visible = false; scene.add(FX.snow);
 }
 function emit(p, v, life, s0, s1, a0, c, buoy = 0.6, drag = 1.0) {
   const i = FX.next; FX.next = (FX.next + 1) % FX.N;
@@ -14950,17 +14979,6 @@ function updateFX(dt, cam) {
   }
   FX.g.attributes.position.needsUpdate = true; FX.g.attributes.aSize.needsUpdate = true; FX.g.attributes.aAlpha.needsUpdate = true; FX.g.attributes.aColor.needsUpdate = true;
   FX.mat.uniforms.uScale.value = innerHeight * (Math.min(devicePixelRatio, 2)) * 0.5 / Math.tan(cam.fov * Math.PI / 360);
-  if (FX.snow.visible) {
-    const p = FX.snow.geometry.attributes.position, a = p.array, c = cam.position;
-    for (let i = 0; i < a.length; i += 3) {
-      a[i + 1] -= dt * (1.1 + (i % 7) * 0.12); a[i] += dt * (w.x * 0.6 + Math.sin(i + S.time) * 0.3); a[i + 2] += dt * w.z * 0.6;
-      if (a[i + 1] < c.y - 25) a[i + 1] += 55;
-      const dx = a[i] - c.x, dz = a[i + 2] - c.z;
-      if (dx > 60) a[i] -= 120; else if (dx < -60) a[i] += 120;
-      if (dz > 60) a[i + 2] -= 120; else if (dz < -60) a[i + 2] += 120;
-    }
-    p.needsUpdate = true;
-  }
 }
 
 /* ============================================================================
@@ -15058,6 +15076,539 @@ function dnFmt(h) {
   h = dnWrap(h); const H = Math.floor(h), m = Math.floor((h - H) * 60);
   return `${H % 12 || 12}:${String(m).padStart(2, '0')} ${H < 12 ? 'AM' : 'PM'}`;
 }
+
+/* ============================================================================
+   Weather: what the sky is doing and how it changes. Plain numbers only (no
+   three.js, no page), so the spells, the blending and the wet rail can be
+   checked headless (tests/weather.test.js).
+
+   Each kind of weather is a set of numbers (cloud cover, cloud base and depth,
+   rain or snow, haze, wind...). "Changing" weather walks from kind to kind on
+   its own: a spell holds for a few minutes, then the next kind blends in over a
+   minute or two, so clouds build before the rain and the sky clears slowly
+   after it. The rail gets wet when it rains and dries off afterwards, and wet
+   rail is slippery, most of all when the rain has only just started.
+   ========================================================================== */
+const WX_KINDS = {
+  //            cloud: cover 0-1, base and depth (m), strat 0 = heaped cumulus .. 1 = flat sheet, dark = heavy rain-cloud bases
+  clear:    { name: 'Clear',    cover: 0.16, base: 1500, thick: 800,  strat: 0,    dark: 0,    dens: 0.8, rain: 0,   snow: 0,   fogK: 1,   haze: 260, sunK: 1,    gray: 0,    wind: 1.4, bolt: 0 },
+  fair:     { name: 'Fair',     cover: 0.3,  base: 1400, thick: 1100, strat: 0,    dark: 0.05, dens: 0.9, rain: 0,   snow: 0,   fogK: 1.05, haze: 260, sunK: 1,   gray: 0,    wind: 1.8, bolt: 0 },
+  cloudy:   { name: 'Cloudy',   cover: 0.52, base: 1250, thick: 1250, strat: 0.1,  dark: 0.25, dens: 1,   rain: 0,   snow: 0,   fogK: 1.2, haze: 240, sunK: 0.9,  gray: 0.12, wind: 2.4, bolt: 0 },
+  overcast: { name: 'Overcast', cover: 0.95, base: 900,  thick: 900,  strat: 0.85, dark: 0.5,  dens: 0.7,   rain: 0,   snow: 0,   fogK: 1.9, haze: 220, sunK: 0.32, gray: 0.55, wind: 2.6, bolt: 0 },
+  rain:     { name: 'Rain',     cover: 1,    base: 650,  thick: 1500, strat: 0.7,  dark: 0.75, dens: 1.2, rain: 0.6, snow: 0,   fogK: 2.7, haze: 200, sunK: 0.2,  gray: 0.7,  wind: 3.4, bolt: 0 },
+  storm:    { name: 'Thunderstorm', cover: 1, base: 520, thick: 2800, strat: 0.35, dark: 1,    dens: 1.5, rain: 1,   snow: 0,   fogK: 3.1, haze: 200, sunK: 0.12, gray: 0.8,  wind: 6,   bolt: 5 },
+  fog:      { name: 'Fog',      cover: 1,    base: 380,  thick: 500,  strat: 1,    dark: 0.3,  dens: 0.9, rain: 0,   snow: 0,   fogK: 70,  haze: 60,  sunK: 0.3,  gray: 0.75,  wind: 0.5, bolt: 0 },
+  snow:     { name: 'Snow',     cover: 1,    base: 700,  thick: 1300, strat: 0.8,  dark: 0.45, dens: 1.1, rain: 0,   snow: 0.8, fogK: 3.4, haze: 220, sunK: 0.25, gray: 0.7,  wind: 3,   bolt: 0 },
+};
+const WX_NUMS = ['cover', 'base', 'thick', 'strat', 'dark', 'dens', 'rain', 'snow', 'fogK', 'haze', 'sunK', 'gray', 'wind', 'bolt'];
+
+/* The menu. Changing and Winter walk on their own; the rest hold one kind. A season decides the
+   ground (snow lying in Winter and Snow) and which kinds a changing sky can turn to. */
+const WEATHER = {
+  changing: { name: 'Changing', sub: 'Sun, cloud, rain, storms', season: 'summer', walk: true },
+  winter: { name: 'Winter', sub: 'Changing, with snow', season: 'winter', walk: true },
+  clear: { name: 'Clear', sub: 'Dry rail', season: 'summer', kind: 'clear' },
+  cloudy: { name: 'Cloudy', sub: 'Big clouds, sun between', season: 'summer', kind: 'cloudy' },
+  overcast: { name: 'Overcast', sub: 'Damp rail', season: 'summer', kind: 'overcast' },
+  rain: { name: 'Rain', sub: 'Wet rail, sand early', season: 'summer', kind: 'rain' },
+  storm: { name: 'Thunderstorm', sub: 'Downpour and lightning', season: 'summer', kind: 'storm' },
+  fog: { name: 'Fog', sub: 'Low visibility, damp rail', season: 'summer', kind: 'fog' },
+  snow: { name: 'Snow', sub: 'Slippery, low visibility', season: 'winter', kind: 'snow' },
+};
+
+/* where a changing sky can go next from each kind, with weights. Rain comes after cloud has built
+   up; storms break into rain; fog lifts into cloud or sun */
+const WX_NEXT = {
+  summer: {
+    clear: { fair: 6, cloudy: 2, fog: 0.6 },
+    fair: { clear: 3, cloudy: 5, fog: 0.4 },
+    cloudy: { fair: 3, overcast: 3, rain: 2, storm: 1.2 },
+    overcast: { cloudy: 2.5, rain: 4, fog: 1.2, storm: 0.8 },
+    rain: { overcast: 4, cloudy: 3, storm: 1.5 },
+    storm: { rain: 6, overcast: 2 },
+    fog: { fair: 3, cloudy: 3, overcast: 2 },
+    snow: { overcast: 1 },
+  },
+  winter: {
+    clear: { fair: 5, cloudy: 2 },
+    fair: { clear: 3, cloudy: 5 },
+    cloudy: { fair: 3, overcast: 4, snow: 2.5 },
+    overcast: { cloudy: 2, snow: 5, fog: 1.2 },
+    snow: { overcast: 4, cloudy: 2 },
+    fog: { cloudy: 3, overcast: 2 },
+    rain: { overcast: 1 }, storm: { snow: 1 },
+  },
+};
+/* how long a spell holds, and how long the change to the next one takes (real seconds) */
+const WX_HOLD = { clear: [300, 600], fair: [240, 540], cloudy: [200, 420], overcast: [180, 360], rain: [200, 420], storm: [120, 240], fog: [180, 360], snow: [240, 480] };
+const WX_BLEND = [90, 170];
+
+/* the weather as it stands: the spell blending from `from` to `to`, t seconds into a blend of dur,
+   then holding for hold seconds. P is the blend of the two kinds' numbers. wet is how wet the rail
+   is (0-1), wash how long the rain has been washing it clean (0-1). */
+const WX = { key: 'changing', season: 'summer', walk: true, from: 'fair', to: 'fair', t: 1, dur: 1, hold: 300, seed: 1, P: {}, wet: 0, wash: 0, flash: 0, boltIn: 20, bolts: [], changed: null };
+
+function wxRand() { WX.seed = (WX.seed * 16807) % 2147483647; return (WX.seed - 1) / 2147483646; }
+function wxRange(r) { return r[0] + (r[1] - r[0]) * wxRand(); }
+function wxPick(table) {
+  let tot = 0; for (const k in table) tot += table[k];
+  let x = wxRand() * tot;
+  for (const k in table) { x -= table[k]; if (x <= 0) return k; }
+  return Object.keys(table)[0];
+}
+const wxEase = t => t * t * (3 - 2 * t);
+function wxBlend(a, b, t, out = {}) {
+  const A = WX_KINDS[a], B = WX_KINDS[b], e = wxEase(Math.min(1, Math.max(0, t)));
+  for (const k of WX_NUMS) out[k] = A[k] + (B[k] - A[k]) * e;
+  return out;
+}
+/* pick the menu's weather. A changing sky starts in a settled kind (with a wet rail if it starts wet) */
+function wxSet(key, seed) {
+  const M = WEATHER[key] || WEATHER.changing;
+  WX.key = WEATHER[key] ? key : 'changing'; WX.season = M.season; WX.walk = !!M.walk;
+  if (seed !== undefined) WX.seed = (Math.abs(Math.floor(seed)) % 2147483646) + 1;
+  let k = M.kind;
+  if (!k) k = M.season === 'winter' ? wxPick({ clear: 2, fair: 3, cloudy: 3, overcast: 2, snow: 2 }) : wxPick({ clear: 3, fair: 4, cloudy: 3, overcast: 1, rain: 0.6 });
+  WX.from = WX.to = k; WX.t = WX.dur = 1; WX.hold = M.walk ? wxRange(WX_HOLD[k]) : 1e9;
+  WX.wet = wxWetTarget(WX_KINDS[k]); WX.wash = WX_KINDS[k].rain > 0.3 ? 0.5 : 0;
+  WX.flash = 0; WX.bolts = []; WX.boltIn = 8 + 20 * wxRand(); WX.changed = null;
+  wxBlend(k, k, 1, WX.P);
+  return WX;
+}
+/* the wetness the rail settles at under steady weather of this kind */
+const wxWetTarget = P => Math.min(1, Math.max(P.rain * 1.6, P.fogK > 4 ? 0.45 : 0, P.gray > 0.5 && !P.snow ? 0.25 : 0));
+/* one step of dt real seconds: the spell runs on, the next kind blends in, the rail wets or dries.
+   sunLight (0-1) is how much sun is reaching the rail, which dries it faster */
+function wxStep(dt, sunLight = 1) {
+  WX.changed = null;
+  if (WX.t < WX.dur) WX.t = Math.min(WX.dur, WX.t + dt);
+  else if (WX.walk) {
+    WX.hold -= dt;
+    if (WX.hold <= 0) {
+      const next = wxPick(WX_NEXT[WX.season][WX.to] || { fair: 1 });
+      WX.from = WX.to; WX.to = next; WX.t = 0; WX.dur = wxRange(WX_BLEND); WX.hold = wxRange(WX_HOLD[next]);
+      WX.changed = { from: WX.from, to: next };
+    }
+  }
+  wxBlend(WX.from, WX.to, WX.t / WX.dur, WX.P);
+  const P = WX.P, target = wxWetTarget(P);
+  // rain wets the rail in under a minute; it dries in a quarter of an hour, faster in sunshine
+  if (target > WX.wet) WX.wet = Math.min(target, WX.wet + dt * (0.004 + 0.03 * P.rain));
+  else WX.wet = Math.max(target, WX.wet - dt * (0.0006 + 0.0016 * sunLight * P.sunK));
+  // steady rain washes the grime off the railhead; the film builds back as the rail dries
+  WX.wash = P.rain > 0.3 ? Math.min(1, WX.wash + dt * P.rain / 240) : Math.max(0, WX.wash - dt / 900);
+  // lightning: a stroke every few seconds to a minute in a storm, each a flicker of two or three flashes
+  WX.flash = Math.max(0, WX.flash - dt * 6);
+  if (P.bolt > 0.2) {
+    WX.boltIn -= dt * P.bolt / 5;
+    if (WX.boltIn <= 0) {
+      WX.boltIn = 4 + 40 * wxRand() * wxRand();
+      const dist = 600 + 6000 * wxRand(), n = 1 + Math.floor(wxRand() * 3);
+      WX.bolts.push({ at: 0, dist, az: wxRand() * Math.PI * 2, n, k: Math.min(1, 1400 / dist) * (0.6 + 0.4 * wxRand()), heard: false });
+    }
+  }
+  for (const b of WX.bolts) {
+    const pre = b.at; b.at += dt;
+    for (let i = 0; i < b.n; i++) { const ti = i * 0.11; if (pre <= ti && b.at > ti) WX.flash = Math.max(WX.flash, b.k * (i ? 0.7 : 1)); }
+  }
+  WX.bolts = WX.bolts.filter(b => b.at < b.dist / 343 + 8);
+  return WX;
+}
+/* adhesion on the rail: dry 0.27; a film of water on a dirty railhead is the worst (about 0.16),
+   and a long rain washes it a little better; snow and frost 0.15 */
+const WX_DRY_MU = 0.27;
+function wxMu(P = WX.P, wet = WX.wet, wash = WX.wash, winter = WX.season === 'winter') {
+  let mu = WX_DRY_MU * (1 - 0.42 * wet * (1 - 0.32 * wash));
+  if (P.snow > 0) mu = Math.min(mu, WX_DRY_MU - 0.15 * Math.min(1, P.snow / 0.8));
+  if (winter) mu = Math.min(mu, 0.235);
+  return mu;
+}
+/* the rail's condition for the HUD and toasts */
+function wxRailWord(mu) { return mu > 0.25 ? 'dry' : mu > 0.215 ? 'damp' : mu > 0.18 ? 'wet' : 'slippery'; }
+function wxName() { return WX_KINDS[WX.t / WX.dur < 0.5 ? WX.from : WX.to].name; }
+function wxOut() { return { key: WX.key, from: WX.from, to: WX.to, t: +WX.t.toFixed(2), dur: +WX.dur.toFixed(2), hold: +WX.hold.toFixed(1), seed: WX.seed, wet: +WX.wet.toFixed(3), wash: +WX.wash.toFixed(3) }; }
+function wxIn(d) {
+  if (!d || !WEATHER[d.key]) return false;
+  wxSet(d.key);
+  if (WX_KINDS[d.from] && WX_KINDS[d.to]) { WX.from = d.from; WX.to = d.to; }
+  WX.t = +d.t || 0; WX.dur = Math.max(1, +d.dur || 1); WX.hold = WX.walk ? +d.hold || 60 : 1e9;
+  if (d.seed) WX.seed = d.seed;
+  WX.wet = Math.min(1, Math.max(0, +d.wet || 0)); WX.wash = Math.min(1, Math.max(0, +d.wash || 0));
+  wxBlend(WX.from, WX.to, WX.t / WX.dur, WX.P);
+  return true;
+}
+
+/* ---- the cloud map: where the clouds are, the same numbers for the GPU (as a texture) and for
+   the sun's shadow here (wxCoverAt). A tileable noise, levelled so its values are spread evenly
+   from 0 to 1: then the share of sky under cloud is just the cover number. ---- */
+const WX_MAP = { n: 128, tile: 26000, a: null, b: null };
+function wxHash(i, j, s) { let h = (i * 374761393 + j * 668265263 + s * 2147483647) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; }
+function wxVNoise(x, y, per, s) {
+  const i = Math.floor(x), j = Math.floor(y), fx = x - i, fy = y - j, u = fx * fx * (3 - 2 * fx), v = fy * fy * (3 - 2 * fy);
+  const h = (a, b) => wxHash(((a % per) + per) % per, ((b % per) + per) % per, s);
+  return (h(i, j) * (1 - u) + h(i + 1, j) * u) * (1 - v) + (h(i, j + 1) * (1 - u) + h(i + 1, j + 1) * u) * v;
+}
+function wxEqualize(a) {
+  const idx = Array.from(a.keys()).sort((p, q) => a[p] - a[q]), out = new Float32Array(a.length);
+  idx.forEach((k, r) => { out[k] = r / (a.length - 1); });
+  return out;
+}
+function wxBuildMap() {
+  const N = WX_MAP.n, A = new Float32Array(N * N), B = new Float32Array(N * N);
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    let a = 0, b = 0, amp = 1, f = 7;
+    for (let o = 0; o < 3; o++) { a += amp * wxVNoise(x * f / N, y * f / N, f, 11 + o); amp *= 0.5; f *= 2; }
+    amp = 1; f = 13;
+    for (let o = 0; o < 2; o++) { b += amp * wxVNoise(x * f / N, y * f / N, f, 31 + o); amp *= 0.5; f *= 2; }
+    A[y * N + x] = a; B[y * N + x] = b;
+  }
+  // the big field decides where the cloud is; small lumps break its edges up into separate clouds
+  const C = new Float32Array(N * N), Ae = wxEqualize(A), Be = wxEqualize(B);
+  for (let i = 0; i < C.length; i++) C[i] = Ae[i] * 0.72 + Be[i] * 0.28;
+  WX_MAP.a = wxEqualize(C); WX_MAP.b = Be;
+  return WX_MAP;
+}
+/* bilinear, wrapping: what the GPU's linear filter gives for texel centres at (i + 0.5) / n */
+function wxMapAt(u, v, ch = WX_MAP.a) {
+  const N = WX_MAP.n; let x = u * N - 0.5, y = v * N - 0.5;
+  const i = Math.floor(x), j = Math.floor(y), fx = x - i, fy = y - j, w = k => ((k % N) + N) % N;
+  const g = (a, b) => ch[w(b) * N + w(a)];
+  return (g(i, j) * (1 - fx) + g(i + 1, j) * fx) * (1 - fy) + (g(i, j + 1) * (1 - fx) + g(i + 1, j + 1) * fx) * fy;
+}
+/* how much cloud (0-1) stands over world point (x, z) for cover c; the shader uses the same edges */
+const wxCoverEdge = c => [1 - c * 1.17, 1.17 - c * 1.17];
+function wxCoverAt(x, z, cover, drift = { x: 0, z: 0 }) {
+  const m = wxMapAt((x + drift.x) / WX_MAP.tile, (z + drift.z) / WX_MAP.tile);
+  const [a, b] = wxCoverEdge(cover); const t = Math.min(1, Math.max(0, (m - a) / (b - a)));
+  return t * t * (3 - 2 * t);
+}
+/* the headlight beam shows in the air when there is haze, rain or snow to light up */
+const wxBeam = () => Math.min(0.045, WX.P.gray * 0.03 + WX.P.rain * 0.02 + WX.P.snow * 0.02 + (WX.P.fogK > 3 ? 0.012 : 0));
+wxSet('changing');
+
+/* ============================================================================
+   Volumetric clouds, rain and snow, lightning, wet ground.
+
+   Clouds: the sky is ray-marched through a slab of cloud (its cover, base,
+   depth and shape set by the weather) into a small panorama of the sky round
+   the camera: every direction above the horizon, finer near the horizon where
+   the clouds stand closest together. Each frame marches the whole panorama
+   with a fresh jitter and blends it into the last one, so a few steps a frame
+   add up to a smooth, deep picture. The panorama is laid over the sky dome
+   behind everything else (it hides the sun, moon and stars behind cloud), and
+   a touch of fine noise breaks up the cloud edges at full screen resolution.
+   Light: sunlight (or moonlight) through the cloud with forward scattering, so
+   edges toward the sun glow silver and storm bases go dark; sky light from
+   above; lightning lights the cloud from within.
+
+   Phones march a smaller panorama with fewer steps, every other frame.
+   ========================================================================== */
+const CLOUD = { on: false, frame: 0, drift: { x: 0, z: 0 }, shade: 0, wetLook: 0, camV: new THREE.Vector3(), lastCam: null };
+
+function cloudNoiseTex() {
+  // 256 x 256 random values; green is red moved by (37, 17), so one lookup gives two z slices of 3D noise
+  const N = 256, r = rng(77), v = new Uint8Array(N * N), d = new Uint8Array(N * N * 4);
+  for (let i = 0; i < v.length; i++) v[i] = Math.floor(r() * 256);
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    const i = (y * N + x) * 4;
+    d[i] = v[y * N + x]; d[i + 1] = v[((y + 17) & 255) * N + ((x + 37) & 255)]; d[i + 2] = 0; d[i + 3] = 255;
+  }
+  const t = new THREE.DataTexture(d, N, N, THREE.RGBAFormat);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.magFilter = t.minFilter = THREE.LinearFilter; t.generateMipmaps = false; t.needsUpdate = true;
+  return t;
+}
+function cloudMapTex() {
+  const M = WX_MAP.a ? WX_MAP : wxBuildMap(), N = M.n, d = new Uint8Array(N * N * 4);
+  for (let i = 0; i < N * N; i++) { d[i * 4] = Math.round(M.a[i] * 255); d[i * 4 + 1] = Math.round(M.b[i] * 255); d[i * 4 + 3] = 255; }
+  // the CPU copy reads the same 8-bit values the GPU sees, so the sun's shadow matches the clouds overhead
+  for (let i = 0; i < N * N; i++) { M.a[i] = d[i * 4] / 255; M.b[i] = d[i * 4 + 1] / 255; }
+  const t = new THREE.DataTexture(d, N, N, THREE.RGBAFormat);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.magFilter = t.minFilter = THREE.LinearFilter; t.generateMipmaps = false; t.needsUpdate = true;
+  return t;
+}
+
+const CLOUD_GLSL_NOISE = `
+  float noise3( vec3 x ) {
+    vec3 p = floor( x ), f = fract( x ); f = f * f * ( 3.0 - 2.0 * f );
+    vec2 uv = p.xy + vec2( 37.0, 17.0 ) * p.z + f.xy;
+    vec2 rg = texture2D( uNoise, ( uv + 0.5 ) / 256.0 ).rg;
+    return mix( rg.x, rg.y, f.z );
+  }`;
+
+function buildClouds(scene) {
+  const lite = GFX.lite;
+  const W = lite ? 448 : 1024, H = lite ? 144 : 288, STEPS = lite ? 12 : 22;
+  const opt = { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, format: THREE.RGBAFormat, depthBuffer: false, stencilBuffer: false, generateMipmaps: false };
+  const rts = [new THREE.WebGLRenderTarget(W, H, opt), new THREE.WebGLRenderTarget(W, H, opt)];
+  for (const r of rts) { r.texture.wrapS = THREE.RepeatWrapping; r.texture.wrapT = THREE.ClampToEdgeWrapping; }
+  const noise = cloudNoiseTex(), map = cloudMapTex();
+  const U = {
+    uMap: { value: map }, uNoise: { value: noise }, uPrev: { value: rts[1].texture }, uRes: { value: new THREE.Vector2(W, H) },
+    uCam: { value: new THREE.Vector3() }, uDrift: { value: new THREE.Vector2() }, uEdge: { value: new THREE.Vector2(0.8, 1) }, uTile: { value: WX_MAP.tile },
+    uBase: { value: 1500 }, uThick: { value: 800 }, uStrat: { value: 0 }, uDens: { value: 1 }, uDark: { value: 0 },
+    uLight: { value: new THREE.Vector3(0, 1, 0) }, uLightC: { value: new THREE.Color(1, 1, 1) }, uAmbT: { value: new THREE.Color() }, uAmbB: { value: new THREE.Color() },
+    uHor: { value: new THREE.Color() }, uFlash: { value: 0 }, uBlend: { value: 1 }, uFrame: { value: 0 }, uTime: { value: 0 },
+  };
+  const mat = new THREE.ShaderMaterial({
+    uniforms: U, depthTest: false, depthWrite: false,
+    defines: { STEPS },
+    vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
+    fragmentShader: `varying vec2 vUv;
+      uniform sampler2D uMap, uNoise, uPrev; uniform vec2 uRes, uDrift, uEdge;
+      uniform vec3 uCam, uLight, uLightC, uAmbT, uAmbB, uHor;
+      uniform float uTile, uBase, uThick, uStrat, uDens, uDark, uFlash, uBlend, uFrame, uTime;
+      ${CLOUD_GLSL_NOISE}
+      float hash( vec2 p ) { return fract( 52.9829189 * fract( dot( p, vec2( 0.06711056, 0.00583715 ) ) ) ); }
+      // the cloud's density at p: the map says where cloud stands; heaped clouds have flat bases and
+      // rounded tops that narrow with height, a sheet is even; noise wears both into lumps and wisps
+      float density( vec3 p, float fine ) {
+        float h = ( p.y - uBase ) / uThick;
+        if ( h <= 0.0 || h >= 1.0 ) return 0.0;
+        // the map, warped a little so cloud edges never run straight up like walls
+        vec2 w = vec2( noise3( p / 1700.0 ), noise3( p / 1700.0 + 19.7 ) ) - 0.5;
+        vec2 m = texture2D( uMap, ( p.xz + uDrift + w * 900.0 ) / uTile ).rg;
+        float c = smoothstep( uEdge.x, uEdge.y, m.r );
+        float cu = smoothstep( 0.08 + h * 0.95, 0.3 + h * 0.95, c ) * smoothstep( 0.0, 0.05, h );
+        // a sheet: its base and top undulate, thicker and thinner in broad patches
+        float top = 0.45 + 0.55 * m.g, bot = 0.25 * ( 1.0 - m.g );
+        float st = c * smoothstep( bot, bot + 0.15, h ) * smoothstep( top, top - 0.35, h ) * ( 0.55 + 0.45 * m.g );
+        float d = mix( cu, st, uStrat );
+        if ( d < 0.01 ) return 0.0;
+        vec3 q = p + vec3( uDrift.x, -uTime * 2.0, uDrift.y );
+        float n = noise3( q / 620.0 ) * 0.62;
+        if ( fine > 0.01 ) n += ( noise3( q / 240.0 + 7.1 ) * 0.38 + ( noise3( q / 95.0 + 3.3 ) - 0.5 ) * 0.22 ) * fine;
+        else n += 0.19;
+        float wear = mix( 0.62, 0.32, uStrat );
+        d = clamp( ( d - ( 1.0 - n ) * wear * ( 1.6 - d * 0.6 ) ) * 1.8, 0.0, 1.0 );
+        return d * uDens;
+      }
+      float hg( float c, float g ) { float g2 = g * g; return ( 1.0 - g2 ) / pow( 1.0 + g2 - 2.0 * g * c, 1.5 ); }
+      void main() {
+        float a = ( vUv.x - 0.5 ) * 6.2831853, dy = vUv.y * vUv.y, hz = sqrt( max( 0.0, 1.0 - dy * dy ) );
+        vec3 d = normalize( vec3( sin( a ) * hz, max( dy, 0.012 ), -cos( a ) * hz ) );
+        float y0 = uBase, y1 = uBase + uThick, ta, tb;
+        if ( uCam.y < y0 ) { ta = ( y0 - uCam.y ) / d.y; tb = ( y1 - uCam.y ) / d.y; }
+        else { ta = 0.0; tb = max( 0.0, ( y1 - uCam.y ) / d.y ); }
+        tb = min( tb, ta + mix( 9000.0, 16000.0, smoothstep( 0.3, 0.05, d.y ) ) );
+        vec3 col = vec3( 0.0 ); float T = 1.0;
+        if ( ta < 62000.0 && tb > ta ) {
+          float ds = ( tb - ta ) / float( STEPS ), j = fract( hash( vUv * uRes ) + uFrame * 0.6180339 );
+          float cosT = dot( d, uLight );
+          float ph = min( mix( hg( cosT, 0.5 ), hg( cosT, -0.15 ), 0.5 ), 3.0 );
+          float sig = 0.0042;
+          vec3 l1 = uLight * uThick * 0.06, l2 = uLight * uThick * 0.18, l3 = uLight * uThick * 0.42;
+          float far = smoothstep( 9000.0, 30000.0, ta );
+          for ( int i = 0; i < STEPS; i++ ) {
+            vec3 p = uCam + d * ( ta + ( float( i ) + j ) * ds );
+            float den = density( p, 1.0 - far );
+            if ( den > 0.002 ) {
+              // light: how much cloud lies between here and the sun
+              float od = ( density( p + l1, 0.0 ) * 0.06 + density( p + l2, 0.0 ) * 0.12 + density( p + l3, 0.0 ) * 0.24 ) * uThick;
+              float beer = max( exp( -od * sig ), exp( -od * sig * 0.22 ) * 0.42 );
+              float powder = 1.0 - 0.55 * exp( -den * 6.0 );
+              float h = clamp( ( p.y - uBase ) / uThick, 0.0, 1.0 );
+              vec3 amb = mix( uAmbB, uAmbT, h * 0.8 + 0.2 ) * mix( 1.0, 0.55, uDark * ( 1.0 - h ) );
+              vec3 S = uLightC * beer * ph * powder + amb + vec3( 0.75, 0.8, 1.0 ) * uFlash * ( 0.6 + 0.6 * noise3( p / 900.0 ) );
+              float dT = exp( -den * sig * ds );
+              col += T * ( 1.0 - dT ) * S; T *= dT;
+              if ( T < 0.02 ) break;
+            }
+          }
+          // far cloud sinks into the haze on the horizon, and the farthest goes altogether
+          float k = exp( -ta / 26000.0 );
+          col = col * k + uHor * ( 1.0 - T ) * ( 1.0 - k );
+          float gone = 1.0 - smoothstep( 38000.0, 62000.0, ta );
+          col *= gone; T = 1.0 - ( 1.0 - T ) * gone;
+        }
+        vec4 cur = vec4( min( col, vec3( 1.3 ) ), 1.0 - T );
+        gl_FragColor = mix( texture2D( uPrev, vUv ), cur, uBlend );
+      }`,
+  });
+  const qs = new THREE.Scene(), qc = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+  const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mat); quad.frustumCulled = false; qs.add(quad);
+  // the layer over the sky: a sphere inside the far plane, drawn after the stars and moon
+  const LU = { uPano: { value: rts[0].texture }, uNoise: { value: noise }, uCam: U.uCam, uDrift: U.uDrift, uBase: U.uBase, uDetail: { value: lite ? 0.6 : 1 }, uFade: { value: 1 } };
+  const lay = new THREE.Mesh(new THREE.SphereGeometry(24000, 48, 24), new THREE.ShaderMaterial({
+    uniforms: LU, side: THREE.BackSide, transparent: true, depthWrite: false, depthTest: true, fog: false,
+    blending: THREE.CustomBlending, blendSrc: THREE.OneFactor, blendDst: THREE.OneMinusSrcAlphaFactor, blendSrcAlpha: THREE.OneFactor, blendDstAlpha: THREE.OneMinusSrcAlphaFactor,
+    vertexShader: `#include <common>
+      #include <logdepthbuf_pars_vertex>
+      varying vec3 vDir; void main(){ vDir = position; vec4 mvPosition = modelViewMatrix * vec4( position, 1.0 ); gl_Position = projectionMatrix * mvPosition;
+      #include <logdepthbuf_vertex>
+      }`,
+    fragmentShader: `#include <common>
+      #include <logdepthbuf_pars_fragment>
+      uniform sampler2D uPano, uNoise; uniform vec3 uCam; uniform vec2 uDrift; uniform float uBase, uDetail, uFade; varying vec3 vDir;
+      ${CLOUD_GLSL_NOISE}
+      void main(){
+        #include <logdepthbuf_fragment>
+        vec3 d = normalize( vDir ); if ( d.y < -0.03 ) discard;
+        vec2 uv = vec2( atan( d.x, -d.z ) / 6.2831853 + 0.5, sqrt( clamp( d.y, 0.0, 1.0 ) ) );
+        vec4 c = texture2D( uPano, uv );
+        if ( c.a < 0.003 ) discard;
+        // fine detail on the panorama's soft edges, fixed to the clouds as they drift
+        vec2 q = ( d.xz * max( uBase - uCam.y, 200.0 ) / max( d.y, 0.04 ) + uCam.xz + uDrift ) / 130.0;
+        float n = noise3( vec3( q, 0.0 ) ) * 0.65 + noise3( vec3( q * 2.7, 1.0 ) ) * 0.35;
+        float e = c.a * ( 1.0 - c.a ) * 4.0 * uDetail * smoothstep( 0.02, 0.12, d.y );
+        c *= clamp( 1.0 + ( n - 0.5 ) * 1.3 * e, 0.0, 1.5 );
+        c.a = min( c.a, 1.0 );
+        c *= smoothstep( -0.03, 0.004, d.y ) * uFade;
+        gl_FragColor = c;
+      }`,
+  }));
+  lay.renderOrder = -7; lay.frustumCulled = false; scene.add(lay);
+  Object.assign(CLOUD, { on: true, W, H, STEPS, rts, U, LU, mat, qs, qc, lay, every: lite ? 2 : 1, ping: 0, fresh: 2 });
+  buildPrecip(scene);
+}
+/* the cloud panorama for this frame: called before the scene is drawn */
+function cloudRender(renderer, cam, dt) {
+  if (!CLOUD.on) return;
+  const P = WX.P, U = CLOUD.U, c = cam.position;
+  // the clouds drift with the wind aloft, faster than it blows down here
+  const wl = Math.hypot(ENV.wind.x, ENV.wind.z) || 1, sp = 10 + 4 * P.wind;
+  CLOUD.drift.x -= ENV.wind.x / wl * sp * dt; CLOUD.drift.z -= ENV.wind.z / wl * sp * dt;
+  U.uDrift.value.set(CLOUD.drift.x, CLOUD.drift.z); U.uTime.value += dt;
+  U.uCam.value.copy(c);
+  const [e0, e1] = wxCoverEdge(P.cover); U.uEdge.value.set(e0, e1);
+  U.uBase.value = P.base; U.uThick.value = P.thick; U.uStrat.value = P.strat; U.uDens.value = P.dens; U.uDark.value = P.dark;
+  U.uFlash.value = WX.flash;
+  CLOUD.frame++;
+  if (CLOUD.frame % CLOUD.every && !CLOUD.fresh) return;
+  U.uFrame.value = CLOUD.frame % 1000;
+  // a big jump (a new weather picked, the camera moved far) starts the picture afresh; otherwise blend in
+  if (CLOUD.lastCam && CLOUD.lastCam.distanceTo(c) > 400) CLOUD.fresh = 2;
+  CLOUD.lastCam = (CLOUD.lastCam || new THREE.Vector3()).copy(c);
+  U.uBlend.value = CLOUD.fresh ? 1 : (CLOUD.every > 1 ? 0.22 : 0.12);
+  if (CLOUD.fresh) CLOUD.fresh--;
+  const src = CLOUD.rts[CLOUD.ping], dst = CLOUD.rts[1 - CLOUD.ping];
+  U.uPrev.value = src.texture;
+  const prevRT = renderer.getRenderTarget(), ac = renderer.autoClear;
+  renderer.setRenderTarget(dst); renderer.autoClear = false; renderer.render(CLOUD.qs, CLOUD.qc);
+  renderer.setRenderTarget(prevRT); renderer.autoClear = ac;
+  CLOUD.LU.uPano.value = dst.texture; CLOUD.ping = 1 - CLOUD.ping;
+}
+/* the light on the clouds, from the sky's look this hour (called from skyLight) */
+function cloudLight(L, dark, bySun, keyDir, keyC, gray) {
+  if (!CLOUD.on) return;
+  const U = CLOUD.U, su = SKY.uni;
+  U.uLight.value.copy(keyDir);
+  // sunlight in the sky's own units: about 1 for a white noon cloud; the moon lights them faintly
+  const sunUp = bySun ? smooth(-3, 4, SKY.sunEl) : 1;
+  U.uLightC.value.copy(keyC).multiplyScalar((bySun ? 0.78 : 1.3) * sunUp * lerp(1, 0.55, WX.P.dark));
+  U.uAmbT.value.copy(su.uHor.value).lerp(su.uTop.value, 0.35).multiplyScalar(lerp(0.95, 0.75, gray));
+  U.uAmbB.value.copy(su.uHor.value).multiplyScalar(0.55).lerp(_skC.setHex(L.hemiG), 0.3);
+  if (gray > 0.3) { const g = (U.uAmbT.value.r + U.uAmbT.value.g + U.uAmbT.value.b) / 3; U.uAmbT.value.lerp(_skC.setRGB(g, g, g * 1.03), gray * 0.6); }
+  U.uHor.value.copy(su.uHor.value);
+  CLOUD.LU.uFade.value = 1 - (SKY.fogSky || 0);
+}
+/* how much of the sun the cloud overhead lets through to where we are (0 under a thick cloud, 1 in sun) */
+function cloudSunAt(p, dt) {
+  const P = WX.P, k = SKY.keyDir;
+  let shade = 0;
+  if (k.y > 0.03) {
+    const hgt = P.base + P.thick * 0.35 - p.y, t = hgt / k.y;
+    shade = wxCoverAt(p.x + k.x * t, p.z + k.z * t, P.cover, CLOUD.drift) * Math.min(1, 0.7 + P.dens * 0.3);
+  } else shade = P.cover;
+  CLOUD.shade += (shade - CLOUD.shade) * Math.min(1, dt * 1.2);
+  return 1 - 0.8 * CLOUD.shade;
+}
+
+/* ---------------- rain and snow: drops in a box round the camera, moved on the GPU ---------------- */
+const PRECIP = { rain: null, snow: null };
+function buildPrecip(scene) {
+  const lite = GFX.lite, box = 46, high = 30;
+  const mk = (n, verts, lines) => {
+    const seed = new Float32Array(n * verts * 4), end = new Float32Array(n * verts), pos = new Float32Array(n * verts * 3), r = rng(lines ? 5 : 6);
+    for (let i = 0; i < n; i++) { const s = [r(), r(), r(), r()]; for (let v = 0; v < verts; v++) { seed.set(s, (i * verts + v) * 4); end[i * verts + v] = v; } }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('aSeed', new THREE.BufferAttribute(seed, 4)); g.setAttribute('aEnd', new THREE.BufferAttribute(end, 1));
+    return g;
+  };
+  const U = {
+    uCam: { value: new THREE.Vector3() }, uCamV: { value: new THREE.Vector3() }, uWind: { value: new THREE.Vector3() }, uTime: { value: 0 }, uAmt: { value: 0 },
+    uBox: { value: new THREE.Vector3(box, high, box) }, uShelter: { value: 0 }, uCol: { value: new THREE.Color(0.7, 0.72, 0.75) }, uPx: { value: 600 },
+  };
+  const common = `
+    attribute vec4 aSeed; attribute float aEnd; uniform vec3 uCam, uCamV, uWind, uBox; uniform float uTime, uAmt, uShelter, uPx; varying float vA;
+    vec3 dropAt( vec3 vel, float wob ) {
+      vec3 o = uCam - uBox * vec3( 0.5, 0.62, 0.5 );
+      vec3 p = aSeed.xyz * uBox + vel * uTime;
+      p.x += sin( uTime * 1.3 + aSeed.w * 40.0 ) * wob; p.z += cos( uTime * 1.1 + aSeed.w * 31.0 ) * wob;
+      return mod( p - o, uBox ) + o;
+    }`;
+  const fragC = `uniform vec3 uCol; varying float vA; void main(){ if ( vA < 0.01 ) discard; gl_FragColor = vec4( uCol, vA ); }`;
+  const rainMat = new THREE.ShaderMaterial({
+    uniforms: U, transparent: true, depthWrite: false,
+    vertexShader: `#include <common>
+      #include <logdepthbuf_pars_vertex>
+      ${common}
+      void main(){
+        vec3 vel = vec3( uWind.x, -9.0 - aSeed.w * 2.5, uWind.z );
+        vec3 p = dropAt( vel, 0.0 );
+        // the streak a drop leaves in a twentieth of a second, as seen from the moving camera
+        vec3 rel = vel - uCamV; p -= rel * 0.045 * aEnd;
+        vec3 r = p - uCam; float dist = length( r );
+        float on = step( aSeed.w, uAmt ) * smoothstep( uShelter, uShelter + 1.5, dist );
+        vA = on * ( 0.45 + 0.35 * aSeed.y ) * ( 1.0 - smoothstep( 8.0, 22.0, dist ) ) * ( 1.0 - aEnd * 0.6 );
+        vec4 mvPosition = viewMatrix * vec4( p, 1.0 ); gl_Position = projectionMatrix * mvPosition;
+        #include <logdepthbuf_vertex>
+      }`,
+    fragmentShader: `#include <common>
+      #include <logdepthbuf_pars_fragment>
+      ${fragC.replace('void main(){', 'void main(){\n#include <logdepthbuf_fragment>\n')}`,
+  });
+  const NR = lite ? 4000 : 12000;
+  PRECIP.rain = new THREE.LineSegments(mk(NR, 2, true), rainMat);
+  const flake = canvasTex(32, 32, (c) => { const gr = c.createRadialGradient(16, 16, 1, 16, 16, 15); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.5, 'rgba(255,255,255,0.6)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); c.fillStyle = gr; c.fillRect(0, 0, 32, 32); }, { srgb: false });
+  const snowMat = new THREE.ShaderMaterial({
+    uniforms: Object.assign({ uTex: { value: flake } }, U), transparent: true, depthWrite: false,
+    vertexShader: `#include <common>
+      #include <logdepthbuf_pars_vertex>
+      ${common}
+      void main(){
+        vec3 vel = vec3( uWind.x * 0.8, -1.0 - aSeed.w * 0.5, uWind.z * 0.8 );
+        vec3 p = dropAt( vel, 0.6 );
+        float dist = length( p - uCam );
+        vA = step( aSeed.w, uAmt ) * smoothstep( uShelter, uShelter + 1.5, dist ) * ( 1.0 - smoothstep( 16.0, 23.0, dist ) );
+        vec4 mvPosition = viewMatrix * vec4( p, 1.0 ); gl_Position = projectionMatrix * mvPosition;
+        gl_PointSize = clamp( uPx * ( 0.05 + 0.04 * aSeed.y ) / max( 0.3, -mvPosition.z ), 1.0, 40.0 );
+        #include <logdepthbuf_vertex>
+      }`,
+    fragmentShader: `#include <common>
+      #include <logdepthbuf_pars_fragment>
+      uniform sampler2D uTex; uniform vec3 uCol; varying float vA;
+      void main(){
+        #include <logdepthbuf_fragment>
+        float a = vA * texture2D( uTex, gl_PointCoord ).a; if ( a < 0.01 ) discard; gl_FragColor = vec4( min( uCol * 1.6, vec3( 1.0 ) ), min( 1.0, a * 1.3 ) ); }`,
+  });
+  const NS = lite ? 3500 : 9000;
+  PRECIP.snow = new THREE.Points(mk(NS, 1, false), snowMat);
+  for (const o of [PRECIP.rain, PRECIP.snow]) { o.frustumCulled = false; o.renderOrder = 6; o.visible = false; scene.add(o); }
+  PRECIP.U = U;
+  FX.snow = PRECIP.snow;   // older code asks whether snow is showing
+}
+function precipFrame(cam, dt) {
+  if (!PRECIP.U) return;
+  const U = PRECIP.U, P = WX.P, c = cam.position;
+  // the camera's own speed, so streaks slant past a moving train's windows
+  if (CLOUD.lastV) { const v = _skV.subVectors(c, CLOUD.lastV).divideScalar(Math.max(dt, 1e-3)); if (v.length() < 120) CLOUD.camV.lerp(v, Math.min(1, dt * 8)); }
+  CLOUD.lastV = (CLOUD.lastV || new THREE.Vector3()).copy(c);
+  U.uCam.value.copy(c); U.uCamV.value.copy(CLOUD.camV); U.uTime.value += dt;
+  U.uWind.value.set(ENV.wind.x * 1.4, 0, ENV.wind.z * 1.4);
+  const inside = SKY.boreK || 0;
+  U.uShelter.value = CAM.mode === 'cab' || (WALK.on && WALK.mode === 'ride') ? 3.2 : 0;
+  U.uPx.value = innerHeight * Math.min(devicePixelRatio, 2) * 0.5 / Math.tan(cam.fov * Math.PI / 360);
+  const lit = FX.light, b = lerp(0.62, 0.16, SKY.dark) * (1 + WX.flash * 2);
+  U.uCol.value.setRGB(lit.r * b, lit.g * b, lit.b * b * 1.04);
+  const rain = P.rain * (1 - inside), snow = P.snow * (1 - inside);
+  U.uAmt.value = Math.max(rain, snow) * 1.0;
+  PRECIP.rain.visible = rain > 0.01; PRECIP.snow.visible = snow > 0.01;
+  // the wet look on the ground follows the rail's wetness
+  CLOUD.wetLook = WX.wet;
+  if (WORLD.wetU) WORLD.wetU.value = Math.min(1, WX.wet * 1.2) * (SKY.snow ? 0.3 : 1);
+  if (MAT.rail) MAT.rail.roughness = 0.42 - 0.2 * WX.wet;
+}
+const _skV = new THREE.Vector3();
 
 /* ============================================================================
    Emergency stops you can feel: sparks where locked wheels skid on the rail,
@@ -15489,8 +16040,8 @@ function winMaterial(m) {
   return m;
 }
 function winLight(dark) {
-  const w = WIN.u.value, W = WEATHER[SKY.weather] || {};
-  w[0] = dark; w[1] = SKY.hour; w[3] = W.gray ? 0.35 * (1 - dark) : 0;
+  const w = WIN.u.value;
+  w[0] = dark; w[1] = SKY.hour; w[3] = 0.35 * clamp(WX.P.gray / 0.55, 0, 1) * (1 - dark);
   for (const m of [SMAT.win, SMAT.win2, SMAT.win3]) if (m) m.emissiveIntensity = m.userData.litI || 0.9;
 }
 
@@ -16888,7 +17439,7 @@ class RemoteTrain {
     this.tv.copy(T.lead.fwd).multiplyScalar(this.v);
     // lamps
     const hl = st.hl;
-    L.beam.material.opacity = hl === 0 ? 0 : Math.max(night * (hl === 2 ? 0.075 : 0.035), SKY.weather !== 'clear' ? 0.02 : 0);
+    L.beam.material.opacity = hl === 0 ? 0 : Math.max(night * (hl === 2 ? 0.075 : 0.035), wxBeam());
     L.halo.material.opacity = hl === 0 ? 0 : lerp(0.35, 1, night) * (hl === 2 ? 1 : 0.6) * lampFacing(L, cam);
     if (T.diesel) {
       const ph = Math.floor(performance.now() / 385) % 2, flash = st.wh > 0.05 || st.bl, on = st.dl && hl > 0;
@@ -19239,7 +19790,7 @@ SAVE.snapshot = function () {
     S: st, sw: NET.switches.map(s => [s.name, s.state]),
     train: Object.assign(consistOut(T, power), { loco: T.locoKey, ck: T.consistKey, units: T.nUnits || 1 }),
     cuts: CARS.cuts.map(c => Object.assign(consistOut(c), { cv: rnd(c.v), rolling: !!c.rolling, stopT: rnd(c.stopT || 0), vented: !!c.vented, home: c.home || null })),
-    job, ai: aiOut(), sky: { hour: rnd(SKY.hour, 1e5), weather: SKY.weather }, cam, wreck,
+    job, ai: aiOut(), sky: { hour: rnd(SKY.hour, 1e5), weather: SKY.weather, wx: wxOut() }, cam, wreck,
     ind: IND.out(),
     misc: { placed: PLACE.made || 0, lastStation: GAME.lastStation || null, spawnName: GAME.spawnName || '' },
     sum: SAVE.summary(T, job),
@@ -19383,8 +19934,9 @@ SAVE.apply = function (d) {
   aiIn(d.ai, E);
   if (typeof jobMenu === 'function') jobMenu();
   // the sky
-  applyLook(null, d.sky.weather); SKY.hour = d.sky.hour; skyLight(true);
-  if (FX.snow) FX.snow.visible = SKY.snow;
+  applyLook(null, d.sky.weather); SKY.hour = d.sky.hour;
+  if (d.sky.wx) { wxIn(d.sky.wx); wxGround(); }   // the same spell of weather, part way through, and the rail as wet as it was
+  skyLight(true);
   // a wreck lies where it came to rest
   if (d.wreck && S.derailed) {
     wreckIn(t, d.wreck);
@@ -20899,7 +21451,7 @@ WALK.peerTag = function (p, w) {
    Game: boot, world loading, main loop, rules, HUD
    ========================================================================== */
 const GAME = {
-  settings: { traffic: 'on', loco: '765', consist: 'passenger', time: 'morning', cycle: 'x30', weather: 'clear', fire: 'easy', fireV: 2, units: 1, livery: 'ss', mix: false, finish: 'standard', job: '', custom: { body: 0x2c5f8a, roof: 0x24384a, accent: 0xf0f0ea, letter: 0xf0f0ea, rail: 0xf0f0ea }, number: 4401, coach: 'pullman', coachColor: 0x2a3a2a },
+  settings: { traffic: 'on', loco: '765', consist: 'passenger', time: 'morning', cycle: 'x30', weather: 'changing', wxV: 1, fire: 'easy', fireV: 2, units: 1, livery: 'ss', mix: false, finish: 'standard', job: '', custom: { body: 0x2c5f8a, roof: 0x24384a, accent: 0xf0f0ea, letter: 0xf0f0ea, rail: 0xf0f0ea }, number: 4401, coach: 'pullman', coachColor: 0x2a3a2a },
   train: null, running: false, ready: false, stats: { runThrough: 0 },
   events: {}, stopped: 0, lastStation: null, filling: null,
 };
@@ -20963,7 +21515,7 @@ async function loadWorld() {
   if (WORLD.mtn) mtBuildForest(scene); else buildTrees(scene);
   finalizeScenery(scene);
   prog(0.92, 'Lighting the fire…'); await frame();
-  buildSky(scene, renderer); buildFX(scene); buildSparks(scene); buildLamps(scene);
+  buildSky(scene, renderer); buildClouds(scene); buildFX(scene); buildSparks(scene); buildLamps(scene);
   for (const st of ROUTE.stations) { st.edge.pose(st.s, FR); st.p = FR.p.clone(); }
   for (const w of ROUTE.water) { w.edge.pose(w.s, FR); w.p = FR.p.clone(); }
   if (ROUTE.coal) { const c = ROUTE.coal; c.edge.pose(c.s, FR); c.p = FR.p.clone(); }
@@ -21162,11 +21714,14 @@ function applyLiveriesLive() {
   const o = dieselOpts();
   t.units.forEach((m, u) => { const lv = dieselLiveryFor(o, u); applyLivery(m, lv, (o.number || lv.num) + u); });
 }
-const SAVE_KEYS = ['job', 'traffic', 'loco', 'consist', 'time', 'cycle', 'weather', 'fire', 'fireV', 'units', 'livery', 'mix', 'finish', 'custom', 'number', 'coach', 'coachColor'];
+const SAVE_KEYS = ['job', 'traffic', 'loco', 'consist', 'time', 'cycle', 'weather', 'wxV', 'fire', 'fireV', 'units', 'livery', 'mix', 'finish', 'custom', 'number', 'coach', 'coachColor'];
 function saveSettings() { try { const o = {}; for (const k of SAVE_KEYS) o[k] = GAME.settings[k]; localStorage.setItem('bd_settings', JSON.stringify(o)); } catch (e) {} }
 function loadSettings() { try { const o = JSON.parse(localStorage.getItem('bd_settings') || 'null'); if (o) for (const k of SAVE_KEYS) if (o[k] !== undefined) GAME.settings[k] = o[k]; } catch (e) {}
   // easy steam came in as the default after 'auto' had been saved by everyone: move them up to it once
   if (GAME.settings.fireV !== 2) { if (GAME.settings.fire === 'auto') GAME.settings.fire = 'easy'; GAME.settings.fireV = 2; }
+  // changing weather came in after everyone had Clear saved as the old default: move them over once
+  if (GAME.settings.wxV !== 1) { if (GAME.settings.weather === 'clear') GAME.settings.weather = 'changing'; GAME.settings.wxV = 1; }
+  if (!WEATHER[GAME.settings.weather]) GAME.settings.weather = 'changing';
   if (!['easy', 'auto', 'hand'].includes(GAME.settings.fire)) GAME.settings.fire = 'easy'; if (!LOCO_SPEC[GAME.settings.loco]) GAME.settings.loco = '765'; if (!LIVERIES[GAME.settings.livery]) GAME.settings.livery = 'ss'; if (!DN.starts[GAME.settings.time]) GAME.settings.time = 'morning'; if (!DN.rates[GAME.settings.cycle]) GAME.settings.cycle = 'x30'; if (!COACH_PAINT[GAME.settings.coach]) GAME.settings.coach = 'pullman'; }
 GAME.needNewTrain = function () { const t = GAME.train, g = GAME.settings, j = JOB.wanted(); return !t || MP.needSpawn || t.locoKey !== g.loco || (!t.elec && t.consistKey !== JOB.consist()) || (j ? j.id : '') !== JOB.activeId() || (t.diesel && !t.elec && t.nUnits !== (+g.units || 1)) || (!t.diesel && (t.trim || '') !== trimWanted()); };
 function buildWhistleIfReady() { if (!AU.on) return; buildWhistle(WHISTLES[LOCO_SPEC[GAME.settings.loco].whistle]); }
@@ -21221,7 +21776,7 @@ function buildMenu() {
   segButtons('optTrain', Object.fromEntries(Object.entries(CONSISTS).filter(([, c]) => !c.hidden)), 'consist', () => { GAME.swapLive(); startLabel(); saveSettings(); });
   segButtons('optTime', DN.starts, 'time', k => { if (GAME.ready) applyLook(k, null); saveSettings(); });
   segButtons('optCycle', DN.rates, 'cycle', () => saveSettings());
-  segButtons('optWeather', WEATHER, 'weather', k => { if (GAME.ready) { applyLook(null, k); FX.snow.visible = SKY.snow; } });
+  segButtons('optWeather', WEATHER, 'weather', k => { if (GAME.ready) applyLook(null, k); saveSettings(); });
   segButtons('optFire', { easy: { name: 'Easy', sub: 'Fireman, and the reverser hooks up for you' }, auto: { name: 'Fireman', sub: 'Stoker & water handled, you work the reverser' }, hand: { name: 'Hand fired', sub: 'You run the boiler' } }, 'fire', k => { applyFireSetting(k); GAME.refreshKeys(); saveSettings(); });
   segButtons('optTraffic', { on: { name: 'Timetable', sub: ROUTE_KEY === 'laurel' ? 'No. 21, No. 22 and coal trains on the mountain' : 'No. 5, No. 12 and freights on the road' }, off: { name: 'Clear road', sub: 'Just you and the signals' } }, 'traffic', () => { if (GAME.ready && GAME.train) AI.setup(); saveSettings(); });
   specGrid();
@@ -21328,8 +21883,6 @@ GAME.start = function () {
   }
   GAME.running = true; S.paused = false; applyFireSetting(GAME.settings.fire);
   $('menu').hidden = true; $('hud').hidden = false; menuMini(false);
-  FX.snow.visible = SKY.snow;
-  if (SKY.snow) { const a = FX.snow.geometry.attributes.position.array; for (let i = 0; i < a.length; i += 3) { a[i] += camera.position.x; a[i + 1] += camera.position.y - 20; a[i + 2] += camera.position.z; } }
   GAME.refreshKeys();
   setTimeout(drawLeverTicks, 50);
   try { navigator.wakeLock && navigator.wakeLock.request('screen').catch(() => {}); } catch (e) {}
@@ -21507,7 +22060,8 @@ function updateHUD(dt) {
   const dir = Math.abs(S.v) > 0.2 ? Math.sign(S.v) : (Math.sign(S.reverser) || 1);
   const gp = S.grade * dir * 100;
   $('gradeTxt').textContent = Math.abs(gp) < 0.1 ? 'Level' : (gp > 0 ? '▲ ' : '▼ ') + Math.abs(gp).toFixed(1) + '%';
-  const tod = JOB.run ? '' : dnFmt(SKY.hour), te = $('todTxt'); if (te.textContent !== tod) te.textContent = tod;
+  const rw = SKY.railWord && SKY.railWord !== 'dry' ? `, ${SKY.railWord} rail` : '', wx = wxName() + rw;
+  const tod = JOB.run ? wx : dnFmt(SKY.hour) + ' · ' + wx, te = $('todTxt'); if (te.textContent !== tod) te.textContent = tod;
   const sc = scanAhead(GAME.train, dir); GAME.scan = sc;
   const lamp = $('swLamp'), txt = $('swText'), lm = $('swLampMini');
   if (sc.sw && sc.sw.d < 3500) {
@@ -21639,7 +22193,7 @@ function renderStep(dt, T) {
     const lv = (k) => !on ? 0.12 : (S.ditchFlash > 0 ? (ph === k ? 1 : 0.15) : 0.85);
     T.loco.ditch.forEach((d, k) => { const b = lv(k); d.lens.material.color.setScalar(0.25 + 0.75 * b); d.halo.material.opacity = b * lerp(0.45, 1, night); });
   } else T.fireLight.intensity = S.fire * lerp(0.18, 2.4, night) * flick * (CAM.mode === 'cab' ? 1 : 0.6);
-  T.loco.beam.material.opacity = S.light === 0 ? 0 : Math.max(night * (S.light === 2 ? 0.075 : 0.035), SKY.weather !== 'clear' ? 0.02 : 0);
+  T.loco.beam.material.opacity = S.light === 0 ? 0 : Math.max(night * (S.light === 2 ? 0.075 : 0.035), wxBeam());
   T.loco.halo.material.opacity = S.light === 0 ? 0 : lerp(0.35, 1, night) * (S.light === 2 ? 1 : 0.6) * lampFacing(T.loco, camera);
   if (!T.diesel) {
     T.loco.fire.material.color.setRGB(1 * flick, 0.45 * S.fire * flick + 0.1, 0.1);
@@ -21656,7 +22210,6 @@ function renderStep(dt, T) {
   }
   // sky follows camera
   skyTick(dt);
-  SKY.clouds.material.map.offset.x += dt * 0.0006; SKY.clouds.material.map.offset.y += dt * 0.0003;
   skyFollow(camera, PLACE.on ? PLACE.focus() : WALK.on ? camera.position : (MP.view() || T).lead.pos);
   lampsFrame(camera, dt);
   updateTrackLOD(camera); updateDetailLOD(camera, scene, dt); mtUpdate(camera, scene);
@@ -21664,9 +22217,10 @@ function renderStep(dt, T) {
   // effects & sound
   effectsAndSound(dt, T);
   MP.post(dt);
-  updateFX(dt, camera);
+  updateFX(dt, camera); precipFrame(camera, dt);
   updateSparks(dt, T, camera);
   if (GAME.running) updateHUD(dt);
+  cloudRender(renderer, camera, dt);
   renderer.render(scene, camera);
 }
 

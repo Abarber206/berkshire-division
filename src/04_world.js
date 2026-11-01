@@ -117,9 +117,10 @@ function makeMaterials() {
   MAT.ground.extensions = { derivatives: true };
   TEX.ground.repeat.set(1, 1);
   WORLD.snowU = { value: 0 };
+  WORLD.wetU = { value: 0 };   // rain-darkened ground, ballast and ties (0 dry .. 1 soaked)
   WORLD.fieldTex = makeFieldTexture();
   MAT.ground.onBeforeCompile = sh => {
-    sh.uniforms.uSnow = WORLD.snowU;
+    sh.uniforms.uSnow = WORLD.snowU; sh.uniforms.uWet = WORLD.wetU;
     sh.uniforms.uField = { value: WORLD.fieldTex.tex };
     sh.uniforms.uFieldXf = { value: new THREE.Vector4(WORLD.fieldTex.i0, WORLD.fieldTex.j0, WORLD.fieldTex.w, WORLD.fieldTex.h) };
     sh.uniforms.uDetail = { value: TEX.detail }; sh.uniforms.uRock = { value: TEX.rock };
@@ -129,29 +130,29 @@ function makeMaterials() {
       .replace('#include <beginnormal_vertex>', '#include <beginnormal_vertex>\nvUp = normal.y; vNrm = normal;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvWPos = (modelMatrix * vec4(transformed, 1.0)).xyz; vCropW = aCrop; vCamD = length((modelViewMatrix * vec4(transformed, 1.0)).xyz);');
     sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', '#include <common>\nuniform float uSnow; varying float vUp; varying vec3 vWPos; varying vec3 vNrm; varying float vCamD; varying float vCropW; uniform sampler2D uField; uniform vec4 uFieldXf; uniform sampler2D uDetail; uniform sampler2D uRock; uniform float uMtn;')
-      .replace('#include <color_fragment>', '#include <color_fragment>\n' + CROP_GLSL + GROUND_GLSL + '\n diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.86,0.89,0.93), uSnow * smoothstep(0.55,0.85,vUp) * (0.85 + 0.15*diffuseColor.g) * (1.0 - 0.6 * smoothstep(0.82, 0.62, vUp)));');
+      .replace('#include <common>', '#include <common>\nuniform float uSnow; uniform float uWet; varying float vUp; varying vec3 vWPos; varying vec3 vNrm; varying float vCamD; varying float vCropW; uniform sampler2D uField; uniform vec4 uFieldXf; uniform sampler2D uDetail; uniform sampler2D uRock; uniform float uMtn;')
+      .replace('#include <color_fragment>', '#include <color_fragment>\n' + CROP_GLSL + GROUND_GLSL + '\n diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.86,0.89,0.93), uSnow * smoothstep(0.55,0.85,vUp) * (0.85 + 0.15*diffuseColor.g) * (1.0 - 0.6 * smoothstep(0.82, 0.62, vUp)));\n diffuseColor.rgb *= 1.0 - 0.34 * uWet;');
   };
   MAT.ballast = new THREE.MeshLambertMaterial({ vertexColors: true, map: TEX.ballast });
   MAT.ballast.onBeforeCompile = sh => {
-    sh.uniforms.uSnow = WORLD.snowU;
+    sh.uniforms.uSnow = WORLD.snowU; sh.uniforms.uWet = WORLD.wetU;
     sh.uniforms.uTieFade = LOD.tieFar;
     sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying float vUp; varying float vCamD;').replace('#include <beginnormal_vertex>', '#include <beginnormal_vertex>\nvUp = normal.y;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvCamD = length((modelViewMatrix * vec4(transformed, 1.0)).xyz);');
     sh.uniforms.uDetail = { value: TEX.detail };
-    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform float uSnow; uniform vec4 uTieFade; uniform sampler2D uDetail; varying float vUp; varying float vCamD;')
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform float uSnow; uniform float uWet; uniform vec4 uTieFade; uniform sampler2D uDetail; varying float vUp; varying float vCamD;')
       .replace('#include <color_fragment>', '#include <color_fragment>\n' + BALLAST_GLSL +
         // past the distance where the ties dissolve, the crown takes on their average colour so the track keeps its look
         ' diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.085,0.062,0.045), 0.5 * (1.0 - smoothstep(1.15, 1.4, abs(vUv.x * 1.4))) * smoothstep(uTieFade.z, uTieFade.w, vCamD));\n' +
-        ' diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.86,0.89,0.93), uSnow * smoothstep(0.55,0.85,vUp) * (0.85 + 0.15*diffuseColor.g));');
+        ' diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.86,0.89,0.93), uSnow * smoothstep(0.55,0.85,vUp) * (0.85 + 0.15*diffuseColor.g));\n diffuseColor.rgb *= 1.0 - 0.3 * uWet;');
   };
   MAT.rail = new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0.85, roughness: 0.42 });
   MAT.tie = new THREE.MeshLambertMaterial({ vertexColors: true, map: TEX.wood });
   MAT.tie.onBeforeCompile = sh => {   // snow settles on the tie tops too
-    sh.uniforms.uSnow = WORLD.snowU;
+    sh.uniforms.uSnow = WORLD.snowU; sh.uniforms.uWet = WORLD.wetU;
     sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying float vUp;').replace('#include <beginnormal_vertex>', '#include <beginnormal_vertex>\n#ifdef USE_INSTANCING\nvUp = (modelMatrix * instanceMatrix * vec4(objectNormal, 0.0)).y;\n#else\nvUp = (modelMatrix * vec4(objectNormal, 0.0)).y;\n#endif');
-    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform float uSnow; varying float vUp;')
-      .replace('#include <color_fragment>', '#include <color_fragment>\n diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.80,0.83,0.87), uSnow * 0.75 * smoothstep(0.6,0.9,vUp));');
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform float uSnow; uniform float uWet; varying float vUp;')
+      .replace('#include <color_fragment>', '#include <color_fragment>\n diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.80,0.83,0.87), uSnow * 0.75 * smoothstep(0.6,0.9,vUp));\n diffuseColor.rgb *= 1.0 - 0.32 * uWet;');
   };
   MAT.plate = new THREE.MeshLambertMaterial({ color: 0x4a3d33 });
   MAT.steelDark = new THREE.MeshStandardMaterial({ color: 0x2b2c2e, metalness: 0.6, roughness: 0.6 });

@@ -266,8 +266,8 @@ function winMaterial(m) {
   return m;
 }
 function winLight(dark) {
-  const w = WIN.u.value, W = WEATHER[SKY.weather] || {};
-  w[0] = dark; w[1] = SKY.hour; w[3] = W.gray ? 0.35 * (1 - dark) : 0;
+  const w = WIN.u.value;
+  w[0] = dark; w[1] = SKY.hour; w[3] = 0.35 * clamp(WX.P.gray / 0.55, 0, 1) * (1 - dark);
   for (const m of [SMAT.win, SMAT.win2, SMAT.win3]) if (m) m.emissiveIntensity = m.userData.litI || 0.9;
 }
 

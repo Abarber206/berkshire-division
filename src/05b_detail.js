@@ -576,13 +576,13 @@ function genGrass(piece, scene) {
 }
 function updateDetailLOD(cam, scene, dt) {
   DET.timeU.value += dt;
-  DET.windK.value += ((SKY.weather === 'clear' ? 1 : 1.7) - DET.windK.value) * Math.min(1, dt * 0.5);
+  DET.windK.value += (clamp(0.75 + WX.P.wind * 0.2, 0.8, 2.2) - DET.windK.value) * Math.min(1, dt * 0.5);
   const cp = cam.position;
   let budget = 1;
   for (const p of WORLD.pieces) {
     const U = p.userData, d = U.sphere.center.distanceTo(cp) - U.sphere.radius;
     if (!U.grass && d < 360 && budget > 0) { genGrass(p, scene); budget--; }
-    if (U.grass) { U.grass.visible = d < 420; for (const m of U.grass.children) m.visible = d < (m.userData.kind === 'grass' ? (SKY.snow ? -1 : 230) : m.userData.kind === 'bush' ? 420 : 300); }
+    if (U.grass) { U.grass.visible = d < 420; for (const m of U.grass.children) { const k = m.userData.kind; m.visible = k === 'bush' ? d < 420 : !SKY.snow && d < (k === 'grass' ? 230 : 300); } }
   }
   coverUpdate(cam, scene);
   for (const g of DET.cornGroups) g.visible = g.userData.c.distanceTo(cp) - g.userData.r < 3200;
@@ -651,6 +651,6 @@ function coverUpdate(cam, scene) {
     const d = Math.hypot(c.c.x - cp.x, c.c.z - cp.z);
     if (d > R + 160) { scene.remove(c.grp); for (const m of c.grp.children) { dropShared(m.geometry); m.dispose(); } COVER.cells.delete(key); continue; }
     c.grp.visible = d < 300;
-    for (const m of c.grp.children) m.visible = !(snow && (m.userData.kind === 'grass' || m.userData.kind === 'fern'));
+    for (const m of c.grp.children) m.visible = !snow;   // snow lies over the tufts and flowers alike
   }
 }
