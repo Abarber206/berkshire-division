@@ -189,7 +189,7 @@ function mpOpts(st) {
 function mpLocoLabel(st) {
   if (st && st.other) return 'On another railroad';
   if (!st || st.e < 0) return 'In the menu';
-  const loco = HSR[st.lk] ? HSR[st.lk].name : st.lk === 'diesel' ? (st.lv === 'custom' ? 'Custom' : LIVERIES[st.lv].init) + ' diesel' + (st.u > 1 ? ' ×' + st.u : '') : (st.lk === '765' ? 'NKP 765' : 'PM 1225');
+  const loco = HSR[st.lk] ? HSR[st.lk].name : st.lk === 'diesel' ? (st.lv === 'custom' ? 'Custom' : LIVERIES[st.lv].init) + ' diesel' + (st.u > 1 ? ' ×' + st.u : '') : (st.lk === '765' ? 'NKP 765' : st.lk === '4014' ? 'UP 4014 Big Boy' : 'PM 1225');
   return HSR[st.lk] ? loco : loco + ' · ' + CONSISTS[st.ck].name;
 }
 function mpJoints(T, mem, speed, cp) {
@@ -534,7 +534,7 @@ MP.state = function () {
     Object.assign(st, {
       lk: T.locoKey, ck: T.consistKey, u: T.nUnits || 1, lv: g.livery, mx: g.mix ? 1 : 0, cu: g.livery === 'custom' ? [g.custom.body, g.custom.accent, g.custom.letter] : 0, no: g.livery === 'custom' ? (+g.number || 0) : 0, tm: T.trim || '',
       e: f.e.id, s: +f.s.toFixed(2), o: f.o, v: PLACE.on ? 0 : +S.v.toFixed(2), rv: +S.reverser.toFixed(2), wh: +S.whistle.toFixed(2), bl: S.bell ? 1 : 0, cl: S.classLamps ? 1 : 0, hl: S.light, dl: S.ditch ? 1 : 0,
-      ex: T.diesel ? +S.load.toFixed(2) : (S.Psc > 6 && S.cut > 0 && S.throttle > 0.02 ? +clamp((S.Psc / 245) * (0.35 + S.cut * 1.25), 0, 1.3).toFixed(2) : 0),
+      ex: T.diesel ? +S.load.toFixed(2) : (S.Psc > 6 && S.cut > 0 && S.throttle > 0.02 ? +clamp((S.Psc / SK.PL) * (0.35 + S.cut * 1.25), 0, 1.3).toFixed(2) : 0),
       rpm: T.diesel && !T.elec && S.engineRun ? Math.round(S.rpm) : 0, dr: S.derailed ? 1 : 0,
     });
     // a train made up differently from what its engine and train build (cars picked up, set out or placed) says what is in it

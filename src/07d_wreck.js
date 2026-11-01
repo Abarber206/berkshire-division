@@ -93,6 +93,8 @@ class WreckSim {
     b.t0 = v.tp.map(t => { const m4 = frameMatrix(t.F, new THREE.Matrix4()); if (v.flip) m4.multiply(new THREE.Matrix4().makeRotationY(Math.PI)); return m4; });
     if ((v.kind === 'loco' || v.kind === 'loco2') && this.T.diesel) b.u0 = v.model.trucks.map(tg => tg.matrix.clone());
     else if (v.kind === 'loco' && this.T.loco && this.T.loco.leadTruck) b.l0 = this.T.loco.leadTruck.matrix.clone();
+    if (v.kind === 'loco' && this.T.loco && this.T.loco.front) b.f0 = this.T.loco.front.matrix.clone();
+    if (v.model && v.model.truck) b.s0 = v.model.truck.matrix.clone();
     v.rb = b; this.bodies.push(b);
     this.pose(b);
     if (typeof sndClunk === 'function' && AU.on) sndClunk(clamp(Math.abs(sp) / 8, 0.4, 1.5), 0);

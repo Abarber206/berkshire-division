@@ -80,7 +80,7 @@ function wreckOut(T) {
   const R = T.rb, W = GAME.wrecking; if (!R || !S.derailed) return null;
   return {
     spec: T.wk, broken: [...R.broken], title: W ? W.title : 'Derailed', why: W ? W.why : '',
-    bodies: R.bodies.map(b => ({ i: T.vehicles.indexOf(b.v), M0: m4Out(b.M0), t0: b.t0.map(m4Out), u0: b.u0 ? b.u0.map(m4Out) : null, l0: b.l0 ? m4Out(b.l0) : null, p: b.p.toArray().map(x => rnd(x)), q: b.q.toArray().map(x => rnd(x, 1e5)) })),
+    bodies: R.bodies.map(b => ({ i: T.vehicles.indexOf(b.v), M0: m4Out(b.M0), t0: b.t0.map(m4Out), u0: b.u0 ? b.u0.map(m4Out) : null, l0: b.l0 ? m4Out(b.l0) : null, f0: b.f0 ? m4Out(b.f0) : null, s0: b.s0 ? m4Out(b.s0) : null, p: b.p.toArray().map(x => rnd(x)), q: b.q.toArray().map(x => rnd(x, 1e5)) })),
   };
 }
 /* the pile as it came to rest: each car off the rails where it lay, asleep until it is re-railed */
@@ -95,7 +95,7 @@ function wreckIn(T, w) {
       const v = T.vehicles[s.i]; if (!v || v.rb) continue;
       v.root.matrix.fromArray(s.M0);
       const b = R.derail(s.i, 0); if (!b) continue;
-      b.t0 = s.t0.map(m4In); if (s.u0) b.u0 = s.u0.map(m4In); if (s.l0) b.l0 = m4In(s.l0);
+      b.t0 = s.t0.map(m4In); if (s.u0) b.u0 = s.u0.map(m4In); if (s.l0) b.l0 = m4In(s.l0); if (s.f0) b.f0 = m4In(s.f0); if (s.s0) b.s0 = m4In(s.s0);
       b.p.fromArray(s.p); b.q.fromArray(s.q).normalize(); b.lv.set(0, 0, 0); b.av.set(0, 0, 0); b.sleep = true;
       R.pose(b); v.pos.copy(b.p);
     }

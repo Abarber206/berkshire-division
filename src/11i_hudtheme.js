@@ -29,6 +29,16 @@ const HUD_THEMES = {
       acc: '#c3d0da', dim: '#8fa0b2', txt: '#e4eaf0', cap: '#56626c', glass: '#0b131d' },
     cur: { fill: '#0c1420', edge: '#d6e0e7', lamp: '#bfe3ff' },
   },
+  // Union Pacific 4014: graphite and black iron with Armour Yellow and a scarlet line, like the road's shields
+  up: {
+    name: 'Union Pacific Armour Yellow',
+    css: { steel: '#111214', 'steel-2': '#1b1d20', rule: '#3a3d42', ink: '#eeebe3', 'ink-dim': '#9c9a93', brass: '#f0b323', 'brass-deep': '#8a5f08',
+      panel: 'rgba(17,18,20,.78)', radius: '4px', knob: 'linear-gradient(#ffd25a,#f0b323 50%,#a8700c)', 'knob-edge': '#5b3c05',
+      key: 'linear-gradient(#25272b,#151619)', 'key-edge': '#3f4247', 'key-on': 'linear-gradient(#ffd25a,#e0a10f)', 'key-on-ink': '#161004' },
+    g: { bezel: ['#d7d9db', '#7b7f84', '#2b2d30'], face: '#f3efe4', tick: '#161616', label: '#3b3b3b', needle: '#121212', needle2: '#c8102e', hub: '#1b1b1b',
+      acc: '#f0b323', dim: '#9c9a93', txt: '#eeebe3', cap: '#5a5e63', glass: '#0f1012' },
+    cur: { fill: '#121315', edge: '#f0b323', lamp: '#ff5a4a' },
+  },
   // the Polar Limited holiday finish: evergreen, gold leaf and candy-stripe knobs
   polar: {
     name: 'Polar Limited',
@@ -73,9 +83,10 @@ const HUD_THEMES = {
 
 /* which theme an engine wears: the holiday finish only dresses the steam engines */
 function hudThemeKey(loco, finish) {
-  const steam = loco === '765' || loco === '1225';
+  const steam = loco === '765' || loco === '1225' || loco === '4014';
   if (steam && finish === 'polar') return 'polar';
   if (loco === '1225') return 'pm';
+  if (loco === '4014') return 'up';
   if (loco === 'diesel' || loco === 'e5' || loco === 'acela') return loco;
   return 'nkp';
 }
@@ -85,7 +96,7 @@ function hudPlate(loco, finish, number) {
   if (loco === 'diesel') return 'AC44 · ' + (number || 4401);
   if (loco === 'e5') return 'E5 · Shinkansen';
   if (loco === 'acela') return 'Acela Express';
-  const n = loco === '1225' ? 'PM 1225' : 'NKP 765';
+  const n = loco === '1225' ? 'PM 1225' : loco === '4014' ? 'UP 4014 · Big Boy' : 'NKP 765';
   return finish === 'polar' ? n + ' · Polar' : n;
 }
 

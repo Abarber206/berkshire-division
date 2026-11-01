@@ -464,8 +464,8 @@ function steamCab(gb, body, d) {
     // a red-globe hand lantern on a hook off the wall
     const xl = xs - 0.1, yl = ffl + 1.55, zl = -(wallZ - 0.13);
     gb.add('dark', barGeo(0.008, [xl, yl + 0.3, -wallZ], [xl, yl + 0.3, zl], 5));
-    gb.add('dark', barGeo(0.006, [xl, yl + 0.3, zl], [xl, yl + 0.2, zl], 5));
-    gb.add('steel', new THREE.TorusGeometry(0.07, 0.004, 4, 16, Math.PI).translate(xl, yl + 0.13, zl));   // bail
+    gb.add('dark', barGeo(0.006, [xl, yl + 0.3, zl], [xl, yl + 0.17, zl], 5));
+    gb.add('steel', new THREE.TorusGeometry(0.066, 0.004, 4, 16, Math.PI).translate(xl, yl + 0.105, zl));   // bail, its ends in the cap's rim
     gb.cyl('steel', 0.03, 0.06, 0.04, 12, xl, yl + 0.12, zl);
     gb.cyl('redKnob', 0.05, 0.05, 0.12, 12, xl, yl + 0.04, zl);
     for (let i = 0; i < 4; i++) { const a = i * Math.PI / 2 + 0.4; gb.add('steel', barGeo(0.004, [xl + Math.cos(a) * 0.055, yl - 0.02, zl + Math.sin(a) * 0.055], [xl + Math.cos(a) * 0.055, yl + 0.1, zl + Math.sin(a) * 0.055], 4)); }

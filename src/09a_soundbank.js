@@ -45,7 +45,10 @@ const SND_DZ = [{ rpm: 300 }, { rpm: 650, load: 0.6 }, { rpm: 1050, load: 1 }];
 // quill: how far a part-open valve drops the pitch; attack/release: how fast it opens and closes (s); on: length of the opening take (s);
 // xf: for a whistle with a recorded closing take (wh_<key>_off), how fast the loop hands over to it (s)
 const WHISTLE_REC = {
-  deep6: { quill: 0.05, attack: 0.05, release: 0.12, on: 1.2 },
+  deep6: { quill: 0.05, attack: 0.05, release: 0.12, on: 1.2 },   // Big Boy 4014 itself
+  // take: borrow another whistle's recording, rate: played this much lower. No PD recording of NKP 765 exists, so it
+  // blows the Big Boy's take a whole tone down, which keeps the two engines apart.
+  nkp6: { quill: 0.05, attack: 0.05, release: 0.12, on: 1.2, take: 'deep6', rate: 0.93 },
   chime6: { quill: 0.05, attack: 0.05, release: 0.12, on: 1.2, xf: 0.03 },
   k5: { quill: 0, attack: 0.02, release: 0.08, on: 1.2 },
 };

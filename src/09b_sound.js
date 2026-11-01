@@ -289,11 +289,13 @@ function whistleValve(o, pull, now) {
    shuts and its ring dying away, taking over from the loop at the level the loop was sounding
    (lv: the caller's trim). o.whShut is set while that take has the whistle, so the loop under it
    is faded out in R.xf rather than lingering. */
+/* the recorded take a whistle key plays (WHISTLE_REC[key].take borrows another's) */
+const whTake = key => 'wh_' + ((WHISTLE_REC[key] && WHISTLE_REC[key].take) || key);
 function whistleOnset(o, k, R, pull, dest, now, lv = 1) {
-  const was = o.whPull || 0;
-  if (pull > 0.05 && was <= 0.05) { whistleCut(o, now, 0.01); o.whShut = false; o.whOn = SND.shot(k + '_on', dest, { gain: (SND_GAIN[k] || 1) * Math.pow(pull, 0.6), vary: 0.01, dur: R.on }); }
+  const was = o.whPull || 0, rr = R.rate || 1;
+  if (pull > 0.05 && was <= 0.05) { whistleCut(o, now, 0.01); o.whShut = false; o.whOn = SND.shot(k + '_on', dest, { gain: (SND_GAIN[k] || 1) * Math.pow(pull, 0.6), vary: 0.01, dur: R.on / rr, rate: rr }); }
   else if (pull <= 0.05 && was > 0.05) {
-    const off = R.xf && SND.has(k + '_off') ? SND.shot(k + '_off', dest, { gain: (SND_GAIN[k] || 1) * Math.pow(was, 0.8) * lv, rate: 1 - R.quill * (1 - was), vary: 0 }) : null;
+    const off = R.xf && SND.has(k + '_off') ? SND.shot(k + '_off', dest, { gain: (SND_GAIN[k] || 1) * Math.pow(was, 0.8) * lv, rate: rr * (1 - R.quill * (1 - was)), vary: 0 }) : null;
     o.whShut = !!off; whistleCut(o, now, off ? R.xf : R.release);
   }
 }
@@ -308,7 +310,7 @@ function whistleCut(o, now, tc) {
    while the cord is pulled; a part-open valve sounds lower and breathier (the quill).
    Doppler comes from the emitter. Synthesized: the voices of 09_audio.js. */
 function whistleMix(T, tv, inCab) {
-  const DSL = T.diesel, key = LOCO_SPEC[GAME.settings.loco].whistle, k = 'wh_' + key, now = AU.ctx.currentTime;
+  const DSL = T.diesel, key = LOCO_SPEC[GAME.settings.loco].whistle, k = whTake(key), now = AU.ctx.currentTime;
   let pull = S.whistle;
   if (SND.has(k)) {
     if (SND.whKey !== k) { if (SND.whistle) SND.whistle.kill(); SND.whistle = new Loop(k, SND.whBus); SND.whKey = k; SND.whPull = 0; }
@@ -316,7 +318,7 @@ function whistleMix(T, tv, inCab) {
     pull = whistleValve(SND, pull, now);
     const opening = pull > SND.whPull + 0.002;
     whistleOnset(SND, k, R, pull, SND.whBus, now, lv);
-    SND.whistle.set((SND_GAIN[k] || 1) * Math.pow(pull, DSL ? 0.5 : 0.8) * lv, 1 - R.quill * (1 - pull), whistleTc(SND, R, opening));
+    SND.whistle.set((SND_GAIN[k] || 1) * Math.pow(pull, DSL ? 0.5 : 0.8) * lv, (R.rate || 1) * (1 - R.quill * (1 - pull)), whistleTc(SND, R, opening));
     SND.whPull = pull;
     // the echo comes back off the hills, so it fades less with distance than the whistle itself
     const d = inCab ? 3 : camera.position.distanceTo(T.worldOf(DSL ? T.loco.hornPos : T.loco.whistlePos));
@@ -456,13 +458,13 @@ function remoteSound(R, dt, st, d, cam) {
   }
   if (R.bellHit) { R.bellHit = false; if (d < 1200) sndBell(T.diesel, B.g); }   // strokes are timed in fx, where the bell swings
   // whistle or horn: recorded through the emitter (which gives the Doppler), or the synthesized voices
-  const key = LOCO_SPEC[st.lk].whistle, k = 'wh_' + key;
+  const key = LOCO_SPEC[st.lk].whistle, k = whTake(key);
   if (SND.has(k)) {
     if (!B.whistle && st.wh > 0.02) B.whistle = new Loop(k, B.g);
     if (B.whistle) {
       const Rw = WHISTLE_REC[key], now = AU.ctx.currentTime, wh = whistleValve(B, st.wh, now);
       whistleOnset(B, k, Rw, wh, B.g, now);
-      B.whistle.set((SND_GAIN[k] || 1) * Math.pow(wh, T.diesel ? 0.5 : 0.8), 1 - Rw.quill * (1 - wh), whistleTc(B, Rw, wh > (B.whPull || 0)));
+      B.whistle.set((SND_GAIN[k] || 1) * Math.pow(wh, T.diesel ? 0.5 : 0.8), (Rw.rate || 1) * (1 - Rw.quill * (1 - wh)), whistleTc(B, Rw, wh > (B.whPull || 0)));
       B.whistle.tick(); B.whPull = wh;
     }
     return;

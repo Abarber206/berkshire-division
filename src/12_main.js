@@ -94,6 +94,7 @@ function resetState() {
   Object.assign(S, { notch: 0, dyn: 0, dbLoad: 0, DBF: 0, rpm: 300, engineRun: true, crank: 0, load: 0, fuel: 18927, turbo: 0.15, ditch: true, ditchFlash: 0, slipCtl: false, amps: 0 });
   Object.assign(S, { pan: 1, panUp: true, vcb: true, vcbT: 0, kW: 0, kWh: 0, rbMax: 0, blend: 0 });   // a trainset comes with its pantograph up and the breaker in
   if (LOCO_SPEC[GAME.settings.loco].diesel) { S.cocks = false; S.light = SKY.night ? 2 : 2; }
+  else { const k = steamK(LOCO_SPEC[GAME.settings.loco]); Object.assign(S, { P: k.PL - 7, water: k.water, coal: k.coal }); }   // a bigger engine comes with its own pressure and tender
 }
 function makeTrain() {
   CARS.clear(GAME.train);
@@ -165,7 +166,7 @@ function finishTrain(t) {
 /* colour-space fix-up and fresh brakes for a newly built train (ours or another player's) */
 function prepareTrain(t, keepBrakes) {
   for (const v of t.vehicles) linearizeObject(v.root);
-  if (t.diesel) t.units.forEach(m => m.trucks.forEach(linearizeObject)); else linearizeObject(t.loco.leadTruck);
+  if (t.diesel) t.units.forEach(m => m.trucks.forEach(linearizeObject)); else t.steamExtras().forEach(linearizeObject);
   for (const im of t.inst) linearizeObject(im);
   if (!keepBrakes) for (const v of t.vehicles) v.brake = { AR: 90, BC: 0, BP: 90, emerg: false, released: true };
 }
@@ -222,6 +223,7 @@ GAME.swapLive = function () {
   if (old.diesel !== t.diesel) carryOver();
   else if (old.locoKey !== t.locoKey) {
     S.throttle = 0; S.notch = 0; S.dyn = 0;
+    if (!t.diesel) { const k = steamK(LOCO_SPEC[t.locoKey]); S.water = Math.min(S.water, k.water); S.coal = Math.min(S.coal, k.coal); S.P = Math.min(S.P, k.PL); }
     // between a diesel and an electric set: the new power comes up running
     if (old.elec !== t.elec) Object.assign(S, { engineRun: true, crank: 0, rpm: 300, panUp: true, pan: 1, vcb: true, vcbT: 0 });
   }
@@ -286,7 +288,7 @@ function segButtons(id, opts, key, onPick) {
 function buildMenu() {
   loadSettings();
   MP.init();
-  const locoOpts = { '765': { name: 'NKP 765', sub: 'S-2 · Lima 1944' }, '1225': { name: 'PM 1225', sub: 'N-1 · Lima 1941' }, 'diesel': { name: 'Wide-cab diesel', sub: 'AC · 4,400 hp' },
+  const locoOpts = { '765': { name: 'NKP 765', sub: 'S-2 · Lima 1944' }, '1225': { name: 'PM 1225', sub: 'N-1 · Lima 1941' }, '4014': { name: 'UP 4014 Big Boy', sub: '4-8-8-4 · Alco 1941' }, 'diesel': { name: 'Wide-cab diesel', sub: 'AC · 4,400 hp' },
     'e5': { name: 'E5 Shinkansen', sub: 'Bullet train · 200 mph' }, 'acela': { name: 'Acela Express', sub: 'High speed · 150 mph' } };
   // the mountain has no wires up for the high-speed sets
   if (ROUTE_KEY === 'laurel' && !PLAY_LAYOUT) { delete locoOpts.e5; delete locoOpts.acela; if (LOCO_SPEC[GAME.settings.loco].hs) GAME.settings.loco = '765'; }
@@ -339,11 +341,12 @@ function specGrid() {
     : s.set === 'acela' ? [['2 + 6', 'Power cars + coaches'], ['9,200 kW', '12,400 hp'], ['150 mph', 'In service'], ['664 ft', 'Length'], ['4.2°', 'Coach tilt'], ['99k lbf', 'Starting effort']]
     : s.diesel
     ? [['C-C', 'Wheel arrangement'], ['42 in', 'Wheels'], ['4,400 hp', 'V12 four-stroke'], ['73 ft 2 in', 'Length'], ['183k lbf', 'Starting effort'], ['5,000 gal', 'Fuel']]
+    : s.art ? [['4-8-8-4', 'Articulated'], ['68 in', 'Drivers, 16 of them'], ['4 × 23¾×32 in', 'Cylinders'], ['300 psi', 'Boiler'], [(s.te / 1000).toFixed(1) + 'k lbf', 'Tractive effort'], ['132 ft 9 in', 'Engine & tender']]
     : [['2-8-4', 'Wheel arrangement'], ['69 in', 'Drivers'], ['25×34 in', 'Cylinders'], ['245 psi', 'Boiler'], [(s.te / 1000).toFixed(1) + 'k lbf', 'Tractive effort'], [s.cls + ' · ' + s.short, 'Class']];
   $('specGrid').innerHTML = items.map(([b, l]) => `<div><b>${b}</b><span>${l}</span></div>`).join('');
   const ht = $('helpText');
   if (ht) { if (!ht.dataset.steam) ht.dataset.steam = ht.innerHTML; ht.innerHTML = s.elec ? 'Release the <b>brake</b>, set the <b>reverser</b> forward and notch the <b>power</b> controller. The pantograph is up and the main breaker is in; <b>Pantograph</b> (I) drops it. Slow with the <b>regenerative brake</b>, which also blends in under the train brake. Out on the main a high-speed set runs at its own top speed, and each curve has its own posted limit: watch for it ahead.' : s.diesel ? 'Set the <b>reverser</b> forward, release the <b>engine brake</b>, then notch out the <b>throttle</b>. Every unit in the lashup answers the lead cab. Hold speed down the grades with the <b>dynamic brake</b>, and check the switch card before every turnout: diverging routes are 30 mph.' : ht.dataset.steam; }
-  const ey = document.querySelector('.brandmark .eyebrow'); if (ey) ey.textContent = s.elec ? (s.set === 'e5' ? 'JR East · Shinkansen E5 series' : 'Amtrak · Acela Express') : s.diesel ? (GAME.settings.livery === 'custom' ? 'Custom paint' : LIVERIES[GAME.settings.livery].name) + ' · C-C diesel' : 'Lima Super Power · 2-8-4';
+  const ey = document.querySelector('.brandmark .eyebrow'); if (ey) ey.textContent = s.elec ? (s.set === 'e5' ? 'JR East · Shinkansen E5 series' : 'Amtrak · Acela Express') : s.diesel ? (GAME.settings.livery === 'custom' ? 'Custom paint' : LIVERIES[GAME.settings.livery].name) + ' · C-C diesel' : s.art ? 'Union Pacific · 4000 class Big Boy' : 'Lima Super Power · 2-8-4';
 }
 /* The menu shows one tab of settings at a time. A tab whose groups are all hidden for the chosen engine
    (no paint to pick on a trainset) drops out of the row. Any group added to the form outside a tab
@@ -635,7 +638,7 @@ function nearbyService() {
 }
 
 /* ---------------- main loop ---------------- */
-let chuffQ = 0, pumpT = 0, bellT = 0, idleT = 0, prevV = 0, stopT = 0, tipT = 0;
+let chuffQ = 0, chuffQF = 0, pumpT = 0, bellT = 0, idleT = 0, prevV = 0, stopT = 0, tipT = 0;
 function loop() {
   requestAnimationFrame(loop);
   let dt = Math.min(clock.getDelta(), 0.05);
@@ -681,8 +684,8 @@ function simStep(dt, T) {
     // filling at water column / coal chute
     if (GAME.filling) {
       if (!nearbyService()) GAME.filling = null;
-      else if (GAME.filling === 'water') { S.water = Math.min(83280, S.water + 240 * dt); if (S.water >= 83279) { GAME.filling = null; toast('Tender full: 22,000 gallons.', 'good'); } }
-      else { S.coal = Math.min(19958, S.coal + 300 * dt); if (S.coal >= 19957) { GAME.filling = null; toast('Coal bunker full: 22 tons.', 'good'); } }
+      else if (GAME.filling === 'water') { S.water = Math.min(SK.water, S.water + 240 * dt); if (S.water >= SK.water - 1) { GAME.filling = null; toast(`Tender full: ${Math.round(SK.water / 3.785 / 1000)},000 gallons.`, 'good'); } }
+      else { S.coal = Math.min(SK.coal, S.coal + 300 * dt); if (S.coal >= SK.coal - 1) { GAME.filling = null; toast(`Coal bunker full: ${Math.round(SK.coal / STON)} tons.`, 'good'); } }
     }
     JOB.tick(dt);
     IND.tick(dt);
@@ -770,14 +773,17 @@ function stationStop(T) {
 
 function steamFX(dt, T, tv) {
   const L = T.loco;
-  const n = Math.abs(S.vw) / DRIVER_C;
+  const n = Math.abs(S.vw) / SK.C;
   const stack = T.worldOf(L.stackPos);
   const working = S.Psc > 6 && S.cut > 0 && S.throttle > 0.02;
-  const intensity = clamp((S.Psc / 245) * (0.35 + S.cut * 1.25), 0, 1.3);
-  // exhaust beats: four per driver revolution
-  const q = Math.floor(-S.theta / (Math.PI / 2));
-  if (q !== chuffQ) {
-    const steps = Math.min(6, Math.abs(q - chuffQ));
+  const intensity = clamp((S.Psc / SK.PL) * (0.35 + S.cut * 1.25), 0, 1.3);
+  // exhaust beats: four per driver revolution, from each engine of an articulated (they drift in and out of step)
+  beats(Math.floor(-S.theta / (Math.PI / 2)), 0);
+  if (L.art) beats(Math.floor(-(S.theta + bbDrift(T.dist)) / (Math.PI / 2)), 1);
+  function beats(q, e) {
+  const cq = e ? chuffQF : chuffQ;
+  if (q !== cq) {
+    const steps = Math.min(6, Math.abs(q - cq));
     for (let i = 0; i < steps; i++) {
       const k = q - i;
       if (working) {
@@ -788,7 +794,8 @@ function steamFX(dt, T, tv) {
         if (S.cocks) for (const cp of L.cockPos) { const p = T.worldOf(cp); const side = new THREE.Vector3(0, 0, Math.sign(cp.z) * (4 + Math.random() * 3)).applyQuaternion(_cq.setFromRotationMatrix(_cm.extractRotation(L.root.matrixWorld))); emit(p, new THREE.Vector3(tv.x + side.x + T.lead.fwd.x * 3, -0.6, tv.z + side.z + T.lead.fwd.z * 3), 1.1 + Math.random() * 0.4, 0.4, 3.2, 0.7, [0.95, 0.95, 0.97], 0.4, 1.6); }
       } else if (k % 2 === 0 && n > 0.15) sndClank(n);
     }
-    chuffQ = q;
+    if (e) chuffQF = q; else chuffQ = q;
+  }
   }
   idleT += dt;
   if (idleT > 0.09) {
