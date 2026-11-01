@@ -17161,7 +17161,7 @@ function buildTreeShadows(scene) {
   }
 }
 /* the trees within R of p, nearest first, at most cap: [d2, mesh, index] (pure; tested) */
-function treesNear(meshes, X, Z, R, cap) {
+function tfxTreesNear(meshes, X, Z, R, cap) {
   const out = [], R2 = R * R;
   for (const m of meshes) {
     const fk = m.userData && m.userData.fk, sph = m.userData && m.userData.sph; if (!fk) continue;
@@ -17181,7 +17181,7 @@ function treeShadowRefresh(focus) {
   // look a little toward the sun: the trees there throw their shadows into the box
   const kd = SKY.keyDir, h = Math.hypot(kd.x, kd.z), lean = h > 1e-3 ? Math.min(14, 6 * h / Math.max(0.25, kd.y)) / h : 0;
   const X = focus.x + kd.x * lean, Z = focus.z + kd.z * lean;
-  const near = treesNear(WORLD.treeMeshes, X, Z, TSH.R, TSH.cap);
+  const near = tfxTreesNear(WORLD.treeMeshes, X, Z, TSH.R, TSH.cap);
   for (const k in M) M[k].count = 0;
   for (const [, m, i] of near) {
     const s = M[m.userData.fk]; if (!s) continue;

@@ -33,7 +33,7 @@ function world() {
     const G = foliageGeos(), r = rng(3), L = { dec: [], con: [] };
     for (let i = 0; i < 400; i++) L[r() < 0.7 ? 'dec' : 'con'].push([r() * 600 - 300, 0, r() * 600 - 300, 1, 1, [0.4, 0.5, 0.2]]);
     treeMeshes(L, scene);
-    ({ WORLD, treesNear, leafAmount, scene })`;
+    ({ WORLD, tfxTreesNear, leafAmount, scene })`;
   return (W = vm.runInContext(code, ctx, { filename: 'berkshire-treefx.js' }));
 }
 
@@ -45,17 +45,17 @@ test('every near tree patch names its model, so its shadow can be drawn', { skip
 });
 
 test('the shadow set is the nearest trees within reach, nearest first and capped', { skip: SKIP }, () => {
-  const { WORLD, treesNear } = world();
+  const { WORLD, tfxTreesNear } = world();
   const m = WORLD.treeMeshes.find(q => q.userData.fk && q.count > 20), a = m.instanceMatrix.array;
   const X = a[12] + 7, Z = a[14] - 4;
-  const all = treesNear(WORLD.treeMeshes, X, Z, 64, 1e6);
+  const all = tfxTreesNear(WORLD.treeMeshes, X, Z, 64, 1e6);
   assert.ok(all.length > 0);
   for (let i = 1; i < all.length; i++) assert.ok(all[i][0] >= all[i - 1][0], 'sorted by distance');
   assert.ok(all.every(q => q[0] < 64 * 64), 'all within reach');
   // brute force: nothing within reach was missed
   let n = 0; for (const q of WORLD.treeMeshes) { if (!q.userData.fk) continue; const b = q.instanceMatrix.array; for (let i = 0; i < q.count; i++) if ((b[i * 16 + 12] - X) ** 2 + (b[i * 16 + 14] - Z) ** 2 < 64 * 64) n++; }
   assert.equal(all.length, n);
-  const capped = treesNear(WORLD.treeMeshes, X, Z, 64, 5);
+  const capped = tfxTreesNear(WORLD.treeMeshes, X, Z, 64, 5);
   assert.equal(capped.length, Math.min(5, n));
   assert.deepEqual(capped.map(q => q[0]), all.slice(0, capped.length).map(q => q[0]));
 });
