@@ -752,12 +752,12 @@ function bellSwing(T, on, t, P, struck, dt) {
 }
 /* classification lamps: green lenses with their glows, all on one material so they light together */
 function clsLampSet() {
-  return { mat: new THREE.MeshStandardMaterial({ color: 0x163222, metalness: 0.2, roughness: 0.12, emissive: 0x39ff7c, emissiveIntensity: 0 }), glows: [], lenses: [], at: [], on: -1 };
+  return { mat: new THREE.MeshStandardMaterial({ color: 0x163222, metalness: 0.2, roughness: 0.12, emissive: 0x16c84a, emissiveIntensity: 0 }), glows: [], lenses: [], at: [], on: -1 };
 }
 function clsLens(cls, parent, r, x, y, z, ry, glow, pick) {
   const m = new THREE.Mesh(new THREE.CircleGeometry(r, 14), cls.mat); m.position.set(x, y, z); m.rotation.y = ry; m.castShadow = false; parent.add(m); cls.lenses.push(m);
   if (typeof markerGlow === 'function') {
-    const g = markerGlow(glow); g.material.color.setHex(0x2aff6a); g.position.set(x + 0.04 * Math.sin(ry), y, z + 0.04 * Math.cos(ry)); parent.add(g); cls.glows.push(g);
+    const g = markerGlow(glow); g.material.color.setHex(0x0fb83c); g.position.set(x + 0.04 * Math.sin(ry), y, z + 0.04 * Math.cos(ry)); parent.add(g); cls.glows.push(g);
   }
   if (pick) cls.at.push(new THREE.Vector3(...pick));
 }
@@ -765,7 +765,7 @@ function clsLens(cls, parent, r, x, y, z, ry, glow, pick) {
 function clsLampsShow(cls, on) {
   if (!cls) return;
   const dk = (typeof SKY !== 'undefined' && SKY.dark) || 0, day = lerp(0.3, 1, smooth(0.1, 0.5, dk)), v = on ? 1 : 0;
-  if (cls.on !== v) { cls.on = v; cls.mat.emissiveIntensity = on ? 1.3 : 0; cls.mat.color.setHex(on ? 0x2a6a44 : 0x163222); }
+  if (cls.on !== v) { cls.on = v; cls.mat.emissiveIntensity = on ? 1 : 0; cls.mat.color.setHex(on ? 0x0c3a1c : 0x163222); }
   for (const g of cls.glows) { g.visible = !!on; if (on) g.material.opacity = 0.85 * day; }
 }
 
