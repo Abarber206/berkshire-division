@@ -33,9 +33,10 @@ test('volume sliders load from storage and are clamped', () => {
 });
 
 test('every voice reaches the master through a mixer bus', () => {
-  // only the buses themselves, the reverb return and the echo taps (fed from the whistle bus) may feed AU.master
+  // only the buses themselves, the reverb return, the echo taps (fed from the whistle bus) and the tunnel room's
+  // return (fed from emitters after their level and from the effects bus) may feed AU.master
   const direct = [...(audio + sound).matchAll(/(\w[\w.]*)\.connect\(AU\.master\)/g)].map(m => m[1]);
-  for (const n of direct) assert.ok(['AU.master', 'AU.locoLP', 'AU.verb', 'AU.world', 'AU.amb', 'AU.whistleBus', 'p', 'gn', 'this.pan', 'this.g'].includes(n), `${n} bypasses the mixer`);
+  for (const n of direct) assert.ok(['AU.master', 'AU.locoLP', 'AU.verb', 'AU.world', 'AU.amb', 'AU.whistleBus', 'p', 'gn', 'this.pan', 'this.g', 'ret'].includes(n), `${n} bypasses the mixer`);
   assert.match(sound, /SND\.whBus\.connect\(SND\.loco\.in\)/, "the player's whistle should skip the engine bus");
   assert.doesNotMatch(sound, /AU\.loco\.gain\.setTargetAtTime\(1/, 'nothing should reset the engine bus to full every frame');
   assert.match(sound, /new Loop\(k, B\.wg\)/, "other trains' whistles go through their whistle bus");
