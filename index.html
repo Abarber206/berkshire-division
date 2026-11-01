@@ -36,13 +36,18 @@ html,body{height:100%;background:#0b0f12;color:var(--ink);overflow:hidden;
   -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;touch-action:none;}
 body{font-family:var(--f-ui);font-size:14px;}
 #gl{position:fixed;inset:0;width:100vw;height:100vh;display:block;outline:none;touch-action:none;background:#0b0f12}
-button{font-family:var(--f-ui);color:var(--ink);cursor:pointer;-webkit-tap-highlight-color:transparent}
+/* themed cursors (src/11i_hudtheme.js): an arrow, a lit one over anything you can press, an orbit mark while dragging the view */
+html,body,#gl{cursor:var(--cur,auto)}
+#gl.dragging{cursor:var(--cur-drag,grabbing)!important}
+a,summary,select,label,[role=button],.lever,.key,input[type=color],input[type=range],input[type=checkbox]{cursor:var(--cur-hot,pointer)}
+input[type=text],input:not([type]),textarea{cursor:text}
+button{font-family:var(--f-ui);color:var(--ink);cursor:var(--cur-hot,pointer);-webkit-tap-highlight-color:transparent}
 button:focus-visible,.lever:focus-visible{outline:2px solid var(--brass);outline-offset:2px}
 
 /* ---------- HUD ---------- */
 #hud{position:fixed;inset:0;pointer-events:none;z-index:5}
 #hud[hidden]{display:none!important}
-.hud-box{pointer-events:auto;background:rgba(14,19,23,.74);border:1px solid var(--rule);border-radius:6px;
+.hud-box{pointer-events:auto;background:var(--panel,rgba(14,19,23,.74));border:1px solid var(--rule);border-radius:var(--radius,6px);
   -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
 #tl{position:absolute;left:calc(env(safe-area-inset-left,0px) + 10px);top:calc(env(safe-area-inset-top,0px) + 10px);
   display:flex;gap:8px;align-items:stretch}
@@ -76,7 +81,7 @@ button:focus-visible,.lever:focus-visible{outline:2px solid var(--brass);outline
 #tr{position:absolute;right:calc(env(safe-area-inset-right,0px) + 10px);top:calc(env(safe-area-inset-top,0px) + 10px);
   display:flex;flex-direction:column;gap:6px;align-items:flex-end}
 #tr .btns{display:flex;gap:6px}
-.icon-btn{pointer-events:auto;width:40px;height:36px;border-radius:6px;border:1px solid var(--rule);background:rgba(14,19,23,.82);
+.icon-btn{pointer-events:auto;width:40px;height:36px;border-radius:var(--radius,6px);border:1px solid var(--rule);background:var(--panel,rgba(14,19,23,.82));
   font-size:10px;font-weight:700;letter-spacing:1px;display:grid;place-items:center;padding:0}
 .icon-btn svg{width:20px;height:20px;stroke:var(--ink);fill:none;stroke-width:1.8}
 #minimap{width:168px;height:118px;display:block;border-radius:6px;pointer-events:auto}
@@ -105,18 +110,18 @@ button:focus-visible,.lever:focus-visible{outline:2px solid var(--brass);outline
   border:1px solid #33424c}
 .lever .ticks{position:absolute;inset:0 -14px;pointer-events:none}
 .lever .knob{position:absolute;left:50%;width:44px;height:20px;margin-left:-22px;margin-top:-10px;border-radius:5px;
-  background:linear-gradient(#f0d38a,#b88c35 55%,#7d5d22);box-shadow:0 2px 4px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.5);
-  border:1px solid #5d461b}
+  background:var(--knob,linear-gradient(#f0d38a,#b88c35 55%,#7d5d22));box-shadow:0 2px 4px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.5);
+  border:1px solid var(--knob-edge,#5d461b)}
 .lever.red .knob{background:linear-gradient(#e9786b,#b43a2c 55%,#6e1f17);border-color:#4a140f}
 .lever.dark .knob{background:linear-gradient(#93a0a8,#4d5960 55%,#2a3237);border-color:#1a2024}
 .lever .lv{font-family:var(--f-num);font-size:10px;height:13px;color:var(--ink);white-space:nowrap;font-variant-numeric:tabular-nums}
 #keys{display:grid;grid-template-columns:repeat(3,48px);gap:5px;padding:6px}
-.key{pointer-events:auto;height:38px;border-radius:5px;border:1px solid #33424c;background:linear-gradient(#212c33,#141b20);
+.key{pointer-events:auto;height:38px;border-radius:calc(var(--radius,6px) - 1px);border:1px solid var(--key-edge,#33424c);background:var(--key,linear-gradient(#212c33,#141b20));
   font-size:10px;font-weight:700;letter-spacing:.9px;text-transform:uppercase;padding:0 2px;line-height:1.05;position:relative;touch-action:none}
-.key.on{border-color:var(--brass);color:#1a1307;background:linear-gradient(#f1d58c,#c09238)}
+.key.on{border-color:var(--brass);color:var(--key-on-ink,#1a1307);background:var(--key-on,linear-gradient(#f1d58c,#c09238))}
 .key.hold.on{background:linear-gradient(#fff2c9,#e7c06a)}
 .key .dot{position:absolute;right:4px;top:4px;width:5px;height:5px;border-radius:50%;background:#3a4750}
-.key.on .dot{background:#1a1307}
+.key.on .dot{background:var(--key-on-ink,#1a1307)}
 #btnWhistle{grid-row:span 2;height:81px;font-size:11px}
 #btnWhistle .pull{position:absolute;left:4px;right:4px;bottom:4px;height:3px;background:#0a0d10;border-radius:2px;overflow:hidden}
 #btnWhistle .pull i{display:block;height:100%;width:0;background:var(--brass)}
@@ -124,6 +129,29 @@ button:focus-visible,.lever:focus-visible{outline:2px solid var(--brass);outline
 #standToggle{position:absolute;right:calc(env(safe-area-inset-right,0px) + 10px);bottom:calc(env(safe-area-inset-bottom,0px) + 8px);display:none}
 #hud.cine #stand{display:none}
 #hud.cine #standToggle{display:grid}
+
+/* ---------- per-engine HUD dress (colours come from HUD_THEMES in src/11i_hudtheme.js) ---------- */
+#hudPlate{align-self:flex-start;font-family:var(--f-display);font-weight:800;font-size:11px;letter-spacing:1.6px;line-height:14px;
+  padding:0 6px;margin:0 0 2px -2px;border-radius:2px;white-space:nowrap;color:#1a1307;
+  background:linear-gradient(#f3d98f,#c39a43 60%,#8d6b27);box-shadow:inset 0 1px 0 rgba(255,255,255,.55),0 1px 2px rgba(0,0,0,.6)}
+#hud[data-theme=nkp] .hud-box{box-shadow:inset 0 1px 0 rgba(207,166,81,.22)}
+#hud[data-theme=pm] #hudPlate{color:#0c1420;background:linear-gradient(#ffffff,#b9c6cf 60%,#7d8a94)}
+#hud[data-theme=pm] .hud-box{box-shadow:inset 0 0 0 1px rgba(195,208,218,.12),inset 0 1px 0 rgba(255,255,255,.18)}
+#hud[data-theme=polar] #hudPlate{color:#fff4d6;background:linear-gradient(#d8463a,#9c2219);border:1px solid #e2c066;line-height:12px}
+#hud[data-theme=polar] #hudPlate::before{content:"\2744\FE0E  "}
+#hud[data-theme=polar] .hud-box{box-shadow:inset 0 2px 0 rgba(255,255,255,.55),0 0 0 1px rgba(226,192,102,.22)}
+#hud[data-theme=diesel] #hudPlate{font-family:var(--f-num);font-weight:600;font-size:10px;letter-spacing:1px;color:#141618;background:#f2c230;border-radius:0;box-shadow:none}
+#hud[data-theme=diesel] #levers,#hud[data-theme=diesel] #keys,#hud[data-theme=diesel] #speedBox,#hud[data-theme=diesel] #routeBox{
+  background:repeating-linear-gradient(-45deg,#f2c230 0 6px,#141618 6px 12px) top/100% 4px no-repeat,var(--panel)}
+#hud[data-theme=diesel] #levers,#hud[data-theme=diesel] #keys,#hud[data-theme=diesel] #speedBox,#hud[data-theme=diesel] #routeBox{padding-top:9px}
+#hud[data-theme=e5] #hudPlate{font-family:var(--f-ui);font-weight:600;letter-spacing:2px;color:#eaf7f3;background:none;box-shadow:none;padding:0 0 1px;border-radius:0;
+  border-bottom:2px solid #ff4fa3}
+#hud[data-theme=e5] .hud-box{border-color:rgba(52,199,154,.35);box-shadow:inset 0 1px 0 rgba(255,255,255,.12),0 0 18px rgba(52,199,154,.12)}
+#hud[data-theme=e5] #levers,#hud[data-theme=e5] #keys,#hud[data-theme=e5] #speedBox{border-bottom:2px solid #ff4fa3}
+#hud[data-theme=acela] #hudPlate{font-family:var(--f-ui);font-weight:600;letter-spacing:2.4px;color:#3fb7c9;background:none;box-shadow:inset 0 0 0 1px rgba(63,183,201,.6);border-radius:3px}
+#hud[data-theme=acela] .hud-box{box-shadow:inset 0 1px 0 rgba(255,255,255,.1)}
+#hud[data-theme=acela] #levers,#hud[data-theme=acela] #keys,#hud[data-theme=acela] #speedBox{border-top:2px solid #3fb7c9}
+@media (max-height:500px) and (orientation:landscape){ #hudPlate{display:none} }
 
 /* ---------- overlays ---------- */
 .overlay{position:fixed;inset:0;z-index:20;display:flex;align-items:center;justify-content:center;
@@ -153,7 +181,7 @@ h1{font-family:var(--f-display);font-weight:800;font-size:clamp(44px,8vw,84px);l
 .custom{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-top:4px}
 .custom label{display:flex;flex-direction:column;gap:4px;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--ink-dim)}
 .custom input{width:100%;height:32px;border:1px solid var(--rule);border-radius:5px;background:var(--steel-2);color:var(--ink);font:600 13px var(--f-num);padding:2px 6px}
-.custom input[type=color]{padding:2px;cursor:pointer}
+.custom input[type=color]{padding:2px;cursor:var(--cur-hot,pointer)}
 #btnStart{border:1px solid #5d461b;background:linear-gradient(#f0d38a,#b88c35 60%,#8a6a28);color:#1b1408;border-radius:6px;padding:13px 14px;
   font-family:var(--f-display);font-weight:800;font-size:24px;letter-spacing:2px;text-transform:uppercase}
 #btnStart:disabled{filter:grayscale(.8) brightness(.6)}
@@ -167,7 +195,7 @@ h1{font-family:var(--f-display);font-weight:800;font-size:clamp(44px,8vw,84px);l
 .help{font-size:12px;color:var(--ink-dim);line-height:1.45}
 .help b{color:var(--ink);font-weight:600}
 details.keys{font-size:12px;color:var(--ink-dim)}
-details.keys summary{cursor:pointer;color:var(--ink);font-weight:600;font-size:12px}
+details.keys summary{cursor:var(--cur-hot,pointer);color:var(--ink);font-weight:600;font-size:12px}
 details.keys div{display:grid;grid-template-columns:auto 1fr;gap:3px 10px;margin-top:6px;font-family:var(--f-num);font-size:11px}
 details.keys kbd{color:var(--brass)}
 
@@ -235,7 +263,7 @@ details.keys kbd{color:var(--brass)}
 #gaugeMini b{color:var(--brass);font-weight:600}
 #gaugeWrap.min #gauges{display:none}
 #gaugeWrap.min #gaugeMini{display:flex}
-#gaugeWrap{cursor:pointer}
+#gaugeWrap{cursor:var(--cur-hot,pointer)}
 /* Phone landscape: controls hug the edges and the middle of the screen stays clear */
 @media (max-height:500px) and (orientation:landscape){
   #tl{gap:6px;top:calc(env(safe-area-inset-top,0px) + 6px);left:calc(env(safe-area-inset-left,0px) + 6px)}
@@ -542,7 +570,7 @@ details.keys kbd{color:var(--brass)}
   <div id="mpTags"></div>
   <div id="tl">
     <div id="speedBox" class="hud-box">
-      <div class="lbl">Speed</div>
+      <div id="hudPlate">NKP 765</div>
       <div id="speedNum">0<small>MPH</small></div>
       <div class="row"><span id="limitBadge">70</span><span class="lbl" id="gradeTxt">Level</span></div>
       <div class="lbl" id="todTxt"></div>
@@ -8329,7 +8357,7 @@ CPL.point = function (x, y) {
   if (prev && (!t || prev.e !== t.e)) { prev.e.kn.material = RMAT.dark; prev.e.lever.material = RMAT.dark; }
   CPL.hover = t;
   if (!t) { if (prev) { tip.hidden = true; $('gl').style.cursor = ''; } return; }   // the cab's own hover shares the tip
-  $('gl').style.cursor = 'pointer';
+  $('gl').style.cursor = 'var(--cur-hot, pointer)';
   t.e.kn.material = RMAT.cplHi; t.e.lever.material = RMAT.cplHi;
   tip.textContent = CPL.label(t); tip.hidden = false;
   tip.style.left = Math.min(innerWidth - tip.offsetWidth - 8, x + 14) + 'px'; tip.style.top = Math.max(8, y - 34) + 'px';
@@ -9065,7 +9093,7 @@ CAB.point = function (x, y) {
   CAB.mouse = true;
   const c = x === null ? null : CAB.pick(x, y);
   if (CAB.hover !== c) { CAB.highlight(CAB.hover, false); if (c && c.kind !== 'info') CAB.highlight(c, true); CAB.hover = c; }
-  $('gl').style.cursor = c ? (c.kind === 'info' ? 'help' : (c.kind === 'toggle' ? 'pointer' : 'grab')) : '';
+  $('gl').style.cursor = c ? (c.kind === 'info' ? 'help' : (c.kind === 'toggle' ? 'var(--cur-hot, pointer)' : 'grab')) : '';
   if (c) CAB.tip(c, x, y); else if (CAB.tipAt) { CAB.tip(null); CAB.tipAt = null; }
   return !!c;
 };
@@ -13657,6 +13685,9 @@ function setupViewInput(canvas, camera) {
   const zoom = d => { CAM.dist = clamp(d, 7, 140); };
   canvas.addEventListener('pointerdown', e => {
     if (PLACE.on) return;
+    // the right mouse button only swings the view round, side to side: no cab controls, no taps
+    const rmb = e.pointerType === 'mouse' && e.button === 2;
+    if (rmb) { if (ptrs.size || CAB.grab) return; e.preventDefault(); canvas.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY, rmb: true }); CAM.fling = 0; flick = 0; tapStart = null; canvas.classList.add('dragging'); return; }
     // in the cab, a control under the pointer takes the drag instead of the view
     if (!ptrs.size && !CAB.grab && CAB.down(e.clientX, e.clientY, e.pointerId)) { canvas.setPointerCapture(e.pointerId); e.preventDefault(); return; }
     canvas.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY }); CAM.fling = 0; flick = 0; if (ptrs.size === 1) tapStart = { x: e.clientX, y: e.clientY, t: performance.now() }; if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinch0 = Math.hypot(a.x - b.x, a.y - b.y); ang0 = Math.atan2(b.y - a.y, b.x - a.x); dist0 = CAM.dist; tapStart = null; } });
@@ -13667,6 +13698,7 @@ function setupViewInput(canvas, camera) {
     if (!ptrs.has(e.pointerId)) return;
     const p = ptrs.get(e.pointerId), dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
     if (tapStart && Math.hypot(e.clientX - tapStart.x, e.clientY - tapStart.y) > 8) tapStart = null;
+    if (!tapStart && e.pointerType === 'mouse') canvas.classList.add('dragging');
     if (ptrs.size === 2) {
       const [a, b] = [...ptrs.values()], d = Math.hypot(a.x - b.x, a.y - b.y), ang = Math.atan2(b.y - a.y, b.x - a.x);
       if (pinch0 > 0) zoom(dist0 * pinch0 / d);
@@ -13676,7 +13708,12 @@ function setupViewInput(canvas, camera) {
       return;
     }
     const k = 0.006, now = performance.now();
-    if (CAM.mode === 'chase') { CAM.yaw -= dx * k; CAM.pitch = clamp(CAM.pitch + dy * k * 0.8, -0.16, 1.35); }
+    if (p.rmb) {
+      if (CAM.mode === 'chase') CAM.yaw -= dx * k;
+      else if (CAM.mode === 'cab') { CAB.lookTo = null; CAM.cabYaw = clamp(CAM.cabYaw - dx * k * 0.7, -2.2, 2.2); }
+      else if (CAM.mode === 'drone') CAM.droneYaw -= dx * k;
+    }
+    else if (CAM.mode === 'chase') { CAM.yaw -= dx * k; CAM.pitch = clamp(CAM.pitch + dy * k * 0.8, -0.16, 1.35); }
     else if (CAM.mode === 'cab') { CAB.lookTo = null; CAM.cabYaw = clamp(CAM.cabYaw - dx * k * 0.7, -2.2, 2.2); CAM.cabPitch = clamp(CAM.cabPitch - dy * k * 0.7, -0.8, 0.6); }
     else if (CAM.mode === 'drone') { CAM.droneYaw -= dx * k; CAM.dronePitch = clamp(CAM.dronePitch + dy * k * 0.6, 0.35, 1.5); }
     // how fast the drag is going, so letting go mid-swing keeps the view turning and easing to a stop
@@ -13688,8 +13725,11 @@ function setupViewInput(canvas, camera) {
     if (tapStart && ptrs.size === 1 && performance.now() - tapStart.t < 400) handleTap(e.clientX, e.clientY, camera);
     else if (ptrs.size === 1 && performance.now() - flickT < 70 && (CAM.mode === 'chase' || CAM.mode === 'drone')) CAM.fling = clamp(flick, -4, 4);
     ptrs.delete(e.pointerId); if (ptrs.size < 2) pinch0 = 0; tapStart = null;
+    if (!ptrs.size) canvas.classList.remove('dragging');
   };
-  canvas.addEventListener('pointerup', up); canvas.addEventListener('pointerleave', () => { if (PLACE.on) return; CPL.point(null); if (!CAB.grab) CAB.point(null); }); canvas.addEventListener('pointercancel', e => { if (CAB.grab && e.pointerId === CAB.grab.pid) CAB.up(); ptrs.delete(e.pointerId); tapStart = null; });
+  canvas.addEventListener('pointerup', up); canvas.addEventListener('pointerleave', () => { if (PLACE.on) return; CPL.point(null); if (!CAB.grab) CAB.point(null); }); canvas.addEventListener('pointercancel', e => { if (CAB.grab && e.pointerId === CAB.grab.pid) CAB.up(); ptrs.delete(e.pointerId); tapStart = null; if (!ptrs.size) canvas.classList.remove('dragging'); });
+  // no browser menu on a right click anywhere in the game; text boxes keep theirs for paste
+  document.addEventListener('contextmenu', e => { const t = e.target; if (t && t.closest && t.closest('input,textarea,[contenteditable="true"]')) return; e.preventDefault(); });
   canvas.addEventListener('wheel', e => { if (PLACE.on) return; e.preventDefault(); zoom(CAM.dist * (1 + clamp(e.deltaY * (e.deltaMode ? 33 : 1), -120, 120) * 0.0012)); }, { passive: false });
   document.addEventListener('gesturestart', e => e.preventDefault());
 }
@@ -13814,47 +13854,47 @@ function drawGauges() {
   const dial = (x, y, r, max, label, hands, red, ticksStep, minor) => {
     const a0 = Math.PI * 0.75, a1 = Math.PI * 2.25;
     const gr = g.createRadialGradient(x - r * 0.3, y - r * 0.3, r * 0.1, x, y, r * 1.05);
-    gr.addColorStop(0, '#f6e7b8'); gr.addColorStop(0.7, '#c9a24f'); gr.addColorStop(1, '#6d531f');
+    gr.addColorStop(0, HT.g.bezel[0]); gr.addColorStop(0.7, HT.g.bezel[1]); gr.addColorStop(1, HT.g.bezel[2]);
     g.fillStyle = gr; g.beginPath(); g.arc(x, y, r + 6, 0, TAU); g.fill();
-    g.fillStyle = '#efe9d6'; g.beginPath(); g.arc(x, y, r, 0, TAU); g.fill();
+    g.fillStyle = HT.g.face; g.beginPath(); g.arc(x, y, r, 0, TAU); g.fill();
     if (red) { g.strokeStyle = 'rgba(205,40,30,0.85)'; g.lineWidth = r * 0.09; g.beginPath(); g.arc(x, y, r * 0.86, a0 + (a1 - a0) * red[0] / max, a0 + (a1 - a0) * red[1] / max); g.stroke(); }
-    g.strokeStyle = '#1c1c1c'; g.fillStyle = '#1c1c1c';
+    g.strokeStyle = HT.g.tick; g.fillStyle = HT.g.tick;
     for (let v = 0; v <= max + 1e-6; v += minor) { const a = a0 + (a1 - a0) * v / max; const major = Math.abs(v / ticksStep - Math.round(v / ticksStep)) < 1e-6; g.lineWidth = major ? 2.2 : 1; g.beginPath(); g.moveTo(x + Math.cos(a) * r * (major ? 0.74 : 0.82), y + Math.sin(a) * r * (major ? 0.74 : 0.82)); g.lineTo(x + Math.cos(a) * r * 0.92, y + Math.sin(a) * r * 0.92); g.stroke();
       if (major) { g.font = `600 ${Math.round(r * 0.17)}px "IBM Plex Mono", monospace`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(String(v), x + Math.cos(a) * r * 0.57, y + Math.sin(a) * r * 0.57); } }
-    g.font = `600 ${Math.round(r * 0.15)}px "IBM Plex Sans Condensed", sans-serif`; g.fillStyle = '#3a3a3a'; g.fillText(label, x, y + r * 0.42);
+    g.font = `600 ${Math.round(r * 0.15)}px "IBM Plex Sans Condensed", sans-serif`; g.fillStyle = HT.g.label; g.fillText(label, x, y + r * 0.42);
     for (const [v, col] of hands) { const a = a0 + (a1 - a0) * clamp(v, 0, max) / max; g.strokeStyle = col; g.lineWidth = r * 0.055; g.lineCap = 'round'; g.beginPath(); g.moveTo(x - Math.cos(a) * r * 0.15, y - Math.sin(a) * r * 0.15); g.lineTo(x + Math.cos(a) * r * 0.82, y + Math.sin(a) * r * 0.82); g.stroke(); }
-    g.fillStyle = '#222'; g.beginPath(); g.arc(x, y, r * 0.07, 0, TAU); g.fill();
+    g.fillStyle = HT.g.hub; g.beginPath(); g.arc(x, y, r * 0.07, 0, TAU); g.fill();
   };
   const T = GAME.train, b = T ? T.vehicles : null;
   // the end car farthest from the engine, which may be ahead of it when shoving
   const lastBP = b ? (T.li > b.length - 1 - T.li ? b[0] : b[b.length - 1]).brake.BP : 90;
   if (T && T.elec) { drawElectricGauges(g, dial, b, lastBP); return; }
   if (GAME.isDiesel()) { drawDieselGauges(g, dial, b, lastBP); return; }
-  dial(108, 112, 96, 300, 'BOILER PSI', [[S.P, '#151515']], [245, 300], 50, 10);
-  g.font = '600 18px "IBM Plex Mono", monospace'; g.fillStyle = S.safety ? '#ee4b3d' : '#cfa651'; g.textAlign = 'center'; g.fillText(S.safety ? 'POPPING' : 'CHEST ' + Math.round(S.Psc), 108, 224);
-  dial(296, 86, 70, 160, 'MR · EQ', [[S.MR, '#c0281e'], [S.ER, '#151515']], null, 40, 10);
-  dial(458, 86, 70, 160, 'BP · BC', [[b ? GAME.train.lead.brake.BP : 90, '#151515'], [S.BCloco || 0, '#c0281e']], null, 40, 10);
-  g.font = '600 17px "IBM Plex Mono", monospace'; g.fillStyle = '#8d9aa2'; g.textAlign = 'center';
+  dial(108, 112, 96, 300, 'BOILER PSI', [[S.P, HT.g.needle]], [245, 300], 50, 10);
+  g.font = '600 18px "IBM Plex Mono", monospace'; g.fillStyle = S.safety ? '#ee4b3d' : HT.g.acc; g.textAlign = 'center'; g.fillText(S.safety ? 'POPPING' : 'CHEST ' + Math.round(S.Psc), 108, 224);
+  dial(296, 86, 70, 160, 'MR · EQ', [[S.MR, HT.g.needle2], [S.ER, HT.g.needle]], null, 40, 10);
+  dial(458, 86, 70, 160, 'BP · BC', [[b ? GAME.train.lead.brake.BP : 90, HT.g.needle], [S.BCloco || 0, HT.g.needle2]], null, 40, 10);
+  g.font = '600 17px "IBM Plex Mono", monospace'; g.fillStyle = HT.g.dim; g.textAlign = 'center';
   g.fillText('CUT ' + Math.round(S.cut * 100) + '%', 296, 186); g.fillText('REAR ' + Math.round(lastBP), 458, 186);
-  g.fillStyle = S.slip ? '#ee4b3d' : '#8d9aa2'; g.fillText(S.slip ? 'SLIPPING' : 'TE ' + Math.round(Math.abs(S.TE) / LBF / 1000) + 'k lb', 296, 212);
-  g.fillStyle = '#8d9aa2'; g.fillText('FIRE ' + Math.round(S.fire * 100) + '%', 458, 212);
+  g.fillStyle = S.slip ? '#ee4b3d' : HT.g.dim; g.fillText(S.slip ? 'SLIPPING' : 'TE ' + Math.round(Math.abs(S.TE) / LBF / 1000) + 'k lb', 296, 212);
+  g.fillStyle = HT.g.dim; g.fillText('FIRE ' + Math.round(S.fire * 100) + '%', 458, 212);
   // water glass
   const gx = 560, gy0 = 26, gy1 = 200, gw = 26;
-  g.fillStyle = '#6d531f'; g.fillRect(gx - 6, gy0 - 14, gw + 12, 12); g.fillRect(gx - 6, gy1 + 2, gw + 12, 12);
-  g.fillStyle = '#0d1418'; g.fillRect(gx, gy0, gw, gy1 - gy0);
+  g.fillStyle = HT.g.cap; g.fillRect(gx - 6, gy0 - 14, gw + 12, 12); g.fillRect(gx - 6, gy1 + 2, gw + 12, 12);
+  g.fillStyle = HT.g.glass; g.fillRect(gx, gy0, gw, gy1 - gy0);
   const lvl = glassLevel(S.W), wy = gy1 - lvl * (gy1 - gy0);
   const wg = g.createLinearGradient(gx, 0, gx + gw, 0); wg.addColorStop(0, '#2e5c74'); wg.addColorStop(0.5, '#7fb6cf'); wg.addColorStop(1, '#2e5c74');
   g.fillStyle = wg; g.fillRect(gx, wy, gw, gy1 - wy);
   g.strokeStyle = 'rgba(255,255,255,0.25)'; g.lineWidth = 1; for (let i = 0; i < 8; i++) { g.beginPath(); g.moveTo(gx, wy + i * 4); g.lineTo(gx + gw, wy + i * 4 + 3); g.stroke(); }
-  g.strokeStyle = S.lowWater ? '#ee4b3d' : '#cfa651'; g.lineWidth = 2; g.strokeRect(gx, gy0, gw, gy1 - gy0);
-  g.font = '600 15px "IBM Plex Sans Condensed", sans-serif'; g.fillStyle = '#8d9aa2'; g.textAlign = 'center'; g.fillText('WATER', gx + gw / 2, 226);
+  g.strokeStyle = S.lowWater ? '#ee4b3d' : HT.g.acc; g.lineWidth = 2; g.strokeRect(gx, gy0, gw, gy1 - gy0);
+  g.font = '600 15px "IBM Plex Sans Condensed", sans-serif'; g.fillStyle = HT.g.dim; g.textAlign = 'center'; g.fillText('WATER', gx + gw / 2, 226);
   // tender
   g.textAlign = 'left'; g.font = '600 16px "IBM Plex Mono", monospace';
-  g.fillStyle = '#8d9aa2'; g.fillText('TENDER', 604, 40);
-  g.fillStyle = '#dfe4e6'; g.fillText(Math.round(S.water / 3.785 / 100) / 10 + 'k', 604, 66); g.fillStyle = '#8d9aa2'; g.fillText('gal', 604, 86);
-  g.fillStyle = '#dfe4e6'; g.fillText((S.coal / 907.2).toFixed(1), 604, 118); g.fillStyle = '#8d9aa2'; g.fillText('tons', 604, 138);
-  g.fillStyle = S.autoFire ? '#52d483' : '#cfa651'; g.fillText(S.autoFire ? 'AUTO' : 'HAND', 604, 176); g.fillStyle = '#8d9aa2'; g.fillText('fire', 604, 196);
-  g.fillStyle = '#8d9aa2'; g.fillText('STK ' + Math.round(S.stoker * 100), 604, 222);
+  g.fillStyle = HT.g.dim; g.fillText('TENDER', 604, 40);
+  g.fillStyle = HT.g.txt; g.fillText(Math.round(S.water / 3.785 / 100) / 10 + 'k', 604, 66); g.fillStyle = HT.g.dim; g.fillText('gal', 604, 86);
+  g.fillStyle = HT.g.txt; g.fillText((S.coal / 907.2).toFixed(1), 604, 118); g.fillStyle = HT.g.dim; g.fillText('tons', 604, 138);
+  g.fillStyle = S.autoFire ? '#52d483' : HT.g.acc; g.fillText(S.autoFire ? 'AUTO' : 'HAND', 604, 176); g.fillStyle = HT.g.dim; g.fillText('fire', 604, 196);
+  g.fillStyle = HT.g.dim; g.fillText('STK ' + Math.round(S.stoker * 100), 604, 222);
 }
 
 /* ---------------- minimap & full map ---------------- */
@@ -14007,59 +14047,59 @@ function toast(msg, kind = '', ms = 3600, key) {
 function drawDieselGauges(g, dial, b, lastBP) {
   const nU = (GAME.train && GAME.train.nUnits) || 1, mx = 200 * nU;
   const te = Math.abs(S.TE) / LBF / 1000, db = S.DBF * nU / LBF / 1000;
-  dial(108, 112, 96, mx, nU > 1 ? `TE · DB  klbf ×${nU}` : 'TE · DB  klbf', [[te, '#151515'], [db, '#c0281e']], [170 * nU, mx], 50 * nU, 10 * nU);
+  dial(108, 112, 96, mx, nU > 1 ? `TE · DB  klbf ×${nU}` : 'TE · DB  klbf', [[te, HT.g.needle], [db, HT.g.needle2]], [170 * nU, mx], 50 * nU, 10 * nU);
   g.font = '600 18px "IBM Plex Mono", monospace'; g.textAlign = 'center';
-  g.fillStyle = S.slipCtl ? '#ee4b3d' : '#cfa651'; g.fillText(S.slipCtl ? 'WHEEL SLIP' : (S.notch ? 'N' + S.notch : (S.dyn > 0.06 ? 'DYN BRAKE' : 'IDLE')) + ' · ' + Math.round(S.rpm) + ' rpm', 108, 224);
-  dial(296, 86, 70, 160, 'MR · EQ', [[S.MR, '#c0281e'], [S.ER, '#151515']], null, 40, 10);
-  dial(458, 86, 70, 160, 'BP · BC', [[b ? GAME.train.lead.brake.BP : 90, '#151515'], [S.BCloco || 0, '#c0281e']], null, 40, 10);
-  g.font = '600 17px "IBM Plex Mono", monospace'; g.fillStyle = '#8d9aa2';
+  g.fillStyle = S.slipCtl ? '#ee4b3d' : HT.g.acc; g.fillText(S.slipCtl ? 'WHEEL SLIP' : (S.notch ? 'N' + S.notch : (S.dyn > 0.06 ? 'DYN BRAKE' : 'IDLE')) + ' · ' + Math.round(S.rpm) + ' rpm', 108, 224);
+  dial(296, 86, 70, 160, 'MR · EQ', [[S.MR, HT.g.needle2], [S.ER, HT.g.needle]], null, 40, 10);
+  dial(458, 86, 70, 160, 'BP · BC', [[b ? GAME.train.lead.brake.BP : 90, HT.g.needle], [S.BCloco || 0, HT.g.needle2]], null, 40, 10);
+  g.font = '600 17px "IBM Plex Mono", monospace'; g.fillStyle = HT.g.dim;
   g.fillText('LOAD ' + Math.round(S.amps) + ' A', 296, 186); g.fillText('REAR ' + Math.round(lastBP), 458, 186);
   g.fillText('TURBO ' + Math.round(S.turbo * 100) + '%', 296, 212);
   g.fillStyle = S.engineRun ? '#52d483' : (S.crank > 0 ? '#f2b33d' : '#ee4b3d'); g.fillText(S.engineRun ? 'ENGINE RUN' : (S.crank > 0 ? 'CRANKING' : 'ENGINE OFF'), 458, 212);
   // fuel gauge (vertical bar like the steam water glass)
   const gx = 560, gy0 = 26, gy1 = 200, gw = 26;
-  g.fillStyle = '#6d531f'; g.fillRect(gx - 6, gy0 - 14, gw + 12, 12); g.fillRect(gx - 6, gy1 + 2, gw + 12, 12);
-  g.fillStyle = '#0d1418'; g.fillRect(gx, gy0, gw, gy1 - gy0);
+  g.fillStyle = HT.g.cap; g.fillRect(gx - 6, gy0 - 14, gw + 12, 12); g.fillRect(gx - 6, gy1 + 2, gw + 12, 12);
+  g.fillStyle = HT.g.glass; g.fillRect(gx, gy0, gw, gy1 - gy0);
   const lvl = clamp(S.fuel / 18927, 0, 1), fy = gy1 - lvl * (gy1 - gy0);
   const fg = g.createLinearGradient(gx, 0, gx + gw, 0); fg.addColorStop(0, '#6b4e16'); fg.addColorStop(0.5, '#d8a646'); fg.addColorStop(1, '#6b4e16');
   g.fillStyle = fg; g.fillRect(gx, fy, gw, gy1 - fy);
-  g.strokeStyle = lvl < 0.1 ? '#ee4b3d' : '#cfa651'; g.lineWidth = 2; g.strokeRect(gx, gy0, gw, gy1 - gy0);
-  g.font = '600 15px "IBM Plex Sans Condensed", sans-serif'; g.fillStyle = '#8d9aa2'; g.textAlign = 'center'; g.fillText('FUEL', gx + gw / 2, 226);
+  g.strokeStyle = lvl < 0.1 ? '#ee4b3d' : HT.g.acc; g.lineWidth = 2; g.strokeRect(gx, gy0, gw, gy1 - gy0);
+  g.font = '600 15px "IBM Plex Sans Condensed", sans-serif'; g.fillStyle = HT.g.dim; g.textAlign = 'center'; g.fillText('FUEL', gx + gw / 2, 226);
   g.textAlign = 'left'; g.font = '600 16px "IBM Plex Mono", monospace';
-  g.fillStyle = '#8d9aa2'; g.fillText('FUEL', 604, 40);
-  g.fillStyle = '#dfe4e6'; g.fillText(Math.round(S.fuel / 3.785).toLocaleString(), 604, 66); g.fillStyle = '#8d9aa2'; g.fillText('gal', 604, 86);
-  g.fillStyle = '#dfe4e6'; g.fillText(S.notch ? 'N' + S.notch : 'IDLE', 604, 118); g.fillStyle = '#8d9aa2'; g.fillText('notch', 604, 138);
-  g.fillStyle = S.dyn > 0.06 ? '#f2b33d' : '#dfe4e6'; g.fillText(S.dyn > 0.06 ? Math.round(S.dbLoad * 100) + '%' : 'OFF', 604, 176); g.fillStyle = '#8d9aa2'; g.fillText('dyn brk', 604, 196);
-  g.fillStyle = S.sander ? '#cfa651' : '#8d9aa2'; g.fillText(S.sander ? 'SAND ON' : 'SAND', 604, 222);
+  g.fillStyle = HT.g.dim; g.fillText('FUEL', 604, 40);
+  g.fillStyle = HT.g.txt; g.fillText(Math.round(S.fuel / 3.785).toLocaleString(), 604, 66); g.fillStyle = HT.g.dim; g.fillText('gal', 604, 86);
+  g.fillStyle = HT.g.txt; g.fillText(S.notch ? 'N' + S.notch : 'IDLE', 604, 118); g.fillStyle = HT.g.dim; g.fillText('notch', 604, 138);
+  g.fillStyle = S.dyn > 0.06 ? '#f2b33d' : HT.g.txt; g.fillText(S.dyn > 0.06 ? Math.round(S.dbLoad * 100) + '%' : 'OFF', 604, 176); g.fillStyle = HT.g.dim; g.fillText('dyn brk', 604, 196);
+  g.fillStyle = S.sander ? HT.g.acc : HT.g.dim; g.fillText(S.sander ? 'SAND ON' : 'SAND', 604, 222);
 }
 
 /* electric set: tractive and regenerative effort, air, line and power from the wire */
 function drawElectricGauges(g, dial, b, lastBP) {
   const sp = LOCO_SPEC[GAME.train.locoKey], mx = Math.ceil(sp.TEmax / 1000 / 100) * 100 + 100;
   const te = Math.abs(S.TE) / 1000, rb = (S.DBF + S.blend) / 1000;
-  dial(108, 112, 96, mx, 'TE · REGEN  kN', [[te, '#151515'], [rb, '#2a7fd0']], null, 100, 20);
+  dial(108, 112, 96, mx, 'TE · REGEN  kN', [[te, HT.g.needle], [rb, '#2a7fd0']], null, 100, 20);
   g.font = '600 18px "IBM Plex Mono", monospace'; g.textAlign = 'center';
-  g.fillStyle = S.slipCtl ? '#ee4b3d' : '#cfa651'; g.fillText(S.slipCtl ? 'WHEEL SLIP' : (S.notch ? 'P' + S.notch : (S.dyn > 0.06 ? 'REGEN' : 'OFF')) + ' · ' + Math.round(Math.abs(S.v) * 3.6) + ' km/h', 108, 224);
-  dial(296, 86, 70, 160, 'MR · EQ', [[S.MR, '#c0281e'], [S.ER, '#151515']], null, 40, 10);
-  dial(458, 86, 70, 160, 'BP · BC', [[b ? GAME.train.lead.brake.BP : 90, '#151515'], [S.BCloco || 0, '#c0281e']], null, 40, 10);
-  g.font = '600 17px "IBM Plex Mono", monospace'; g.fillStyle = '#8d9aa2';
+  g.fillStyle = S.slipCtl ? '#ee4b3d' : HT.g.acc; g.fillText(S.slipCtl ? 'WHEEL SLIP' : (S.notch ? 'P' + S.notch : (S.dyn > 0.06 ? 'REGEN' : 'OFF')) + ' · ' + Math.round(Math.abs(S.v) * 3.6) + ' km/h', 108, 224);
+  dial(296, 86, 70, 160, 'MR · EQ', [[S.MR, HT.g.needle2], [S.ER, HT.g.needle]], null, 40, 10);
+  dial(458, 86, 70, 160, 'BP · BC', [[b ? GAME.train.lead.brake.BP : 90, HT.g.needle], [S.BCloco || 0, HT.g.needle2]], null, 40, 10);
+  g.font = '600 17px "IBM Plex Mono", monospace'; g.fillStyle = HT.g.dim;
   g.fillText((S.kW < 0 ? 'RETURN ' : 'DRAW ') + Math.abs(Math.round(S.kW)).toLocaleString() + ' kW', 296, 186); g.fillText('REAR ' + Math.round(lastBP), 458, 186);
   g.fillText('LINE ' + (S.vcb ? '25.0 kV' : '—'), 296, 212);
   g.fillStyle = S.vcb ? '#52d483' : (S.panUp ? '#f2b33d' : '#ee4b3d'); g.fillText(S.vcb ? 'BREAKER IN' : (S.panUp ? 'PAN RISING' : 'PAN DOWN'), 458, 212);
   // pantograph height, where the diesel has its fuel gauge
   const gx = 560, gy0 = 26, gy1 = 200, gw = 26;
-  g.fillStyle = '#6d531f'; g.fillRect(gx - 6, gy0 - 14, gw + 12, 12); g.fillRect(gx - 6, gy1 + 2, gw + 12, 12);
-  g.fillStyle = '#0d1418'; g.fillRect(gx, gy0, gw, gy1 - gy0);
+  g.fillStyle = HT.g.cap; g.fillRect(gx - 6, gy0 - 14, gw + 12, 12); g.fillRect(gx - 6, gy1 + 2, gw + 12, 12);
+  g.fillStyle = HT.g.glass; g.fillRect(gx, gy0, gw, gy1 - gy0);
   const py = gy1 - S.pan * (gy1 - gy0);
   g.fillStyle = '#9ea3a8'; g.fillRect(gx, py, gw, 4); g.fillStyle = 'rgba(158,163,168,0.25)'; g.fillRect(gx, py + 4, gw, gy1 - py - 4);
-  g.strokeStyle = '#cfa651'; g.lineWidth = 2; g.strokeRect(gx, gy0, gw, gy1 - gy0);
-  g.font = '600 15px "IBM Plex Sans Condensed", sans-serif'; g.fillStyle = '#8d9aa2'; g.textAlign = 'center'; g.fillText('PAN', gx + gw / 2, 226);
+  g.strokeStyle = HT.g.acc; g.lineWidth = 2; g.strokeRect(gx, gy0, gw, gy1 - gy0);
+  g.font = '600 15px "IBM Plex Sans Condensed", sans-serif'; g.fillStyle = HT.g.dim; g.textAlign = 'center'; g.fillText('PAN', gx + gw / 2, 226);
   g.textAlign = 'left'; g.font = '600 16px "IBM Plex Mono", monospace';
-  g.fillStyle = '#8d9aa2'; g.fillText('ENERGY', 604, 40);
-  g.fillStyle = '#dfe4e6'; g.fillText(Math.round(S.kWh).toLocaleString(), 604, 66); g.fillStyle = '#8d9aa2'; g.fillText('kWh', 604, 86);
-  g.fillStyle = '#dfe4e6'; g.fillText(S.notch ? 'P' + S.notch : 'OFF', 604, 118); g.fillStyle = '#8d9aa2'; g.fillText('power', 604, 138);
-  g.fillStyle = S.dyn > 0.06 ? '#2a7fd0' : '#dfe4e6'; g.fillText(S.dyn > 0.06 ? Math.round(S.dbLoad * 100) + '%' : 'OFF', 604, 176); g.fillStyle = '#8d9aa2'; g.fillText('regen', 604, 196);
-  g.fillStyle = S.sander ? '#cfa651' : '#8d9aa2'; g.fillText(S.sander ? 'SAND ON' : 'SAND', 604, 222);
+  g.fillStyle = HT.g.dim; g.fillText('ENERGY', 604, 40);
+  g.fillStyle = HT.g.txt; g.fillText(Math.round(S.kWh).toLocaleString(), 604, 66); g.fillStyle = HT.g.dim; g.fillText('kWh', 604, 86);
+  g.fillStyle = HT.g.txt; g.fillText(S.notch ? 'P' + S.notch : 'OFF', 604, 118); g.fillStyle = HT.g.dim; g.fillText('power', 604, 138);
+  g.fillStyle = S.dyn > 0.06 ? '#2a7fd0' : HT.g.txt; g.fillText(S.dyn > 0.06 ? Math.round(S.dbLoad * 100) + '%' : 'OFF', 604, 176); g.fillStyle = HT.g.dim; g.fillText('regen', 604, 196);
+  g.fillStyle = S.sander ? HT.g.acc : HT.g.dim; g.fillText(S.sander ? 'SAND ON' : 'SAND', 604, 222);
 }
 
 /* ============================================================================
@@ -17620,6 +17660,163 @@ MPC.changed = function () {
 };
 
 /* ============================================================================
+   HUD themes and the cursor.
+   Each engine dresses the HUD in its own colours: panels, lever knobs, keys,
+   gauge bezels and faces, the nameplate in the speed box, and the mouse cursor.
+   The theme follows the engine actually on the rails, so a live swap, a load
+   or the holiday finish restyle the HUD on the next HUD tick.
+   ========================================================================== */
+'use strict';
+
+/* g: what the gauge canvas paints with. css: custom properties set on #hud. */
+const HUD_THEMES = {
+  // Nickel Plate Road 765: the original night-steel and brass
+  nkp: {
+    name: 'Nickel Plate brass',
+    css: { steel: '#0e1317', 'steel-2': '#172027', rule: '#2c3a44', ink: '#dfe4e6', 'ink-dim': '#8d9aa2', brass: '#cfa651', 'brass-deep': '#7c6230',
+      panel: 'rgba(14,19,23,.74)', radius: '6px', knob: 'linear-gradient(#f0d38a,#b88c35 55%,#7d5d22)', 'knob-edge': '#5d461b',
+      key: 'linear-gradient(#212c33,#141b20)', 'key-edge': '#33424c', 'key-on': 'linear-gradient(#f1d58c,#c09238)', 'key-on-ink': '#1a1307' },
+    g: { bezel: ['#f6e7b8', '#c9a24f', '#6d531f'], face: '#efe9d6', tick: '#1c1c1c', label: '#3a3a3a', needle: '#151515', needle2: '#c0281e', hub: '#222',
+      acc: '#cfa651', dim: '#8d9aa2', txt: '#dfe4e6', cap: '#6d531f', glass: '#0d1418' },
+    cur: { fill: '#0e1317', edge: '#cfa651', lamp: '#ffe9a8' },
+  },
+  // Pere Marquette 1225: nickel-plated hardware on a deep lake blue
+  pm: {
+    name: 'Pere Marquette nickel',
+    css: { steel: '#0c1420', 'steel-2': '#14202f', rule: '#2c3f55', ink: '#e4eaf0', 'ink-dim': '#8fa0b2', brass: '#c3d0da', 'brass-deep': '#5f6f7d',
+      panel: 'rgba(11,19,31,.76)', radius: '5px', knob: 'linear-gradient(#ffffff,#b9c6cf 50%,#66737d)', 'knob-edge': '#3c4852',
+      key: 'linear-gradient(#1d2a3a,#111a26)', 'key-edge': '#2f4258', 'key-on': 'linear-gradient(#f4f8fb,#a9b9c5)', 'key-on-ink': '#0c1420' },
+    g: { bezel: ['#ffffff', '#aeb9c1', '#4a565f'], face: '#f2f1eb', tick: '#1a2230', label: '#33415a', needle: '#111826', needle2: '#c0281e', hub: '#1a2230',
+      acc: '#c3d0da', dim: '#8fa0b2', txt: '#e4eaf0', cap: '#56626c', glass: '#0b131d' },
+    cur: { fill: '#0c1420', edge: '#d6e0e7', lamp: '#bfe3ff' },
+  },
+  // the Polar Limited holiday finish: evergreen, gold leaf and candy-stripe knobs
+  polar: {
+    name: 'Polar Limited',
+    css: { steel: '#0a1a13', 'steel-2': '#10261c', rule: '#2f5a45', ink: '#f4efe2', 'ink-dim': '#a7bba9', brass: '#e2c066', 'brass-deep': '#8c6b1f',
+      panel: 'rgba(9,27,19,.78)', radius: '8px', knob: 'repeating-linear-gradient(135deg,#f6f2e8 0 5px,#c8322a 5px 10px)', 'knob-edge': '#6e1f17',
+      key: 'linear-gradient(#173526,#0d2017)', 'key-edge': '#2f5a45', 'key-on': 'linear-gradient(#ee6f61,#a8281e)', 'key-on-ink': '#fff8ea' },
+    g: { bezel: ['#fff1c2', '#d9b04f', '#7a5a16'], face: '#f7f2e4', tick: '#1d2a20', label: '#2c4a36', needle: '#14251b', needle2: '#c0281e', hub: '#1d2a20',
+      acc: '#e2c066', dim: '#a7bba9', txt: '#f4efe2', cap: '#7a5a16', glass: '#0a1712' },
+    cur: { fill: '#b8261d', edge: '#f6f2e8', lamp: '#e2c066' },
+  },
+  // the wide-cab diesel: charcoal, safety yellow and hazard stripes
+  diesel: {
+    name: 'Diesel safety yellow',
+    css: { steel: '#141618', 'steel-2': '#1d2023', rule: '#3c4248', ink: '#eceae4', 'ink-dim': '#9a9d9f', brass: '#f2c230', 'brass-deep': '#7a6110',
+      panel: 'rgba(20,22,24,.82)', radius: '2px', knob: 'linear-gradient(#ffe066,#e0a800 55%,#8a6500)', 'knob-edge': '#4d3a00',
+      key: 'linear-gradient(#2a2d30,#18191b)', 'key-edge': '#44494e', 'key-on': 'linear-gradient(#ffe066,#e8b000)', 'key-on-ink': '#141618' },
+    g: { bezel: ['#6a6e72', '#2c2f32', '#0f1011'], face: '#f1f0ea', tick: '#141618', label: '#3a3c3e', needle: '#141618', needle2: '#d0261a', hub: '#141618',
+      acc: '#f2c230', dim: '#9a9d9f', txt: '#eceae4', cap: '#2c2f32', glass: '#0e0f10' },
+    cur: { fill: '#f2c230', edge: '#141618', lamp: '#ffffff' },
+  },
+  // E5 Shinkansen: a glass cockpit in tokiwa green with the hayate pink stripe
+  e5: {
+    name: 'Shinkansen glass',
+    css: { steel: '#071416', 'steel-2': '#0d2023', rule: '#1f5d55', ink: '#eaf7f3', 'ink-dim': '#8fb5ad', brass: '#34c79a', 'brass-deep': '#17694f',
+      panel: 'rgba(6,20,22,.72)', radius: '12px', knob: 'linear-gradient(#ffffff,#d9e5e3 55%,#98aeab)', 'knob-edge': '#4f6764',
+      key: 'linear-gradient(#11292b,#0a1b1d)', 'key-edge': '#1f5d55', 'key-on': 'linear-gradient(#5fe0b8,#20a77d)', 'key-on-ink': '#04130f' },
+    g: { bezel: ['#7d9290', '#2f3f40', '#111a1b'], face: '#0c1a1c', tick: '#bfe3d8', label: '#7fb5a8', needle: '#eaf7f3', needle2: '#ff4fa3', hub: '#eaf7f3',
+      acc: '#34c79a', dim: '#8fb5ad', txt: '#eaf7f3', cap: '#2f3f40', glass: '#061012' },
+    cur: { fill: '#f7fbfa', edge: '#0f8a66', lamp: '#ff4fa3' },
+  },
+  // Acela: midnight blue, brushed silver and a teal line
+  acela: {
+    name: 'Acela midnight',
+    css: { steel: '#0b1120', 'steel-2': '#131b2e', rule: '#34425e', ink: '#e3e9f3', 'ink-dim': '#8c9ab3', brass: '#3fb7c9', 'brass-deep': '#1d6470',
+      panel: 'rgba(11,17,32,.76)', radius: '8px', knob: 'linear-gradient(#f1f4f8,#aab4c2 55%,#5b6576)', 'knob-edge': '#343c4a',
+      key: 'linear-gradient(#18223a,#0e1526)', 'key-edge': '#34425e', 'key-on': 'linear-gradient(#7fdbe6,#2b9fb1)', 'key-on-ink': '#06121a' },
+    g: { bezel: ['#eef2f7', '#9aa5b5', '#3f4858'], face: '#0f1728', tick: '#c6d2e4', label: '#7f93b4', needle: '#ffffff', needle2: '#ff6a4d', hub: '#e3e9f3',
+      acc: '#3fb7c9', dim: '#8c9ab3', txt: '#e3e9f3', cap: '#3f4858', glass: '#090f1c' },
+    cur: { fill: '#0b1120', edge: '#3fb7c9', lamp: '#ffffff' },
+  },
+};
+
+/* which theme an engine wears: the holiday finish only dresses the steam engines */
+function hudThemeKey(loco, finish) {
+  const steam = loco === '765' || loco === '1225';
+  if (steam && finish === 'polar') return 'polar';
+  if (loco === '1225') return 'pm';
+  if (loco === 'diesel' || loco === 'e5' || loco === 'acela') return loco;
+  return 'nkp';
+}
+
+/* the engine's nameplate in the speed box */
+function hudPlate(loco, finish, number) {
+  if (loco === 'diesel') return 'AC44 · ' + (number || 4401);
+  if (loco === 'e5') return 'E5 · Shinkansen';
+  if (loco === 'acela') return 'Acela Express';
+  const n = loco === '1225' ? 'PM 1225' : 'NKP 765';
+  return finish === 'polar' ? n + ' · Polar' : n;
+}
+
+/* ---------------- cursors ---------------- */
+// one arrow with a little headlamp at its heel, a filled version for things you can press,
+// and an orbit mark while you drag the view round
+function cursorSvg(kind, c) {
+  const open = "<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'>";
+  const arrow = 'M3 2 L3 24.5 L8.6 19.4 L12.6 28.4 L16.8 26.6 L12.9 17.8 L20.6 17.8 Z';
+  if (kind === 'drag') {
+    // a curved two-headed arrow round a hub: the view swings round the train
+    const arc = 'M7.5 15.5 Q16 23.5 24.5 15.5', heads = 'M3 11.2 L11.6 12.6 L6.4 18.8 Z M29 11.2 L20.4 12.6 L25.6 18.8 Z';
+    return open +
+      `<path d='${arc}' fill='none' stroke='#000' stroke-opacity='.55' stroke-width='5.6' stroke-linecap='round'/>` +
+      `<path d='${heads}' fill='#000' fill-opacity='.55' stroke='#000' stroke-opacity='.55' stroke-width='2.4' stroke-linejoin='round'/>` +
+      `<path d='${arc}' fill='none' stroke='${c.edge}' stroke-width='2.6' stroke-linecap='round'/>` +
+      `<path d='${heads}' fill='${c.edge}' stroke='${c.edge}' stroke-width='.8' stroke-linejoin='round'/>` +
+      `<circle cx='16' cy='12' r='3.6' fill='${c.fill}' stroke='${c.edge}' stroke-width='1.6'/>` +
+      `<circle cx='16' cy='12' r='1.3' fill='${c.lamp}'/></svg>`;
+  }
+  const hot = kind === 'hot';
+  const fill = hot ? c.edge : c.fill, edge = hot ? c.fill : c.edge;
+  return open +
+    `<path d='${arrow}' fill='none' stroke='#000' stroke-opacity='.5' stroke-width='3.6' stroke-linejoin='round' transform='translate(.6 .9)'/>` +
+    `<path d='${arrow}' fill='${fill}' stroke='${edge}' stroke-width='1.7' stroke-linejoin='round'/>` +
+    `<path d='M5.4 7 L5.4 19 L8.3 16.4' fill='none' stroke='${edge}' stroke-opacity='.55' stroke-width='1'/>` +
+    `<circle cx='24.5' cy='25' r='${hot ? 3.6 : 2.6}' fill='${c.lamp}' stroke='#000' stroke-opacity='.6' stroke-width='1'/>` +
+    (hot ? `<circle cx='24.5' cy='25' r='5.6' fill='none' stroke='${c.lamp}' stroke-opacity='.55' stroke-width='1.2'/>` : '') +
+    '</svg>';
+}
+function cursorCss(kind, c, fallback) {
+  const hot = kind === 'drag' ? '16 12' : '3 2';
+  return `url("data:image/svg+xml,${encodeURIComponent(cursorSvg(kind, c))}") ${hot}, ${fallback}`;
+}
+
+/* ---------------- applying a theme ---------------- */
+const HUDT = { key: '', plate: '', t: HUD_THEMES.nkp };
+// the gauge canvas reads its colours from here
+let HT = HUD_THEMES.nkp;
+
+HUDT.apply = function (key) {
+  const t = HUD_THEMES[key] || HUD_THEMES.nkp;
+  HUDT.key = key; HUDT.t = t; HT = t;
+  const hud = document.getElementById('hud');
+  if (hud && hud.style) {
+    for (const k in t.css) hud.style.setProperty('--' + k, t.css[k]);
+    hud.dataset.theme = key;
+  }
+  const root = document.documentElement;
+  if (root && root.style) {
+    root.style.setProperty('--cur', cursorCss('arrow', t.cur, 'auto'));
+    root.style.setProperty('--cur-hot', cursorCss('hot', t.cur, 'pointer'));
+    root.style.setProperty('--cur-drag', cursorCss('drag', t.cur, 'grabbing'));
+  }
+  if (typeof drawLeverTicks === 'function') drawLeverTicks();
+};
+
+/* called on every HUD tick: restyle only when the engine or its finish changed */
+HUDT.sync = function () {
+  const T = GAME.train, loco = T ? T.locoKey : GAME.settings.loco, fin = GAME.settings.finish;
+  const key = hudThemeKey(loco, fin);
+  if (key !== HUDT.key) HUDT.apply(key);
+  const plate = hudPlate(loco, fin, GAME.settings.number);
+  if (plate !== HUDT.plate) { HUDT.plate = plate; const p = document.getElementById('hudPlate'); if (p) p.textContent = plate; }
+};
+
+// the menu wears the default cursor before any engine is on the rails
+HUDT.apply('nkp');
+
+/* ============================================================================
    Game: boot, world loading, main loop, rules, HUD
    ========================================================================== */
 const GAME = {
@@ -18159,6 +18356,7 @@ function updateHUD(dt) {
   if (gaugeT > 0.066) { gaugeT = 0; if ($('gaugeWrap').classList.contains('min')) { const m = $('gaugeMini'); const bp = Math.round(GAME.train.lead.brake.BP); const t = GAME.isDiesel() ? `<span><b>${S.notch ? 'N' + S.notch : 'IDLE'}</b></span><span>${S.DBF > 1000 ? 'DB' : 'TE'} <b>${Math.round((S.DBF > 1000 ? S.DBF * (GAME.train.nUnits || 1) : Math.abs(S.TE)) / LBF / 1000)}k</b></span><span>BP <b>${bp}</b></span>` : `<span><b>${Math.round(S.P)}</b> psi</span><span>glass <b>${Math.round(clamp((S.W + 0.1) / 1.2, 0, 1) * 100)}%</b></span><span>BP <b>${bp}</b></span>`; if (m.innerHTML !== t) m.innerHTML = t; } else drawGauges(); }
   if (mapT > 0.18) { mapT = 0; drawMinimap(); if (MAP.visible) MAP.draw(); }
   if (hudT < 0.1) return; hudT = 0;
+  HUDT.sync();
   JOB.hud();
   const mph = Math.abs(S.v) / MPH;
   $('speedNum').firstChild.textContent = Math.round(mph);

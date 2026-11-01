@@ -247,7 +247,7 @@ CPL.point = function (x, y) {
   if (prev && (!t || prev.e !== t.e)) { prev.e.kn.material = RMAT.dark; prev.e.lever.material = RMAT.dark; }
   CPL.hover = t;
   if (!t) { if (prev) { tip.hidden = true; $('gl').style.cursor = ''; } return; }   // the cab's own hover shares the tip
-  $('gl').style.cursor = 'pointer';
+  $('gl').style.cursor = 'var(--cur-hot, pointer)';
   t.e.kn.material = RMAT.cplHi; t.e.lever.material = RMAT.cplHi;
   tip.textContent = CPL.label(t); tip.hidden = false;
   tip.style.left = Math.min(innerWidth - tip.offsetWidth - 8, x + 14) + 'px'; tip.style.top = Math.max(8, y - 34) + 'px';
