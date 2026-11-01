@@ -3,7 +3,7 @@
    ========================================================================== */
 const S = {
   throttle: 0, reverser: 0, brakeH: 0.12, indH: 0.6,
-  sander: false, cocks: true, bell: false, light: 1, injector: false, blower: 0.35, stoker: 0.45, whistle: 0, autoFire: true, autoCut: true, cutA: 0.85, railP: 0,
+  sander: false, cocks: true, bell: false, classLamps: false, light: 1, injector: false, blower: 0.35, stoker: 0.45, whistle: 0, autoFire: true, autoCut: true, cutA: 0.85, railP: 0,
   v: 0, vw: 0, slip: false, slide: false, slideN: 0, theta: 0, odo: 0,
   P: 238, Psc: 0, W: 0.62, fire: 0.55, coal: 19958, water: 83280, sand: 1800,
   MR: 140, ER: 90, pumping: false, bailoff: false,

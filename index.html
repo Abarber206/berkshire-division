@@ -647,6 +647,7 @@ details.keys kbd{color:var(--brass)}
       <div id="keys" class="hud-box">
         <button class="key hold" id="btnWhistle">Whistle<span class="pull"><i></i></span></button>
         <button class="key" id="btnBell">Bell<span class="dot"></span></button>
+        <button class="key" id="btnClass" title="Green class lamps (J)">Class lamps<span class="dot"></span></button>
         <button class="key" id="btnSand">Sand<span class="dot"></span></button>
         <button class="key" id="btnCocks">Cyl cocks<span class="dot"></span></button>
         <button class="key" id="btnLight">Head light<span class="dot"></span></button>
@@ -6360,11 +6361,13 @@ function buildBerkshire(key, trim = '') {
   let hlPos, hlR, lensA;
   const numMat = decalMat(128, 64, (g, w, h) => { g.fillStyle = '#f2efe4'; g.fillRect(0, 0, w, h); g.fillStyle = '#121212'; g.font = 'bold 44px Arial'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(spec.num, w / 2, h / 2 + 2); });
   RMAT['num' + key] = numMat;
+  let bellR = null;
   const bell = (bx, by) => {
-    gb.add('brass', new THREE.LatheGeometry([[0, 0.27], [0.09, 0.27], [0.16, 0.24], [0.21, 0.13], [0.25, 0.0], [0.24, -0.01]].map(p => new THREE.Vector2(p[0], p[1])), 28).translate(bx, by, 0));
+    // the stand stays put; the bell swings on its trunnions (bellRig)
     for (const z of [-0.3, 0.3]) gb.box('black', 0.06, 0.38, 0.05, bx, by + 0.2, z);
     gb.cylZ('dark', 0.025, 0.62, 8, bx, by + 0.22, 0);
     gb.box('black', 0.08, 0.06, 0.66, bx, by + 0.4, 0);
+    bellR = bellRig(body, bx, by + 0.22, 1, 0.3);
   };
   /* A Pyle-National headlight case: a drum with a rounded back, a hinged front door whose rim holds the lens
      a little behind its lip, a visor over the top of the door, a ventilator cap on top, the door hinge on the
@@ -6425,14 +6428,23 @@ function buildBerkshire(key, trim = '') {
     gb.box('black', 0.3, 0.3, 0.3, ax(door.a - 0.05), yB - 0.18, 0);                         // lamp bracket on the door
     gb.box('black', 0.08, 0.24, 0.42, ax(door.a - 0.01), yB - 0.1, 0.55);
     gb.add('num' + key, new THREE.PlaneGeometry(0.34, 0.18), M(ax(door.a - 0.052), yB - 0.1, 0.55, 0, Math.PI / 2, 0));
-    bell(ax(BOIL.sb[0] - 0.2), sbTop - 0.3);
-    gb.box('black', 0.44, 0.08, 0.12, ax(BOIL.sb[0] + 0.02), sbTop + 0.1, 0);                 // bell bracket back over the smokebox
-    gb.box('black', 0.1, 0.12, 0.12, ax(BOIL.sb[0] + 0.2), sbTop + 0.02, 0);
+    // (hung far enough out and up that it swings clear of the smokebox front and the door ring)
+    const bY = sbTop - 0.18;
+    bell(ax(BOIL.sb[0] - 0.34), bY);
+    gb.box('black', 0.62, 0.08, 0.12, ax(BOIL.sb[0] - 0.07), bY + 0.4, 0);                    // bell bracket back over the smokebox
+    gb.box('black', 0.1, bY + 0.44 - sbTop + 0.04, 0.12, ax(BOIL.sb[0] + 0.2), (bY + 0.44 + sbTop - 0.04) / 2, 0);
     RMAT['digits' + key] = decalMat(256, 96, (g, w, h) => { g.fillStyle = '#e9e6dc'; g.font = 'bold 74px "Times New Roman", Georgia, serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; if (g.letterSpacing !== undefined) g.letterSpacing = '4px'; g.fillText(spec.num, w / 2, h / 2 + 4); });
     gb.add('digits' + key, new THREE.PlaneGeometry(0.6, 0.22), M(ax(BOIL.sb[0] - 0.14), yB - 0.6, 0, 0, Math.PI / 2, 0));
   }
   // classification lamps on brackets at the top corners of the smokebox front
-  for (const z of [-0.78, 0.78]) { const y = yB + 0.78; gb.box('black', 0.2, 0.24, 0.2, ax(BOIL.sb[0] - 0.13), y, z); gb.box('black', 0.06, 0.06, 0.2, ax(BOIL.sb[0] - 0.02), y - 0.06, z * 0.9); gb.add('lensOff', new THREE.CircleGeometry(0.06, 12), M(ax(BOIL.sb[0] - 0.23) + 0.003, y, z, 0, Math.PI / 2, 0)); }
+  // (green when the engine runs as an extra: clsLamps, worked by clicking them, the J key or the Class lamps button)
+  const cls = clsLampSet();
+  for (const z of [-0.78, 0.78]) {
+    const y = yB + 0.78, xf = ax(BOIL.sb[0] - 0.23), s = Math.sign(z);
+    gb.box('black', 0.2, 0.24, 0.2, ax(BOIL.sb[0] - 0.13), y, z); gb.box('black', 0.06, 0.06, 0.2, ax(BOIL.sb[0] - 0.02), y - 0.06, z * 0.9);
+    clsLens(cls, body, 0.06, xf + 0.003, y, z, Math.PI / 2, 0.55, [xf - 0.1, y, z]);                      // front lens
+    clsLens(cls, body, 0.045, ax(BOIL.sb[0] - 0.13), y, z + s * 0.103, s > 0 ? 0 : Math.PI, 0.35);        // side lens
+  }
 
   /* ---- running boards, brackets, steps, handrails ---- */
   for (const s of [-1, 1]) {
@@ -6654,7 +6666,52 @@ function buildBerkshire(key, trim = '') {
     stackPos: new THREE.Vector3(ax(stackA), 4.8, 0), cockPos: [new THREE.Vector3(ax(cylA), 0.4, 1.2), new THREE.Vector3(ax(cylA), 0.4, -1.2)],
     safetyPos: new THREE.Vector3(ax(12.15), fbTop + 0.35, 0), whistlePos: new THREE.Vector3(ax(wh[0]), wh[1] + 0.6, wh[2]),
     pumpPos: new THREE.Vector3(ax(pumpPos[0]), nkp ? RB.lo + 1.2 : pil.deckY + 1.25, nkp ? -1.42 : -0.88), injPos: new THREE.Vector3(ax(C.a0 - 0.5), 1.5, 1.45),
-    cabEye: cab.eye, cab, headlightPos: new THREE.Vector3(ax(lensA), hlPos[1], 0) };
+    cabEye: cab.eye, cab, headlightPos: new THREE.Vector3(ax(lensA), hlPos[1], 0), bellRig: bellR, cls };
+}
+
+/* A locomotive bell that swings on its yoke while it rings. (x, y) is the trunnion axis, which runs across the
+   engine, s scales the 765's bell (0.25 m across the mouth) and A is the swing either way in radians. The bell,
+   its clapper and the ringer's crank arm are built round the axis in their own group; bellSwing turns it. */
+function bellRig(parent, x, y, s = 1, A = 0.3) {
+  const gb = new GeoBin(), py = 0.22;
+  gb.add('brass', new THREE.LatheGeometry([[0, 0.27], [0.09, 0.27], [0.16, 0.24], [0.21, 0.13], [0.25, 0.0], [0.24, -0.01]].map(p => new THREE.Vector2(p[0] * s, (p[1] - py) * s)), 28));
+  gb.add('brass', new THREE.LatheGeometry([[0.2, 0.0], [0.21, 0.13], [0.16, 0.24], [0.0, 0.25]].map(p => new THREE.Vector2(p[0] * s, (p[1] - py) * s)), 28));   // inside of the bell
+  gb.cyl('dark', 0.01 * s, 0.01 * s, 0.16 * s, 6, 0, -0.1 * s, 0); gb.add('dark', new THREE.SphereGeometry(0.035 * s, 10, 8).translate(0, -0.19 * s, 0));    // clapper
+  gb.box('black', 0.04 * s, 0.16 * s, 0.03 * s, 0, 0.07 * s, 0.25 * s);                                                     // ringer's crank arm
+  gb.cylZ('black', 0.045 * s, 0.05 * s, 10, 0, 0, 0.25 * s);
+  const g = new THREE.Group(); g.position.set(x, y, 0); g.add(gb.build(RMAT)); parent.add(g);
+  return { g, A, amp: 0, ph: 0, sgn: 1 };
+}
+/* swing every bell on a train: a stroke at each end of the swing, strokes P seconds apart. t is the time since the
+   last stroke and struck says one rang this frame (the sound's own timer), so the bell is at full lean as it sounds.
+   Let go, it swings on and dies away. */
+function bellSwing(T, on, t, P, struck, dt) {
+  const rigs = T.diesel ? T.units.map(u => u.bellRig) : [T.loco && T.loco.bellRig];
+  for (const r of rigs) {
+    if (!r) continue;
+    if (on) { if (struck) r.sgn = -r.sgn; r.ph = clamp(t / P, 0, 1); r.amp += (r.A - r.amp) * Math.min(1, dt * 3); }
+    else { if (r.amp < 0.002) { r.amp = 0; r.g.rotation.z *= Math.max(0, 1 - dt * 6); continue; } r.ph += dt / P; if (r.ph >= 1) { r.ph -= 1; r.sgn = -r.sgn; } r.amp *= Math.exp(-dt * 1.4); }
+    const target = r.amp * r.sgn * Math.cos(Math.PI * r.ph);
+    r.g.rotation.z += (target - r.g.rotation.z) * Math.min(1, dt * 25);
+  }
+}
+/* classification lamps: green lenses with their glows, all on one material so they light together */
+function clsLampSet() {
+  return { mat: new THREE.MeshStandardMaterial({ color: 0x163222, metalness: 0.2, roughness: 0.12, emissive: 0x39ff7c, emissiveIntensity: 0 }), glows: [], lenses: [], at: [], on: -1 };
+}
+function clsLens(cls, parent, r, x, y, z, ry, glow, pick) {
+  const m = new THREE.Mesh(new THREE.CircleGeometry(r, 14), cls.mat); m.position.set(x, y, z); m.rotation.y = ry; m.castShadow = false; parent.add(m); cls.lenses.push(m);
+  if (typeof markerGlow === 'function') {
+    const g = markerGlow(glow); g.material.color.setHex(0x2aff6a); g.position.set(x + 0.04 * Math.sin(ry), y, z + 0.04 * Math.cos(ry)); parent.add(g); cls.glows.push(g);
+  }
+  if (pick) cls.at.push(new THREE.Vector3(...pick));
+}
+/* light or put out an engine's class lamps; cheap to call every frame */
+function clsLampsShow(cls, on) {
+  if (!cls) return;
+  const dk = (typeof SKY !== 'undefined' && SKY.dark) || 0, day = lerp(0.3, 1, smooth(0.1, 0.5, dk)), v = on ? 1 : 0;
+  if (cls.on !== v) { cls.on = v; cls.mat.emissiveIntensity = on ? 1.3 : 0; cls.mat.color.setHex(on ? 0x2a6a44 : 0x163222); }
+  for (const g of cls.glows) { g.visible = !!on; if (on) g.material.opacity = 0.85 * day; }
 }
 
 /* Paint finish for the steam engines: as delivered (graphite smokebox and firebox),
@@ -7913,6 +7970,12 @@ function buildDiesel(opts) {
     box('dUnder', N0 - 0.06, N0 + 0.02, D, D + 0.1, -NF, NF);             // anticlimber lip along the nose foot
     box('dUnder', 1.85, 2.25, 1.95, 2.35, W - 0.004, W + 0.008);         // access panel, engineer's side
   }
+  // the bell on a stand on the nose top, ahead of the windshield; it swings while it rings (bellRig)
+  const bellA = 2.0, bellY = 3.48 + 0.12 * (bellA - 1.42) / (CAB0 - 1.42), bs = 0.6, bp = bellY + 0.25;
+  box('dUnder', bellA - 0.16, bellA + 0.16, bellY - 0.03, bellY + 0.025, -0.22, 0.22);                  // base plate on the roof
+  for (const s of [-1, 1]) box('dUnder', bellA - 0.035, bellA + 0.035, bellY, bp + 0.05, s * 0.17, s * 0.2);   // stand posts
+  gb.cylZ('dSteel', 0.016, 0.4, 8, dx(bellA), bp, 0);                                                  // trunnion shaft
+  const bellRigD = bellRig(body, dx(bellA), bp, bs, 0.35);
   const lenses = [];
   for (const y of [3.04, 2.78]) {
     const ln = new THREE.Mesh(new THREE.CircleGeometry(0.105, 20), lead ? RMAT.lens : RMAT.headOff); ln.position.set(dx(N0 - 0.035), y, 0); ln.rotation.y = Math.PI / 2; body.add(ln); lenses.push(ln);
@@ -8100,7 +8163,7 @@ function buildDiesel(opts) {
   return {
     root, body, trucks, wheels, couplers, lens: lenses[0], lenses, beam, halo, ditch, spec, skin, livery: L, number: num, diesel: true, lead, len: DG.len, frame: DG.trucks.slice(),
     stackPos: new THREE.Vector3(dx(11.5), HOOD + 0.3, 0), hornPos: new THREE.Vector3(dx(6.0), DBH + 0.35, 0), enginePos: new THREE.Vector3(dx(12.5), 2.9, 0),
-    cabEye: cab.eye, cab, headlightPos: new THREE.Vector3(dx(N0 - 0.05), hlY, 0), cabLightPos: new THREE.Vector3(dx(4.1), 4.25, 0),
+    cabEye: cab.eye, cab, headlightPos: new THREE.Vector3(dx(N0 - 0.05), hlY, 0), cabLightPos: new THREE.Vector3(dx(4.1), 4.25, 0), bellRig: bellRigD,
   };
 }
 let _louverTex = null;
@@ -8360,6 +8423,48 @@ CPL.point = function (x, y) {
   $('gl').style.cursor = 'var(--cur-hot, pointer)';
   t.e.kn.material = RMAT.cplHi; t.e.lever.material = RMAT.cplHi;
   tip.textContent = CPL.label(t); tip.hidden = false;
+  tip.style.left = Math.min(innerWidth - tip.offsetWidth - 8, x + 14) + 'px'; tip.style.top = Math.max(8, y - 34) + 'px';
+};
+
+/* ---------------- clicking parts of your own engine: class lamps and the bell ---------------- */
+const LTAP = { hover: null };
+const _lp = new THREE.Vector3();
+/* the lamp or bell on the player's engine nearest screen point (x, y), within reach */
+LTAP.at = function (x, y) {
+  const T = GAME.train; if (!T || T.elec) return null;
+  const W = innerWidth, H = innerHeight, cam = camera.position, reach = 30 * (devicePixelRatio > 1.5 && W < 900 ? 1.3 : 1);
+  let best = null, bd = reach * reach;
+  const test = (obj, local, what) => {
+    if (!obj.visible) return;
+    _lp.copy(local).applyMatrix4(obj.matrixWorld);
+    if (_lp.distanceTo(cam) > 70) return;
+    _lp.project(camera); if (_lp.z > 1 || _lp.z < -1) return;
+    const d2 = ((_lp.x + 1) / 2 * W - x) ** 2 + ((1 - _lp.y) / 2 * H - y) ** 2;
+    if (d2 < bd) { bd = d2; best = what; }
+  };
+  const O = new THREE.Vector3();
+  for (const u of (T.diesel ? T.units : [T.loco])) {
+    if (!u || !u.root.visible) continue;
+    if (u.bellRig) test(u.bellRig.g, O, 'bell');
+    if (u.cls) for (const p of u.cls.at) test(u.body, p, 'cls');
+  }
+  return best;
+};
+LTAP.label = w => w === 'bell' ? (S.bell ? 'Bell · click to stop it' : 'Bell · click to ring it') : (S.classLamps ? 'Class lamps · click to put them out' : 'Class lamps · click to show green');
+LTAP.act = function (w) { if (w === 'bell') S.bell = !S.bell; else S.classLamps = !S.classLamps; if (GAME.refreshKeys) GAME.refreshKeys(); };
+/* tap or click: work the lamp or bell under the pointer. Returns true when one was there. */
+LTAP.tap = function (x, y) {
+  const w = LTAP.at(x, y); if (!w) return false;
+  LTAP.act(w); LTAP.point(x, y);
+  return true;
+};
+/* mouse hover: a pointer cursor and a tip saying what a click does (the tip is shared with couplers and the cab) */
+LTAP.point = function (x, y) {
+  const w = x === null ? null : LTAP.at(x, y), tip = $('cplTip'), prev = LTAP.hover;
+  LTAP.hover = w;
+  if (!w) { if (prev) { tip.hidden = true; $('gl').style.cursor = ''; } return; }
+  $('gl').style.cursor = 'var(--cur-hot, pointer)';
+  tip.textContent = LTAP.label(w); tip.hidden = false;
   tip.style.left = Math.min(innerWidth - tip.offsetWidth - 8, x + 14) + 'px'; tip.style.top = Math.max(8, y - 34) + 'px';
 };
 
@@ -11577,7 +11682,7 @@ class WreckSim {
    ========================================================================== */
 const S = {
   throttle: 0, reverser: 0, brakeH: 0.12, indH: 0.6,
-  sander: false, cocks: true, bell: false, light: 1, injector: false, blower: 0.35, stoker: 0.45, whistle: 0, autoFire: true, autoCut: true, cutA: 0.85, railP: 0,
+  sander: false, cocks: true, bell: false, classLamps: false, light: 1, injector: false, blower: 0.35, stoker: 0.45, whistle: 0, autoFire: true, autoCut: true, cutA: 0.85, railP: 0,
   v: 0, vw: 0, slip: false, slide: false, slideN: 0, theta: 0, odo: 0,
   P: 238, Psc: 0, W: 0.62, fire: 0.55, coal: 19958, water: 83280, sand: 1800,
   MR: 140, ER: 90, pumping: false, bailoff: false,
@@ -12619,7 +12724,7 @@ function remoteSound(R, dt, st, d, cam) {
     E.o1.frequency.setTargetAtTime(fire, now, 0.1); E.o2.frequency.setTargetAtTime(fire / 2, now, 0.1); E.f.frequency.setTargetAtTime(260 + 700 * rf + 400 * rf * st.ex, now, 0.1);
     setG(E.g, st.rpm > 20 ? (0.2 + 0.3 * rf) * units : 0, 0.15);
   }
-  if (st.bl) { R.bellT += dt; if (R.bellT > (T.diesel ? 1.05 : 0.86)) { R.bellT = 0; if (d < 1200) sndBell(T.diesel, B.g); } } else R.bellT = 0.8;
+  if (R.bellHit) { R.bellHit = false; if (d < 1200) sndBell(T.diesel, B.g); }   // strokes are timed in fx, where the bell swings
   // whistle or horn: recorded through the emitter (which gives the Doppler), or the synthesized voices
   const key = LOCO_SPEC[st.lk].whistle, k = 'wh_' + key;
   if (SND.has(k)) {
@@ -13724,7 +13829,7 @@ function setupViewInput(canvas, camera) {
   canvas.addEventListener('pointermove', e => {
     if (PLACE.on) return;
     if (CAB.grab) { if (e.pointerId === CAB.grab.pid) CAB.move(e.clientX, e.clientY); return; }
-    if (!ptrs.size && e.pointerType === 'mouse') { if (CAB.point(e.clientX, e.clientY)) CPL.point(null); else CPL.point(e.clientX, e.clientY); return; }
+    if (!ptrs.size && e.pointerType === 'mouse') { LTAP.point(null); if (CAB.point(e.clientX, e.clientY)) CPL.point(null); else { CPL.point(e.clientX, e.clientY); if (!CPL.hover) LTAP.point(e.clientX, e.clientY); } return; }
     if (!ptrs.has(e.pointerId)) return;
     const p = ptrs.get(e.pointerId), dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
     if (tapStart && Math.hypot(e.clientX - tapStart.x, e.clientY - tapStart.y) > 8) tapStart = null;
@@ -13758,7 +13863,7 @@ function setupViewInput(canvas, camera) {
     ptrs.delete(e.pointerId); if (ptrs.size < 2) pinch0 = 0; tapStart = null;
     if (!ptrs.size) canvas.classList.remove('dragging');
   };
-  canvas.addEventListener('pointerup', up); canvas.addEventListener('pointerleave', () => { if (PLACE.on) return; CPL.point(null); if (!CAB.grab) CAB.point(null); }); canvas.addEventListener('pointercancel', e => { if (CAB.grab && e.pointerId === CAB.grab.pid) CAB.up(); ptrs.delete(e.pointerId); tapStart = null; if (!ptrs.size) canvas.classList.remove('dragging'); });
+  canvas.addEventListener('pointerup', up); canvas.addEventListener('pointerleave', () => { if (PLACE.on) return; CPL.point(null); LTAP.point(null); if (!CAB.grab) CAB.point(null); }); canvas.addEventListener('pointercancel', e => { if (CAB.grab && e.pointerId === CAB.grab.pid) CAB.up(); ptrs.delete(e.pointerId); tapStart = null; if (!ptrs.size) canvas.classList.remove('dragging'); });
   // no browser menu on a right click anywhere in the game; text boxes keep theirs for paste
   document.addEventListener('contextmenu', e => { const t = e.target; if (t && t.closest && t.closest('input,textarea,[contenteditable="true"]')) return; e.preventDefault(); });
   canvas.addEventListener('wheel', e => { if (PLACE.on) return; e.preventDefault(); zoom(CAM.dist * (1 + clamp(e.deltaY * (e.deltaMode ? 33 : 1), -120, 120) * 0.0012)); }, { passive: false });
@@ -13769,6 +13874,7 @@ function handleTap(x, y, camera) {
   const v = new THREE.Vector2(x / innerWidth * 2 - 1, -(y / innerHeight) * 2 + 1);
   if (CAB.tapInfo(x, y)) return;
   if (CAM.mode !== 'cab' && CPL.tap(x, y)) return;
+  if (CAM.mode !== 'cab' && LTAP.tap(x, y)) return;
   _ray.setFromCamera(v, camera);
   const hits = _ray.intersectObjects(NET.switches.map(s => s.vis.hit), false);
   if (hits.length) { GAME.throwSwitch(hits[0].object.userData.sw); return; }
@@ -13816,6 +13922,7 @@ function setupButtons() {
   wb.addEventListener('pointerup', wEnd); wb.addEventListener('pointercancel', wEnd);
   const tog = (id, fn) => $(id).addEventListener('click', () => { fn(); GAME.refreshKeys(); });
   tog('btnBell', () => { S.bell = !S.bell; });
+  tog('btnClass', () => { S.classLamps = !S.classLamps; });
   tog('btnSand', () => { S.sander = !S.sander; });
   tog('btnCocks', () => { if (GAME.isDiesel()) S.ditch = !S.ditch; else S.cocks = !S.cocks; });
   tog('btnLight', () => { S.light = (S.light + 1) % 3; });
@@ -13855,6 +13962,7 @@ function setupButtons() {
       case 'KeyC': S.indH = clamp(S.indH + 0.05, 0, 1); break;
       case 'Space': S.whistle = e.shiftKey ? 1 : 0.7; e.preventDefault(); break;
       case 'KeyB': S.bell = !S.bell; break;
+      case 'KeyJ': if (!GAME.isDiesel() && !(GAME.train && GAME.train.elec)) S.classLamps = !S.classLamps; break;
       case 'KeyX': S.sander = !S.sander; break;
       case 'KeyK': if (GAME.isDiesel()) S.ditch = !S.ditch; else S.cocks = !S.cocks; break;
       case 'KeyH': S.light = (S.light + 1) % 3; break;
@@ -14684,7 +14792,7 @@ function mpClean(r) {
     o.vh = Number.isInteger(r.vh) && r.vh > 0 ? r.vh >>> 0 : 0;
     o.vs = o.vh && typeof r.vs === 'string' && r.vs.length < 12000 && mpHash(r.vs) === o.vh ? r.vs : null;
     o.s = n(r.s, 0, 1e5); o.o = r.o < 0 ? -1 : 1; o.v = n(r.v, -60, 60); o.rv = n(r.rv, -1, 1);
-    o.wh = n(r.wh, 0, 1); o.bl = r.bl ? 1 : 0; o.hl = Math.round(n(r.hl, 0, 2, 1)); o.dl = r.dl ? 1 : 0;
+    o.wh = n(r.wh, 0, 1); o.bl = r.bl ? 1 : 0; o.cl = r.cl ? 1 : 0; o.hl = Math.round(n(r.hl, 0, 2, 1)); o.dl = r.dl ? 1 : 0;
     o.ex = n(r.ex, 0, 1.5); o.rpm = n(r.rpm, 0, 1200); o.dr = r.dr ? 1 : 0;
     o.wk = o.dr && Array.isArray(r.wk) && r.wk.length >= 4 ? [n(r.wk[0], 0, 5000), r.wk[1] < 0 ? -1 : 1, Math.round(n(r.wk[2], 1, 2e9, 1)), n(r.wk[3], 0, 1), n(r.wk[4], 0, 150), n(r.wk[5], -150, 150), r.wk[6] ? 1 : 0] : null;
   }
@@ -14810,8 +14918,13 @@ class RemoteTrain {
     this.placed = true;
   }
   fx(dt, st, cam) {
+    // the bell's strokes: the sound rings on them and the bell swings to them
+    const bellP = this.train.diesel ? 1.05 : 0.86; let struck = false;
+    if (st.bl) { this.bellT += dt; if (this.bellT > bellP) { this.bellT = 0; struck = this.bellHit = true; } } else { this.bellT = 0.8; this.bellHit = false; }
     if (!this.placed || !this.visible) return;
     const T = this.train, L = T.loco, night = SKY.dark;
+    bellSwing(T, !!st.bl, this.bellT, bellP, struck, dt);
+    if (!T.diesel) clsLampsShow(L.cls, !!st.cl);
     const head = T.lead.pos, d = head.distanceTo(cam);
     this.tv.copy(T.lead.fwd).multiplyScalar(this.v);
     // lamps
@@ -15058,7 +15171,7 @@ MP.state = function () {
     const f = held ? held[0] : T.pts[0].tp;
     Object.assign(st, {
       lk: T.locoKey, ck: T.consistKey, u: T.nUnits || 1, lv: g.livery, mx: g.mix ? 1 : 0, cu: g.livery === 'custom' ? [g.custom.body, g.custom.accent, g.custom.letter] : 0, no: g.livery === 'custom' ? (+g.number || 0) : 0, tm: T.trim || '',
-      e: f.e.id, s: +f.s.toFixed(2), o: f.o, v: PLACE.on ? 0 : +S.v.toFixed(2), rv: +S.reverser.toFixed(2), wh: +S.whistle.toFixed(2), bl: S.bell ? 1 : 0, hl: S.light, dl: S.ditch ? 1 : 0,
+      e: f.e.id, s: +f.s.toFixed(2), o: f.o, v: PLACE.on ? 0 : +S.v.toFixed(2), rv: +S.reverser.toFixed(2), wh: +S.whistle.toFixed(2), bl: S.bell ? 1 : 0, cl: S.classLamps ? 1 : 0, hl: S.light, dl: S.ditch ? 1 : 0,
       ex: T.diesel ? +S.load.toFixed(2) : (S.Psc > 6 && S.cut > 0 && S.throttle > 0.02 ? +clamp((S.Psc / 245) * (0.35 + S.cut * 1.25), 0, 1.3).toFixed(2) : 0),
       rpm: T.diesel && !T.elec && S.engineRun ? Math.round(S.rpm) : 0, dr: S.derailed ? 1 : 0,
     });
@@ -18318,11 +18431,11 @@ GAME.isDiesel = () => !!(GAME.train && GAME.train.diesel);
 GAME.refreshKeys = function () {
   const on = (id, v) => $(id).classList.toggle('on', !!v);
   const D = GAME.isDiesel();
-  on('btnBell', S.bell); on('btnSand', S.sander); on('btnLight', S.light > 0);
+  on('btnBell', S.bell); on('btnSand', S.sander); on('btnLight', S.light > 0); on('btnClass', S.classLamps);
   $('btnLight').firstChild.textContent = ['Light off', 'Light dim', 'Light bright'][S.light];
   $('btnWhistle').firstChild.textContent = D ? 'Horn' : 'Whistle';
   const sp = GAME.train ? LOCO_SPEC[GAME.train.locoKey] : null, E = !!(GAME.train && GAME.train.elec);
-  $('btnCocks').hidden = E && !sp.ditch; $('btnBell').hidden = E && !sp.bell;
+  $('btnCocks').hidden = E && !sp.ditch; $('btnBell').hidden = E && !sp.bell; $('btnClass').hidden = D || E;
   if (E) {
     on('btnCocks', S.ditch); $('btnCocks').firstChild.textContent = 'Ditch lights';
     on('btnInj', S.panUp); $('btnInj').firstChild.textContent = S.panUp ? (S.vcb ? 'Pantograph' : 'Raising') : 'Pan down';
@@ -18643,7 +18756,10 @@ function effectsAndSound(dt, T) {
   const DSL = T.diesel;
   const tv = new THREE.Vector3().copy(T.lead.fwd).multiplyScalar(S.v);
   const fx = T.elec ? electricFX(dt, T, tv) : DSL ? dieselFX(dt, T, tv) : steamFX(dt, T, tv);
-  if (S.bell) { bellT += dt; if (bellT > (DSL ? 1.05 : 0.86)) { bellT = 0; sndBell(DSL); } } else bellT = 0.8;
+  const bellP = DSL ? 1.05 : 0.86; let struck = false;
+  if (S.bell) { bellT += dt; if (bellT > bellP) { bellT = 0; struck = true; sndBell(DSL); } } else bellT = 0.8;
+  bellSwing(T, S.bell, bellT, bellP, struck, dt);
+  if (!DSL && T.loco) clsLampsShow(T.loco.cls, S.classLamps);
   if (!AU.on) return;
   soundMix(dt, T, fx, tv);
 }

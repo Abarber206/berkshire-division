@@ -416,11 +416,13 @@ function buildBerkshire(key, trim = '') {
   let hlPos, hlR, lensA;
   const numMat = decalMat(128, 64, (g, w, h) => { g.fillStyle = '#f2efe4'; g.fillRect(0, 0, w, h); g.fillStyle = '#121212'; g.font = 'bold 44px Arial'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(spec.num, w / 2, h / 2 + 2); });
   RMAT['num' + key] = numMat;
+  let bellR = null;
   const bell = (bx, by) => {
-    gb.add('brass', new THREE.LatheGeometry([[0, 0.27], [0.09, 0.27], [0.16, 0.24], [0.21, 0.13], [0.25, 0.0], [0.24, -0.01]].map(p => new THREE.Vector2(p[0], p[1])), 28).translate(bx, by, 0));
+    // the stand stays put; the bell swings on its trunnions (bellRig)
     for (const z of [-0.3, 0.3]) gb.box('black', 0.06, 0.38, 0.05, bx, by + 0.2, z);
     gb.cylZ('dark', 0.025, 0.62, 8, bx, by + 0.22, 0);
     gb.box('black', 0.08, 0.06, 0.66, bx, by + 0.4, 0);
+    bellR = bellRig(body, bx, by + 0.22, 1, 0.3);
   };
   /* A Pyle-National headlight case: a drum with a rounded back, a hinged front door whose rim holds the lens
      a little behind its lip, a visor over the top of the door, a ventilator cap on top, the door hinge on the
@@ -481,14 +483,23 @@ function buildBerkshire(key, trim = '') {
     gb.box('black', 0.3, 0.3, 0.3, ax(door.a - 0.05), yB - 0.18, 0);                         // lamp bracket on the door
     gb.box('black', 0.08, 0.24, 0.42, ax(door.a - 0.01), yB - 0.1, 0.55);
     gb.add('num' + key, new THREE.PlaneGeometry(0.34, 0.18), M(ax(door.a - 0.052), yB - 0.1, 0.55, 0, Math.PI / 2, 0));
-    bell(ax(BOIL.sb[0] - 0.2), sbTop - 0.3);
-    gb.box('black', 0.44, 0.08, 0.12, ax(BOIL.sb[0] + 0.02), sbTop + 0.1, 0);                 // bell bracket back over the smokebox
-    gb.box('black', 0.1, 0.12, 0.12, ax(BOIL.sb[0] + 0.2), sbTop + 0.02, 0);
+    // (hung far enough out and up that it swings clear of the smokebox front and the door ring)
+    const bY = sbTop - 0.18;
+    bell(ax(BOIL.sb[0] - 0.34), bY);
+    gb.box('black', 0.62, 0.08, 0.12, ax(BOIL.sb[0] - 0.07), bY + 0.4, 0);                    // bell bracket back over the smokebox
+    gb.box('black', 0.1, bY + 0.44 - sbTop + 0.04, 0.12, ax(BOIL.sb[0] + 0.2), (bY + 0.44 + sbTop - 0.04) / 2, 0);
     RMAT['digits' + key] = decalMat(256, 96, (g, w, h) => { g.fillStyle = '#e9e6dc'; g.font = 'bold 74px "Times New Roman", Georgia, serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; if (g.letterSpacing !== undefined) g.letterSpacing = '4px'; g.fillText(spec.num, w / 2, h / 2 + 4); });
     gb.add('digits' + key, new THREE.PlaneGeometry(0.6, 0.22), M(ax(BOIL.sb[0] - 0.14), yB - 0.6, 0, 0, Math.PI / 2, 0));
   }
   // classification lamps on brackets at the top corners of the smokebox front
-  for (const z of [-0.78, 0.78]) { const y = yB + 0.78; gb.box('black', 0.2, 0.24, 0.2, ax(BOIL.sb[0] - 0.13), y, z); gb.box('black', 0.06, 0.06, 0.2, ax(BOIL.sb[0] - 0.02), y - 0.06, z * 0.9); gb.add('lensOff', new THREE.CircleGeometry(0.06, 12), M(ax(BOIL.sb[0] - 0.23) + 0.003, y, z, 0, Math.PI / 2, 0)); }
+  // (green when the engine runs as an extra: clsLamps, worked by clicking them, the J key or the Class lamps button)
+  const cls = clsLampSet();
+  for (const z of [-0.78, 0.78]) {
+    const y = yB + 0.78, xf = ax(BOIL.sb[0] - 0.23), s = Math.sign(z);
+    gb.box('black', 0.2, 0.24, 0.2, ax(BOIL.sb[0] - 0.13), y, z); gb.box('black', 0.06, 0.06, 0.2, ax(BOIL.sb[0] - 0.02), y - 0.06, z * 0.9);
+    clsLens(cls, body, 0.06, xf + 0.003, y, z, Math.PI / 2, 0.55, [xf - 0.1, y, z]);                      // front lens
+    clsLens(cls, body, 0.045, ax(BOIL.sb[0] - 0.13), y, z + s * 0.103, s > 0 ? 0 : Math.PI, 0.35);        // side lens
+  }
 
   /* ---- running boards, brackets, steps, handrails ---- */
   for (const s of [-1, 1]) {
@@ -710,7 +721,52 @@ function buildBerkshire(key, trim = '') {
     stackPos: new THREE.Vector3(ax(stackA), 4.8, 0), cockPos: [new THREE.Vector3(ax(cylA), 0.4, 1.2), new THREE.Vector3(ax(cylA), 0.4, -1.2)],
     safetyPos: new THREE.Vector3(ax(12.15), fbTop + 0.35, 0), whistlePos: new THREE.Vector3(ax(wh[0]), wh[1] + 0.6, wh[2]),
     pumpPos: new THREE.Vector3(ax(pumpPos[0]), nkp ? RB.lo + 1.2 : pil.deckY + 1.25, nkp ? -1.42 : -0.88), injPos: new THREE.Vector3(ax(C.a0 - 0.5), 1.5, 1.45),
-    cabEye: cab.eye, cab, headlightPos: new THREE.Vector3(ax(lensA), hlPos[1], 0) };
+    cabEye: cab.eye, cab, headlightPos: new THREE.Vector3(ax(lensA), hlPos[1], 0), bellRig: bellR, cls };
+}
+
+/* A locomotive bell that swings on its yoke while it rings. (x, y) is the trunnion axis, which runs across the
+   engine, s scales the 765's bell (0.25 m across the mouth) and A is the swing either way in radians. The bell,
+   its clapper and the ringer's crank arm are built round the axis in their own group; bellSwing turns it. */
+function bellRig(parent, x, y, s = 1, A = 0.3) {
+  const gb = new GeoBin(), py = 0.22;
+  gb.add('brass', new THREE.LatheGeometry([[0, 0.27], [0.09, 0.27], [0.16, 0.24], [0.21, 0.13], [0.25, 0.0], [0.24, -0.01]].map(p => new THREE.Vector2(p[0] * s, (p[1] - py) * s)), 28));
+  gb.add('brass', new THREE.LatheGeometry([[0.2, 0.0], [0.21, 0.13], [0.16, 0.24], [0.0, 0.25]].map(p => new THREE.Vector2(p[0] * s, (p[1] - py) * s)), 28));   // inside of the bell
+  gb.cyl('dark', 0.01 * s, 0.01 * s, 0.16 * s, 6, 0, -0.1 * s, 0); gb.add('dark', new THREE.SphereGeometry(0.035 * s, 10, 8).translate(0, -0.19 * s, 0));    // clapper
+  gb.box('black', 0.04 * s, 0.16 * s, 0.03 * s, 0, 0.07 * s, 0.25 * s);                                                     // ringer's crank arm
+  gb.cylZ('black', 0.045 * s, 0.05 * s, 10, 0, 0, 0.25 * s);
+  const g = new THREE.Group(); g.position.set(x, y, 0); g.add(gb.build(RMAT)); parent.add(g);
+  return { g, A, amp: 0, ph: 0, sgn: 1 };
+}
+/* swing every bell on a train: a stroke at each end of the swing, strokes P seconds apart. t is the time since the
+   last stroke and struck says one rang this frame (the sound's own timer), so the bell is at full lean as it sounds.
+   Let go, it swings on and dies away. */
+function bellSwing(T, on, t, P, struck, dt) {
+  const rigs = T.diesel ? T.units.map(u => u.bellRig) : [T.loco && T.loco.bellRig];
+  for (const r of rigs) {
+    if (!r) continue;
+    if (on) { if (struck) r.sgn = -r.sgn; r.ph = clamp(t / P, 0, 1); r.amp += (r.A - r.amp) * Math.min(1, dt * 3); }
+    else { if (r.amp < 0.002) { r.amp = 0; r.g.rotation.z *= Math.max(0, 1 - dt * 6); continue; } r.ph += dt / P; if (r.ph >= 1) { r.ph -= 1; r.sgn = -r.sgn; } r.amp *= Math.exp(-dt * 1.4); }
+    const target = r.amp * r.sgn * Math.cos(Math.PI * r.ph);
+    r.g.rotation.z += (target - r.g.rotation.z) * Math.min(1, dt * 25);
+  }
+}
+/* classification lamps: green lenses with their glows, all on one material so they light together */
+function clsLampSet() {
+  return { mat: new THREE.MeshStandardMaterial({ color: 0x163222, metalness: 0.2, roughness: 0.12, emissive: 0x39ff7c, emissiveIntensity: 0 }), glows: [], lenses: [], at: [], on: -1 };
+}
+function clsLens(cls, parent, r, x, y, z, ry, glow, pick) {
+  const m = new THREE.Mesh(new THREE.CircleGeometry(r, 14), cls.mat); m.position.set(x, y, z); m.rotation.y = ry; m.castShadow = false; parent.add(m); cls.lenses.push(m);
+  if (typeof markerGlow === 'function') {
+    const g = markerGlow(glow); g.material.color.setHex(0x2aff6a); g.position.set(x + 0.04 * Math.sin(ry), y, z + 0.04 * Math.cos(ry)); parent.add(g); cls.glows.push(g);
+  }
+  if (pick) cls.at.push(new THREE.Vector3(...pick));
+}
+/* light or put out an engine's class lamps; cheap to call every frame */
+function clsLampsShow(cls, on) {
+  if (!cls) return;
+  const dk = (typeof SKY !== 'undefined' && SKY.dark) || 0, day = lerp(0.3, 1, smooth(0.1, 0.5, dk)), v = on ? 1 : 0;
+  if (cls.on !== v) { cls.on = v; cls.mat.emissiveIntensity = on ? 1.3 : 0; cls.mat.color.setHex(on ? 0x2a6a44 : 0x163222); }
+  for (const g of cls.glows) { g.visible = !!on; if (on) g.material.opacity = 0.85 * day; }
 }
 
 /* Paint finish for the steam engines: as delivered (graphite smokebox and firebox),

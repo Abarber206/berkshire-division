@@ -252,3 +252,45 @@ CPL.point = function (x, y) {
   tip.textContent = CPL.label(t); tip.hidden = false;
   tip.style.left = Math.min(innerWidth - tip.offsetWidth - 8, x + 14) + 'px'; tip.style.top = Math.max(8, y - 34) + 'px';
 };
+
+/* ---------------- clicking parts of your own engine: class lamps and the bell ---------------- */
+const LTAP = { hover: null };
+const _lp = new THREE.Vector3();
+/* the lamp or bell on the player's engine nearest screen point (x, y), within reach */
+LTAP.at = function (x, y) {
+  const T = GAME.train; if (!T || T.elec) return null;
+  const W = innerWidth, H = innerHeight, cam = camera.position, reach = 30 * (devicePixelRatio > 1.5 && W < 900 ? 1.3 : 1);
+  let best = null, bd = reach * reach;
+  const test = (obj, local, what) => {
+    if (!obj.visible) return;
+    _lp.copy(local).applyMatrix4(obj.matrixWorld);
+    if (_lp.distanceTo(cam) > 70) return;
+    _lp.project(camera); if (_lp.z > 1 || _lp.z < -1) return;
+    const d2 = ((_lp.x + 1) / 2 * W - x) ** 2 + ((1 - _lp.y) / 2 * H - y) ** 2;
+    if (d2 < bd) { bd = d2; best = what; }
+  };
+  const O = new THREE.Vector3();
+  for (const u of (T.diesel ? T.units : [T.loco])) {
+    if (!u || !u.root.visible) continue;
+    if (u.bellRig) test(u.bellRig.g, O, 'bell');
+    if (u.cls) for (const p of u.cls.at) test(u.body, p, 'cls');
+  }
+  return best;
+};
+LTAP.label = w => w === 'bell' ? (S.bell ? 'Bell · click to stop it' : 'Bell · click to ring it') : (S.classLamps ? 'Class lamps · click to put them out' : 'Class lamps · click to show green');
+LTAP.act = function (w) { if (w === 'bell') S.bell = !S.bell; else S.classLamps = !S.classLamps; if (GAME.refreshKeys) GAME.refreshKeys(); };
+/* tap or click: work the lamp or bell under the pointer. Returns true when one was there. */
+LTAP.tap = function (x, y) {
+  const w = LTAP.at(x, y); if (!w) return false;
+  LTAP.act(w); LTAP.point(x, y);
+  return true;
+};
+/* mouse hover: a pointer cursor and a tip saying what a click does (the tip is shared with couplers and the cab) */
+LTAP.point = function (x, y) {
+  const w = x === null ? null : LTAP.at(x, y), tip = $('cplTip'), prev = LTAP.hover;
+  LTAP.hover = w;
+  if (!w) { if (prev) { tip.hidden = true; $('gl').style.cursor = ''; } return; }
+  $('gl').style.cursor = 'var(--cur-hot, pointer)';
+  tip.textContent = LTAP.label(w); tip.hidden = false;
+  tip.style.left = Math.min(innerWidth - tip.offsetWidth - 8, x + 14) + 'px'; tip.style.top = Math.max(8, y - 34) + 'px';
+};
