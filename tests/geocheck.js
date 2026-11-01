@@ -38,7 +38,7 @@ function world() {
     const _build = GeoBin.prototype.build;
     GeoBin.prototype.build = function (mats, opt) { const grp = _build.call(this, mats, opt); grp.userData.pieces = this.pieces || []; return grp; };
     rollingMaterials();
-    globalThis.__W = { THREE, RMAT, SCN, LOCO_SPEC, TRIM, TD, DG, GeoBin, buildBerkshire, buildTender, buildDiesel, bellRig, bellSwing, clsLampsShow, coachModel, freightModel, truckBins, plainAxle, mergeGeos, AXJ, CH, LIVERIES };`,
+    globalThis.__W = { THREE, RMAT, SCN, LOCO_SPEC, TRIM, TD, DG, GeoBin, buildBerkshire, buildTender, buildDiesel, bellRig, bellSwing, clsLampsShow, BELL_KICK, coachModel, freightModel, truckBins, plainAxle, mergeGeos, AXJ, CH, LIVERIES };`,
   ctx, { filename: 'rolling.js' });
   return (W = ctx.__W);
 }

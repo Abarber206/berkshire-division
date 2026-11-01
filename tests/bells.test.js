@@ -35,7 +35,8 @@ test('every bell swings clear of everything but its own stand', { skip }, () => 
     const hit = a => { const B = bellPieces(w, m, a), s = new Set(); for (const b of B) O.forEach((o, i) => { if (touches(THREE, b, o)) s.add(i); }); return s; };
     const rest = hit(0);
     assert.ok(rest.size > 0, `${name}: the bell is hung on something`);
-    for (const a of [-r.A, -r.A / 2, r.A / 2, r.A]) {
+    const Amax = r.A * (1 + w.BELL_KICK);   // full lean plus the shiver after a stroke
+    for (const a of [-Amax, -r.A / 2, r.A / 2, Amax]) {
       const extra = [...hit(a)].filter(i => !rest.has(i));
       assert.equal(extra.length, 0, `${name}: leaned ${a.toFixed(2)} rad the bell runs into ${extra.map(i => describe([O[i]])).join('; ')}`);
     }
@@ -55,6 +56,11 @@ test('the bell leans fully over on each stroke, swings back between them and die
     if (struck && i > 120) at.push(r.g.rotation.z);
   }
   assert.ok(at.length >= 4);
+  // the clapper's blow jolts it back toward the middle just after each stroke
+  w.bellSwing(T, true, 0, P, true, dt);
+  let t2 = 0, jolt = 0; const sg = Math.sign(r.g.rotation.z);
+  for (let i = 0; i < 6; i++) { t2 += dt; w.bellSwing(T, true, t2, P, false, dt); const pure = r.amp * r.sgn * Math.cos(Math.PI * t2 / P); jolt = Math.max(jolt, sg * (pure - r.g.rotation.z)); }
+  assert.ok(jolt > r.A * 0.05, `the stroke jolts the bell (${jolt.toFixed(3)} rad)`);
   for (let k = 0; k < at.length; k++) assert.ok(Math.abs(at[k]) > r.A * 0.85, `stroke ${k} at ${at[k].toFixed(3)} rad, not at full lean`);
   for (let k = 1; k < at.length; k++) assert.ok(Math.sign(at[k]) !== Math.sign(at[k - 1]), 'strokes alternate sides');
   let peak = 0;

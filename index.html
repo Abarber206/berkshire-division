@@ -6683,16 +6683,29 @@ function bellRig(parent, x, y, s = 1, A = 0.3) {
   return { g, A, amp: 0, ph: 0, sgn: 1 };
 }
 /* swing every bell on a train: a stroke at each end of the swing, strokes P seconds apart. t is the time since the
-   last stroke and struck says one rang this frame (the sound's own timer), so the bell is at full lean as it sounds.
-   Let go, it swings on and dies away. */
+   last stroke and struck says one rang this frame (the sound's own timer). The swing is put back by the audio
+   output's latency so the bell reaches full lean just as the stroke is heard, and each stroke kicks it: the clapper's
+   blow jolts it back a little and it shivers for a moment. Let go, it swings on and dies away. */
+const BELL_KICK = 0.12;   // the jolt, as a share of the swing
 function bellSwing(T, on, t, P, struck, dt) {
   const rigs = T.diesel ? T.units.map(u => u.bellRig) : [T.loco && T.loco.bellRig];
+  const ctx = typeof AU !== 'undefined' && AU.ctx, lat = ctx ? clamp((ctx.outputLatency || 0) + (ctx.baseLatency || 0), 0, 0.15) : 0;
   for (const r of rigs) {
     if (!r) continue;
-    if (on) { if (struck) r.sgn = -r.sgn; r.ph = clamp(t / P, 0, 1); r.amp += (r.A - r.amp) * Math.min(1, dt * 3); }
-    else { if (r.amp < 0.002) { r.amp = 0; r.g.rotation.z *= Math.max(0, 1 - dt * 6); continue; } r.ph += dt / P; if (r.ph >= 1) { r.ph -= 1; r.sgn = -r.sgn; } r.amp *= Math.exp(-dt * 1.4); }
-    const target = r.amp * r.sgn * Math.cos(Math.PI * r.ph);
-    r.g.rotation.z += (target - r.g.rotation.z) * Math.min(1, dt * 25);
+    const was = r.g.rotation.z, wasOn = !!r.on; r.on = on;
+    if (on) {
+      if (struck) { r.sgn = -r.sgn; r.jt = -lat; }
+      r.ph = Math.min(1, (t - lat) / P); r.amp += (r.A - r.amp) * Math.min(1, dt * 3);
+    } else if (r.amp < 0.002) r.amp = 0;
+    else { r.ph += dt / P; if (r.ph >= 1) { r.ph -= 1; r.sgn = -r.sgn; } r.amp *= Math.exp(-dt * 1.4); }
+    // the clapper's blow: a jolt back toward the middle and a quick shiver that dies in a few tenths of a second
+    let kick = 0;
+    if (r.jt !== undefined) { r.jt += dt; if (r.jt >= 0) { kick = -r.sgn * r.A * BELL_KICK * Math.exp(-r.jt * 14) * Math.sin(r.jt * 2 * Math.PI * 9); if (r.jt > 0.5) r.jt = undefined; } }
+    const target = r.amp * r.sgn * Math.cos(Math.PI * r.ph) + kick;
+    // no lag while it rings; only a jump (starting from mid-swing, or letting go) is eased out
+    if (on !== wasOn) r.off = was - target;
+    r.off = (r.off || 0) * Math.exp(-dt * 12);
+    r.g.rotation.z = target + r.off;
   }
 }
 /* classification lamps: green lenses with their glows, all on one material so they light together */
