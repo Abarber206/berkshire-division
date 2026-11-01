@@ -327,6 +327,7 @@ function buildMenu() {
   segButtons('optTraffic', { on: { name: 'Timetable', sub: ROUTE_KEY === 'laurel' ? 'No. 21, No. 22 and coal trains on the mountain' : 'No. 5, No. 12 and freights on the road' }, off: { name: 'Clear road', sub: 'Just you and the signals' } }, 'traffic', () => { if (GAME.ready && GAME.train) AI.setup(); saveSettings(); });
   specGrid();
   jobSetup();
+  menuTabs();
   $('btnStart').addEventListener('click', () => GAME.start());
   $('bigRetry').addEventListener('click', () => GAME.rerail());
   $('bigMenu').addEventListener('click', () => { $('bigMsg').hidden = true; GAME.pause(true); });
@@ -344,8 +345,44 @@ function specGrid() {
   if (ht) { if (!ht.dataset.steam) ht.dataset.steam = ht.innerHTML; ht.innerHTML = s.elec ? 'Release the <b>brake</b>, set the <b>reverser</b> forward and notch the <b>power</b> controller. The pantograph is up and the main breaker is in; <b>Pantograph</b> (I) drops it. Slow with the <b>regenerative brake</b>, which also blends in under the train brake. Out on the main a high-speed set runs at its own top speed, and each curve has its own posted limit: watch for it ahead.' : s.diesel ? 'Set the <b>reverser</b> forward, release the <b>engine brake</b>, then notch out the <b>throttle</b>. Every unit in the lashup answers the lead cab. Hold speed down the grades with the <b>dynamic brake</b>, and check the switch card before every turnout: diverging routes are 30 mph.' : ht.dataset.steam; }
   const ey = document.querySelector('.brandmark .eyebrow'); if (ey) ey.textContent = s.elec ? (s.set === 'e5' ? 'JR East · Shinkansen E5 series' : 'Amtrak · Acela Express') : s.diesel ? (GAME.settings.livery === 'custom' ? 'Custom paint' : LIVERIES[GAME.settings.livery].name) + ' · C-C diesel' : 'Lima Super Power · 2-8-4';
 }
+/* The menu shows one tab of settings at a time. A tab whose groups are all hidden for the chosen engine
+   (no paint to pick on a trainset) drops out of the row. Any group added to the form outside a tab
+   lands in the tab its data-tab names, or World. */
+const MENU_TABS = { cur: 'train' };
+function menuTabs() {
+  const form = $('menuForm'), panes = $('menuPanes'), row = $('menuTabs');
+  if (!form || !panes || !row) return;
+  const pane = k => panes.querySelector(`.mpane[data-pane="${k}"]`);
+  const adopt = () => { for (const g of [...form.children].filter(c => c.classList.contains('fgroup'))) (pane(g.dataset.tab) || pane('world')).appendChild(g); };
+  const shows = p => [...p.children].some(c => !c.hidden && getComputedStyle(c).display !== 'none');
+  const sync = () => {
+    let cur = MENU_TABS.cur;
+    const set = (el, h) => { if (el.hidden !== h) el.hidden = h; };   // only real changes, so the observer below settles
+    for (const b of row.children) set(b, !shows(pane(b.dataset.tab)));
+    const live = [...row.children].filter(b => !b.hidden);
+    if (!live.some(b => b.dataset.tab === cur)) cur = (live.find(b => b.dataset.tab === 'train') || live[0] || row.children[0]).dataset.tab;
+    for (const b of row.children) b.setAttribute('aria-selected', String(b.dataset.tab === cur));
+    for (const p of panes.children) set(p, p.dataset.pane !== cur);
+  };
+  MENU_TABS.show = k => { if (!pane(k)) return; MENU_TABS.cur = k; try { localStorage.setItem('bd.menuTab', k); } catch (e) {} sync(); };
+  for (const b of row.children) b.addEventListener('click', () => { MENU_TABS.show(b.dataset.tab); panes.scrollTop = 0; });
+  let saved = null; try { saved = localStorage.getItem('bd.menuTab'); } catch (e) {}
+  const q = new URLSearchParams(location.search);
+  MENU_TABS.cur = q.get('room') ? 'online' : pane(saved) ? saved : 'train';
+  adopt(); sync();
+  // the engine picked decides which groups (and so which tabs) show; watch rather than chase every caller
+  let queued = false;
+  new MutationObserver(() => { if (queued) return; queued = true; requestAnimationFrame(() => { queued = false; adopt(); sync(); }); })
+    .observe(form, { subtree: true, childList: true, attributes: true, attributeFilter: ['hidden'] });
+  $('menuMin').addEventListener('click', () => menuMini(!$('menu').classList.contains('mini')));
+}
+function menuMini(on) {
+  const m = $('menu'); m.classList.toggle('mini', on);
+  const b = $('menuMin'); b.setAttribute('aria-label', on ? 'Open the menu' : 'Minimize menu'); b.title = on ? 'Open the menu' : 'Minimize the menu to see the railroad';
+}
 function startLabel() {
   const b = $('btnStart');
+  $('menu').classList.toggle('ingame', !!GAME.running);
   if (!GAME.running) { b.textContent = 'Highball'; return; }
   b.textContent = GAME.needNewTrain() ? 'New train' : 'Resume';
 }
@@ -372,7 +409,7 @@ GAME.start = function () {
     GAME.intro();
   }
   GAME.running = true; S.paused = false; applyFireSetting(GAME.settings.fire);
-  $('menu').hidden = true; $('hud').hidden = false;
+  $('menu').hidden = true; $('hud').hidden = false; menuMini(false);
   FX.snow.visible = SKY.snow;
   if (SKY.snow) { const a = FX.snow.geometry.attributes.position.array; for (let i = 0; i < a.length; i += 3) { a[i] += camera.position.x; a[i + 1] += camera.position.y - 20; a[i + 2] += camera.position.z; } }
   GAME.refreshKeys();
