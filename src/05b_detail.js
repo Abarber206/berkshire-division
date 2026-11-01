@@ -363,7 +363,7 @@ function buildPastureLife(scene) {
           if (!free(X, N, 14)) { prev = null; continue; }
           const y = groundAt(X, N) - 0.05, b = bin(X, N);
           b.posts.push([X, y, N]);
-          if (prev) for (const hgt of [0.55, 0.9, 1.25]) b.wires.push(prev[0], prev[1] + hgt, -prev[2], X, y + hgt, -N);
+          if (prev) { for (const hgt of [0.55, 0.9, 1.25]) b.wires.push(prev[0], prev[1] + hgt, -prev[2], X, y + hgt, -N); walkWall(prev[0], -prev[2], X, -N, Math.min(y, prev[1]), Math.max(y, prev[1]) + 1.3); }
           prev = [X, y, N];
         }
       }

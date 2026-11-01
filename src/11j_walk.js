@@ -27,21 +27,32 @@ WALK.trackGrid = function () {
   for (const e of NET.edges) for (let s = 0; s <= e.len + 0.01; s += 2) {
     e.pose(Math.min(s, e.len), F);
     const k = Math.floor(F.p.x / 8) + ',' + Math.floor(F.p.z / 8); let l = G.get(k); if (!l) G.set(k, l = []);
-    const fl = Math.hypot(F.f.x, F.f.z) || 1; l.push(F.p.x, F.p.z, F.p.y, F.f.x / fl, F.f.z / fl);
+    const fl = Math.hypot(F.f.x, F.f.z) || 1; l.push(F.p.x, F.p.z, F.p.y, F.f.x / fl, F.f.z / fl, e.isBridge(Math.min(s, e.len)) ? 1 : 0);
   }
   return (WALK.tg = G);
 };
-/* top of the ties under (x, z), falling off down the ballast shoulder; -Infinity away from the track */
+/* the top of whatever is underfoot on the railroad at (x, z): the rail heads (he steps up onto a rail rather
+   than through it), the ties, and the ballast section as 04_world.js lays it (flat to 1.9 m out, then the
+   shoulder and the slope); on a bridge only the deck between the guard timbers. -Infinity away from the track */
+const BALLAST_U = [1.3, 1.9, 3.15, 7.6], BALLAST_V = [-0.2, -0.205, -0.95, -3.4];
+function ballastV(u) {
+  if (u <= BALLAST_U[0]) return -0.17;   // the ties (their tops are the rails' base)
+  for (let i = 1; i < BALLAST_U.length; i++) if (u <= BALLAST_U[i]) return lerp(BALLAST_V[i - 1], BALLAST_V[i], (u - BALLAST_U[i - 1]) / (BALLAST_U[i] - BALLAST_U[i - 1]));
+  return -Infinity;
+}
 function bedAt(x, z) {
   const G = WALK.trackGrid(), i = Math.floor(x / 8), j = Math.floor(z / 8); let best = -Infinity;
   for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) {
     const l = G.get((i + a) + ',' + (j + b)); if (!l) continue;
-    for (let q = 0; q < l.length; q += 5) {
-      const dx = x - l[q], dz = z - l[q + 1]; if (dx * dx + dz * dz > 9) continue;
-      const along = dx * l[q + 3] + dz * l[q + 4]; if (Math.abs(along) > 1.15) continue;
-      const lat = Math.abs(dx * l[q + 4] - dz * l[q + 3]); if (lat > 2.4) continue;
-      const h = l[q + 2] - 0.17 - Math.max(0, lat - 1.4) * 0.55;
-      if (h > best) best = h;
+    for (let q = 0; q < l.length; q += 6) {
+      const dx = x - l[q], dz = z - l[q + 1]; if (dx * dx + dz * dz > 64) continue;
+      const along = dx * l[q + 3] + dz * l[q + 4]; if (Math.abs(along) > 1.05) continue;
+      const lat = Math.abs(dx * l[q + 4] - dz * l[q + 3]);
+      if (l[q + 5] && lat > 1.4) continue;
+      let v = ballastV(lat);
+      // a boot (11 cm wide) over a rail head stands on the rail
+      if (Math.abs(lat - RAIL_OFF) < 0.09) v = 0;
+      if (l[q + 2] + v > best) best = l[q + 2] + v;
     }
   }
   return best;
@@ -67,6 +78,16 @@ function pushOut(p, f, r) {
   p.x = f[0] + u * f[2] + w * f[4]; p.z = f[1] + u * f[3] + w * f[5];
   return true;
 }
+/* benches, carts and fence runs, in 16 m cells by their centres (none is longer than about 6 m) */
+function blocksNear(x, z) {
+  if (!WALK.bg || WALK.bgN !== SCN.blocks.length) {
+    const G = new Map(); for (const f of SCN.blocks) { const k = Math.floor(f[0] / 16) + ',' + Math.floor(f[1] / 16); let l = G.get(k); if (!l) G.set(k, l = []); l.push(f); }
+    WALK.bg = G; WALK.bgN = SCN.blocks.length;
+  }
+  const i = Math.floor(x / 16), j = Math.floor(z / 16), out = [];
+  for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) { const l = WALK.bg.get((i + a) + ',' + (j + b)); if (l) out.push(...l); }
+  return out;
+}
 /* keep a man standing at p (feet) out of buildings, benches, trees and poles, and rolling stock */
 function walkSolid(p, skip) {
   for (let pass = 0; pass < 2; pass++) {
@@ -74,13 +95,13 @@ function walkSolid(p, skip) {
       if (Math.abs(f[0] - p.x) > f[6] + f[7] + 1 || Math.abs(f[1] - p.z) > f[6] + f[7] + 1) continue;
       if (inFootXZ(f, p.x, p.z, WALK_R) && p.y < footTop(f) - 0.4) pushOut(p, f, WALK_R);
     }
-    for (const f of SCN.blocks) {
-      if (Math.abs(f[0] - p.x) > f[6] + f[7] + 1 || Math.abs(f[1] - p.z) > f[6] + f[7] + 1) continue;
-      if (p.y < f[9] - 0.05 && p.y + 1.75 > f[8]) pushOut(p, f, WALK_R);
-    }
+    for (const f of blocksNear(p.x, p.z)) if (p.y < f[9] - 0.05 && p.y + 1.75 > f[8]) pushOut(p, f, WALK_R);
     for (const t of treesNear(p.x, p.z)) {
-      if (p.y + 1.8 < t[3] || p.y > t[4]) continue;
-      const dx = p.x - t[0], dz = p.z - t[1], h = Math.hypot(dx, dz), r = Math.min(t[2], 1.2) + WALK_R;
+      if (p.y > t[4]) continue;
+      // under a high canopy he still meets the trunk
+      const trunk = p.y + 1.8 < t[3], dx = p.x - t[0], dz = p.z - t[1], h = Math.hypot(dx, dz);
+      if (trunk && (t[2] < 1.2 || p.y + 1.8 < t[3] - 30)) continue;   // a pole or a mast is its own solid; nothing grows 30 m above him
+      const r = (trunk ? clamp(t[2] * 0.09, 0.14, 0.45) : Math.min(t[2], 1.2)) + WALK_R;
       if (h < r) { const k = h > 1e-3 ? r / h : 0; if (k) { p.x = t[0] + dx * k; p.z = t[1] + dz * k; } else p.x = t[0] + r; }
     }
     for (const c of camConsists()) for (const v of c.vehicles) {

@@ -845,6 +845,7 @@ function buildSwitches(scene) {
     const sm = new THREE.Matrix4().makeRotationY(yaw).setPosition(sp);
     gb.add('steel', new THREE.BoxGeometry(0.9, 0.12, 0.5).translate(0, -0.15, 0), sm);
     gb.add('steel', new THREE.CylinderGeometry(0.05, 0.05, 1.5, 8).translate(0, 0.6, 0), sm);
+    solid(sp.x, sp.z, 0.4, sp.y - 0.5, sp.y + 1.4);   // walked round, not through (11j_walk.js)
     gb.add('steel', new THREE.BoxGeometry(0.06, 0.06, 3.3).translate(0, -0.2, -standSide * 1.675), sm);
     gb.add('steel', new THREE.BoxGeometry(0.5, 0.05, 0.06).translate(0.25, 0.25, 0).applyMatrix4(new THREE.Matrix4().makeRotationZ(0.5)), sm);
     const vis = gb.build({ tie: MAT.tie, steel: MAT.steelDark, rail: MAT.rail, ballast: MAT.ballast });
