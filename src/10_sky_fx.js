@@ -33,6 +33,32 @@ const SKY = { hour: 6 + 40 / 60, weather: 'clear', dark: 0, night: false, look: 
   for (const k in THREE.ShaderLib) add(THREE.ShaderLib[k].uniforms);
 })();
 
+/* Two shadow cascades from the one sun. SKY.sun casts a sharp shadow over the 150 m round what we look at; SKY.sunFar
+   (no light of its own, intensity 0) casts a coarse one 600 m across, so a whole train and the scenery beyond still
+   have shadows. Every lit shader takes the near shadow inside the near box and fades to the far one at its edge,
+   instead of multiplying the two (which would darken twice). Only active when both lights cast. */
+(function cascadeChunks() {
+  const C = THREE.ShaderChunk, one = 'getShadow( directionalShadowMap[ i ], directionalLightShadow.shadowMapSize, directionalLightShadow.shadowBias, directionalLightShadow.shadowRadius, vDirectionalShadowCoord[ i ] )';
+  const mask = 'getShadow( directionalShadowMap[ i ], directionalLight.shadowMapSize, directionalLight.shadowBias, directionalLight.shadowRadius, vDirectionalShadowCoord[ i ] )';
+  if (!C.lights_fragment_begin.includes(one) || !C.shadowmask_pars_fragment.includes(mask)) { console.warn('shadow cascades: three.js chunks changed, using one cascade'); return; }
+  C.shadowmap_pars_fragment += `
+#if defined( USE_SHADOWMAP ) && NUM_DIR_LIGHT_SHADOWS >= 2
+  float csmShadow() {
+    vec3 c = vDirectionalShadowCoord[ 0 ].xyz / vDirectionalShadowCoord[ 0 ].w;
+    vec2 e = abs( c.xy - 0.5 );
+    float k = smoothstep( 0.4, 0.48, max( e.x, e.y ) );
+    float n = k < 1.0 ? getShadow( directionalShadowMap[ 0 ], directionalLightShadows[ 0 ].shadowMapSize, directionalLightShadows[ 0 ].shadowBias, directionalLightShadows[ 0 ].shadowRadius, vDirectionalShadowCoord[ 0 ] ) : 1.0;
+    float f = k > 0.0 ? getShadow( directionalShadowMap[ 1 ], directionalLightShadows[ 1 ].shadowMapSize, directionalLightShadows[ 1 ].shadowBias, directionalLightShadows[ 1 ].shadowRadius, vDirectionalShadowCoord[ 1 ] ) : 1.0;
+    return mix( n, f, k );
+  }
+  #define CSM_PICK( I, S ) ( I == 0 ? csmShadow() : I == 1 ? 1.0 : S )
+#else
+  #define CSM_PICK( I, S ) ( S )
+#endif`;
+  C.lights_fragment_begin = C.lights_fragment_begin.replace(one, 'CSM_PICK( UNROLLED_LOOP_INDEX, ' + one + ' )');
+  C.shadowmask_pars_fragment = C.shadowmask_pars_fragment.replace(mask, 'CSM_PICK( UNROLLED_LOOP_INDEX, ' + mask + ' )');
+})();
+
 function buildSky(scene, renderer) {
   const uni = { uTop: { value: new THREE.Color() }, uHor: { value: new THREE.Color() }, uSun: { value: new THREE.Vector3(0, 1, 0) }, uSunC: { value: new THREE.Color() },
     uMoon: { value: new THREE.Vector3(0, -1, 0) }, uMoonC: { value: new THREE.Color() }, uGray: { value: 0 }, uNight: { value: 0 } };
@@ -99,6 +125,14 @@ function buildSky(scene, renderer) {
   const sh = SKY.shadowHalf, sc = SKY.sun.shadow.camera; sc.left = -sh; sc.right = sh; sc.top = sh; sc.bottom = -sh; sc.near = 10; sc.far = 700;
   SKY.sun.shadow.bias = -0.0006; SKY.sun.shadow.normalBias = 0.04;
   scene.add(SKY.sun); scene.add(SKY.sun.target);
+  // the far cascade (see cascadeChunks): added right after the sun so it is shadow 1; it only casts, never lights
+  SKY.farHalf = mobile ? 230 : 300;
+  SKY.sunFar = new THREE.DirectionalLight(0x000000, 0); SKY.sunFar.castShadow = true;
+  SKY.sunFar.shadow.mapSize.set(mobile ? 1024 : 2048, mobile ? 1024 : 2048);
+  const fc = SKY.sunFar.shadow.camera, fh = SKY.farHalf; fc.left = -fh; fc.right = fh; fc.top = fh; fc.bottom = -fh; fc.near = 10; fc.far = 1400;
+  SKY.sunFar.shadow.bias = -0.0012; SKY.sunFar.shadow.normalBias = 0.3; SKY.sunFar.shadow.autoUpdate = false;
+  SKY.farEvery = mobile ? 3 : 2; SKY.farTick = 0;
+  scene.add(SKY.sunFar); scene.add(SKY.sunFar.target);
   scene.fog = new THREE.FogExp2(0xcccccc, 0.0002);
   SKY.sunDir = new THREE.Vector3(0, 1, 0); SKY.moonDir = new THREE.Vector3(0, -1, 0); SKY.keyDir = new THREE.Vector3(0, 1, 0);
 }
@@ -217,12 +251,17 @@ function skyFollow(cam, focus) {
   SKY.moon.position.copy(SKY.moonDir).multiplyScalar(7000).add(c);
   shadowCentre(cam, focus, _skSc);
   SKY.sun.target.position.copy(_skSc); SKY.sun.position.copy(_skSc).addScaledVector(SKY.keyDir, 350);
+  if (SKY.sunFar) {   // the far cascade, redrawn every 2nd frame (3rd on phones)
+    shadowCentre(cam, focus, _skSc, SKY.farHalf, SKY.sunFar.shadow.mapSize.x);
+    SKY.sunFar.target.position.copy(_skSc); SKY.sunFar.position.copy(_skSc).addScaledVector(SKY.keyDir, 700);
+    if (++SKY.farTick >= SKY.farEvery) { SKY.farTick = 0; SKY.sunFar.shadow.needsUpdate = true; }
+  }
 }
 /* the shadow box centre: pushed out ahead of the camera so the box covers what is in view (pulled back toward
    the focus when looking down), then snapped to whole shadow texels in the light's frame so edges don't crawl */
 const _skSc = new THREE.Vector3(), _skR = new THREE.Vector3(), _skU = new THREE.Vector3(), _skF = new THREE.Vector3();
-function shadowCentre(cam, focus, out) {
-  const h = SKY.shadowHalf || 42;
+function shadowCentre(cam, focus, out, half, map) {
+  const h = half || SKY.shadowHalf || 42;
   cam.getWorldDirection(_skF); const fl = Math.hypot(_skF.x, _skF.z);
   if (fl > 1e-3) { const ahead = h * 0.62 * fl; out.set(cam.position.x + _skF.x / fl * ahead, focus.y, cam.position.z + _skF.z / fl * ahead); }
   else out.copy(focus);
@@ -230,7 +269,7 @@ function shadowCentre(cam, focus, out) {
   const dx = out.x - focus.x, dz = out.z - focus.z, d = Math.hypot(dx, dz), lim = h * 0.7;
   if (d > lim) { out.x = focus.x + dx / d * lim; out.z = focus.z + dz / d * lim; }
   const k = SKY.keyDir; _skR.set(0, 1, 0).cross(k); if (_skR.lengthSq() < 1e-6) _skR.set(1, 0, 0); _skR.normalize(); _skU.copy(k).cross(_skR).normalize();
-  const tx = 2 * h / (SKY.shadowMap || 2048), a = out.dot(_skR), b = out.dot(_skU), c = out.dot(k);
+  const tx = 2 * h / (map || SKY.shadowMap || 2048), a = out.dot(_skR), b = out.dot(_skU), c = out.dot(k);
   out.copy(_skR).multiplyScalar(Math.round(a / tx) * tx).addScaledVector(_skU, Math.round(b / tx) * tx).addScaledVector(k, c);
   return out;
 }
