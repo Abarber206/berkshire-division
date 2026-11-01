@@ -16135,8 +16135,12 @@ function buildSky(scene, renderer) {
   SKY.sun = new THREE.DirectionalLight(0xffffff, 2.5);
   SKY.sun.castShadow = true;
   const mobile = /iPhone|iPad|Android/i.test(navigator.userAgent) || Math.min(screen.width, screen.height) < 600;
-  SKY.sun.shadow.mapSize.set(mobile ? 1536 : 2048, mobile ? 1536 : 2048);
-  const sc = SKY.sun.shadow.camera; sc.left = -42; sc.right = 42; sc.top = 42; sc.bottom = -42; sc.near = 10; sc.far = 600;
+  // one shadow box over what the camera looks at: 150 m across on a 4096 map (about 3.7 cm a texel), 120 m on
+  // phones at 2048, so a whole cut of cars and the buildings round it are shadowed, not just the engine
+  const big = !mobile && renderer.capabilities.maxTextureSize >= 4096;
+  SKY.shadowHalf = mobile ? 60 : 75; SKY.shadowMap = big ? 4096 : 2048;
+  SKY.sun.shadow.mapSize.set(SKY.shadowMap, SKY.shadowMap);
+  const sh = SKY.shadowHalf, sc = SKY.sun.shadow.camera; sc.left = -sh; sc.right = sh; sc.top = sh; sc.bottom = -sh; sc.near = 10; sc.far = 700;
   SKY.sun.shadow.bias = -0.0006; SKY.sun.shadow.normalBias = 0.04;
   scene.add(SKY.sun); scene.add(SKY.sun.target);
   scene.fog = new THREE.FogExp2(0xcccccc, 0.0002);
@@ -16255,7 +16259,24 @@ function skyFollow(cam, focus) {
   if (CLOUD.lay) CLOUD.lay.position.copy(c);
   SKY.cloudSun = cloudSunAt(focus, SKY.dt || 0.016);
   SKY.moon.position.copy(SKY.moonDir).multiplyScalar(7000).add(c);
-  SKY.sun.target.position.copy(focus); SKY.sun.position.copy(focus).addScaledVector(SKY.keyDir, 300);
+  shadowCentre(cam, focus, _skSc);
+  SKY.sun.target.position.copy(_skSc); SKY.sun.position.copy(_skSc).addScaledVector(SKY.keyDir, 350);
+}
+/* the shadow box centre: pushed out ahead of the camera so the box covers what is in view (pulled back toward
+   the focus when looking down), then snapped to whole shadow texels in the light's frame so edges don't crawl */
+const _skSc = new THREE.Vector3(), _skR = new THREE.Vector3(), _skU = new THREE.Vector3(), _skF = new THREE.Vector3();
+function shadowCentre(cam, focus, out) {
+  const h = SKY.shadowHalf || 42;
+  cam.getWorldDirection(_skF); const fl = Math.hypot(_skF.x, _skF.z);
+  if (fl > 1e-3) { const ahead = h * 0.62 * fl; out.set(cam.position.x + _skF.x / fl * ahead, focus.y, cam.position.z + _skF.z / fl * ahead); }
+  else out.copy(focus);
+  // keep the thing we follow inside the box, whatever the camera does
+  const dx = out.x - focus.x, dz = out.z - focus.z, d = Math.hypot(dx, dz), lim = h * 0.7;
+  if (d > lim) { out.x = focus.x + dx / d * lim; out.z = focus.z + dz / d * lim; }
+  const k = SKY.keyDir; _skR.set(0, 1, 0).cross(k); if (_skR.lengthSq() < 1e-6) _skR.set(1, 0, 0); _skR.normalize(); _skU.copy(k).cross(_skR).normalize();
+  const tx = 2 * h / (SKY.shadowMap || 2048), a = out.dot(_skR), b = out.dot(_skU), c = out.dot(k);
+  out.copy(_skR).multiplyScalar(Math.round(a / tx) * tx).addScaledVector(_skU, Math.round(b / tx) * tx).addScaledVector(k, c);
+  return out;
 }
 
 function makeEnvCube(top, hor, sun, sunC, gray, ground) {
@@ -17148,7 +17169,7 @@ function treeShadowDepth() {
 function buildTreeShadows(scene) {
   if (typeof foliageGeos !== 'function') return;
   const G = foliageGeos();
-  TSH.cap = GFX.lite ? 150 : 320; TSH.R = GFX.lite ? 56 : 64;
+  TSH.cap = GFX.lite ? 200 : 480; TSH.R = (SKY.shadowHalf || 64) * 1.2;   // reach the corners of the shadow box
   // drawn in the main pass as nothing: every vertex lands outside the clip box
   const none = new THREE.ShaderMaterial({ vertexShader: 'void main(){ gl_Position = vec4(position * 0.0 + vec3(0.0, 0.0, 3.0), 1.0); }', fragmentShader: 'void main(){ gl_FragColor = vec4(0.0); }', side: THREE.DoubleSide });
   const depth = treeShadowDepth();
