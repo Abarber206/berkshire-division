@@ -11577,7 +11577,7 @@ class WreckSim {
    ========================================================================== */
 const S = {
   throttle: 0, reverser: 0, brakeH: 0.12, indH: 0.6,
-  sander: false, cocks: true, bell: false, light: 1, injector: false, blower: 0.35, stoker: 0.45, whistle: 0, autoFire: true,
+  sander: false, cocks: true, bell: false, light: 1, injector: false, blower: 0.35, stoker: 0.45, whistle: 0, autoFire: true, autoCut: true, cutA: 0.85, railP: 0,
   v: 0, vw: 0, slip: false, slide: false, slideN: 0, theta: 0, odo: 0,
   P: 238, Psc: 0, W: 0.62, fire: 0.55, coal: 19958, water: 83280, sand: 1800,
   MR: 140, ER: 90, pumping: false, bailoff: false,
@@ -11613,6 +11613,9 @@ function physicsStep(dt, train) {
   const n = Math.abs(S.vw) / DRIVER_C;                 // driver revolutions per second
   const dir = Math.sign(S.reverser) * (Math.abs(S.reverser) > 0.03 ? 1 : 0);
   let cut = Math.abs(S.reverser) * 0.85; if (dir && cut < 0.1) cut = 0.1;
+  // easy driving: hook the reverser up as the engine gains speed, so the boiler can keep up
+  S.cutA += (autoCutoff(n, S.P) - S.cutA) * Math.min(1, dt * 0.8);
+  if (S.autoCut && dir) cut = Math.min(cut, S.cutA);
   S.cut = dir ? cut : 0;
   const valve = Math.pow(S.throttle, 1.12);
   const PscT = S.P * valve * (S.cocks ? 0.93 : 1);
@@ -11644,6 +11647,8 @@ function physicsStep(dt, train) {
   S.P += (S.gen - S.use - cooling) / 3.4 * dt;
   if (S.P > 245.5) S.safety = true; else if (S.P < 241) S.safety = false;
   S.P = clamp(S.P, 0, 250);
+  if (S.autoCut && S.cocks && Math.abs(S.v) > 3) { S.cocks = false; GAME.event('cocksShut'); }
+  if (!S.autoCut && dir && S.P < 175 && cut > 0.4 && n > 1.6 && S.throttle > 0.3) GAME.event('lowSteam');
   S.lowWater = S.W < 0.04; S.priming = S.W > 1.0;
   if (S.W < -0.2 && !S.dead) { S.dead = true; S.fire = 0; GAME.fail('Fusible plug dropped', 'The water level fell below the crown sheet and the fusible plug melted, venting steam into the firebox. The fire is out. Keep the water glass above the bottom nut.'); }
   S.W = clamp(S.W, -0.3, 1.15);
@@ -11703,7 +11708,8 @@ function physicsStep(dt, train) {
 
   /* ----------------- adhesion & tractive effort ----------------- */
   const Wd = spec.adhesive * 0.4536 * 9.81 * nU;
-  let mu = ENV.mu + (S.sander && S.sand > 0 ? 0.075 : 0);
+  S.railP = railPatch(S.odo);
+  let mu = ENV.mu * (1 - 0.24 * S.railP) + (S.sander && S.sand > 0 ? 0.075 : 0);
   if (S.sander) S.sand = Math.max(0, S.sand - 0.9 * dt);
   S.mu = mu;
   const Fadh = mu * Wd;
@@ -11829,12 +11835,29 @@ function hsLimit(tp, spec) {
   return Math.min(Math.floor(spec.vmax / 5) * 5, curve);
 }
 
+/* Steam driving help. 'easy': the fireman runs the boiler and the engineer's reverser hooks up on its own,
+   and the cylinder cocks shut once rolling. 'auto': the fireman only. 'hand': you run everything. */
+function applyFireSetting(k) { S.autoFire = k !== 'hand'; S.autoCut = k === 'easy' || k === undefined; }
+/* The cutoff that holds steam at this speed: long at a start for the pull, shorter as the drivers turn faster,
+   and shorter still if the pressure sags. What an engineer does with the reverser, notch by notch. */
+function autoCutoff(n, P) {
+  const budget = 7.2 * clamp((P - 150) / 80, 0.35, 1);
+  const rho = (P + 14.7) * 0.02323;
+  return clamp(budget / Math.max(0.05, n * 4 * VCYL * rho) - 0.08, 0.2, 0.85);
+}
+/* Rail condition along the line: patches of dew, leaves and grease where adhesion falls by up to a quarter.
+   An engine working hard there slips unless the sander is on. 0 is clean rail, 1 the worst of a patch. */
+function railPatch(x) {
+  const w = Math.sin(x / 173 + 3.5) * 0.55 + Math.sin(x / 61 + 2.1) * 0.3 + Math.sin(x / 23 + 0.7) * 0.15;
+  return smooth(0.25, 0.7, w);
+}
+
 /* An attentive fireman: holds 240 psi and half a glass. */
 function autoFireman(dt) {
   const demand = S.use;
   const want = clamp(0.25 + demand / 9.5 + (240 - S.P) * 0.025, 0.05, 1);
   S.stoker += (want - S.stoker) * Math.min(1, dt * 0.8);
-  if (S.W < 0.52 && S.P > 120) S.injector = true;
+  if (S.W < 0.52 && S.P > 65) S.injector = true;   // the injector still lifts at low pressure: never let the crown sheet go dry
   if (S.W > 0.72) S.injector = false;
   const working = Math.abs(S.reverser) > 0.05 && S.throttle > 0.05;
   const bt = working ? 0.05 : (S.P < 235 ? 0.55 : 0.2);
@@ -13875,7 +13898,7 @@ function drawGauges() {
   dial(296, 86, 70, 160, 'MR · EQ', [[S.MR, HT.g.needle2], [S.ER, HT.g.needle]], null, 40, 10);
   dial(458, 86, 70, 160, 'BP · BC', [[b ? GAME.train.lead.brake.BP : 90, HT.g.needle], [S.BCloco || 0, HT.g.needle2]], null, 40, 10);
   g.font = '600 17px "IBM Plex Mono", monospace'; g.fillStyle = HT.g.dim; g.textAlign = 'center';
-  g.fillText('CUT ' + Math.round(S.cut * 100) + '%', 296, 186); g.fillText('REAR ' + Math.round(lastBP), 458, 186);
+  g.fillText('CUT ' + Math.round(S.cut * 100) + '%' + (S.autoCut && S.cut > 0 ? ' A' : ''), 296, 186); g.fillText('REAR ' + Math.round(lastBP), 458, 186);
   g.fillStyle = S.slip ? '#ee4b3d' : HT.g.dim; g.fillText(S.slip ? 'SLIPPING' : 'TE ' + Math.round(Math.abs(S.TE) / LBF / 1000) + 'k lb', 296, 212);
   g.fillStyle = HT.g.dim; g.fillText('FIRE ' + Math.round(S.fire * 100) + '%', 458, 212);
   // water glass
@@ -13893,7 +13916,7 @@ function drawGauges() {
   g.fillStyle = HT.g.dim; g.fillText('TENDER', 604, 40);
   g.fillStyle = HT.g.txt; g.fillText(Math.round(S.water / 3.785 / 100) / 10 + 'k', 604, 66); g.fillStyle = HT.g.dim; g.fillText('gal', 604, 86);
   g.fillStyle = HT.g.txt; g.fillText((S.coal / 907.2).toFixed(1), 604, 118); g.fillStyle = HT.g.dim; g.fillText('tons', 604, 138);
-  g.fillStyle = S.autoFire ? '#52d483' : HT.g.acc; g.fillText(S.autoFire ? 'AUTO' : 'HAND', 604, 176); g.fillStyle = HT.g.dim; g.fillText('fire', 604, 196);
+  g.fillStyle = S.autoFire ? '#52d483' : HT.g.acc; g.fillText(S.autoCut ? 'EASY' : S.autoFire ? 'AUTO' : 'HAND', 604, 176); g.fillStyle = HT.g.dim; g.fillText('fire', 604, 196);
   g.fillStyle = HT.g.dim; g.fillText('STK ' + Math.round(S.stoker * 100), 604, 222);
 }
 
@@ -17225,7 +17248,7 @@ SAVE.apply = function (d) {
   if (!t.diesel) applySteamFinish(g.finish);
   resetState();
   Object.assign(S, d.S); S.paused = true;
-  S.autoFire = g.fire === 'auto';
+  applyFireSetting(g.fire);
   S.limit = Math.min(...t.pts.map(p => p.tp.e.limit));
   buildWhistleIfReady();
   GAME.jointMem = new Map(); GAME.filling = null; GAME.spawnAt = performance.now(); GAME.scan = null;
@@ -17820,7 +17843,7 @@ HUDT.apply('nkp');
    Game: boot, world loading, main loop, rules, HUD
    ========================================================================== */
 const GAME = {
-  settings: { traffic: 'on', loco: '765', consist: 'passenger', time: 'morning', cycle: 'x30', weather: 'clear', fire: 'auto', units: 1, livery: 'ss', mix: false, finish: 'standard', job: '', custom: { body: 0x2c5f8a, roof: 0x24384a, accent: 0xf0f0ea, letter: 0xf0f0ea, rail: 0xf0f0ea }, number: 4401, coach: 'pullman', coachColor: 0x2a3a2a },
+  settings: { traffic: 'on', loco: '765', consist: 'passenger', time: 'morning', cycle: 'x30', weather: 'clear', fire: 'easy', fireV: 2, units: 1, livery: 'ss', mix: false, finish: 'standard', job: '', custom: { body: 0x2c5f8a, roof: 0x24384a, accent: 0xf0f0ea, letter: 0xf0f0ea, rail: 0xf0f0ea }, number: 4401, coach: 'pullman', coachColor: 0x2a3a2a },
   train: null, running: false, ready: false, stats: { runThrough: 0 },
   events: {}, stopped: 0, lastStation: null, filling: null,
 };
@@ -17908,7 +17931,7 @@ function resetState() {
   Object.assign(S, { throttle: 0, reverser: 0, brakeH: 0.12, indH: 0.6, sander: false, cocks: true, bell: false, light: SKY.night ? 2 : 1, injector: false, blower: 0.35, stoker: 0.45, whistle: 0,
     v: 0, vw: 0, slip: false, slide: false, slideN: 0, theta: 0, odo: 0, P: 238, Psc: 0, W: 0.62, fire: 0.55, coal: 19958, water: 83280, sand: 1800, MR: 140, ER: 90, pumping: false,
     safety: false, lowWater: false, priming: false, dead: false, derailed: false, paused: false });
-  S.autoFire = GAME.settings.fire === 'auto';
+  applyFireSetting(GAME.settings.fire);
   Object.assign(S, { notch: 0, dyn: 0, dbLoad: 0, DBF: 0, rpm: 300, engineRun: true, crank: 0, load: 0, fuel: 18927, turbo: 0.15, ditch: true, ditchFlash: 0, slipCtl: false, amps: 0 });
   Object.assign(S, { pan: 1, panUp: true, vcb: true, vcbT: 0, kW: 0, kWh: 0, rbMax: 0, blend: 0 });   // a trainset comes with its pantograph up and the breaker in
   if (LOCO_SPEC[GAME.settings.loco].diesel) { S.cocks = false; S.light = SKY.night ? 2 : 2; }
@@ -18080,9 +18103,12 @@ function applyLiveriesLive() {
   const o = dieselOpts();
   t.units.forEach((m, u) => { const lv = dieselLiveryFor(o, u); applyLivery(m, lv, (o.number || lv.num) + u); });
 }
-const SAVE_KEYS = ['job', 'traffic', 'loco', 'consist', 'time', 'cycle', 'weather', 'fire', 'units', 'livery', 'mix', 'finish', 'custom', 'number', 'coach', 'coachColor'];
+const SAVE_KEYS = ['job', 'traffic', 'loco', 'consist', 'time', 'cycle', 'weather', 'fire', 'fireV', 'units', 'livery', 'mix', 'finish', 'custom', 'number', 'coach', 'coachColor'];
 function saveSettings() { try { const o = {}; for (const k of SAVE_KEYS) o[k] = GAME.settings[k]; localStorage.setItem('bd_settings', JSON.stringify(o)); } catch (e) {} }
-function loadSettings() { try { const o = JSON.parse(localStorage.getItem('bd_settings') || 'null'); if (o) for (const k of SAVE_KEYS) if (o[k] !== undefined) GAME.settings[k] = o[k]; } catch (e) {} if (!LOCO_SPEC[GAME.settings.loco]) GAME.settings.loco = '765'; if (!LIVERIES[GAME.settings.livery]) GAME.settings.livery = 'ss'; if (!DN.starts[GAME.settings.time]) GAME.settings.time = 'morning'; if (!DN.rates[GAME.settings.cycle]) GAME.settings.cycle = 'x30'; if (!COACH_PAINT[GAME.settings.coach]) GAME.settings.coach = 'pullman'; }
+function loadSettings() { try { const o = JSON.parse(localStorage.getItem('bd_settings') || 'null'); if (o) for (const k of SAVE_KEYS) if (o[k] !== undefined) GAME.settings[k] = o[k]; } catch (e) {}
+  // easy steam came in as the default after 'auto' had been saved by everyone: move them up to it once
+  if (GAME.settings.fireV !== 2) { if (GAME.settings.fire === 'auto') GAME.settings.fire = 'easy'; GAME.settings.fireV = 2; }
+  if (!['easy', 'auto', 'hand'].includes(GAME.settings.fire)) GAME.settings.fire = 'easy'; if (!LOCO_SPEC[GAME.settings.loco]) GAME.settings.loco = '765'; if (!LIVERIES[GAME.settings.livery]) GAME.settings.livery = 'ss'; if (!DN.starts[GAME.settings.time]) GAME.settings.time = 'morning'; if (!DN.rates[GAME.settings.cycle]) GAME.settings.cycle = 'x30'; if (!COACH_PAINT[GAME.settings.coach]) GAME.settings.coach = 'pullman'; }
 GAME.needNewTrain = function () { const t = GAME.train, g = GAME.settings, j = JOB.wanted(); return !t || MP.needSpawn || t.locoKey !== g.loco || (!t.elec && t.consistKey !== JOB.consist()) || (j ? j.id : '') !== JOB.activeId() || (t.diesel && !t.elec && t.nUnits !== (+g.units || 1)) || (!t.diesel && (t.trim || '') !== trimWanted()); };
 function buildWhistleIfReady() { if (!AU.on) return; buildWhistle(WHISTLES[LOCO_SPEC[GAME.settings.loco].whistle]); }
 
@@ -18137,7 +18163,7 @@ function buildMenu() {
   segButtons('optTime', DN.starts, 'time', k => { if (GAME.ready) applyLook(k, null); saveSettings(); });
   segButtons('optCycle', DN.rates, 'cycle', () => saveSettings());
   segButtons('optWeather', WEATHER, 'weather', k => { if (GAME.ready) { applyLook(null, k); FX.snow.visible = SKY.snow; } });
-  segButtons('optFire', { auto: { name: 'Fireman', sub: 'Stoker & water handled' }, hand: { name: 'Hand fired', sub: 'You run the boiler' } }, 'fire', k => { S.autoFire = k === 'auto'; GAME.refreshKeys(); saveSettings(); });
+  segButtons('optFire', { easy: { name: 'Easy', sub: 'Fireman, and the reverser hooks up for you' }, auto: { name: 'Fireman', sub: 'Stoker & water handled, you work the reverser' }, hand: { name: 'Hand fired', sub: 'You run the boiler' } }, 'fire', k => { applyFireSetting(k); GAME.refreshKeys(); saveSettings(); });
   segButtons('optTraffic', { on: { name: 'Timetable', sub: ROUTE_KEY === 'laurel' ? 'No. 21, No. 22 and coal trains on the mountain' : 'No. 5, No. 12 and freights on the road' }, off: { name: 'Clear road', sub: 'Just you and the signals' } }, 'traffic', () => { if (GAME.ready && GAME.train) AI.setup(); saveSettings(); });
   specGrid();
   jobSetup();
@@ -18185,7 +18211,7 @@ GAME.start = function () {
     else if (GAME.running) toast(`New train made up on ${WORLD.custom || WORLD.mtn ? GAME.spawnName : 'Yard 2'}.`, 'good');
     GAME.intro();
   }
-  GAME.running = true; S.paused = false; S.autoFire = GAME.settings.fire === 'auto';
+  GAME.running = true; S.paused = false; applyFireSetting(GAME.settings.fire);
   $('menu').hidden = true; $('hud').hidden = false;
   FX.snow.visible = SKY.snow;
   if (SKY.snow) { const a = FX.snow.geometry.attributes.position.array; for (let i = 0; i < a.length; i += 3) { a[i] += camera.position.x; a[i + 1] += camera.position.y - 20; a[i + 2] += camera.position.z; } }
@@ -18264,7 +18290,9 @@ GAME.rerail = function () {
   S.ER = 90;
 };
 GAME.event = function (k) {
-  if (k === 'slip') toast('Drivers slipping! Ease the throttle or use sand.', 'warn', 2600, 'slip');
+  if (k === 'slip') toast(S.railP > 0.3 ? 'Drivers slipping on a greasy rail! Sand (X) or ease the throttle.' : 'Drivers slipping! Ease the throttle or use sand (X).', 'warn', 2600, 'slip');
+  else if (k === 'cocksShut') toast('Rolling: cylinder cocks shut.', '', 2200, 'cocks');
+  else if (k === 'lowSteam') toast('Steam pressure falling: hook the reverser up (↓) toward 25 to 35% cutoff now you are rolling, or pick Easy firing.', 'warn', 6000, 'lowSteam');
   else if (k === 'slipCtl') toast('Wheel slip control is trimming power. Sand helps on a wet rail.', 'warn', 3000, 'slipCtl');
   else if (k === 'started') { toast('Prime mover running.', 'good', 2200, 'start'); GAME.refreshKeys(); }
   else if (k === 'noFuel') { toast('Out of fuel. The engine has shut down.', 'bad', 4000, 'fuel'); GAME.refreshKeys(); }
@@ -18274,7 +18302,7 @@ GAME.event = function (k) {
 };
 GAME.controlTouched = function () { };
 GAME.manualFire = function (what) {
-  if (S.autoFire) { S.autoFire = false; GAME.settings.fire = 'hand'; toast('You have the fire now: watch the pressure and the water glass.', 'warn', 4500); const b = $('optFire_hand'); if (b) b.click(); }
+  if (S.autoFire) { applyFireSetting('hand'); GAME.settings.fire = 'hand'; toast('You have the fire now: watch the pressure and the water glass.', 'warn', 4500); const b = $('optFire_hand'); if (b) b.click(); }
 };
 GAME.isDiesel = () => !!(GAME.train && GAME.train.diesel);
 GAME.refreshKeys = function () {

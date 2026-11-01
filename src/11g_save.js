@@ -287,7 +287,7 @@ SAVE.apply = function (d) {
   if (!t.diesel) applySteamFinish(g.finish);
   resetState();
   Object.assign(S, d.S); S.paused = true;
-  S.autoFire = g.fire === 'auto';
+  applyFireSetting(g.fire);
   S.limit = Math.min(...t.pts.map(p => p.tp.e.limit));
   buildWhistleIfReady();
   GAME.jointMem = new Map(); GAME.filling = null; GAME.spawnAt = performance.now(); GAME.scan = null;

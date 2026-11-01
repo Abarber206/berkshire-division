@@ -3,7 +3,7 @@
    ========================================================================== */
 const S = {
   throttle: 0, reverser: 0, brakeH: 0.12, indH: 0.6,
-  sander: false, cocks: true, bell: false, light: 1, injector: false, blower: 0.35, stoker: 0.45, whistle: 0, autoFire: true,
+  sander: false, cocks: true, bell: false, light: 1, injector: false, blower: 0.35, stoker: 0.45, whistle: 0, autoFire: true, autoCut: true, cutA: 0.85, railP: 0,
   v: 0, vw: 0, slip: false, slide: false, slideN: 0, theta: 0, odo: 0,
   P: 238, Psc: 0, W: 0.62, fire: 0.55, coal: 19958, water: 83280, sand: 1800,
   MR: 140, ER: 90, pumping: false, bailoff: false,
@@ -39,6 +39,9 @@ function physicsStep(dt, train) {
   const n = Math.abs(S.vw) / DRIVER_C;                 // driver revolutions per second
   const dir = Math.sign(S.reverser) * (Math.abs(S.reverser) > 0.03 ? 1 : 0);
   let cut = Math.abs(S.reverser) * 0.85; if (dir && cut < 0.1) cut = 0.1;
+  // easy driving: hook the reverser up as the engine gains speed, so the boiler can keep up
+  S.cutA += (autoCutoff(n, S.P) - S.cutA) * Math.min(1, dt * 0.8);
+  if (S.autoCut && dir) cut = Math.min(cut, S.cutA);
   S.cut = dir ? cut : 0;
   const valve = Math.pow(S.throttle, 1.12);
   const PscT = S.P * valve * (S.cocks ? 0.93 : 1);
@@ -70,6 +73,8 @@ function physicsStep(dt, train) {
   S.P += (S.gen - S.use - cooling) / 3.4 * dt;
   if (S.P > 245.5) S.safety = true; else if (S.P < 241) S.safety = false;
   S.P = clamp(S.P, 0, 250);
+  if (S.autoCut && S.cocks && Math.abs(S.v) > 3) { S.cocks = false; GAME.event('cocksShut'); }
+  if (!S.autoCut && dir && S.P < 175 && cut > 0.4 && n > 1.6 && S.throttle > 0.3) GAME.event('lowSteam');
   S.lowWater = S.W < 0.04; S.priming = S.W > 1.0;
   if (S.W < -0.2 && !S.dead) { S.dead = true; S.fire = 0; GAME.fail('Fusible plug dropped', 'The water level fell below the crown sheet and the fusible plug melted, venting steam into the firebox. The fire is out. Keep the water glass above the bottom nut.'); }
   S.W = clamp(S.W, -0.3, 1.15);
@@ -129,7 +134,8 @@ function physicsStep(dt, train) {
 
   /* ----------------- adhesion & tractive effort ----------------- */
   const Wd = spec.adhesive * 0.4536 * 9.81 * nU;
-  let mu = ENV.mu + (S.sander && S.sand > 0 ? 0.075 : 0);
+  S.railP = railPatch(S.odo);
+  let mu = ENV.mu * (1 - 0.24 * S.railP) + (S.sander && S.sand > 0 ? 0.075 : 0);
   if (S.sander) S.sand = Math.max(0, S.sand - 0.9 * dt);
   S.mu = mu;
   const Fadh = mu * Wd;
@@ -255,12 +261,29 @@ function hsLimit(tp, spec) {
   return Math.min(Math.floor(spec.vmax / 5) * 5, curve);
 }
 
+/* Steam driving help. 'easy': the fireman runs the boiler and the engineer's reverser hooks up on its own,
+   and the cylinder cocks shut once rolling. 'auto': the fireman only. 'hand': you run everything. */
+function applyFireSetting(k) { S.autoFire = k !== 'hand'; S.autoCut = k === 'easy' || k === undefined; }
+/* The cutoff that holds steam at this speed: long at a start for the pull, shorter as the drivers turn faster,
+   and shorter still if the pressure sags. What an engineer does with the reverser, notch by notch. */
+function autoCutoff(n, P) {
+  const budget = 7.2 * clamp((P - 150) / 80, 0.35, 1);
+  const rho = (P + 14.7) * 0.02323;
+  return clamp(budget / Math.max(0.05, n * 4 * VCYL * rho) - 0.08, 0.2, 0.85);
+}
+/* Rail condition along the line: patches of dew, leaves and grease where adhesion falls by up to a quarter.
+   An engine working hard there slips unless the sander is on. 0 is clean rail, 1 the worst of a patch. */
+function railPatch(x) {
+  const w = Math.sin(x / 173 + 3.5) * 0.55 + Math.sin(x / 61 + 2.1) * 0.3 + Math.sin(x / 23 + 0.7) * 0.15;
+  return smooth(0.25, 0.7, w);
+}
+
 /* An attentive fireman: holds 240 psi and half a glass. */
 function autoFireman(dt) {
   const demand = S.use;
   const want = clamp(0.25 + demand / 9.5 + (240 - S.P) * 0.025, 0.05, 1);
   S.stoker += (want - S.stoker) * Math.min(1, dt * 0.8);
-  if (S.W < 0.52 && S.P > 120) S.injector = true;
+  if (S.W < 0.52 && S.P > 65) S.injector = true;   // the injector still lifts at low pressure: never let the crown sheet go dry
   if (S.W > 0.72) S.injector = false;
   const working = Math.abs(S.reverser) > 0.05 && S.throttle > 0.05;
   const bt = working ? 0.05 : (S.P < 235 ? 0.55 : 0.2);

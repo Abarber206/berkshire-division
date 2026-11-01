@@ -239,7 +239,7 @@ function drawGauges() {
   dial(296, 86, 70, 160, 'MR · EQ', [[S.MR, HT.g.needle2], [S.ER, HT.g.needle]], null, 40, 10);
   dial(458, 86, 70, 160, 'BP · BC', [[b ? GAME.train.lead.brake.BP : 90, HT.g.needle], [S.BCloco || 0, HT.g.needle2]], null, 40, 10);
   g.font = '600 17px "IBM Plex Mono", monospace'; g.fillStyle = HT.g.dim; g.textAlign = 'center';
-  g.fillText('CUT ' + Math.round(S.cut * 100) + '%', 296, 186); g.fillText('REAR ' + Math.round(lastBP), 458, 186);
+  g.fillText('CUT ' + Math.round(S.cut * 100) + '%' + (S.autoCut && S.cut > 0 ? ' A' : ''), 296, 186); g.fillText('REAR ' + Math.round(lastBP), 458, 186);
   g.fillStyle = S.slip ? '#ee4b3d' : HT.g.dim; g.fillText(S.slip ? 'SLIPPING' : 'TE ' + Math.round(Math.abs(S.TE) / LBF / 1000) + 'k lb', 296, 212);
   g.fillStyle = HT.g.dim; g.fillText('FIRE ' + Math.round(S.fire * 100) + '%', 458, 212);
   // water glass
@@ -257,7 +257,7 @@ function drawGauges() {
   g.fillStyle = HT.g.dim; g.fillText('TENDER', 604, 40);
   g.fillStyle = HT.g.txt; g.fillText(Math.round(S.water / 3.785 / 100) / 10 + 'k', 604, 66); g.fillStyle = HT.g.dim; g.fillText('gal', 604, 86);
   g.fillStyle = HT.g.txt; g.fillText((S.coal / 907.2).toFixed(1), 604, 118); g.fillStyle = HT.g.dim; g.fillText('tons', 604, 138);
-  g.fillStyle = S.autoFire ? '#52d483' : HT.g.acc; g.fillText(S.autoFire ? 'AUTO' : 'HAND', 604, 176); g.fillStyle = HT.g.dim; g.fillText('fire', 604, 196);
+  g.fillStyle = S.autoFire ? '#52d483' : HT.g.acc; g.fillText(S.autoCut ? 'EASY' : S.autoFire ? 'AUTO' : 'HAND', 604, 176); g.fillStyle = HT.g.dim; g.fillText('fire', 604, 196);
   g.fillStyle = HT.g.dim; g.fillText('STK ' + Math.round(S.stoker * 100), 604, 222);
 }
 
