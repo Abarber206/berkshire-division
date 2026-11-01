@@ -96,6 +96,7 @@ function dieselMaterials() {
   RMAT.dDesk = mk(0x3b3e40, 0.3, 0.6);
   RMAT.dSteel = mk(0x6b6f72, 0.7, 0.4);
   RMAT.glassT = new THREE.MeshStandardMaterial({ color: 0x15232a, metalness: 0.6, roughness: 0.05, transparent: true, opacity: 0.28, depthWrite: false, side: THREE.DoubleSide });
+  if (typeof rainGlass === 'function') rainGlass(RMAT.glassT, true);   // rain and wipers on the windshield (10f_rainglass.js)
   RMAT.screen = new THREE.MeshBasicMaterial({ map: canvasTex(256, 128, (g, w, h) => {
     g.fillStyle = '#05080a'; g.fillRect(0, 0, w, h);
     g.fillStyle = '#1c3d2c'; g.fillRect(6, 6, w - 12, 22);

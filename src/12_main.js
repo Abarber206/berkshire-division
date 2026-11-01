@@ -66,7 +66,7 @@ async function loadWorld() {
   if (WORLD.mtn) mtBuildForest(scene); else buildTrees(scene);
   finalizeScenery(scene);
   prog(0.92, 'Lighting the fire…'); await frame();
-  buildSky(scene, renderer); buildClouds(scene); buildFX(scene); buildSparks(scene); buildLamps(scene);
+  buildSky(scene, renderer); buildClouds(scene); buildFX(scene); rainGlassAll(); buildSparks(scene); buildLamps(scene);
   for (const st of ROUTE.stations) { st.edge.pose(st.s, FR); st.p = FR.p.clone(); }
   for (const w of ROUTE.water) { w.edge.pose(w.s, FR); w.p = FR.p.clone(); }
   if (ROUTE.coal) { const c = ROUTE.coal; c.edge.pose(c.s, FR); c.p = FR.p.clone(); }
@@ -774,7 +774,7 @@ function renderStep(dt, T) {
   // effects & sound
   effectsAndSound(dt, T);
   MP.post(dt);
-  updateFX(dt, camera); precipFrame(camera, dt);
+  updateFX(dt, camera); precipFrame(camera, dt); rainGlassFrame(dt);
   updateSparks(dt, T, camera);
   if (GAME.running) updateHUD(dt);
   cloudRender(renderer, camera, dt);

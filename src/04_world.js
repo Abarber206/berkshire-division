@@ -117,10 +117,10 @@ function makeMaterials() {
   MAT.ground.extensions = { derivatives: true };
   TEX.ground.repeat.set(1, 1);
   WORLD.snowU = { value: 0 };
-  WORLD.wetU = { value: 0 };   // rain-darkened ground, ballast and ties (0 dry .. 1 soaked)
+  WORLD.wetU = { value: 0 }; WORLD.rainU = { value: 0 }; WORLD.rainT = { value: 0 };   // puddles ring while it rains   // rain-darkened ground, ballast and ties (0 dry .. 1 soaked)
   WORLD.fieldTex = makeFieldTexture();
   MAT.ground.onBeforeCompile = sh => {
-    sh.uniforms.uSnow = WORLD.snowU; sh.uniforms.uWet = WORLD.wetU;
+    sh.uniforms.uSnow = WORLD.snowU; sh.uniforms.uWet = WORLD.wetU; sh.uniforms.uRainA = WORLD.rainU; sh.uniforms.uRainT = WORLD.rainT;
     sh.uniforms.uField = { value: WORLD.fieldTex.tex };
     sh.uniforms.uFieldXf = { value: new THREE.Vector4(WORLD.fieldTex.i0, WORLD.fieldTex.j0, WORLD.fieldTex.w, WORLD.fieldTex.h) };
     sh.uniforms.uDetail = { value: TEX.detail }; sh.uniforms.uRock = { value: TEX.rock };
@@ -130,8 +130,8 @@ function makeMaterials() {
       .replace('#include <beginnormal_vertex>', '#include <beginnormal_vertex>\nvUp = normal.y; vNrm = normal;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvWPos = (modelMatrix * vec4(transformed, 1.0)).xyz; vCropW = aCrop; vCamD = length((modelViewMatrix * vec4(transformed, 1.0)).xyz);');
     sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', '#include <common>\nuniform float uSnow; uniform float uWet; varying float vUp; varying vec3 vWPos; varying vec3 vNrm; varying float vCamD; varying float vCropW; uniform sampler2D uField; uniform vec4 uFieldXf; uniform sampler2D uDetail; uniform sampler2D uRock; uniform float uMtn;')
-      .replace('#include <color_fragment>', '#include <color_fragment>\n' + CROP_GLSL + GROUND_GLSL + '\n diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.86,0.89,0.93), uSnow * smoothstep(0.55,0.85,vUp) * (0.85 + 0.15*diffuseColor.g) * (1.0 - 0.6 * smoothstep(0.82, 0.62, vUp)));\n diffuseColor.rgb *= 1.0 - 0.34 * uWet;');
+      .replace('#include <common>', '#include <common>\nuniform float uSnow; uniform float uWet; uniform float uRainA; uniform float uRainT; varying float vUp; varying vec3 vWPos; varying vec3 vNrm; varying float vCamD; varying float vCropW; uniform sampler2D uField; uniform vec4 uFieldXf; uniform sampler2D uDetail; uniform sampler2D uRock; uniform float uMtn;')
+      .replace('#include <color_fragment>', '#include <color_fragment>\n' + CROP_GLSL + GROUND_GLSL + '\n diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.86,0.89,0.93), uSnow * smoothstep(0.55,0.85,vUp) * (0.85 + 0.15*diffuseColor.g) * (1.0 - 0.6 * smoothstep(0.82, 0.62, vUp)));\n diffuseColor.rgb *= 1.0 - 0.34 * uWet;\n' + (typeof PUDDLE_GLSL === 'string' ? PUDDLE_GLSL : ''));
   };
   MAT.ballast = new THREE.MeshLambertMaterial({ vertexColors: true, map: TEX.ballast });
   MAT.ballast.onBeforeCompile = sh => {
