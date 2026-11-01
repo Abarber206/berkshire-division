@@ -915,6 +915,8 @@ function offPoles(line, s) {
   for (const T of ROUTE.tunnels || []) if (T.line === line && s > T.s0 - 40 && s < T.s1 + 40) return true;
   const V = ROUTE.viaduct; return !!(V && V.line === line && Math.abs(s - V.s) < V.half + 30);
 }
+/* the six wires on the crossarms (height over the pole foot, offset along the arm) and their mid-span sag; the birds sit on them */
+const POLE_WIRE_Y = [[8.82, -1.1], [8.82, -0.75], [8.82, 0.75], [8.82, 1.1], [8.02, -0.85], [8.02, 0.85]], POLE_SAG = 0.55;
 function buildPoleLine(scene) {
   const main = ROUTE.main;
   const pole = (() => {
@@ -931,7 +933,7 @@ function buildPoleLine(scene) {
   })();
   const pmat = new THREE.MeshLambertMaterial({ vertexColors: true, map: TEX.wood, color: 0x6a5846 });
   const wireMat = new THREE.LineBasicMaterial({ color: 0x1c1d1e, transparent: true, opacity: 0.85 });
-  const wireY = [[8.82, -1.1], [8.82, -0.75], [8.82, 0.75], [8.82, 1.1], [8.02, -0.85], [8.02, 0.85]];
+  const wireY = POLE_WIRE_Y;
   let group = [], groupWires = [];
   const flush = () => {
     if (!group.length) return;
@@ -956,12 +958,13 @@ function buildPoleLine(scene) {
     solid(p.x, p.z, 0.35, y, y + 9.3);
     group.push(cur);
     if (prev) {
+      (WORLD.birdWires || (WORLD.birdWires = [])).push({ a: prev, b: cur });
       for (const [wy, wz] of wireY) {
         const a = prev.p.clone().add(new THREE.Vector3(Math.sin(prev.yaw) * wz, wy + 0.1, Math.cos(prev.yaw) * wz));
         const b = cur.p.clone().add(new THREE.Vector3(Math.sin(cur.yaw) * wz, wy + 0.1, Math.cos(cur.yaw) * wz));
         const nseg = 8;
         for (let i = 0; i < nseg; i++) {
-          const t0 = i / nseg, t1 = (i + 1) / nseg, sag0 = 0.55 * 4 * t0 * (1 - t0), sag1 = 0.55 * 4 * t1 * (1 - t1);
+          const t0 = i / nseg, t1 = (i + 1) / nseg, sag0 = POLE_SAG * 4 * t0 * (1 - t0), sag1 = POLE_SAG * 4 * t1 * (1 - t1);
           groupWires.push(lerp(a.x, b.x, t0), lerp(a.y, b.y, t0) - sag0, lerp(a.z, b.z, t0), lerp(a.x, b.x, t1), lerp(a.y, b.y, t1) - sag1, lerp(a.z, b.z, t1));
         }
       }
