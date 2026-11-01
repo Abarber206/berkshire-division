@@ -217,8 +217,24 @@ function mpJoints(T, mem, speed, cp) {
 
 /* another player's train made up as they have it: T is their engine built light, code its trainCode */
 function mpCompose(T, code) {
-  const power = T.vehicles.slice(), used = new Set(), V = [];
+  const power = T.vehicles.slice(), used = new Set(), V = [], helpers = new Map();
   for (const tok of code.split(',').slice(0, 240)) {
+    if (tok[0] === '@') {
+      // a helper engine in their train: build that engine and take the one vehicle of it
+      const [lk, si, gi, su, lv] = tok.slice(1).split('.'), i = +si;
+      if (!LOCO_SPEC[lk] || !Number.isInteger(i) || i < 0 || i > 8 || !/^\d{1,2}$/.test(gi)) throw new Error('unknown engine ' + tok.slice(0, 20));
+      let X = helpers.get(gi);
+      if (!X) {
+        const opts = { units: Math.max(1, Math.min(3, +su || 1)), remote: true, dark: true };
+        if (lv && LIVERIES[lv]) opts.livery = lv;
+        const road = ROAD_SHORT; X = new Train(T.scene, lk, 'light', opts); ROAD_SHORT = road;
+        for (const im of X.inst) T.scene.remove(im);
+        helpers.set(gi, X);
+      }
+      const v = X.vehicles[i]; if (!v) throw new Error('unknown engine ' + tok.slice(0, 20));
+      X.release(v); v.helper = { g: 'r' + gi, loco: lk, opts: {}, i };
+      T.markerLamps(v); V.push(v); continue;
+    }
     if (tok[0] === '#') {
       const v = power[+tok.slice(1)];
       if (!v || used.has(v)) throw new Error('their engine is built differently');
