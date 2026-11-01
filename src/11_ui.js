@@ -2,8 +2,8 @@
    Cameras, input, control stand, gauges, minimap, track map, toasts
    ========================================================================== */
 const CAM = { mode: 'chase', modes: ['chase', 'cab', 'side', 'drone', 'rear', 'cine'], names: { chase: 'Chase', cab: 'Cab', side: 'Trackside', drone: 'Overhead', rear: 'Rear car', cine: 'Cinematic' },
-  yaw: -0.95, pitch: 0.14, dist: 24, cabYaw: 0, cabPitch: -0.06, droneYaw: 0.8, side: null, sideT: 0, fov: 52, shake: 0 };
-const CAM_HOME = { chase: { yaw: -0.95, pitch: 0.14, dist: 24 }, drone: { droneYaw: 0.8, dronePitch: 0.85, dist: 24 }, cab: { cabYaw: 0, cabPitch: -0.06 } };
+  yaw: -0.95, pitch: 0.14, dist: 24, pan: 0, cabYaw: 0, cabPitch: -0.06, droneYaw: 0.8, side: null, sideT: 0, fov: 52, shake: 0 };
+const CAM_HOME = { chase: { yaw: -0.95, pitch: 0.14, dist: 24, pan: 0 }, drone: { droneYaw: 0.8, dronePitch: 0.85, dist: 24, pan: 0 }, cab: { cabYaw: 0, cabPitch: -0.06 } };
 const _cq = new THREE.Quaternion(), _cm = new THREE.Matrix4(), _ce = new THREE.Euler();
 function updateCamera(cam, train, dt) {
   const L = train.loco, body = L.root;
@@ -32,7 +32,7 @@ function cycleCamera(to) {
   CAM.mode = to || CAM.modes[(i + 1) % CAM.modes.length];
   // asking again for the view already up puts it back where it started (or, cinematic, cuts to the next shot)
   if (to && to === from) { Object.assign(CAM, CAM_HOME[to] || {}); CAM.fling = 0; if (to === 'cine' || to === 'side') CAM.nextShot(); return; }
-  CAM.side = null; CAM.shot = null; CAM.fling = 0;
+  CAM.side = null; CAM.shot = null; CAM.fling = 0; CAM.pan = 0;
   // outside views glide from one to the next; the cab, trackside and cinematic cut, as a film would
   const glide = ['chase', 'drone', 'rear'];
   CAM.blend = null;
@@ -44,6 +44,13 @@ function cycleCamera(to) {
 }
 
 /* ---------------- pointer input on the 3D view ---------------- */
+// how far the right-drag side-scroll may slide the view off the engine, metres
+const CAM_PAN_MAX = 150;
+/* metres of sideways slide per pixel of drag, so the ground near the engine keeps pace with the pointer */
+function camPanScale(camera) {
+  const d = CAM.dAct || CAM.dist || 24, fov = (camera && camera.fov) || 52;
+  return 2 * d * Math.tan(fov * Math.PI / 360) / Math.max(1, innerHeight);
+}
 function setupViewInput(canvas, camera) {
   const ptrs = new Map(); let pinch0 = 0, dist0 = 0, ang0 = 0, tapStart = null, flick = 0, flickT = 0;
   const zoom = d => { CAM.dist = clamp(d, 7, 140); };
@@ -73,9 +80,10 @@ function setupViewInput(canvas, camera) {
     }
     const k = 0.006, now = performance.now();
     if (p.rmb) {
-      if (CAM.mode === 'chase') CAM.yaw -= dx * k;
+      // side-scroll: the view slides sideways and the ground follows the pointer; the cab, fixed to the seat, looks round instead
+      if (CAM.mode === 'chase' || CAM.mode === 'drone') { const m = camPanScale(camera); CAM.pan = clamp(CAM.pan - dx * m, -CAM_PAN_MAX, CAM_PAN_MAX); }
       else if (CAM.mode === 'cab') { CAB.lookTo = null; CAM.cabYaw = clamp(CAM.cabYaw - dx * k * 0.7, -2.2, 2.2); }
-      else if (CAM.mode === 'drone') CAM.droneYaw -= dx * k;
+      return;
     }
     else if (CAM.mode === 'chase') { CAM.yaw -= dx * k; CAM.pitch = clamp(CAM.pitch + dy * k * 0.8, -0.16, 1.35); }
     else if (CAM.mode === 'cab') { CAB.lookTo = null; CAM.cabYaw = clamp(CAM.cabYaw - dx * k * 0.7, -2.2, 2.2); CAM.cabPitch = clamp(CAM.cabPitch - dy * k * 0.7, -0.8, 0.6); }
@@ -87,7 +95,7 @@ function setupViewInput(canvas, camera) {
     if (PLACE.on) { ptrs.delete(e.pointerId); tapStart = null; return; }
     if (CAB.grab && e.pointerId === CAB.grab.pid) { CAB.up(); return; }
     if (tapStart && ptrs.size === 1 && performance.now() - tapStart.t < 400) handleTap(e.clientX, e.clientY, camera);
-    else if (ptrs.size === 1 && performance.now() - flickT < 70 && (CAM.mode === 'chase' || CAM.mode === 'drone')) CAM.fling = clamp(flick, -4, 4);
+    else if (ptrs.size === 1 && !(ptrs.get(e.pointerId) || {}).rmb && performance.now() - flickT < 70 && (CAM.mode === 'chase' || CAM.mode === 'drone')) CAM.fling = clamp(flick, -4, 4);
     ptrs.delete(e.pointerId); if (ptrs.size < 2) pinch0 = 0; tapStart = null;
     if (!ptrs.size) canvas.classList.remove('dragging');
   };
