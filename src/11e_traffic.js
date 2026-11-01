@@ -181,6 +181,7 @@ const TRAFFIC = {
   no12: { name: 'No. 12', sub: 'Westward local', loco: '1225', consist: 'passenger', dir: -1, vmax: 60, accel: 0.3, brake: 0.55, stops: true, seed: 12 },
   no5: { name: 'No. 5', sub: 'Eastward express', loco: 'diesel', units: 2, livery: 'kn', consist: 'passenger', dir: 1, vmax: 70, accel: 0.32, brake: 0.6, stops: true, seed: 5 },
   x2210: { name: 'Extra 2210 East', sub: 'Manifest freight', loco: 'diesel', units: 2, livery: 'fle', consist: 'freight', dir: 1, vmax: 45, accel: 0.12, brake: 0.32, seed: 2210 },
+  x2216: { name: 'Extra 2216 West', sub: 'Westward manifest', loco: 'diesel', units: 2, livery: 'fle', consist: 'freight', dir: -1, vmax: 45, accel: 0.12, brake: 0.32, seed: 2216 },
 };
 /* Over Laurel Mountain the trains run from end to end, turn on the loop at the terminal and come back on
    the other track. Speeds are held down by the mountain's limits more than by the trains. */
@@ -190,7 +191,7 @@ Object.assign(TRAFFIC, {
   m90: { name: 'Extra 2214 East', sub: 'Coal empties', loco: 'diesel', units: 3, livery: 'fle', consist: 'freight', dir: 1, vmax: 30, accel: 0.08, brake: 0.3, seed: 2214, mtn: true },
 });
 /* free running: where each train is on the road when you start (distance along track 1) */
-const FREE_TRAFFIC = [['no12', 13800], ['x2210', 7700], ['no5', 20400]];
+const FREE_TRAFFIC = [['no12', 13800], ['x2210', 7700], ['no5', 33500], ['x2216', 42000]];
 const MTN_TRAFFIC = [['m90', 12500], ['m22', 31000], ['m21', 43500]];
 /* the facing switch of the passing siding each way: a slow train with a faster one behind it goes in there */
 const PASSING = { 1: 'Kenton East', '-1': 'Fostoria East' }, MTN_PASSING = { 1: 'Big Laurel West', '-1': 'Glen Iron East' };

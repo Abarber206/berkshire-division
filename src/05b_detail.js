@@ -398,7 +398,7 @@ function buildCorn(scene) {
     corn[j * nx + i] = 1;
   }
   const isC = (i, j) => i >= 0 && j >= 0 && i < nx - 1 && j < nn - 1 && corn[j * nx + i] === 1;
-  const hAt = (i, j) => HG.h[j * nx + i];
+  const hAt = (i, j) => { const k = j * nx + i; if (HG.h[k] !== HG.h[k]) { const X = L.x0 + i * 20, N = L.n0 + j * 20; HG.h[k] = groundH(X, N, latticeAt(X, N)); } return HG.h[k]; };   // a lazy world fills its grid as asked
   const jit = (i, j) => (Noise.hash(i * 7 + 1, j * 13 + 5) - 0.5) * 0.3;
   const bins = new Map();
   const bin = (X, N) => { const k = Math.floor((X + 20000) / 1500) + ',' + Math.floor((N + 20000) / 1500); let b = bins.get(k); if (!b) bins.set(k, b = { top: [], tuv: [], wall: [], wuv: [], pts: [] }); return b; };
@@ -459,7 +459,9 @@ function buildPastureLife(scene) {
   const r = rng(4242);
   const i0 = Math.ceil((INNER.x0 + 40000) / FIELD.w), i1 = Math.floor((INNER.x1 + 40000) / FIELD.w) - 1;
   const j0 = Math.ceil((INNER.n0 + 40000) / FIELD.h), j1 = Math.floor((INNER.n1 + 40000) / FIELD.h) - 1;
-  for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) {
+  // the old map's columns first, then the extension's, so its pastures keep the stock they had
+  const iO = Math.max(i0, Math.ceil((-6000 + 40000) / FIELD.w)), cols = [...Array(Math.max(0, i1 - iO + 1)).keys()].map(k => iO + k).concat([...Array(iO - i0).keys()].map(k => i0 + k));
+  for (const i of cols) for (let j = j0; j <= j1; j++) {
     const X0 = i * FIELD.w - 40000, N0 = j * FIELD.h - 40000, f = fieldAt(X0 + 5, N0 + 5);
     if (f.t.n !== 'pasture' && f.t.n !== 'stubble') continue;
     const cX = X0 + FIELD.w / 2, cN = N0 + FIELD.h / 2;

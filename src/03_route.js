@@ -5,6 +5,10 @@
    ========================================================================== */
 const NET = new Network();
 const ROUTE = { lines: {}, stations: [], water: [], signals: [], crossings: [], mileposts: [], bumpers: [], features: {} };
+/* The Van Wert extension's country: the moraine's crest (a north-south ridge the line climbs over on both
+   sides of the loop), and the Little Auglaize, which rises in a lake inside the loop and runs north under
+   the line at Van Wert. riverN is filled in when the route is laid. */
+const VW = { moraineX: -10140, riverX: -13200, riverN: 0, lake: { X: -12650, N: 1420, r: 330 } };
 
 /* the same path moved sideways by off metres (+ left), as builder points */
 function offsetPts(pts, off) {
@@ -114,17 +118,36 @@ function buildRoute() {
   pb.curve(1500, 6, 80); pb.straight(320); pb.curve(-1500, 6, 80);
   const jogX = xJ0 - pb.X, sJogEnd = pb.s;
   const LB = LSOUTH - LA - jogX; pb.straight(LB);
-  const sC2 = pb.s; pb.curve(R_CURVE, 180, LS);
+  /* ---------- the Van Wert extension ----------
+     Past Delphos the line runs on west instead of turning back: across the moraine and a long reverse curve
+     to Middle Point, over the Little Auglaize at Van Wert, round the far curve and back east through
+     Willshire and Spencerville to the west end of Bellevue Yard. Both sides shift 378 m by the same reverse
+     curve and run the same distance, so the loop still closes on itself. */
+  const sC2 = pb.s;                              // Delphos: where the old west curve began
+  const vwJog = sg => { pb.curve(-sg * 2000, 12, 120); pb.straight(1400); pb.curve(sg * 2000, 12, 120); };
+  const XN1 = 3000, XN2 = 7800, XS1 = 6200, XS2 = XN1 + XN2 - XS1;
+  pb.straight(XN1); const sVJ1 = pb.s; vwJog(1); const sVJ1e = pb.s;
+  pb.straight(XN2); const sC3 = pb.s; pb.curve(R_CURVE, 180, LS);
+  const sSouthW = pb.s;
+  pb.straight(XS1); const sVJ2 = pb.s; vwJog(1); const sVJ2e = pb.s;
+  pb.straight(XS2);
   // close loop exactly
   const L0 = pb.pts[0], LE = pb.pts[pb.pts.length - 1];
   const ex = LE.X - L0.X, en = LE.N - L0.N, n = pb.pts.length;
   for (let i = 0; i < n; i++) { const t = i / (n - 1); pb.pts[i].X -= ex * t * t; pb.pts[i].N -= en * t * t; }
   const main = new Line('Main', pb.pts, { kind: 'main', loop: true, limit: 70 });
   ROUTE.mainLen = main.len;
-  ROUTE.features = { sC1, sNorth, sJog, sJogEnd, sC2, LSOUTH };
+  // the detailed country reaches out past the far curve; it is too big to build whole, so its terrain is
+  // made as the camera comes near and let go behind it
+  if (typeof INNER !== 'undefined') INNER.x0 = Math.floor((Math.min(...pb.pts.map(p => p.X)) - 3000) / 1500) * 1500;
+  if (typeof WORLD !== 'undefined') WORLD.lazy = true;
+  ROUTE.features = { sC1, sNorth, sJog, sJogEnd, sC2, sVJ1, sVJ1e, sC3, sSouthW, sVJ2, sVJ2e, LSOUTH };
 
-  /* ---------- main profile: Kenton Hill ---------- */
-  const grades = [[0, 0], [sNorth + 300, 0.009], [sNorth + 1800, 0], [sJog + 60, -0.0088], [sJog + 60 + 1530, 0]];
+  /* ---------- main profile: Kenton Hill, and the moraine the extension crosses twice ---------- */
+  // the moraine's crest runs north and south at X = MORAINE.X; each side climbs 0.62% to it and down again
+  const mN = sVJ1e + 1100, mS = sVJ2 + 500;
+  const grades = [[0, 0], [sNorth + 300, 0.009], [sNorth + 1800, 0], [sJog + 60, -0.0088], [sJog + 60 + 1530, 0],
+    [mN - 1400, 0.0062], [mN, -0.0062], [mN + 1400, 0], [mS - 1400, 0.0062], [mS, -0.0062], [mS + 1400, 0]];
   const MY = new Float32Array(Math.ceil(main.len) + 2);
   const gAt = s => { let g = 0; for (let i = 0; i < grades.length; i++) { const w = smooth(grades[i][0] - 90, grades[i][0] + 90, s); if (i === 0) g = grades[0][1]; else g = lerp(g, grades[i][1], w); } return g; };
   let y = 0; for (let i = 0; i < MY.length; i++) { MY[i] = y; y += gAt(i + 0.5); }
@@ -136,8 +159,12 @@ function buildRoute() {
   const projMain = (sRef) => { const p = main.poseAt(sRef); const c = Math.cos(p.h), sn = Math.sin(p.h); return (X, N) => sRef + (X - p.X) * c + (N - p.N) * sn; };
 
   const sBridge = sJogEnd + 460; // two 64 m through truss spans
-  main.opt.bridges = [[sBridge - 72, sBridge + 72]];
+  // the Little Auglaize at Van Wert, on the far side of the extension (the river is laid to pass under it)
+  const sBridge2 = sVJ1e + (main.poseAt(sVJ1e).X - VW.riverX);
+  main.opt.bridges = [[sBridge - 72, sBridge + 72], [sBridge2 - 72, sBridge2 + 72]];
   ROUTE.bridge = { s: sBridge, half: 64 };
+  ROUTE.bridges = [ROUTE.bridge, { s: sBridge2, half: 64, name: 'NICKEL PLATE · LITTLE AUGLAIZE' }];
+  { const p = main.poseAt(sBridge2); VW.riverN = p.N; }
 
   /* ---------- the second main track ----------
      Track 2 runs 4.5 m inside track 1 (the original main) all the way round. Right-hand running: track 1
@@ -152,7 +179,7 @@ function buildRoute() {
   };
   const S1 = main.pts.map(p => p.s), S2 = p2.map(p => p.s);
   const to2 = remap(S1, S2, main.len), to1 = remap(S2, S1, main2.len);
-  main2.opt.bridges = [[to2(sBridge - 72), to2(sBridge + 72)]];
+  main2.opt.bridges = main.opt.bridges.map(b => b.map(to2));
   ROUTE.main2 = main2; ROUTE.to2 = to2; ROUTE.to1 = to1; ROUTE.spacing = DT;
 
   /* helper: a diverging line from a main node */
@@ -254,6 +281,17 @@ function buildRoute() {
   const stub = new Line('Quarry Storage', bst.pts, { kind: 'yard', limit: 10, startNode: nQS });
   const brProj = (X, N) => { const p0 = branch.poseAt(sBrStraight); return sBrStraight + (N - p0.N); };
 
+  /* ---------- Van Wert and Spencerville passing sidings (inside, off track 2, like Fostoria's) ---------- */
+  const xS = (X0, sRef) => sRef + Math.abs(main.poseAt(sRef).X - X0);   // the main distance at X along a straight from sRef
+  const sVW1 = xS(-13620, sVJ1e), VWL = 2200, sSP1 = xS(-7600, sVJ2e), SPL = 2200;
+  const passing = (name, s1, L) => {
+    const n1 = main2.cut(to2(s1)), n2 = main2.cut(to2(s1 + L));
+    const d = div(name + ' Siding', to2(s1), 4.5, RS, L - 2 * jS, true, { kind: 'siding', limit: 30, startNode: n1, endNode: n2 }, main2);
+    return { line: d.line, n1, n2, prof: projMain(s1 + L / 2), name };
+  };
+  const vws = passing('Van Wert', sVW1, VWL), sps = passing('Spencerville', sSP1, SPL);
+  ROUTE.features.sVW1 = sVW1; ROUTE.features.sSP1 = sSP1;
+
   /* ---------- crossovers between the main tracks ----------
      At each place, A takes an eastward train from track 1 over to track 2 and B, just beyond, brings a
      train back. Both are on tangent track, where a distance on one main maps straight across to the other. */
@@ -264,7 +302,7 @@ function buildRoute() {
     const nA = from.cut(s0), nB = to.cut(up ? to2(s + xl) : s + xl);
     xos.push({ line: new Line(name, b.pts, { kind: 'main', limit: 30, cant: false, startNode: nA, endNode: nB }), from, to, nA, nB, prof: projMain(s + xl / 2) });
   };
-  for (const [place, s] of [['Bellevue', 2150], ['Fostoria', 6100], ['Kenton', 11650], ['Delphos', 17000]]) {
+  for (const [place, s] of [['Bellevue', 2150], ['Fostoria', 6100], ['Kenton', 11650], ['Delphos', 17000], ['Van Wert', xS(-12450, sVJ1e)], ['Spencerville', xS(-4950, sVJ2e)]]) {
     crossover(place + ' crossover A', s, true); crossover(place + ' crossover B', s + 150, false);
   }
 
@@ -279,6 +317,7 @@ function buildRoute() {
   ken.line.build((s, X, N) => mainY(kenProf(X, N)));
   kSp.line.build((s, X, N) => mainY(kenProf(X, N)));
   dSp.line.build((s, X, N) => mainY(delProf(X, N)));
+  for (const p of [vws, sps]) p.line.build((s, X, N) => mainY(p.prof(X, N)));
   branch.build((s) => brY(s));
   run.build((s, X, N) => brY(brProj(X, N)));
   stub.build((s, X, N) => brY(brProj(X, N)));
@@ -314,6 +353,7 @@ function buildRoute() {
     const lm = sp.from.map.get(sp.node);
     NET.addSwitch(sp.node, lm.after, lm.before, sp.line.first(), sp.line.name, legs).industry = true;
   }
+  for (const p of [vws, sps]) { SW(p.name + ' West', p.n1, main2, p.line, true, ['Main', 'Siding']); SW(p.name + ' East', p.n2, main2, p.line, false, ['Main', 'Siding']); }
   // the two switches of a crossover are thrown together
   for (const x of xos) {
     const a = SW(x.line.name, x.nA, x.from, x.line, true, [x.from === main ? 'Track 1' : 'Track 2', 'Crossover']);
@@ -333,10 +373,15 @@ function buildRoute() {
   st('Fostoria', main, sF1 + 1250, 1, 'depot');
   st('Kenton', main, sK1 + 700, -1, 'depot', DT);
   st('Delphos', main, sBR + 1500, -1, 'small', DT);
+  st('Middle Point', main, xS(-11750, sVJ1e), -1, 'small', DT);
+  st('Van Wert', main, sVW1 + 700, 1, 'depot');
+  st('Willshire', main, xS(-14650, sSouthW), 1, 'small');
+  st('Spencerville', main, sSP1 + 1150, 1, 'depot');
   st('Quarry', branch, branch.len - 40, 1, 'quarry');
   const wc = (line, s, side, kind) => { const loc = line.locate(s); ROUTE.water.push({ line, sLine: s, edge: loc.edge, s: loc.s, side, kind }); };
   wc(main, sF1 + 1450, 1, 'column');
   wc(main2, to2(sK1 + 940), -1, 'column');
+  wc(main, sVW1 + 1050, 1, 'column');
   wc(eng, 150, 1, 'tower');
   ROUTE.coal = { line: eng, sLine: 235, edge: eng.locate(235).edge, s: eng.locate(235).s };
   /* Signals. Track 1 is signalled for eastward running and track 2 for westward, as double track was in
@@ -345,7 +390,32 @@ function buildRoute() {
   const sig = (line, sLine, dir, kind = 'mast') => ROUTE.signals.push({ line, sLine, dir, kind });
   for (const s of [340, 3500, 5940, 8700, 11490, 14000, 16678, 19500]) sig(main, s, 1);
   for (const s of [2460, 6410, 9000, 11960, 14600, 17310, 20100]) sig(main2, to2(s), -1);
-  for (const [ln, at, dir] of [[fos.line, 110, -1], [fos.line, -110, 1], [ken.line, 110, -1], [ken.line, -110, 1], [yards[0], 78, -1], [yards[0], -78, 1], [branch, 150, -1]]) sig(ln, at < 0 ? ln.len + at : at, dir, 'dwarf');
+  /* The extension: a home signal 350 m short of each place with switches on that track, automatics between
+     so no block runs much over 2.7 km. Between the last old signal each way and the next one round the loop
+     (sA..sB in track 1 distance, sB past the end of the loop for the ones beyond Bellevue). */
+  const sOf = (ln, nd) => { const c = ln.cuts.find(c => c.node === nd); return ln === main ? c.s : to1(c.s); };
+  const extSignals = (ln, dir, sA, sB, nodes, avoid = []) => {
+    const L = main.len, sw = nodes.map(nd => { const v = sOf(ln, nd); return v < sA ? v + L : v; }).filter(v => v > sA && v < sB).sort((p, q) => p - q);
+    const fixed = [sA, sB];
+    for (let i = 0; i < sw.length; i++) {
+      // a cluster's first switch in the direction of travel
+      if (dir > 0 && (i === 0 || sw[i] - sw[i - 1] > 600)) fixed.push(sw[i] - 350);
+      if (dir < 0 && (i === sw.length - 1 || sw[i + 1] - sw[i] > 600)) fixed.push(sw[i] + 350);
+    }
+    fixed.sort((p, q) => p - q);
+    const out = fixed.slice(1, -1);
+    for (let i = 0; i < fixed.length - 1; i++) { const g = fixed[i + 1] - fixed[i], n = Math.ceil(g / 2700); for (let k = 1; k < n; k++) out.push(fixed[i] + g * k / n); }
+    // never on a bridge, nor beside a siding on the signal's own side: those step on past it
+    return out.map(v => {
+      for (const b of main.opt.bridges) if (v > b[0] - 15 && v < b[1] + 15) v = dir > 0 ? b[0] - 15 : b[1] + 15;
+      for (const [lo, hi] of avoid) if (v > lo - 60 && v < hi + 60) v = dir > 0 ? hi + 60 : lo - 60;
+      return v % L;
+    }).sort((p, q) => p - q);
+  };
+  const xNodes = ln => xos.flatMap(x => [x.from === ln ? x.nA : null, x.to === ln ? x.nB : null]).filter(Boolean);
+  for (const s of extSignals(main, 1, 19500, main.len + 340, xNodes(main))) sig(main, s, 1);
+  for (const s of extSignals(main2, -1, 20100, main.len + 2460, [...xNodes(main2), vws.n1, vws.n2, sps.n1, sps.n2], [[sVW1, sVW1 + VWL], [sSP1, sSP1 + SPL]])) sig(main2, to2(s), -1);
+  for (const [ln, at, dir] of [[fos.line, 110, -1], [fos.line, -110, 1], [ken.line, 110, -1], [ken.line, -110, 1], [yards[0], 78, -1], [yards[0], -78, 1], [branch, 150, -1], [vws.line, 110, -1], [vws.line, -110, 1], [sps.line, 110, -1], [sps.line, -110, 1]]) sig(ln, at < 0 ? ln.len + at : at, dir, 'dwarf');
   // mileposts
   for (let m = 1; m * MILE < main.len; m++) ROUTE.mileposts.push({ line: main, sLine: m * MILE, num: 101 + m });
   ROUTE.main = main; ROUTE.branch = branch; ROUTE.crossovers = xos.map(x => x.line);

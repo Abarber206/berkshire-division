@@ -49,7 +49,7 @@ function buildWire(scene) {
   const main = ROUTE.main, main2 = ROUTE.main2;
   if (WORLD.custom || WORLD.mtn || !main || !main2) return;   // no wire over the mountain
   const mat = wireMaterials();
-  const b = ROUTE.bridge, bridge0 = b ? b.s - 76 : -1, bridge1 = b ? b.s + 76 : -1;
+  const bridges = (ROUTE.bridges || (ROUTE.bridge ? [ROUTE.bridge] : [])).slice().sort((p, q) => p.s - q.s);
   const v = new THREE.Vector3();
 
   /* ---- where the supports go, along track 1 ---- */
@@ -57,7 +57,8 @@ function buildWire(scene) {
   const spanFrom = s => { const k = maxK(s, s + 63); return k > 1e-6 ? Math.min(63, Math.sqrt(8 * 0.3 / k)) : 63; };
   const at = [];
   for (let s = 0; s < main.len - 20;) {
-    if (b && s > bridge0 - 63 && s < bridge1) {
+    const b = bridges.find(q => s > q.s - 76 - 63 && s < q.s + 76), bridge0 = b ? b.s - 76 : -1, bridge1 = b ? b.s + 76 : -1;
+    if (b) {
       // last mast short of the bridge, the truss struts across it, first mast beyond
       if (s < bridge0) at.push({ s: bridge0, kind: 'mast' });
       for (const x of [-48, -24, 8, 32]) at.push({ s: b.s + x, kind: 'bridge' });

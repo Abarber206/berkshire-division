@@ -62,7 +62,7 @@ function balloonPts(X, N, h, R = 215, R1 = 320, Rt = 260, dDeg = 9, a = 140) {
 }
 
 function buildMountainRoute() {
-  WORLD.mtn = true;
+  WORLD.mtn = true; WORLD.lazy = true;
   /* ---------- the main line, west to east ---------- */
   const pb = new PathBuilder(-15000, 0, 0), at = {};
   const mark = k => (at[k] = pb.s);
