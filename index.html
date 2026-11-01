@@ -740,6 +740,9 @@ details.keys kbd{color:var(--brass)}
       <div class="fgroup" id="grpMix" hidden><span class="lbl">Trailing units</span><div class="seg" id="optMix"></div></div>
       <div class="fgroup" id="grpFinish"><span class="lbl">Finish</span><div class="seg" id="optFinish"></div></div>
       <div class="fgroup"><span class="lbl">Train</span><div class="seg" id="optTrain"></div></div>
+      <div class="fgroup" id="grpCoach"><span class="lbl">Passenger cars</span><div class="seg paint" id="optCoach"></div>
+        <div class="custom" id="coachPaint" hidden><label>Car body<input type="color" id="cCoach"></label></div>
+      </div>
       <div class="fgroup"><span class="lbl">Time of day</span><div class="seg" id="optTime"></div></div>
       <div class="fgroup"><span class="lbl">Day &amp; night</span><div class="seg" id="optCycle"></div></div>
       <div class="fgroup"><span class="lbl">Weather</span><div class="seg" id="optWeather"></div></div>
@@ -6600,17 +6603,34 @@ function buildBerkshire(key, trim = '') {
 
 /* Paint finish for the steam engines: as delivered (graphite smokebox and firebox),
    excursion white trim (tire faces and running-board edges), plain black, or the holiday
-   trim (white walls here; the wreaths, garland and snow are built with the train). */
+   trim (all black here; the wreaths, garland and snow are built with the train). */
 function applySteamFinish(k) {
   if (!RMAT.graphite) return;
   const set = (m, hex) => { m.color.set(hex).convertSRGBToLinear(); m.userData.lin = true; };
   const white = 0xe9e6dc;
-  set(RMAT.graphite, k === 'black' ? 0x19191a : 0x45474a); RMAT.graphite.roughness = k === 'black' ? 0.5 : 0.66;
-  const wt = k === 'white' || k === 'polar';   // the holiday trim keeps the excursion white walls
+  const blk = k === 'black' || k === 'polar';   // the holiday trim is all black, like the film's engine
+  set(RMAT.graphite, blk ? 0x19191a : 0x45474a); RMAT.graphite.roughness = blk ? 0.5 : 0.66;
+  const wt = k === 'white';
   set(RMAT.rbEdge, wt ? white : 0x141516);
   set(RMAT.dWall, wt ? white : 0x141516);
   RMAT.dWall.metalness = RMAT.rbEdge.metalness = wt ? 0.05 : 0.25;
   RMAT.dWall.roughness = wt ? 0.62 : 0.5;
+}
+
+/* Paint for the coaches (the holiday trim keeps its own maroon): a few railroad standards, or any colour */
+const COACH_PAINT = {
+  pullman: { name: 'Pullman green', sub: 'Heavyweight standard', c: 0x2a3a2a },
+  tuscan: { name: 'Tuscan red', sub: 'Pennsy style', c: 0x5a2219 },
+  blue: { name: 'Royal blue', sub: 'Limited express', c: 0x1d3150 },
+  black: { name: 'Black', sub: 'Business car', c: 0x18191a },
+  custom: { name: 'Custom', sub: 'Pick a colour', c: null },
+};
+function coachPaintHex(k, custom) { return k === 'custom' ? (custom >>> 0) & 0xffffff : (COACH_PAINT[k] || COACH_PAINT.pullman).c; }
+function applyCoachPaint(k, custom) {
+  if (!RMAT.green) return;
+  carMaterials();
+  const hex = coachPaintHex(k, custom);
+  for (const m of [RMAT.green, RMAT.greenLow, RMAT.greenSill]) { m.color.set(hex).convertSRGBToLinear(); m.userData.lin = true; }
 }
 
 /* =================== HOLIDAY TRIM =================== */
@@ -6759,6 +6779,22 @@ function animateBerkshire(L, theta, rev) {
 const TD = { len: 13.626, axles: [1.64, 3.164, 4.688, 8.648, 10.172, 11.696], trucks: [3.164, 10.172], sp: 1.524, hw: 1.60,
   t0: 0.69, t1: 13.07, yBot: 1.12, yTank: 3.62, yBunk: 4.21, bunk: [1.47, 7.25, 8.13], deck: 2.06 };
 TD.ref = (TD.trucks[0] + TD.trucks[1]) / 2;
+/* the tender's side sheets: service-worn black, coal dust settling from the bunker, water streaks down from the
+   tank top, rivet rows along the bottom and the tank-top seam. The extruded sides carry their shape's x, y as uv,
+   so the texture is stretched over the whole side once. */
+function tenderSideMat(D, tx) {
+  if (RMAT.tSide) return;
+  const t = canvasTex(1024, 256, (g, w, h) => {
+    const r = rng(765), yOf = y => h * (1 - (y - D.yBot) / (D.yBunk - D.yBot)), xOf = a => w * (tx(a) - tx(D.t1)) / (tx(D.t0) - tx(D.t1));
+    g.fillStyle = '#ffffff'; g.fillRect(0, 0, w, h);
+    for (let i = 0; i < 30; i++) { const x = r() * w, y0 = yOf(D.yTank) + r() * 6, L = h * (0.15 + r() * 0.45), gr = g.createLinearGradient(0, y0, 0, y0 + L); gr.addColorStop(0, `rgba(190,190,180,${0.06 + r() * 0.08})`); gr.addColorStop(1, 'rgba(190,190,180,0)'); g.fillStyle = gr; g.fillRect(x, y0, 2 + r() * 8, L); }
+    const top = g.createLinearGradient(0, 0, 0, h * 0.35); top.addColorStop(0, 'rgba(30,28,26,0.35)'); top.addColorStop(1, 'rgba(30,28,26,0)'); g.fillStyle = top; g.fillRect(0, 0, w, h);
+    const bot = g.createLinearGradient(0, h * 0.75, 0, h); bot.addColorStop(0, 'rgba(120,100,80,0)'); bot.addColorStop(1, 'rgba(120,100,80,0.3)'); g.fillStyle = bot; g.fillRect(0, 0, w, h);
+    rivetRow(g, 4, h - 6, w - 4, h - 6, 160, 1.6); rivetRow(g, 4, yOf(D.yTank) + 5, xOf(D.bunk[2]), yOf(D.yTank) + 5, 70, 1.6);
+  });
+  t.repeat.set(1 / (tx(D.t0) - tx(D.t1)), 1 / (D.yBunk - D.yBot)); t.offset.set(-tx(D.t1) * t.repeat.x, -D.yBot * t.repeat.y);
+  RMAT.tSide = RMAT.black.clone(); RMAT.tSide.map = t; RMAT.tSide.side = THREE.DoubleSide;
+}
 function buildTender(key, trim = '') {
   const spec = LOCO_SPEC[key], T = TRIM[trim];
   const root = new THREE.Group();
@@ -6775,7 +6811,8 @@ function buildTender(key, trim = '') {
   prof.moveTo(tx(D.t0), D.yBot); prof.lineTo(tx(D.t1), D.yBot); prof.lineTo(tx(D.t1), D.yTank); prof.lineTo(tx(D.bunk[2]), D.yTank);
   prof.lineTo(tx(D.bunk[1]), D.yBunk); prof.lineTo(tx(D.bunk[0]), D.yBunk);
   prof.quadraticCurveTo(tx(D.t0 + 0.1), D.yBunk - 0.05, tx(D.t0), D.yTank - 0.02); prof.lineTo(tx(D.t0), D.yBot);
-  for (const s of [-1, 1]) gb.add('black', new THREE.ExtrudeGeometry(prof, { depth: 0.04, bevelEnabled: false, curveSegments: 10 }).translate(0, 0, s * (hw - 0.02) - 0.02));
+  tenderSideMat(D, tx);
+  for (const s of [-1, 1]) gb.add('tSide', new THREE.ExtrudeGeometry(prof, { depth: 0.04, bevelEnabled: false, curveSegments: 10 }).translate(0, 0, s * (hw - 0.02) - 0.02));
   // bottom, rear, the tank top behind the bunker and the slope sheet up to the bunker
   gb.box('black', D.t1 - D.t0, 0.04, 2 * hw - 0.04, tx((D.t0 + D.t1) / 2), D.yBot + 0.02, 0);
   gb.box('black', 0.04, D.yTank - D.yBot, 2 * hw, tx(D.t1) - 0.02, (D.yTank + D.yBot) / 2, 0);
@@ -7432,18 +7469,53 @@ function coachModel(spec, num, observation, trim = '') {
     }
     gb.box(body, 0.06, yE - 3.1, 0.8, xw - 0.03, (yE + 3.1) / 2, 0);
     gb.box(G, 0.04, 3.1 - CH.yT, 0.8, xw - 0.06, (3.1 + CH.yT) / 2, 0); gb.box(win, 0.02, 0.8, 0.5, xw - 0.08, 2.55, 0);
-    gb.box('wood', xw - xP, 0.05, 2 * hw - 0.04, (xw + xP) / 2, CH.yT - 0.025, 0);
-    gb.box(G, 0.12, 0.26, 2 * hw - 0.04, xP + 0.06, CH.yT - 0.15, 0);
-    for (const s of [-1, 1]) gb.box(G, xw - xP, 0.2, 0.08, (xw + xP) / 2, CH.yT - 0.12, s * (hw - 0.06));
-    const xr = xP + 0.04, posts = [-1.42, -0.95, -0.48, 0, 0.48, 0.95, 1.42];
-    for (const z of posts) gb.cyl('brass', 0.02, 0.02, 1.05, 6, xr, CH.yT + 0.5, z);
-    for (const y of [1.78, 2.3]) gb.add('brass', new THREE.CylinderGeometry(0.025, 0.025, 2.88, 8).rotateX(Math.PI / 2).translate(xr, y, 0));
+    // the platform in the style of the great observation-car ends: rounded corners, a deck of teak boards, a railing of
+    // turned balusters with scrollwork between the rails, a lantern hung at each corner of the canopy, a valance under it
+    const xr = xP + 0.04, zR = 1.42, Rc = 0.38, rail = T ? 'gold' : 'brass', yTop = 2.3, yMid = 1.78;
+    const outline = [];   // the railing's line: down one side, round the corner, across the end, round and back up
     for (const s of [-1, 1]) {
-      for (const y of [1.78, 2.3]) gb.add('brass', barGeo(0.022, [xr, y, s * 1.42], [xr + 0.55, y, s * 1.42], 6));
-      gb.cyl('brass', 0.02, 0.02, 1.05, 6, xr + 0.55, CH.yT + 0.5, s * 1.42);
-      gb.add('brass', barGeo(0.02, [xw - 0.06, 2.3, s * (hw - 0.04)], [xw - 0.32, 2.3, s * (hw - 0.04)], 6)); gb.cyl('brass', 0.02, 0.02, 1.05, 6, xw - 0.32, CH.yT + 0.5, s * (hw - 0.04));
-      for (const d of [-0.28, 0.28]) gb.box(G, 0.04, CH.yT - 0.4, 0.3, xr + 0.95 + d, (CH.yT + 0.4) / 2, s * (hw - 0.2));
-      for (const y of [0.42, 0.85]) gb.box(G, 0.56, 0.04, 0.3, xr + 0.95, y, s * (hw - 0.2));
+      const pts = [[xw - 0.62, s * zR], [xr + Rc, s * zR]];
+      for (let i = 1; i <= 6; i++) { const a = i / 6 * Math.PI / 2; pts.push([xr + Rc - Math.sin(a) * Rc, s * (zR - Rc + Math.cos(a) * Rc)]); }
+      if (s < 0) outline.push(...pts); else outline.push(...pts.reverse());
+    }
+    const deck = new THREE.Shape(); deck.moveTo(xw, -hw + 0.02);
+    for (const [x, z] of outline.slice(0, outline.length / 2)) deck.lineTo(x - 0.04 * (x < xr + Rc ? 1 : 0), z * 1.02);
+    for (const [x, z] of outline.slice(outline.length / 2)) deck.lineTo(x - 0.04 * (x < xr + Rc ? 1 : 0), z * 1.02);
+    deck.lineTo(xw, hw - 0.02); deck.closePath();
+    gb.add('wood', new THREE.ExtrudeGeometry(deck, { depth: 0.06, bevelEnabled: false, curveSegments: 4 }).rotateX(Math.PI / 2).translate(0, CH.yT, 0));
+    gb.add(G, new THREE.ExtrudeGeometry(deck, { depth: 0.2, bevelEnabled: false, curveSegments: 4 }).rotateX(Math.PI / 2).translate(0, CH.yT - 0.06, 0).scale(1, 1, 0.97));
+    const P3 = (y) => outline.map(([x, z]) => [x, y, z]);
+    for (const y of [yTop, yMid]) for (let i = 0; i + 1 < outline.length; i++) { const [p, q] = [P3(y)[i], P3(y)[i + 1]]; gb.add(rail, barGeo(y === yTop ? 0.026 : 0.018, p, q, 8)); gb.add(rail, new THREE.SphereGeometry(y === yTop ? 0.026 : 0.018, 8, 6).translate(...q)); }
+    // balusters every 16 cm along the line, a heavier post at each end and corner, scrolls between the rails
+    let acc = 0;
+    for (let i = 0; i + 1 < outline.length; i++) {
+      const [x0, z0] = outline[i], [x1, z1] = outline[i + 1], L = Math.hypot(x1 - x0, z1 - z0);
+      for (let d = (0.16 - acc) % 0.16; d < L; d += 0.16) { const t = d / L, x = lerp(x0, x1, t), z = lerp(z0, z1, t); gb.add(rail, barGeo(0.009, [x, CH.yT, z], [x, yTop, z], 5)); }
+      acc = (acc + L) % 0.16;
+    }
+    for (const [x, z] of [outline[0], outline[outline.length - 1], [xr, -(zR - Rc)], [xr, zR - Rc], [xr + Rc, -zR], [xr + Rc, zR]]) { gb.cyl(rail, 0.03, 0.035, yTop - CH.yT, 10, x, (yTop + CH.yT) / 2, z); gb.add(rail, new THREE.SphereGeometry(0.045, 10, 8).translate(x, yTop + 0.04, z)); }
+    for (const z of [-0.74, 0.74]) gb.add(rail, new THREE.TorusGeometry(0.2, 0.012, 6, 24).rotateY(Math.PI / 2).translate(xr, (yTop + yMid) / 2, z));
+    for (const s of [-1, 1]) gb.add(rail, new THREE.TorusGeometry(0.2, 0.012, 6, 24).translate(xw - 0.95, (yTop + yMid) / 2, s * zR));
+    for (const s of [-1, 1]) {
+      // the gate opening, steps and a grab post at the body corner
+      gb.add(rail, barGeo(0.02, [xw - 0.06, yTop, s * (hw - 0.04)], [xw - 0.06, CH.yT + 0.1, s * (hw - 0.04)], 6));
+      gb.box(rail, 0.08, 0.04, 0.05, xw - 0.04, yTop - 0.1, s * (hw - 0.04)); gb.box(rail, 0.08, 0.04, 0.05, xw - 0.04, CH.yT + 0.2, s * (hw - 0.04));
+      const xs = (xw - 0.06 + xw - 0.62) / 2;
+      for (const d of [-0.26, 0.26]) gb.box(G, 0.04, CH.yT - 0.4, 0.3, xs + d, (CH.yT + 0.4) / 2 - 0.06, s * (hw - 0.2));
+      for (const y of [0.42, 0.85]) gb.box(G, 0.52, 0.04, 0.3, xs, y, s * (hw - 0.2));
+    }
+    if (T) for (const s of [-1, 1]) addSwags(gb, [xw - 0.62, (xw - 0.62 + xr + Rc) / 2, xr + Rc], yTop - 0.01, 0.1, s * zR, 0.035);
+    // valance under the canopy's edge, and a lantern on a bracket at each corner
+    gb.box(body, 0.05, 0.16, 2 * hw + 0.08, xP - 0.03, yE - 0.06, 0);
+    if (T) gb.box('gold', 0.012, 0.03, 2 * hw + 0.04, xP - 0.058, yE - 0.06, 0);
+    for (const z of [-1.2, 1.2]) {
+      const xl = xP + 0.13, yl = yE - 0.42;
+      gb.add(G, barGeo(0.012, [xl, yE + 0.02, z], [xl, yl + 0.2, z], 5));
+      gb.add(G, new THREE.ConeGeometry(0.11, 0.12, 12).translate(xl, yl + 0.17, z));
+      gb.cyl(G, 0.1, 0.1, 0.03, 12, xl, yl + 0.11, z);
+      for (let i = 0; i < 4; i++) { const a = i * Math.PI / 2 + Math.PI / 4; gb.add(G, barGeo(0.008, [xl + Math.cos(a) * 0.085, yl - 0.11, z + Math.sin(a) * 0.085], [xl + Math.cos(a) * 0.085, yl + 0.11, z + Math.sin(a) * 0.085], 4)); }
+      gb.cyl('glass', 0.08, 0.08, 0.2, 12, xl, yl, z);
+      gb.cyl(G, 0.1, 0.07, 0.05, 12, xl, yl - 0.12, z);
     }
     const ink = T ? '#8a1219' : '#6b1f1a';
     const dh = decalMat(256, 256, (g, w, h) => {
@@ -7463,8 +7535,7 @@ function coachModel(spec, num, observation, trim = '') {
     gb.add('brass', barGeo(0.015, [xd2, 2.39, 0], [xr, 2.3, 0], 5));
     if (T) addWreath(gb, 0.5, 0.06, M(xd2 - 0.03, 1.95, 0, 0, -Math.PI / 2, 0));   // the drumhead ringed with fir
     gb.add('brass', new THREE.TorusGeometry(0.43, 0.025, 6, 28).rotateY(Math.PI / 2).translate(xd2 - 0.025, 1.95, 0));
-    for (const z of [-1.22, 1.22]) { gb.box(G, 0.18, 0.3, 0.18, xP + 0.1, yE - 0.12, z); gb.box(G, 0.05, 0.08, 0.05, xP + 0.1, yE + 0.04, z); }
-    root.userData.markers = [new THREE.Vector3(xP + 0.008, yE - 0.12, -1.22), new THREE.Vector3(xP + 0.008, yE - 0.12, 1.22)];
+    root.userData.markers = [new THREE.Vector3(xP + 0.045, yE - 0.42, -1.2), new THREE.Vector3(xP + 0.045, yE - 0.42, 1.2)];
   }
   if (T) {
     // gold lining along the belt rail and the sill, garland swagged between the window pairs, snow on the roof
@@ -17519,7 +17590,7 @@ MPC.changed = function () {
    Game: boot, world loading, main loop, rules, HUD
    ========================================================================== */
 const GAME = {
-  settings: { traffic: 'on', loco: '765', consist: 'passenger', time: 'morning', cycle: 'x30', weather: 'clear', fire: 'auto', units: 1, livery: 'ss', mix: false, finish: 'standard', job: '', custom: { body: 0x2c5f8a, roof: 0x24384a, accent: 0xf0f0ea, letter: 0xf0f0ea, rail: 0xf0f0ea }, number: 4401 },
+  settings: { traffic: 'on', loco: '765', consist: 'passenger', time: 'morning', cycle: 'x30', weather: 'clear', fire: 'auto', units: 1, livery: 'ss', mix: false, finish: 'standard', job: '', custom: { body: 0x2c5f8a, roof: 0x24384a, accent: 0xf0f0ea, letter: 0xf0f0ea, rail: 0xf0f0ea }, number: 4401, coach: 'pullman', coachColor: 0x2a3a2a },
   train: null, running: false, ready: false, stats: { runThrough: 0 },
   events: {}, stopped: 0, lastStation: null, filling: null,
 };
@@ -17670,6 +17741,7 @@ function finishTrain(t) {
   CARS.setup();
   AI.setup();
   if (!t.diesel) applySteamFinish(GAME.settings.finish);
+  applyCoachPaint(GAME.settings.coach, GAME.settings.coachColor);
   resetState();
   S.limit = Math.min(...t.pts.map(p => p.tp.e.limit));
   buildWhistleIfReady();
@@ -17778,9 +17850,9 @@ function applyLiveriesLive() {
   const o = dieselOpts();
   t.units.forEach((m, u) => { const lv = dieselLiveryFor(o, u); applyLivery(m, lv, (o.number || lv.num) + u); });
 }
-const SAVE_KEYS = ['job', 'traffic', 'loco', 'consist', 'time', 'cycle', 'weather', 'fire', 'units', 'livery', 'mix', 'finish', 'custom', 'number'];
+const SAVE_KEYS = ['job', 'traffic', 'loco', 'consist', 'time', 'cycle', 'weather', 'fire', 'units', 'livery', 'mix', 'finish', 'custom', 'number', 'coach', 'coachColor'];
 function saveSettings() { try { const o = {}; for (const k of SAVE_KEYS) o[k] = GAME.settings[k]; localStorage.setItem('bd_settings', JSON.stringify(o)); } catch (e) {} }
-function loadSettings() { try { const o = JSON.parse(localStorage.getItem('bd_settings') || 'null'); if (o) for (const k of SAVE_KEYS) if (o[k] !== undefined) GAME.settings[k] = o[k]; } catch (e) {} if (!LOCO_SPEC[GAME.settings.loco]) GAME.settings.loco = '765'; if (!LIVERIES[GAME.settings.livery]) GAME.settings.livery = 'ss'; if (!DN.starts[GAME.settings.time]) GAME.settings.time = 'morning'; if (!DN.rates[GAME.settings.cycle]) GAME.settings.cycle = 'x30'; }
+function loadSettings() { try { const o = JSON.parse(localStorage.getItem('bd_settings') || 'null'); if (o) for (const k of SAVE_KEYS) if (o[k] !== undefined) GAME.settings[k] = o[k]; } catch (e) {} if (!LOCO_SPEC[GAME.settings.loco]) GAME.settings.loco = '765'; if (!LIVERIES[GAME.settings.livery]) GAME.settings.livery = 'ss'; if (!DN.starts[GAME.settings.time]) GAME.settings.time = 'morning'; if (!DN.rates[GAME.settings.cycle]) GAME.settings.cycle = 'x30'; if (!COACH_PAINT[GAME.settings.coach]) GAME.settings.coach = 'pullman'; }
 GAME.needNewTrain = function () { const t = GAME.train, g = GAME.settings, j = JOB.wanted(); return !t || MP.needSpawn || t.locoKey !== g.loco || (!t.elec && t.consistKey !== JOB.consist()) || (j ? j.id : '') !== JOB.activeId() || (t.diesel && !t.elec && t.nUnits !== (+g.units || 1)) || (!t.diesel && (t.trim || '') !== trimWanted()); };
 function buildWhistleIfReady() { if (!AU.on) return; buildWhistle(WHISTLES[LOCO_SPEC[GAME.settings.loco].whistle]); }
 
@@ -17809,6 +17881,15 @@ function buildMenu() {
   segButtons('optMix', { matched: { name: 'Matched', sub: 'All one scheme' }, mixed: { name: 'Mixed', sub: 'Run-through power' } }, 'mixKey', k => { GAME.settings.mix = k === 'mixed'; applyLiveriesLive(); saveSettings(); });
   [...$('optMix').children].forEach(c => c.setAttribute('aria-pressed', String(c.id === 'optMix_' + (GAME.settings.mix ? 'mixed' : 'matched'))));
   segButtons('optFinish', { standard: { name: 'As delivered', sub: 'Graphite smokebox' }, white: { name: 'White trim', sub: 'Excursion style' }, black: { name: 'All black', sub: 'Plain' }, polar: { name: 'Polar Limited', sub: 'Holiday trim · wreaths & snow' } }, 'finish', k => { applySteamFinish(k); GAME.swapLive(); startLabel(); saveSettings(); });
+  const coachSw = k => hexCss(coachPaintHex(k, GAME.settings.coachColor));
+  const coachOpts = {}; for (const k in COACH_PAINT) coachOpts[k] = { name: COACH_PAINT[k].name, sub: COACH_PAINT[k].sub, swatch: coachSw(k) };
+  segButtons('optCoach', coachOpts, 'coach', k => { applyCoachPaint(k, GAME.settings.coachColor); refreshMenuGroups(); saveSettings(); });
+  $('cCoach').value = hexCss(GAME.settings.coachColor);
+  $('cCoach').addEventListener('input', () => {
+    GAME.settings.coachColor = parseInt($('cCoach').value.slice(1), 16);
+    const sw = $('optCoach_custom').querySelector('.sw'); if (sw) sw.style.background = coachSw('custom');
+    applyCoachPaint(GAME.settings.coach, GAME.settings.coachColor); saveSettings();
+  });
   const cc = GAME.settings.custom;
   $('cBody').value = hexCss(cc.body); $('cAccent').value = hexCss(cc.accent); $('cLetter').value = hexCss(cc.letter); $('cNum').value = GAME.settings.number;
   const onCustom = () => {
@@ -17858,6 +17939,7 @@ function refreshMenuGroups() {
   $('customPaint').hidden = !d || GAME.settings.livery !== 'custom';
   $('grpFinish').hidden = !!sp.diesel; $('optFire').parentElement.hidden = !!sp.diesel;
   $('optTrain').parentElement.hidden = !!sp.set;   // a trainset is its own train
+  $('grpCoach').hidden = !!sp.set; $('coachPaint').hidden = GAME.settings.coach !== 'custom';
 }
 
 GAME.start = function () {
@@ -18313,7 +18395,7 @@ GAME.restore = function (d) {
     applyLook(null, GAME.settings.weather); if (d.hour !== undefined) { SKY.hour = d.hour; skyLight(true); }
     cycleCamera(d.cam);
     GAME.running = true; $('menu').hidden = true; $('hud').hidden = false;
-    const keyOf = { optLoco: 'loco', optTrain: 'consist', optTime: 'time', optCycle: 'cycle', optWeather: 'weather', optFire: 'fire', optTraffic: 'traffic', optLivery: 'livery', optUnits: 'units', optFinish: 'finish' };
+    const keyOf = { optLoco: 'loco', optTrain: 'consist', optTime: 'time', optCycle: 'cycle', optWeather: 'weather', optFire: 'fire', optTraffic: 'traffic', optLivery: 'livery', optUnits: 'units', optFinish: 'finish', optCoach: 'coach' };
     for (const k in keyOf) [...$(k).children].forEach(c => c.setAttribute('aria-pressed', String(c.id === k + '_' + GAME.settings[keyOf[k]])));
     [...$('optMix').children].forEach(c => c.setAttribute('aria-pressed', String(c.id === 'optMix_' + (GAME.settings.mix ? 'mixed' : 'matched'))));
     refreshMenuGroups(); specGrid();
