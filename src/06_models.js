@@ -1382,7 +1382,7 @@ function carFrame(gb, o) {
 function freightModel(type, num, r) {
   carMaterials();
   const root = new THREE.Group(); const gb = new GeoBin();
-  let L, hw = 1.5, weight, ta = 1.95;
+  let L, hw = 1.5, weight, ta = 1.95, gfN = 0;
   const G = 'dark';
   // reporting marks, a little proud of the side at face distance zf; on a tank they wrap around the barrel (radius tr, centre ty)
   const marks = (txt, sub, mat, y, color, zf = hw + 0.005, tr = 0, ty = 0, w = 2.6, mx = L / 2 - 2.2) => {
@@ -1463,6 +1463,7 @@ function freightModel(type, num, r) {
     gb.box('wood', 0.32, 0.04, 0.8, -(xe + 0.24), 2.6, 0.62); for (const z of [0.3, 0.94]) slab(gb, G, -(xe + 0.08), 2.35, -(xe + 0.38), 2.58, z - 0.02, z + 0.02, 0.03);
     marks(ROAD_SHORT + ' ' + num, 'CAPY 100000  LD LMT 110700', 'oxide', 3.1, null, hw + 0.006, 0, 0, 2.6, 3.6);
     data(1.75, hw + 0.006, 4.1);
+    gfN = addGraffiti(gb, type, num, { hw });
   } else if (type === 'hopper') {
     /* AAR twin offset-side hopper, 55 t: 10 ft 8 in high, 10 ft 4 in wide, two bays with bottom doors */
     L = 11.2; weight = 92 * STON; hw = 1.52;
@@ -1502,6 +1503,7 @@ function freightModel(type, num, r) {
     for (let i = 0; i < p.count; i++) { const x = p.getX(i), z = p.getZ(i), u = 1 - (z / (hw - 0.04)) ** 2, v = 1 - (x / (xe - 0.05)) ** 8; p.setY(i, top - 0.08 + 0.42 * Math.max(0, u * v) * (0.75 + 0.25 * Math.cos(x * 1.3 + 0.4)) + Math.sin(x * 9.1 + z * 7.3) * 0.02 * u * v); }
     g.computeVertexNormals(); gb.add('coal', g);
     marks(ROAD_SHORT + ' ' + num, 'CAPY 110000', 'black', 2.6, null, hw + 0.006, 0, 0, 1.15, 3.05);
+    gfN = addGraffiti(gb, type, num, { hw });
   } else if (type === 'tank') {
     /* AAR type 103 10,000 gal tank car: an 88 in barrel on a full underframe, banded to the bolster saddles,
        a dome with its safety valve and a platform, running boards, handrails and a dome ladder */
@@ -1558,6 +1560,7 @@ function freightModel(type, num, r) {
     corner(he - 0.05, 0, hw - 0.1, 1.17);
     for (const e of [-1, 1]) endLadder(gb, G, -0.5, -0.9, 0.6, yT + 0.03, e, he - 0.03, 0.3);
     marks('UTLX ' + num, 'NON-ACCIDENT  CAPY 10000 GAL', 'tank', 2.0, null, R, R, yc);
+    gfN = addGraffiti(gb, type, num, { R, yc });
   } else if (type === 'gon') {
     /* 46 ft steel gondola with pressed exterior posts, fixed corrugated ends and a heaped stone load */
     L = 14.6; weight = 88 * STON; hw = 1.52;
@@ -1586,6 +1589,7 @@ function freightModel(type, num, r) {
     for (let i = 0; i < p.count; i++) { const z = p.getZ(i), x = p.getX(i), edge = Math.min(1, (xe - 0.06 - Math.abs(x)) * 3) * Math.min(1, (hw - 0.05 - Math.abs(z)) * 3); p.setY(i, 1.95 + 0.42 * Math.max(0, 1 - (z / 1.45) ** 2) * edge + (rr() - 0.5) * 0.1 * edge); }
     g.computeVertexNormals(); gb.add('stoneLoad', g);
     marks(ROAD_SHORT + ' ' + num, 'CAPY 140000', 'oxide2', 1.85, null, hw + 0.06, 0, 0, 1.15, 4.6);
+    gfN = addGraffiti(gb, type, num, { hw });
   } else if (type === 'caboose') {
     /* steel cupola caboose: a 30 ft body on a 36 ft frame, open end platforms with railings and steps, a centre
        cupola, a stove and its smokejack, roof walks, and red markers on the rear corners */
@@ -1676,9 +1680,9 @@ function freightModel(type, num, r) {
   }
   const couplers = carCouplers(gb, root, L, -0.51, 0.95, 1.12);
   root.add(gb.build(RMAT));
-  root.traverse(o => { if (o.isMesh && !o.userData.cpl) { o.castShadow = true; o.receiveShadow = true; } });
+  root.traverse(o => { if (o.isMesh && !o.userData.cpl) { o.castShadow = !(o.material && o.material.userData && o.material.userData.noCast); o.receiveShadow = true; } });
   const trucks = [{ a: ta, type: 'four', R: 0.419 }, { a: L - ta, type: 'four', R: 0.419 }];
-  return { root, len: L, trucks, frame: [ta, L - ta], weight, kind: type, axles: 4, area: 105, couplers };
+  return { root, len: L, trucks, frame: [ta, L - ta], weight, kind: type, axles: 4, area: 105, couplers, graffiti: gfN };
 }
 
 /* ======== heavyweight coach and observation car ========
