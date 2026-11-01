@@ -686,6 +686,7 @@ function simStep(dt, T) {
       S.time += h;
       const d = physicsStep(h, T);
       CARS.step(h);
+      FLEET.tick(h);
       if (d !== 0 && !S.derailed) {
         const mph = Math.abs(S.v) / MPH;
         const lim = CARS.limit(T, d);

@@ -437,6 +437,19 @@ details.keys kbd{color:var(--brass)}
 .fcTop .btn{padding:4px 8px;font-size:11px}
 .fcBtns{display:flex;gap:6px;margin-top:2px}
 .fcBtns .btn:disabled{opacity:.5}
+.fcCrew{display:flex;flex-wrap:wrap;gap:6px;align-items:center;border-top:1px solid rgba(255,255,255,.08);padding-top:6px}
+.fcCrew[hidden]{display:none}
+.fcCrew>.lbl{font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--ink-dim);flex-basis:100%}
+.fcCrew .btn{padding:5px 9px;font-size:11px}
+.fcSeg{display:flex}
+.fcSeg .btn:first-child{border-top-right-radius:0;border-bottom-right-radius:0}
+.fcSeg .btn:last-child{border-top-left-radius:0;border-bottom-left-radius:0;margin-left:-1px}
+.fcSeg .btn[aria-pressed="true"]{border-color:var(--brass);color:var(--brass);background:rgba(207,166,81,.12)}
+.fcSpd{display:flex;align-items:baseline;gap:4px}
+.fcSpd b{font-family:var(--f-num);font-size:15px;min-width:2ch;text-align:right}
+.fcSpd small{font-size:10px;color:var(--ink-dim)}
+.fcCrew .btn:disabled{opacity:.4}
+.flRow .flRun[aria-pressed="true"]{border-color:var(--brass);color:var(--brass)}
 @media (max-height:500px) and (orientation:landscape){
   #fleetPanel{top:calc(env(safe-area-inset-top,0px) + 42px);right:calc(env(safe-area-inset-right,0px) + 206px);width:min(380px,calc(100vw - 236px));gap:6px;padding:8px;max-height:calc(100vh - 50px)}
 }
@@ -757,12 +770,18 @@ details.keys kbd{color:var(--brass)}
       <div class="pbRow"><span class="lbl">Train</span><div class="pbChips" id="fleetTrains"></div></div>
       <button class="btn prim" id="fleetAdd" type="button">Make it up</button>
     </div>
-    <div class="mpStatus">The train you leave stands with its brakes set. Click any of your trains in the world or on the map to take it over; <kbd>[</kbd> <kbd>]</kbd> step through them.</div>
+    <div class="mpStatus">A train you leave running keeps going with its engineer, who stops for red signals, trains ahead and the end of the track; one you leave standing stands with its brakes set. Click any of your trains in the world or on the map to give it orders or take it over; <kbd>[</kbd> <kbd>]</kbd> step through them.</div>
   </div>
   <div id="fleetCard" class="hud-box" hidden role="dialog" aria-label="Train">
     <div class="fcTop"><b id="fcName"></b><small id="fcWhat"></small><button class="btn" id="fcClose" type="button" aria-label="Close">✕</button></div>
     <div id="fcStatus" class="mpStatus"></div>
     <div id="fcSup" class="mpStatus"></div>
+    <div class="fcCrew" id="fcCrew">
+      <span class="lbl">Engineer</span>
+      <div class="fcSeg" role="group" aria-label="Engineer"><button class="btn" id="fcHold" type="button" aria-pressed="true">Hold</button><button class="btn" id="fcRun" type="button" aria-pressed="false">Run</button></div>
+      <div class="fcSpd"><button class="btn" id="fcSlow" type="button" aria-label="5 mph slower">−</button><b id="fcMph">25</b><small>mph</small><button class="btn" id="fcFast" type="button" aria-label="5 mph faster">+</button></div>
+      <button class="btn" id="fcRev" type="button" aria-label="Change direction">▶ Forward</button>
+    </div>
     <div class="fcBtns"><button class="btn prim" id="fcDrive" type="button">Take it over</button><button class="btn" id="fcDelete" type="button">Take off railroad</button></div>
   </div>
   <div id="jobPanel" class="hud-box" hidden>

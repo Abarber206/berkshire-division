@@ -144,3 +144,64 @@ test('a standing train goes into the save with its engine state, and the cars li
   assert.deepEqual(o.v.map(x => x.p), [0, 1], 'engine and tender saved as the engine\'s own');
   assert.equal(sim.CARS.cuts.filter(c => !c.parkS).length, 0);
 });
+
+/* the engineer on a train you are not driving: scanAhead lives in the page's main loop, so the end of track
+   is found here the same way it does (routeWalk to the end) */
+function engineer(sim) {
+  sim.ctx.scanAhead = (T, dir, maxD) => {
+    const f = T.endTP(dir > 0 ? 'front' : 'rear'), w = sim.routeWalk(f.e, f.s, f.o * dir, maxD, () => {}, () => false);
+    return { sw: null, trail: null, signal: null, station: null, end: w.why === 'end' ? { d: w.d } : null };
+  };
+  sim.AI.trains = sim.AI.trains || [];
+}
+const run = (sim, T, secs) => { let top = 0; for (let i = 0; i < secs * 60; i++) { sim.S.time += 1 / 60; sim.FLEET.tick(1 / 60); top = Math.max(top, Math.abs(T.v)); } return top; };
+
+test('a train left running keeps going with its engineer, stops short of a train ahead, and goes on when it clears', () => {
+  const sim = h.load(), y = railroad(sim), S = sim.S; engineer(sim);
+  const D = train(sim, y.yard, 590); sim.GAME.train = D;   // the train you drive, out of the way at the far end
+  const A = train(sim, y.yard, 100, ['loco', 'tender', 'box', 'box']);
+  Object.assign(S, { v: 6 * sim.MPH, vw: 6 * sim.MPH, throttle: 0.3, reverser: 0.6, brakeH: 0.12, indH: 0 });
+  sim.fleetPark(A); sim.GAME.train = D;
+  Object.assign(S, { v: 0, vw: 0, throttle: 0 });
+  assert.ok(A.crew, 'left running, it has an engineer');
+  assert.equal(A.crew.mph, 5);
+  assert.ok(A.vehicles.every(v => !v.hb));
+  sim.FLEET.run(A, 15);
+  const B = train(sim, y.yard, 400); sim.CARS.cuts.push(B); B.parkS = { theta: 0, dist0: 0, water: 30000, coal: 5000, reverser: 0 };
+  const s0 = A.endTP('front').s, top = run(sim, A, 150);
+  assert.ok(top > 10 * sim.MPH, `got up to ${(top / sim.MPH).toFixed(1)} mph`);
+  const gap = B.endTP('rear').s - A.endTP('front').s;
+  assert.ok(Math.abs(A.v) < 0.05, 'stopped');
+  assert.ok(gap > 3 && gap < 40, `stood ${gap.toFixed(1)} m short of the train ahead (moved ${(A.endTP('front').s - s0).toFixed(0)} m)`);
+  assert.equal(B.v || 0, 0, 'never touched it');
+  assert.ok(A.crew && /ahead/.test(A.crew.why), A.crew && A.crew.why);
+  assert.equal(S.v, 0, 'the train you drive is untouched');
+  assert.equal(sim.log.fails.length + sim.log.derails.length, 0);
+  // the way clears: on to the end of the track (D stands at 590, so the end is the train you drive)
+  sim.CARS.cuts = sim.CARS.cuts.filter(c => c !== B);
+  run(sim, A, 120);
+  const gap2 = D.endTP('rear').s - A.endTP('front').s;
+  assert.ok(Math.abs(A.v) < 0.05 && gap2 > 3 && gap2 < 40, `stood ${gap2.toFixed(1)} m short of your train`);
+  // hold: it ties down and stands as a train left standing
+  sim.FLEET.run(A, 0); run(sim, A, 10);
+  assert.equal(A.crew, null);
+  assert.ok(A.vehicles.every(v => v.hb));
+  assert.equal(A.parkS.throttle, 0);
+});
+
+test('an engineer stops short of the end of the track, and a train with one goes into the save with him', () => {
+  const sim = h.load(), y = railroad(sim); engineer(sim);
+  const D = train(sim, y.yard, 60); sim.GAME.train = D;
+  const A = train(sim, y.yard, 300); sim.fleetPark(A); sim.GAME.train = D;
+  sim.FLEET.run(A, 20);
+  run(sim, A, 120);
+  const left = 600 - A.endTP('front').s;
+  assert.ok(Math.abs(A.v) < 0.05 && left > 3 && left < 40, `stood ${left.toFixed(1)} m short of the end`);
+  Object.assign(A, { opts: {}, cfg: {}, fid: 2, nUnits: 1, consistKey: 'light' });
+  const o = JSON.parse(JSON.stringify(sim.fleetOut(A)));
+  assert.deepEqual(o.crew, { mph: 20, dir: 1 });
+  sim.FLEET.reverse(A);
+  assert.equal(A.crew.dir, -1);
+  run(sim, A, 30);
+  assert.ok(600 - A.endTP('front').s > left + 20, 'and backs away when sent the other way');
+});

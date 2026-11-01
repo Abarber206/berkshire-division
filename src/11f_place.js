@@ -56,6 +56,7 @@ PLACE.newCar = function (type, quiet) {
 PLACE.lift = function (c, v) {
   PLACE.cancel();
   const T = GAME.train;
+  if (c.crew) FLEET.crewOff(c);   // a train picked up stands when it is set down again
   // the engine brings its whole train; another train standing with its engine is always picked up whole
   if ((c === T && isPower(v)) || c.parkS) PLACE.ghost = { c, kind: 'train', orig: c.pts.map(p => p.tp.clone()), fit: null };
   else { const g = PLACE.split(c, v); if (!g) return; PLACE.ghost = { c: g, kind: 'car', type: v.kind, orig: g.endTP('front'), fit: null }; }

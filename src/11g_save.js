@@ -148,7 +148,8 @@ const powerOf = T => T.vehicles.filter(v => isPower(v) || (T.elec && T.units.som
 /* one of your other trains standing about (11l_fleet.js): how it was built, where every car is, and its engine as it was left */
 function fleetOut(c) {
   return Object.assign(consistOut(c, powerOf(c)), { loco: c.locoKey, ck: c.consistKey, units: c.nUnits || 1, opts: JSON.parse(JSON.stringify(c.opts || {})), cfg: c.cfg || null,
-    ps: c.parkS, cv: rnd(c.v || 0), rolling: !!c.rolling, stopT: rnd(c.stopT || 0), fid: c.fid || 0 });
+    ps: c.parkS, cv: rnd(c.v || 0), rolling: !!c.rolling, stopT: rnd(c.stopT || 0), fid: c.fid || 0,
+    crew: c.crew ? { mph: c.crew.mph, dir: c.crew.dir } : null, crewMph: c.crewMph || 0 });
 }
 /* Build train t's consist again from its record o: the engine as the Train made it, and its cars as they were.
    t was made up as a light engine, so everything it built is the engine (or the whole trainset). */
@@ -308,6 +309,8 @@ SAVE.apply = function (d) {
     catch (e) { console.warn('fleet train', e); c.disposeDeep(); continue; }
     Object.assign(c, { parkS: Object.assign({}, o.ps), cfg: o.cfg || null, v: o.cv || 0, rolling: !!o.rolling, stopT: o.stopT || 0, fid: o.fid || 0 });
     if (c.parkS.dist0 === undefined) c.parkS.dist0 = c.dist;
+    if (o.crewMph) c.crewMph = o.crewMph;
+    if (o.crew) c.crew = crewNew(c, o.crew.mph, o.crew.dir);   // its engineer carries on
     c.update(0); FLEET.dim(c);
     CARS.cuts.push(c);
   }

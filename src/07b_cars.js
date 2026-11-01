@@ -268,7 +268,8 @@ CARS.contact = function (A, dir, hit) {
   }
   if (ours && closing > COUPLE_WRECK) {
     const other = A === T ? B : A;
-    GAME.derail(other.parkS && typeof FLEET !== 'undefined' ? `Ran into ${FLEET.name(other)} at ${mph} mph. Come up on a standing train at a walking pace, 4 mph or less.`
+    GAME.derail(other.parkS && other.crew ? `Collided with ${FLEET.name(other)} at ${mph} mph. Keep a train length or more back from your other trains.`
+      : other.parkS && typeof FLEET !== 'undefined' ? `Ran into ${FLEET.name(other)} at ${mph} mph. Come up on a standing train at a walking pace, 4 mph or less.`
       : `Hit a cut of cars at ${mph} mph: the couplers buckled and the cars climbed each other. Shove at a walking pace, 4 mph or less.`, 'Collision');
     return;
   }
@@ -404,7 +405,7 @@ const HANDBRAKE = 0.04;
 CARS.step = function (h) {
   CARS.settle();
   for (const c of CARS.cuts.slice()) {
-    if (!c.rolling || !CARS.cuts.includes(c)) continue;
+    if (!c.rolling || c.crew || !CARS.cuts.includes(c)) continue;   // a train with its engineer runs on its own physics (11l_fleet.js)
     if (CARS.driven && CARS.driven(c)) continue;   // another player in the room is moving these cars (11h_mpcars.js)
     for (const v of c.vehicles) for (const p of v.fp) p.tp.pose(p.F);
     let M = 0, Fg = 0, Fr = 0, Fb = 0;
