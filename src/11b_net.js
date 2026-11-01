@@ -136,14 +136,10 @@ function mpText(x, n) {
   return Array.from(t).slice(0, n).join('');
 }
 /* everything another player sends is checked and clamped before use */
-function mpClean(r) {
-  if (!r || typeof r !== 'object' || typeof r.id !== 'string' || !/^[a-z0-9]{6,16}$/.test(r.id)) return null;
+/* one train in a player's state: where it stands, what it is, its lamps, bell and exhaust (o.e < 0: none) */
+function mpTrainClean(r, o) {
   const n = (x, lo, hi, d = 0) => (typeof x === 'number' && isFinite(x)) ? clamp(x, lo, hi) : d;
-  const o = { id: r.id, q: Math.round(n(r.q, 0, 1e12)), bye: r.bye ? 1 : 0 };
-  if (o.bye) return o;
-  o.nm = mpText(r.nm, 16) || 'Engineer';
-  o.ly = typeof r.ly === 'string' ? r.ly.slice(0, 16) : '';
-  o.other = o.ly !== MP.ly ? 1 : 0;   // on another railroad: chat only
+  o.f = Math.round(n(r.f, 0, 1e6));
   o.e = !o.other && Number.isInteger(r.e) && MP.edges && MP.edges.has(r.e) ? r.e : -1;
   if (o.e >= 0) {
     o.lk = LOCO_SPEC[r.lk] ? r.lk : '765'; o.ck = CONSISTS[r.ck] ? r.ck : 'light';
@@ -157,6 +153,19 @@ function mpClean(r) {
     o.ex = n(r.ex, 0, 1.5); o.rpm = n(r.rpm, 0, 1200); o.dr = r.dr ? 1 : 0;
     o.wk = o.dr && Array.isArray(r.wk) && r.wk.length >= 4 ? [n(r.wk[0], 0, 5000), r.wk[1] < 0 ? -1 : 1, Math.round(n(r.wk[2], 1, 2e9, 1)), n(r.wk[3], 0, 1), n(r.wk[4], 0, 150), n(r.wk[5], -150, 150), r.wk[6] ? 1 : 0] : null;
   }
+  return o;
+}
+function mpClean(r) {
+  if (!r || typeof r !== 'object' || typeof r.id !== 'string' || !/^[a-z0-9]{6,16}$/.test(r.id)) return null;
+  const n = (x, lo, hi, d = 0) => (typeof x === 'number' && isFinite(x)) ? clamp(x, lo, hi) : d;
+  const o = { id: r.id, q: Math.round(n(r.q, 0, 1e12)), bye: r.bye ? 1 : 0 };
+  if (o.bye) return o;
+  o.nm = mpText(r.nm, 16) || 'Engineer';
+  o.ly = typeof r.ly === 'string' ? r.ly.slice(0, 16) : '';
+  o.other = o.ly !== MP.ly ? 1 : 0;   // on another railroad: chat only
+  mpTrainClean(r, o);
+  // your other trains (11l_fleet.js): each as the train above, by its number
+  o.fl = !o.other && Array.isArray(r.fl) ? r.fl.slice(0, 8).map(x => x && typeof x === 'object' ? mpTrainClean(x, { other: 0, f: Math.round(n(x.f, 0, 1e6)) }) : null).filter(x => x && x.e >= 0) : [];
   o.pz = r.pz ? 1 : 0; o.cs = r.cs ? 1 : 0;
   o.av = !o.other ? walkClean(r.av) : null;   // walking about or riding (11j_walk.js)
   // send time on their clock, and their echo of ours: [our send time, ms they held it]
@@ -166,7 +175,8 @@ function mpClean(r) {
   o.sw = !o.other && Array.isArray(r.sw) && r.sw.length === NET.switches.length ? r.sw.map(x => Math.round(n(x, 0, 2e9))) : null;
   o.lt = Array.isArray(r.lt) && r.lt.length === 2 ? [Math.round(n(r.lt[0], 0, 255)), Math.round(n(r.lt[1], 0, 1e9))] : null;
   // a hit on someone's train: [their id, count, mph, x, z of the point of impact]
-  o.hx = Array.isArray(r.hx) && r.hx.length === 5 && typeof r.hx[0] === 'string' ? [r.hx[0].slice(0, 16), Math.round(n(r.hx[1], 0, 1e9)), n(r.hx[2], 0, 200), n(r.hx[3], -1e5, 1e5), n(r.hx[4], -1e5, 1e5)] : null;
+  // (and which of their trains: 0 or missing, the one they drive; else the number of one of their other trains)
+  o.hx = Array.isArray(r.hx) && (r.hx.length === 5 || r.hx.length === 6) && typeof r.hx[0] === 'string' ? [r.hx[0].slice(0, 16), Math.round(n(r.hx[1], 0, 1e9)), n(r.hx[2], 0, 200), n(r.hx[3], -1e5, 1e5), n(r.hx[4], -1e5, 1e5), Math.round(n(r.hx[5], 0, 1e6))] : null;
   o.ch = Array.isArray(r.ch) && r.ch.length === 2 ? [Math.round(n(r.ch[0], 0, 1e9)), mpText(r.ch[1], 80)] : null;
   return o;
 }
@@ -496,31 +506,73 @@ MP.receive = function (raw) {
   if (st.hx && st.hx[0] === MP.id && st.hx[1] > (p.hx || 0)) { const fresh = p.hx !== undefined; p.hx = st.hx[1]; if (fresh) MP.struck(p, st.hx); }
   else if (p.hx === undefined) p.hx = st.hx ? st.hx[1] : 0;
   if (st.ch && st.ch[0] !== p.lastCh) { p.lastCh = st.ch[0]; if (st.ch[1]) { toast(`${st.nm}: ${st.ch[1]}`, '', 5200); MP.addLog(st.nm, p.color, st.ch[1]); } }
-  if (st.e < 0) { if (p.rt) { if (MP.watching === p.id) MP.unwatch(); p.rt.dispose(); p.rt = null; } return; }
-  // what their train is made up of: the cars come with the state now and then, and are kept until they change
-  if (st.vs) p.vs = { h: st.vh, code: st.vs };
-  const code = st.vh ? (p.vs && p.vs.h === st.vh ? p.vs.code : null) : null;
-  const key = `${st.lk}|${st.ck}|${st.u}|${st.tm || ''}|${st.vh ? (code ? st.vh : '?') : ''}`;
-  // until the list of cars comes in, the train they had is kept on show
-  if (p.rt && p.rt.key !== key && !(st.vh && !code && p.rt.key.startsWith(`${st.lk}|${st.ck}|${st.u}|${st.tm || ''}|`))) { p.rt.dispose(); p.rt = null; }
-  if (!p.rt) {
-    try { p.rt = new RemoteTrain(p, st, code ? { code } : undefined); p.rt.key = key; }
-    catch (e) { console.warn('remote train', e); if (!code) return; try { p.rt = new RemoteTrain(p, st); p.rt.key = key; } catch (e2) { return; } }
+  // their trains by number, so a train they leave for another is the same train here (11l_fleet.js)
+  const all = st.e >= 0 ? [st, ...st.fl.filter(t => t.f !== st.f || !st.f)] : st.fl;
+  const hs = p.trains || (p.trains = new Map()), seen = new Set();
+  for (const t of all) {
+    if (seen.has(t.f)) continue;
+    seen.add(t.f);
+    let h = hs.get(t.f); if (!h) hs.set(t.f, h = { f: t.f, rt: null, vs: null, st: t, touch: null, ghost: false });
+    h.st = t;
+    mpSyncTrain(p, h, t);
   }
-  p.rt.repaint(st);
-  p.rt.target(st, MP.lag(p));
+  for (const [f, h] of hs) if (!seen.has(f)) { if (h.rt) h.rt.dispose(); hs.delete(f); }
+  const main = st.e >= 0 ? hs.get(st.f) : null;
+  if (!main || !main.rt) { if (MP.watching === p.id) MP.unwatch(); }
+  p.rt = main ? main.rt : null;
+};
+/* bring holder h (one of player p's trains) up to state t */
+function mpSyncTrain(p, h, t) {
+  // what the train is made up of: the cars come with the state now and then, and are kept until they change
+  if (t.vs) h.vs = { h: t.vh, code: t.vs };
+  const code = t.vh ? (h.vs && h.vs.h === t.vh ? h.vs.code : null) : null;
+  const key = `${t.lk}|${t.ck}|${t.u}|${t.tm || ''}|${t.vh ? (code ? t.vh : '?') : ''}`;
+  // until the list of cars comes in, the train they had is kept on show
+  if (h.rt && h.rt.key !== key && !(t.vh && !code && h.rt.key.startsWith(`${t.lk}|${t.ck}|${t.u}|${t.tm || ''}|`))) { h.rt.dispose(); h.rt = null; }
+  if (!h.rt) {
+    try { h.rt = new RemoteTrain(p, t, code ? { code } : undefined); h.rt.key = key; }
+    catch (e) { console.warn('remote train', e); if (!code) return; try { h.rt = new RemoteTrain(p, t); h.rt.key = key; } catch (e2) { return; } }
+  }
+  h.rt.repaint(t);
+  h.rt.target(t, MP.lag(p));
+}
+/* every train other players have on the railroad: { p, h (rt, st, f, touch), main } */
+MP.trains = function () {
+  const out = [];
+  if (MP.on) for (const p of MP.peers.values()) if (p.trains) for (const h of p.trains.values()) if (h.rt) out.push({ p, h, rt: h.rt, main: h.rt === p.rt });
+  return out;
 };
 /* one-way delay to a player in seconds: half the measured round trip, a guess until there is one */
 MP.lag = p => clamp((p.rtt || 300) / 2000, 0, 1.5);
 MP.drop = function (id, why) {
   const p = MP.peers.get(id); if (!p) return;
   if (MP.watching === id) MP.unwatch();
-  if (p.rt) p.rt.dispose();
+  if (p.trains) for (const h of p.trains.values()) if (h.rt) h.rt.dispose();
+  p.trains = null; p.rt = null;
   if (p.tag) p.tag.remove();
   MP.peers.delete(id);
   if (why) toast(`${p.st.nm} left the room.`, '', 3000);
   MP.ui();
 };
+/* one train for the room: T with engine state es (S, or a train left standing's own), made up from settings g.
+   held: where it stood before it was picked up to be placed. m keeps when its list of cars last changed. */
+function mpTrainOut(T, es, g, held, now, m, other) {
+  const f = held ? held[0] : T.pts[0].tp, sk = T.diesel ? null : steamK(LOCO_SPEC[T.locoKey]);
+  const o = {
+    f: T.fid || 0, lk: T.locoKey, ck: T.consistKey, u: T.nUnits || 1, lv: g.livery, mx: g.mix ? 1 : 0, cu: g.livery === 'custom' && g.custom ? [g.custom.body, g.custom.accent, g.custom.letter] : 0, no: g.livery === 'custom' ? (+g.number || 0) : 0, tm: T.trim || '',
+    e: f.e.id, s: +f.s.toFixed(2), o: f.o, v: held || (PLACE.on && !other) ? 0 : +((other ? T.v : es.v) || 0).toFixed(2), rv: +(es.reverser || 0).toFixed(2), wh: +(es.whistle || 0).toFixed(2), bl: es.bell ? 1 : 0, cl: es.classLamps ? 1 : 0, hl: es.light || 0, dl: es.ditch ? 1 : 0,
+    ex: T.diesel ? +(es.load || 0).toFixed(2) : (es.Psc > 6 && es.cut > 0 && es.throttle > 0.02 ? +clamp((es.Psc / sk.PL) * (0.35 + es.cut * 1.25), 0, 1.3).toFixed(2) : 0),
+    rpm: T.diesel && !T.elec && es.engineRun ? Math.round(es.rpm) : 0, dr: !other && S.derailed ? 1 : 0,
+  };
+  // a train made up differently from what its engine and train build (cars picked up, set out or placed) says what is in it
+  const code = trainCode(T);
+  if (code !== T.code0) {
+    o.vh = mpHash(code);
+    if (code !== m.code1) { m.code1 = code; m.codeAt = now; }
+    if (now - m.codeAt < 3000 || MP.q % 8 === 0) o.vs = code;
+  }
+  return o;
+}
 MP.state = function () {
   const T = GAME.train, g = GAME.settings;
   const now = performance.now();
@@ -530,22 +582,22 @@ MP.state = function () {
   if (MPC.synced) st.cs = 1;
   if (MP.spawned && T) {
     // while the train is held up to be placed, the room still sees it where it stood
-    const held = PLACE.on && PLACE.ghost && PLACE.ghost.kind === 'train' ? PLACE.ghost.orig : null;
-    const f = held ? held[0] : T.pts[0].tp;
-    Object.assign(st, {
-      lk: T.locoKey, ck: T.consistKey, u: T.nUnits || 1, lv: g.livery, mx: g.mix ? 1 : 0, cu: g.livery === 'custom' ? [g.custom.body, g.custom.accent, g.custom.letter] : 0, no: g.livery === 'custom' ? (+g.number || 0) : 0, tm: T.trim || '',
-      e: f.e.id, s: +f.s.toFixed(2), o: f.o, v: PLACE.on ? 0 : +S.v.toFixed(2), rv: +S.reverser.toFixed(2), wh: +S.whistle.toFixed(2), bl: S.bell ? 1 : 0, cl: S.classLamps ? 1 : 0, hl: S.light, dl: S.ditch ? 1 : 0,
-      ex: T.diesel ? +S.load.toFixed(2) : (S.Psc > 6 && S.cut > 0 && S.throttle > 0.02 ? +clamp((S.Psc / SK.PL) * (0.35 + S.cut * 1.25), 0, 1.3).toFixed(2) : 0),
-      rpm: T.diesel && !T.elec && S.engineRun ? Math.round(S.rpm) : 0, dr: S.derailed ? 1 : 0,
-    });
-    // a train made up differently from what its engine and train build (cars picked up, set out or placed) says what is in it
-    const code = trainCode(T);
-    if (code !== T.code0) {
-      st.vh = mpHash(code);
-      if (code !== MP.code1) { MP.code1 = code; MP.codeAt = now; }
-      if (now - MP.codeAt < 3000 || MP.q % 8 === 0) st.vs = code;
-    }
+    const held = PLACE.on && PLACE.ghost && PLACE.ghost.kind === 'train' && PLACE.ghost.c === T ? PLACE.ghost.orig : null;
+    FLEET.all();   // every train has its number
+    Object.assign(st, mpTrainOut(T, S, g, held, now, MP));
     if (S.derailed && T.wk) st.wk = [+T.wk.a.toFixed(1), T.wk.side, T.wk.seed, +T.wk.k.toFixed(2), +(T.wk.v0 || 0).toFixed(1), +(T.wk.vs || 0).toFixed(2), T.wk.hit ? 1 : 0];
+    // your other trains (11l_fleet.js), by number; at most one list of cars goes with each message
+    const fl = FLEET.parked();
+    if (fl.length) {
+      let vs = false;
+      st.fl = fl.map((c, i) => {
+        const held2 = PLACE.on && PLACE.ghost && PLACE.ghost.kind === 'train' && PLACE.ghost.c === c ? PLACE.ghost.orig : null;
+        const o = mpTrainOut(c, c.parkS, c.cfg || g, held2, now, c, true);
+        if (o.vs && (vs || (now - c.codeAt >= 3000 && (MP.q >> 3) % fl.length !== i))) delete o.vs;
+        if (o.vs) vs = true;
+        return o;
+      });
+    }
   }
   { const av = WALK.net(); if (av) st.av = av; }
   st.sw = NET.switches.map((sw, i) => MP.swv[i] * 2 + sw.state);
@@ -586,17 +638,14 @@ MP.noteThrow = function (sw) {
 };
 MP.occupant = function (sw) {
   if (!MP.on) return null;
-  for (const p of MP.peers.values()) {
-    const rt = p.rt; if (!rt || !rt.placed) continue;
-    if (rt.train.fouls(sw)) return p.st.nm;
-  }
+  for (const { p, rt } of MP.trains()) if (rt.placed && rt.train.fouls(sw)) return p.st.nm;
   return null;
 };
 
 /* true when len metres of track behind front are clear of every other player's train */
 MP.clearOf = function (front, len) {
   if (!MP.on) return true;
-  const rts = [...MP.peers.values()].map(p => p.rt).filter(rt => rt && rt.placed && rt.polyN);
+  const rts = MP.trains().map(x => x.rt).filter(rt => rt.placed && rt.polyN);
   if (!rts.length) return true;
   const tp = front.clone(), F = newFrame();
   for (let d = 0; d <= len; d += 2) {
@@ -610,8 +659,8 @@ MP.clearOf = function (front, len) {
 /* ---------------- spawning ---------------- */
 MP.spawnSlot = function (T) {
   // make sure every train we have heard about is placed before looking for room
-  for (const p of MP.peers.values()) if (p.rt && p.rt.tp && !p.rt.placed) p.rt.frame(0, p.st, camera.position, true);
-  const rts = [...MP.peers.values()].map(p => p.rt).filter(rt => rt && rt.placed && rt.polyN);
+  for (const x of MP.trains()) if (x.rt.tp && !x.rt.placed) x.rt.frame(0, x.h.st, camera.position, true);
+  const rts = MP.trains().map(x => x.rt).filter(rt => rt.placed && rt.polyN);
   // the cars standing about are shared too, so a new train is not made up on top of them
   // (and, in single player, nor on top of your other trains or the timetable trains)
   const polys = [...rts.map(rt => rt.poly.slice(0, rt.polyN)), ...CARS.cuts.map(c => c.pts.map(p => p.F.p)), ...AI.trains.map(a => a.train.pts.map(p => p.F.p))];
@@ -651,7 +700,7 @@ MP.frame = function (dt) {
     MP.pend.delete(i);
     if (pd.v >= MP.swv[i]) { if (pd.s !== sw.state) MP.setSwitch(sw, pd.s, MP.thrower(i, pd.v)); MP.swv[i] = pd.v; }
   }
-  for (const p of MP.peers.values()) if (p.rt) p.rt.frame(dt, p.st, cam, MP.watching === p.id);
+  for (const x of MP.trains()) x.rt.frame(dt, x.h.st, cam, x.main && MP.watching === x.p.id);
   MPC.tick();
   // by the wall clock, so a slow device still reports eight times a second
   if (now - MP.sentAt >= 125 || (MP.dirty && now - MP.sentAt > 40)) { MP.sentAt = now; MP.dirty = false; MP.send(); }
@@ -660,7 +709,7 @@ MP.frame = function (dt) {
 MP.post = function (dt) {
   if (!MP.on) return;
   const cam = camera.position;
-  for (const p of MP.peers.values()) if (p.rt) p.rt.fx(dt, p.st, cam);
+  for (const x of MP.trains()) x.rt.fx(dt, x.h.st, cam);
   MP.tags();
 };
 /* Buffers and collisions with other players' trains, checked against our own two couplers.
@@ -675,10 +724,10 @@ MP.contact = function (T) {
   if (!MP.on || !MP.spawned || !T) return;
   const front = _mpA, rear = _mpB; mpEnds(T, front, rear);
   const fwd = T.lead.fwd, now = performance.now();
-  for (const p of MP.peers.values()) {
-    const rt = p.rt; if (!rt || !rt.placed || !rt.polyN) continue;
-    if (front.distanceTo(rt.poly[0]) > T.length + rt.train.length + 60) { p.touch = null; continue; }
-    const touch = p.touch || (p.touch = [null, null]);
+  for (const { p, h, rt } of MP.trains()) {
+    if (!rt.placed || !rt.polyN) continue;
+    if (front.distanceTo(rt.poly[0]) > T.length + rt.train.length + 60) { h.touch = null; continue; }
+    const touch = h.touch || (h.touch = [null, null]);
     let any = false;
     for (const [ei, end, sg] of [[0, front, 1], [1, rear, -1]]) {
       // nearest point of their train to this coupler, and how far along their train it is
@@ -702,17 +751,17 @@ MP.contact = function (T) {
         if (touch[ei].kind === 'ghost') toast(`Your train is overlapping ${p.st.nm}'s. Drive clear of it.`, 'warn', 4000, 'mpghost');
       }
       const tc = touch[ei];
-      if (p.ghost || tc.kind === 'ghost') { p.ghost = true; continue; }
+      if (h.ghost || tc.kind === 'ghost') { h.ghost = true; continue; }
       if (tc.kind === 'side') {
         const sp = Math.abs(S.v - theirs);
-        if (sp > MP_SIDESWIPE) { MP.wreckBoth(T, p, end, sp, sg); return; }
+        if (sp > MP_SIDESWIPE) { MP.wreckBoth(T, p, end, sp, sg, h); return; }
         // pressed against their side: no further in
         if (d < tc.d - 0.01 && Math.abs(S.v) > 0.02) { S.v = 0; S.vw = 0; toast(`Stopped against ${p.st.nm}'s train. It is foul of your track.`, 'warn', 3000, 'mpside'); }
         tc.d = Math.min(tc.d, d);
         continue;
       }
       // coupler to coupler
-      if (closing > COUPLE_WRECK) { MP.wreckBoth(T, p, end, closing, sg); return; }
+      if (closing > COUPLE_WRECK) { MP.wreckBoth(T, p, end, closing, sg, h); return; }
       if (closing > 0.02) {
         S.v = theirs - sg * buffE(closing) * closing; S.vw = S.v;
         if (closing > 0.3) sndClunk(clamp(closing / COUPLE_OK, 0.3, 1.5), 0);
@@ -722,7 +771,7 @@ MP.contact = function (T) {
       const depth = Math.min(at, len - at);
       if (depth > 0.3 && depth <= MP_END + 2) T.move(-sg * (depth - 0.2), {});
     }
-    if (!any) { touch[0] = touch[1] = null; if (p.ghost && !MP.overlaps(T, rt)) p.ghost = false; }
+    if (!any) { touch[0] = touch[1] = null; if (h.ghost && !MP.overlaps(T, rt)) h.ghost = false; }
   }
 };
 /* n or more of our tracked points within a car width of their train: the two are inside each other */
@@ -732,14 +781,16 @@ MP.overlaps = function (T, rt, n = 1) {
   return false;
 };
 /* a collision bad enough to put both trains on the ground */
-MP.wreckBoth = function (T, p, end, sp, sg) {
-  const mph = Math.round(sp / MPH);
+MP.wreckBoth = function (T, p, end, sp, sg, h) {
+  const mph = Math.round(sp / MPH), f = h && h.rt !== p.rt ? h.f : 0;
   MP.hitN = (MP.hitN || 0) + 1;
-  MP.hit = [p.id, MP.hitN, mph, +end.x.toFixed(1), +end.z.toFixed(1)];
-  GAME.derail(`Collided with ${p.st.nm}'s train at ${mph} mph. Back away before you try again.`, 'Collision', { a: sg > 0 ? 0 : T.length, k: clamp((sp / MPH - 4) / 35, 0.3, 1) });
+  MP.hit = [p.id, MP.hitN, mph, +end.x.toFixed(1), +end.z.toFixed(1), f];
+  GAME.derail(`Collided with ${p.st.nm}'s ${f ? (LOCO_SPEC[h.st.lk] || {}).short || 'train' : 'train'} at ${mph} mph. Back away before you try again.`, 'Collision', { a: sg > 0 ? 0 : T.length, k: clamp((sp / MPH - 4) / 35, 0.3, 1) });
 };
 /* someone else's train hit ours hard */
 MP.struck = function (p, hx) {
+  // one of our other trains: it is stopped where it stands (only the train being driven goes on the ground)
+  if (hx[5]) { const c = FLEET.parked().find(t => t.fid === hx[5]); if (c) FLEET.struck(c, `${p.st.nm}'s train ran into ${FLEET.name(c)} at ${hx[2]} mph.`); return; }
   const T = GAME.train; if (!T || !MP.spawned || S.derailed || !GAME.running) return;
   // where along our train it hit
   let a = 0, best = Infinity; _mpC.set(hx[3], 0, hx[4]);
@@ -802,18 +853,19 @@ MP.panel = function () {
     let right = st.e >= 0 ? Math.round(Math.abs(st.v) / MPH) + ' mph' : '';
     if (st.dr) right = 'Derailed'; else if (st.pz && st.e >= 0) right = 'In the menu';
     if (me && p.rt && p.rt.placed) right += ' · ' + fmtMi(me.distanceTo(p.rt.train.lead.pos));
-    row(p.color, st.nm, mpLocoLabel(st) + (p.rtt ? ` · ${Math.round(p.rtt / 2)} ms` : ''), right, p.id);
+    const more = p.trains ? [...p.trains.values()].filter(h => h.rt && h.rt !== p.rt).length : 0;
+    row(p.color, st.nm, mpLocoLabel(st) + (more ? ` · +${more} train${more > 1 ? 's' : ''}` : '') + (p.rtt ? ` · ${Math.round(p.rtt / 2)} ms` : ''), right, p.id);
   }
 };
 MP.drawMap = function (g, tx, ty, opt) {
   if (!MP.on) return;
-  for (const p of MP.peers.values()) {
-    const rt = p.rt; if (!rt || !rt.placed) continue;
-    const T = rt.train;
-    g.strokeStyle = p.color; g.lineWidth = 4 * opt.w; g.beginPath();
+  for (const { p, h, rt, main } of MP.trains()) {
+    if (!rt.placed) continue;
+    const T = rt.train, nm = main ? p.st.nm : `${p.st.nm} · ${(LOCO_SPEC[h.st.lk] || {}).short || ''}`;
+    g.strokeStyle = p.color; g.lineWidth = (main ? 4 : 3) * opt.w; g.beginPath();
     T.vehicles.forEach((v, i) => { const x = tx(v.pos.x), y = ty(-v.pos.z); i ? g.lineTo(x, y) : g.moveTo(x, y); }); g.stroke();
     const q = T.lead.pos, x = tx(q.x), y = ty(-q.z);
     g.fillStyle = '#ffffff'; g.beginPath(); g.arc(x, y, 3 * opt.w, 0, TAU); g.fill();
-    if (opt.labels) { g.font = `700 ${opt.fs}px "IBM Plex Sans Condensed", sans-serif`; g.textAlign = 'left'; g.lineWidth = 3; g.strokeStyle = 'rgba(0,0,0,0.75)'; g.strokeText(p.st.nm, x + 7, y - 7); g.fillStyle = p.color; g.fillText(p.st.nm, x + 7, y - 7); }
+    if (opt.labels) { g.font = `700 ${opt.fs}px "IBM Plex Sans Condensed", sans-serif`; g.textAlign = 'left'; g.lineWidth = 3; g.strokeStyle = 'rgba(0,0,0,0.75)'; g.strokeText(nm, x + 7, y - 7); g.fillStyle = p.color; g.fillText(nm, x + 7, y - 7); }
   }
 };

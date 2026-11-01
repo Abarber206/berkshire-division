@@ -14,7 +14,7 @@ const PLACE_CARS = { box: 'Box', hopper: 'Hopper', tank: 'Tank', gon: 'Gon', cab
 /* every consist a vehicle being placed has to keep clear of */
 function placeConsists(skip) {
   const a = [GAME.train, ...CARS.cuts, ...AI.trains.map(t => t.train)];
-  if (MP.on && MP.peers) for (const p of MP.peers.values()) if (p.rt && p.rt.placed) a.push(p.rt.train);
+  if (MP.on && MP.peers) for (const x of MP.trains()) if (x.rt.placed) a.push(x.rt.train);
   return a.filter(c => c && c !== skip && c.vehicles.length);
 }
 const tpXYZ = t => { const [X, N] = t.e.xz(t.s); return [X, t.e.elev(t.s), -N]; };

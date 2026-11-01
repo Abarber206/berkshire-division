@@ -83,9 +83,9 @@ MP.adoptWorld = function (r) {
 
 /* a free stretch of a custom layout for a new train in a room */
 MP.layoutSlot = function (need) {
-  for (const p of MP.peers.values()) if (p.rt && p.rt.tp && !p.rt.placed) p.rt.frame(0, p.st, camera.position, true);
+  for (const x of MP.trains()) if (x.rt.tp && !x.rt.placed) x.rt.frame(0, x.h.st, camera.position, true);
   const others = [];
-  for (const p of MP.peers.values()) if (p.rt && p.rt.placed) for (let i = 0; i < p.rt.polyN; i++) others.push(p.rt.poly[i]);
+  for (const x of MP.trains()) if (x.rt.placed) for (let i = 0; i < x.rt.polyN; i++) others.push(x.rt.poly[i]);
   for (const c of CARS.cuts) for (const q of c.pts) others.push(q.F.p);   // cars set down on the layout
   const cands = [];
   const st = layoutStart(PLAY_LAYOUT); cands.push(new TrackPos(st.edge, st.s, st.o));

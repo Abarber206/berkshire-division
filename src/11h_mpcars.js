@@ -69,6 +69,9 @@ MPC.join = function (creator) {
   } else {
     // start from the yard as everyone first has it, then ask the room how it stands now
     if (typeof PLACE !== 'undefined' && PLACE.on) PLACE.exit();
+    const mine = CARS.cuts.filter(c => c.parkS).length;
+    if (mine && typeof toast === 'function') toast(`Your other ${mine > 1 ? mine + ' trains were' : 'train was'} put away: the room runs on its own railroad. Make up more with the Trains button.`, 'warn', 5600, 'fleet');
+    for (const c of CARS.cuts) if (c.crew) IX.release(c.crew.ix);
     CARS.clear(null, true);
     if (!WORLD.custom) CARS.yard(LOCO_SPEC['765'].short);
     for (const c of CARS.cuts) { MPC.recs.set(c.mid, { n: 0, o: '', q: 0, g: 0, sig: MPC.sig(c), v: 0, r: 0 }); MPC.objs.set(c.mid, c); }
@@ -81,7 +84,7 @@ MPC.leave = function () {
   MPC.live = false; MPC.synced = false;
   MPC.recs.clear(); MPC.objs.clear(); MPC.absorbed.clear(); MPC.dirty.clear();
   // what is left standing stays put, as single-player cars
-  for (const c of CARS.cuts) { c.mid = null; if (c.rolling) { c.v = 0; c.rolling = false; } }
+  for (const c of CARS.cuts) { if (c.parkS) continue; c.mid = null; if (c.rolling) { c.v = 0; c.rolling = false; } }
   MPC.changed();
 };
 /* the lowest id in the room that has the cars: it answers a newcomer */
@@ -146,6 +149,7 @@ MPC.diff = function (now) {
   const seen = new Set(), again = CARS.gen !== MPC.gen;
   MPC.gen = CARS.gen;
   for (const c of CARS.cuts) {
+    if (c.parkS) continue;   // your other trains go to the room as trains (11b_net.js), not as cars
     if (!c.mid) c.mid = MP.id + '.' + (++MPC.seq);
     seen.add(c.mid); MPC.objs.set(c.mid, c);
     let rec = MPC.recs.get(c.mid);
@@ -292,8 +296,8 @@ CARS.wall = function (c, d) {
   const t = c.endTP(d > 0 ? 'front' : 'rear'), F = _mpcF;
   t.pose(F); const was = _mpcW.copy(F.p);
   t.advance(d, null); t.pose(F);
-  for (const p of MP.peers.values()) {
-    const rt = p.rt; if (!rt || !rt.placed || !rt.polyN) continue;
+  for (const { rt } of MP.trains()) {
+    if (!rt.placed || !rt.polyN) continue;
     if (F.p.distanceTo(rt.poly[0]) > rt.train.length + 40) continue;
     for (let i = 0; i < rt.polyN - 1; i++) {
       const A = rt.poly[i], B = rt.poly[i + 1], now = mpSegDist(F.p, A, B);

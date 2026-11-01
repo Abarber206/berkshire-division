@@ -117,7 +117,7 @@ function walkSolid(p, skip) {
 function walkSpeedOf(c) {
   if (c === GAME.train) return S.v;
   if (c.ai) return c.ai.v;
-  if (MP.on) for (const p of MP.peers.values()) if (p.rt && p.rt.train === c) return p.rt.v || 0;
+  if (MP.on) for (const x of MP.trains()) if (x.rt.train === c) return x.rt.v || 0;
   return c.v || 0;
 }
 const isCoach = v => v.kind === 'coach' && v.model && v.model.root;
@@ -211,7 +211,7 @@ function trainName(c) {
   if (c === GAME.train) return 'your train';
   if (c.parkS) return FLEET.name(c);
   if (c.ai) return c.ai.name;
-  if (MP.on) for (const p of MP.peers.values()) if (p.rt && p.rt.train === c) return `${p.st.nm}'s train`;
+  if (MP.on) for (const x of MP.trains()) if (x.rt.train === c) return `${x.p.st.nm}'s ${x.main ? 'train' : LOCO_SPEC[x.h.st.lk].short || 'train'}`;
   return 'the cars';
 }
 /* a car's walking frame: a coach's own, a trainset car's body */

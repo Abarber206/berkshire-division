@@ -162,7 +162,7 @@ const carCouplers = (gb, root, L, sx, sb, ly) => [1, -1].map(out => addCoupler(g
 /* ---------------- every frame: knuckles, levers and hoses follow the cars ---------------- */
 function cplConsists() {
   const list = [GAME.train, ...CARS.cuts];
-  if (MP.on) for (const p of MP.peers.values()) if (p.rt && p.rt.train) list.push(p.rt.train);
+  if (MP.on) for (const x of MP.trains()) list.push(x.rt.train);
   return list.filter(Boolean);
 }
 /* the coupler of the vehicle next to V[i] that meets V[i]'s coupler on side front (true) or back */

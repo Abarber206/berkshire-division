@@ -6,7 +6,7 @@
    fire kept up; one you leave running keeps going with its engineer, and any
    of them can be told to run or hold. It is an ordinary consist on the rails:
    it holds its block, holds switches, can be shoved, and cars can be cut off
-   it. Single player.
+   it. In a room everyone sees all your trains (11b_net.js).
    ========================================================================== */
 const FLEET = { MAX: 8, n: 0, card: null, armed: null, hover: null, hoverAt: 0, uiT: 0, newLoco: null, newCk: null };
 /* the parts of S that belong to the railroad and the clock rather than to one engine */
@@ -150,7 +150,7 @@ function crewLook(T) {
   if (sc.sw && sc.sw.sw.state) plan.push({ d: sc.sw.d, v: sc.sw.sw.divLimit * MPH, len: T.length + 10, why: `diverging at ${sc.sw.sw.name}` });
   if (sc.trail) plan.push({ d: sc.trail.d - 30, v: 0, why: `${sc.trail.sw.name} lined against him` });
   if (sc.end) plan.push({ d: sc.end.d - 20, v: 0, why: 'end of track' });
-  const ah = CARS.ahead(T, dir, 2500);
+  const ah = crewAhead(T, dir, 2500);
   if (ah) plan.push({ d: ah.d - 20, v: 0, why: ah.c === GAME.train ? 'your train ahead' : `${ixName(ah.c)} ahead` });
   // lower track speeds ahead, held until the whole train is past their start
   const f = T.endTP(dir > 0 ? 'front' : 'rear');
@@ -162,6 +162,27 @@ function crewLook(T) {
   cr.plan = plan;
   if (AI.trains.length) IX.holdTick(cr.ix, T, sc, T.v || 0, false);
 }
+
+/* the nearest consist ahead, other players' trains included */
+function crewAhead(T, dir, range) {
+  const rts = typeof MP !== 'undefined' && MP.on ? MP.trains().filter(x => x.rt.placed) : [];
+  if (!rts.length) return CARS.ahead(T, dir, range);
+  const idx = carIndex(), add = (tp, it) => { let l = idx.get(tp.e); if (!l) idx.set(tp.e, l = []); it.s = tp.s; l.push(it); };
+  for (const { rt } of rts) {
+    const c = rt.train, f = c.endTP('front'), r = c.endTP('rear');
+    add(f, { c, end: 'front', out: f.o }); add(r, { c, end: 'rear', out: -r.o });
+    for (const p of c.pts) add(p.tp, { c, end: null });
+  }
+  return carAhead(T, dir, range, idx);
+}
+/* another player's train ran into one of ours hard: it is stopped where it stands */
+FLEET.struck = function (T, msg) {
+  if (T.crew) T.crew.mph = 0;
+  T.v = 0; if (T.parkS) T.parkS.vw = 0;
+  sndClunk(1 / (1 + Math.pow((T.lead.pos ? T.lead.pos.distanceTo(camera.position) : 999) / 30, 1.3)), 0);
+  toast(msg, 'bad', 4600, 'fleetHit');
+  FLEET.ui(true); FLEET.cardFill();
+};
 
 /* the engineer works the controls (S holds this train's engine while he does) */
 function crewDrive(T, cr, h) {
@@ -257,7 +278,6 @@ FLEET.tick = function (h) {
 /* why you cannot make up, change or take off a train right now, or '' */
 FLEET.blocked = function () {
   if (!GAME.ready || !GAME.running || !GAME.train) return 'Start a run first.';
-  if (MP.on) return 'Running several trains is single player for now: leave the room first.';
   if (JOB.activeId()) return 'A job is worked with one train. Finish it, or abandon it from the job sheet, first.';
   if (PLACE.on) return 'Finish placing first.';
   if (S.derailed) return 'Not until your train is back on the rails.';
@@ -431,7 +451,7 @@ FLEET.at = function (x, y) {
 };
 /* a tap or click on a standing train opens its card */
 FLEET.tap = function (x, y) {
-  if (MP.on || !GAME.running) return false;
+  if (!GAME.running) return false;
   const c = FLEET.at(x, y); if (!c) return false;
   FLEET.openCard(c, x, y);
   return true;
@@ -441,7 +461,7 @@ FLEET.point = function (x, y) {
   const tip = $('cplTip');
   if (x === null) { if (FLEET.hover) { FLEET.hover = null; tip.hidden = true; $('gl').style.cursor = ''; } return; }
   const now = performance.now(); if (now - FLEET.hoverAt < 90) return; FLEET.hoverAt = now;
-  const c = MP.on ? null : FLEET.at(x, y);
+  const c = FLEET.at(x, y);
   if (!c) { FLEET.point(null); return; }
   FLEET.hover = c;
   $('gl').style.cursor = 'var(--cur-hot, pointer)';
@@ -491,7 +511,6 @@ FLEET.faster = function (c, d) {
 /* ---------------- the Trains panel ---------------- */
 FLEET.toggle = function (open) {
   const p = $('fleetPanel'), on = open === undefined ? p.hidden : open;
-  if (on && MP.on) { toast('Running several trains is single player for now: leave the room first.', 'warn', 3600, 'fleet'); return; }
   p.hidden = !on; $('btnTrains').classList.toggle('on', on);
   if (on) { carPanelToggle(false); $('mpPanel').hidden = true; FLEET.armed = null; FLEET.ui(true); }
 };
@@ -527,7 +546,6 @@ FLEET.chips = function () {
   for (const c of $('fleetTrains').children) { c.setAttribute('aria-pressed', String(!set && c.dataset.ck === FLEET.newCk)); c.disabled = set; }
 };
 FLEET.ui = function (force) {
-  const b = $('btnTrains'); if (b) b.hidden = MP.on;
   const n = FLEET.all().length, cnt = $('fleetCount'); if (cnt) { const t = n > 1 ? String(n) : ''; if (cnt.textContent !== t) cnt.textContent = t; }
   const p = $('fleetPanel'); if (!p || p.hidden) return;
   const list = $('fleetList'), rows = fleetOrder();
@@ -578,7 +596,7 @@ FLEET.drawMap = function (g, tx, ty, opt) {
 };
 /* a tap on the full map near one of your standing trains takes it over */
 FLEET.mapPick = function (x, y) {
-  if (MP.on || !MAP.t) return null;
+  if (!MAP.t) return null;
   let best = null, bd = 16;
   for (const c of FLEET.parked()) for (const v of c.vehicles) {
     if (!v.pos) continue;

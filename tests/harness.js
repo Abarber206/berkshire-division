@@ -58,7 +58,7 @@ function load() {
     toast: (msg, kind) => log.toasts.push({ msg, kind: kind || '' }),
     sndCouple: g => log.sounds.push(['couple', g]), sndClunk: g => log.sounds.push(['clunk', g]), sndPin: g => log.sounds.push(['pin', g]),
     linearizeObject() {}, truckGeos: () => ({}), plainAxle: () => ({}), newFrame: () => ({ p: new Vector3(), f: new Vector3(1, 0, 0), u: new Vector3(0, 1, 0) }),
-    MP: { on: false, noteThrow() {} }, WORLD: { custom: false },
+    MP: { on: false, noteThrow() {}, trains: () => [] }, WORLD: { custom: false },
     SCN: { signals: [], crossings: [] }, RemoteTrain: class {},
   };
   vm.createContext(ctx);

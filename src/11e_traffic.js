@@ -7,14 +7,21 @@ const IX = { res: new Map(), idx: null, idxAt: -1 };
 const AI = { trains: [] };
 
 /* what a consist is called where it holds up another train */
-const ixName = c => c === GAME.train ? 'your train' : c.ai ? c.ai.name : c.parkS && typeof FLEET !== 'undefined' ? FLEET.name(c) : c instanceof Cut ? 'cars' : 'a train';
+const ixName = c => {
+  if (c === GAME.train) return 'your train';
+  if (c.ai) return c.ai.name;
+  if (c.parkS && typeof FLEET !== 'undefined') return FLEET.name(c);
+  if (c instanceof Cut) return 'cars';
+  const x = MP.on && MP.trains ? MP.trains().find(t => t.rt.train === c) : null;
+  return x ? `${x.p.st.nm}'s train` : 'a train';
+};
 /* every consist on the railroad: ours, standing cuts, AI trains and other players' trains */
 IX.consists = function () {
   const a = [];
   if (GAME.train) a.push(GAME.train);
   a.push(...CARS.cuts);
   for (const t of AI.trains) a.push(t.train);
-  if (MP.on) for (const p of MP.peers.values()) if (p.rt && p.rt.placed) a.push(p.rt.train);
+  if (MP.on) for (const x of MP.trains()) if (x.rt.placed) a.push(x.rt.train);
   return a;
 };
 /* where everything stands, by edge: each tracked point and coupler face (rebuilt at most once a tick) */
