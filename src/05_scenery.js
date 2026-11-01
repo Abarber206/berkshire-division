@@ -1161,7 +1161,7 @@ function treeMeshes(L, scene) {
         const ps = new THREE.Sphere().setFromPoints(pl.map(q => new THREE.Vector3(q[0], q[1], -q[2]))); ps.radius += 14;
         const im = new THREE.InstancedMesh(shareGeo(G[v ? k + '2' : k], ps), MAT.treeNear, pl.length);
         pl.forEach((q, i) => set(im, i, q)); folColorsDone(im);
-        im.userData.sph = ps; out.hi.push(im);
+        im.userData.sph = ps; im.userData.fk = v ? k + '2' : k; out.hi.push(im);   // fk: which model, for the tree shadows (10g)
       }
     });
     const lo = new THREE.InstancedMesh(shareGeo(G[k + 'Lo'], sph.clone()), MAT.treeFar, list.length);
