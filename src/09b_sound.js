@@ -165,8 +165,12 @@ class Emitter {
 
 /* A whistle heard across open country comes back off hillsides and tree lines: a few
    distinct, duller repeats from either side, then the wash of the reverb. Each tap is one
-   reflection (delay s, level, pan); the sound loses its top and bottom on the way. */
-const ECHO = { send: 0.5, taps: [[0.34, 0.32, -0.55], [0.71, 0.24, 0.6], [1.18, 0.16, -0.3], [1.86, 0.1, 0.4], [2.6, 0.06, -0.15]] };
+   reflection (delay s, level, pan); the sound loses its top and bottom on the way.
+   The nearest hill is 150 m off or more (0.9 s there and back): a closer, louder repeat lands
+   right on the tail of a short toot and sounds like a second honk rather than an echo
+   (tests/mix.test.js holds that line). */
+const ECHO_MIN = 0.85;
+const ECHO = { send: 0.45, taps: [[0.95, 0.2, -0.55], [1.45, 0.13, 0.6], [2.1, 0.08, -0.3], [2.9, 0.05, 0.35]] };
 function makeEcho() {
   const ctx = AU.ctx, inp = ctx.createGain(); inp.gain.value = 0;
   const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 260; hp.Q.value = 0.5;
