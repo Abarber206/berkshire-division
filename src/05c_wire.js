@@ -181,7 +181,7 @@ function buildWire(scene) {
 
 /* shown while an electric train is out, near the camera */
 function updateWire(cp) {
-  const want = !!(GAME.train && GAME.train.elec) || (MP.on && [...MP.peers.values()].some(p => p.rt && p.rt.train.elec));
+  const want = !!(GAME.train && GAME.train.elec) || (MP.on && MP.trains().some(x => x.rt.train.elec));
   if (want && !WIRE.built) buildWire(scene);
   for (const g of WIRE.groups) g.visible = want && g.userData.c.distanceTo(cp) - g.userData.r < 3400;
 }
