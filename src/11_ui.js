@@ -6,6 +6,7 @@ const CAM = { mode: 'chase', modes: ['chase', 'cab', 'side', 'drone', 'rear', 'c
 const CAM_HOME = { chase: { yaw: -0.95, pitch: 0.14, dist: 24, pan: 0 }, drone: { droneYaw: 0.8, dronePitch: 0.85, dist: 24, pan: 0 }, cab: { cabYaw: 0, cabPitch: -0.06 } };
 const _cq = new THREE.Quaternion(), _cm = new THREE.Matrix4(), _ce = new THREE.Euler();
 function updateCamera(cam, train, dt) {
+  if (WALK.on && GAME.running) { WALK.camera(cam, dt); return; }
   const L = train.loco, body = L.root;
   cam.near = 0.3; let fov = 52;
   camTrack(train, dt);
@@ -60,16 +61,17 @@ function setupViewInput(canvas, camera) {
     const rmb = e.pointerType === 'mouse' && e.button === 2;
     if (rmb) { if (ptrs.size || CAB.grab) return; e.preventDefault(); canvas.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY, rmb: true }); CAM.fling = 0; flick = 0; tapStart = null; canvas.classList.add('dragging'); return; }
     // in the cab, a control under the pointer takes the drag instead of the view
-    if (!ptrs.size && !CAB.grab && CAB.down(e.clientX, e.clientY, e.pointerId)) { canvas.setPointerCapture(e.pointerId); e.preventDefault(); return; }
+    if (!ptrs.size && !CAB.grab && !WALK.on && CAB.down(e.clientX, e.clientY, e.pointerId)) { canvas.setPointerCapture(e.pointerId); e.preventDefault(); return; }
     canvas.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY }); CAM.fling = 0; flick = 0; if (ptrs.size === 1) tapStart = { x: e.clientX, y: e.clientY, t: performance.now() }; if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinch0 = Math.hypot(a.x - b.x, a.y - b.y); ang0 = Math.atan2(b.y - a.y, b.x - a.x); dist0 = CAM.dist; tapStart = null; } });
   canvas.addEventListener('pointermove', e => {
     if (PLACE.on) return;
     if (CAB.grab) { if (e.pointerId === CAB.grab.pid) CAB.move(e.clientX, e.clientY); return; }
-    if (!ptrs.size && e.pointerType === 'mouse') { LTAP.point(null); if (CAB.point(e.clientX, e.clientY)) CPL.point(null); else { CPL.point(e.clientX, e.clientY); if (!CPL.hover) LTAP.point(e.clientX, e.clientY); } return; }
+    if (!ptrs.size && e.pointerType === 'mouse') { if (WALK.on) return; LTAP.point(null); if (CAB.point(e.clientX, e.clientY)) CPL.point(null); else { CPL.point(e.clientX, e.clientY); if (!CPL.hover) LTAP.point(e.clientX, e.clientY); } return; }
     if (!ptrs.has(e.pointerId)) return;
     const p = ptrs.get(e.pointerId), dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
     if (tapStart && Math.hypot(e.clientX - tapStart.x, e.clientY - tapStart.y) > 8) tapStart = null;
     if (!tapStart && e.pointerType === 'mouse') canvas.classList.add('dragging');
+    if (WALK.on) { if (ptrs.size === 1) WALK.look(dx, dy); return; }   // on foot, a drag turns his head
     if (ptrs.size === 2) {
       const [a, b] = [...ptrs.values()], d = Math.hypot(a.x - b.x, a.y - b.y), ang = Math.atan2(b.y - a.y, b.x - a.x);
       if (pinch0 > 0) zoom(dist0 * pinch0 / d);
@@ -102,7 +104,7 @@ function setupViewInput(canvas, camera) {
   canvas.addEventListener('pointerup', up); canvas.addEventListener('pointerleave', () => { if (PLACE.on) return; CPL.point(null); LTAP.point(null); if (!CAB.grab) CAB.point(null); }); canvas.addEventListener('pointercancel', e => { if (CAB.grab && e.pointerId === CAB.grab.pid) CAB.up(); ptrs.delete(e.pointerId); tapStart = null; if (!ptrs.size) canvas.classList.remove('dragging'); });
   // no browser menu on a right click anywhere in the game; text boxes keep theirs for paste
   document.addEventListener('contextmenu', e => { const t = e.target; if (t && t.closest && t.closest('input,textarea,[contenteditable="true"]')) return; e.preventDefault(); });
-  canvas.addEventListener('wheel', e => { if (PLACE.on) return; e.preventDefault(); zoom(CAM.dist * (1 + clamp(e.deltaY * (e.deltaMode ? 33 : 1), -120, 120) * 0.0012)); }, { passive: false });
+  canvas.addEventListener('wheel', e => { if (PLACE.on) return; e.preventDefault(); if (WALK.on) { WALK.zoom(1 + clamp(e.deltaY * (e.deltaMode ? 33 : 1), -120, 120) * 0.0015); return; } zoom(CAM.dist * (1 + clamp(e.deltaY * (e.deltaMode ? 33 : 1), -120, 120) * 0.0012)); }, { passive: false });
   document.addEventListener('gesturestart', e => e.preventDefault());
 }
 const _ray = new THREE.Raycaster();
@@ -184,6 +186,8 @@ function setupButtons() {
     if (PLACE.on) { PLACE.key(e); return; }
     if (e.repeat && !['KeyW', 'KeyS', 'KeyQ', 'KeyE', 'KeyZ', 'KeyC', 'KeyA', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Minus', 'Equal', 'NumpadSubtract', 'NumpadAdd'].includes(e.code)) return;
     if ($('menu').hidden === false) return;
+    if (WALK.on && WALK.key(e)) return;   // on foot the keys walk him about (11j_walk.js)
+    if (e.code === 'Enter' || e.code === 'NumpadEnter') { WALK.leaveCab(); return; }
     keys[e.code] = true;
     switch (e.code) {
       case 'KeyW': S.throttle = GAME.isDiesel() ? clamp(Math.round(S.throttle * 8 + 1) / 8, 0, 1) : clamp(S.throttle + 0.04, 0, 1); break;

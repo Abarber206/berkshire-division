@@ -2,7 +2,7 @@
    Scenery: buildings, bridge, roads & crossings, pole line, signals, trees
    ========================================================================== */
 const SMAT = {};
-const SCN = { bins: new Map(), keepout: [], foot: [], solids: new Map(), signals: [], winMats: [], lamps: [], crossings: [] };
+const SCN = { bins: new Map(), keepout: [], foot: [], decks: [], blocks: [], solids: new Map(), signals: [], winMats: [], lamps: [], crossings: [] };
 function sceneryMaterials() {
   const brick = canvasTex(256, 256, (g, w, h) => {
     g.fillStyle = '#6d5b52'; g.fillRect(0, 0, w, h); const r = rng(5);
@@ -121,6 +121,11 @@ function footing(gb, key, base, x, z, w, d, top = 0) {
 }
 /* building footprints, so trees planted round buildings can keep their canopies clear of the walls */
 function foot(base, x, z, w, d) { const e = base.elements, c = new THREE.Vector3(x, 0, z).applyMatrix4(base); SCN.foot.push([c.x, c.z, e[0], e[2], e[8], e[10], w / 2, d / 2]); }
+/* a surface you can walk on (a platform): base-local centre x, z, size w x d, its top at base-local y top.
+   Stored like a footprint with the top's world height last. */
+function walkDeck(base, x, z, w, d, top) { const e = base.elements, c = new THREE.Vector3(x, top, z).applyMatrix4(base); SCN.decks.push([c.x, c.z, e[0], e[2], e[8], e[10], w / 2, d / 2, c.y]); }
+/* something low you can't walk through (a bench, a cart): like a footprint, with its world bottom and top */
+function walkBlock(base, x, z, w, d, y0, y1) { const e = base.elements, c = new THREE.Vector3(x, 0, z).applyMatrix4(base); SCN.blocks.push([c.x, c.z, e[0], e[2], e[8], e[10], w / 2, d / 2, c.y + y0, c.y + y1]); }
 function inFoot(X, N, pad) {
   for (const f of SCN.foot) { const dx = X - f[0], dz = -N - f[1]; if (Math.abs(dx * f[2] + dz * f[3]) < f[6] + pad && Math.abs(dx * f[4] + dz * f[5]) < f[7] + pad) return true; }
   return false;
@@ -180,6 +185,7 @@ const lampAt = (kind, m, x, y, z, more) => { const l = { kind, p: new THREE.Vect
    x, z are in the depot's own frame, whose platform top is at y = 0.16. */
 function platformLamp(gb, base, x, z) {
   gb.add('black', new THREE.CylinderGeometry(0.15, 0.19, 0.36, 10), P(base, x, 0.16 + 0.18 - 0.01, z));   // sits 1 cm into the boards
+  { const m = new THREE.Vector3(x, 0, z).applyMatrix4(base); solid(m.x, m.z, 0.19, m.y, m.y + 4.3); }
   gb.add('black', new THREE.CylinderGeometry(0.055, 0.075, 3.12, 8), P(base, x, 0.5 + 1.56, z));
   gb.add('black', new THREE.BoxGeometry(0.36, 0.05, 0.36), P(base, x, 3.6, z));
   gb.add('lampGlass', new THREE.BoxGeometry(0.3, 0.38, 0.3), P(base, x, 3.6 + 0.02 + 0.19, z));
@@ -256,6 +262,8 @@ function depot(pl, name, big) {
   // platform along the track
   gb.add('platform', boxT(L + 50, 0.32, 5.2, 3), P(base, 0, 0.0, W / 2 + 2.7));
   footing(gb, 'concrete', base, 0, W / 2 + 2.7, L + 50, 5.2, -0.16);
+  walkDeck(base, 0, W / 2 + 2.7, L + 50, 5.2, 0.16);
+  foot(base, 0, 0, L + 0.2, W + 0.2); foot(base, 0, W / 2 + 0.6, 3.3, 1.5);
   // lamp posts along the back of the platform, beyond the depot's ends
   for (const lx of [-(L / 2 + 20), -(L / 2 + 9), L / 2 + 11, L / 2 + 20]) platformLamp(gb, base, lx, W / 2 + 0.9);
   doorLamp(gb, base, L / 2 - 2.5, 3.25, W / 2);   // over the freight door
@@ -271,8 +279,11 @@ function depot(pl, name, big) {
     gb.add('trim', new THREE.BoxGeometry(1.8, 0.06, 0.45), P(base, bx, 0.6, bz));
     gb.add('trim', new THREE.BoxGeometry(1.8, 0.4, 0.05), P(base, bx, 0.83, bz - 0.2));
     for (const lx of [-0.75, 0.75]) gb.add('trim', new THREE.BoxGeometry(0.06, 0.42, 0.42), P(base, bx + lx, 0.36, bz));
+    walkBlock(base, bx, bz - 0.05, 1.85, 0.55, 0.16, 1.05);
   }
   gb.add('wood', boxT(2.8, 0.7, 1.2), P(base, L / 2 + 6, 0.51, W / 2 + 2.6));
+  walkBlock(base, L / 2 + 6, W / 2 + 2.6, 2.8, 1.2, 0.16, 0.86);
+  { const m = new THREE.Vector3(0, 0, W / 2 + 2.4).applyMatrix4(base); solid(m.x, m.z, 0.18, m.y, m.y + 7.3); }
   // train order signal mast at the bay
   gb.add('steel', new THREE.CylinderGeometry(0.08, 0.1, 7, 8), P(base, 0, 3.5 + 0.16, W / 2 + 2.4));
   gb.add('steel', new THREE.CylinderGeometry(0.16, 0.18, 0.12, 10), P(base, 0, 0.22, W / 2 + 2.4));

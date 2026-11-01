@@ -1544,6 +1544,9 @@ function freightModel(type, num, r) {
    diaphragm, a fish-belly centre sill with the battery boxes, water tanks and axle generator underneath, on
    six-wheel trucks. The observation car ends in an open brass-railed platform with the drumhead. */
 const CH = { L: 24.7, hw: 1.52, yT: 1.30, sill: [1.05, 1.47], belt: 2.13, win: [2.2, 3.0], lint: 3.1, eave: 3.43, xb: 11.0, xv: 11.76 };
+/* the coach's window pairs (centres) and each window opening [x0, x1], shared with the seating inside (06g_person.js) */
+const coachPairs = () => { const a = []; for (let i = 0; i < 13; i++) a.push(-9.5 + i * 1.58); return a; };
+function coachOpens() { const o = []; for (const x of coachPairs()) for (const d of [-0.33, 0.33]) o.push([x + d - 0.28, x + d + 0.28]); return o; }
 function coachModel(spec, num, observation, trim = '') {
   carMaterials();
   const root = new THREE.Group(); const gb = new GeoBin();
@@ -1557,8 +1560,7 @@ function coachModel(spec, num, observation, trim = '') {
   gb.add(G, barGeo(0.03, [-(he - 0.3), 0.98, -0.34], [he - 0.3, 0.98, -0.34], 6));
   for (let x = -(he - 0.8); x < he - 0.5; x += 3.0) gb.box(G, 0.05, CH.yT - 0.06 - 0.98, 0.05, x, (CH.yT - 0.06 + 0.98) / 2, -0.34);
   // the sides: riveted side sill, lower sheets, belt rail, window band with its posts, lintel and letterboard
-  const pairs = []; for (let i = 0; i < 13; i++) pairs.push(-9.5 + i * 1.58);
-  const opens = []; for (const x of pairs) for (const d of [-0.33, 0.33]) opens.push([x + d - 0.28, x + d + 0.28]);
+  const opens = coachOpens();
   const [w0, w1] = CH.win;
   for (const s of [-1, 1]) {
     const z = s * (hw - 0.02);

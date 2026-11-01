@@ -70,7 +70,7 @@ async function loadWorld() {
   for (const st of ROUTE.stations) { st.edge.pose(st.s, FR); st.p = FR.p.clone(); }
   for (const w of ROUTE.water) { w.edge.pose(w.s, FR); w.p = FR.p.clone(); }
   if (ROUTE.coal) { const c = ROUTE.coal; c.edge.pose(c.s, FR); c.p = FR.p.clone(); }
-  setupViewInput($('gl'), camera); PLACE.setup($('gl')); setupLevers(); setupButtons(); setupMap();
+  setupViewInput($('gl'), camera); PLACE.setup($('gl')); setupLevers(); setupButtons(); setupMap(); WALK.setup();
   linearizeObject(scene);
   makeTrain();
   applyLook(GAME.settings.time, GAME.settings.weather, renderer, scene);
@@ -149,6 +149,7 @@ function layoutFit(tp, need) {
   return tp;
 }
 function finishTrain(t) {
+  WALK.reset();
   prepareTrain(t);
   CARS.setup();
   AI.setup();
@@ -667,6 +668,7 @@ function renderStep(dt, T) {
   CAB.frame(dt, T);
   AI.render(dt);
   MP.frame(dt);
+  WALK.frame(dt);
   if (GAME.running && !S.paused && !S.derailed && !PLACE.on) MP.contact(T);
   // headlight & glows, brightening through dusk
   const night = SKY.dark, darkH = Math.max(night, smooth(0.3, 0.7, SKY.boreK || 0));   // in a tunnel the headlight works as it does at night
@@ -699,7 +701,7 @@ function renderStep(dt, T) {
   // sky follows camera
   skyTick(dt);
   SKY.clouds.material.map.offset.x += dt * 0.0006; SKY.clouds.material.map.offset.y += dt * 0.0003;
-  skyFollow(camera, PLACE.on ? PLACE.focus() : (MP.view() || T).lead.pos);
+  skyFollow(camera, PLACE.on ? PLACE.focus() : WALK.on ? camera.position : (MP.view() || T).lead.pos);
   lampsFrame(camera, dt);
   updateTrackLOD(camera); updateDetailLOD(camera, scene, dt); mtUpdate(camera, scene);
   WORLD.waterT.value += dt;

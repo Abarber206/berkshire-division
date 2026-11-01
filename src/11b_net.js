@@ -158,6 +158,7 @@ function mpClean(r) {
     o.wk = o.dr && Array.isArray(r.wk) && r.wk.length >= 4 ? [n(r.wk[0], 0, 5000), r.wk[1] < 0 ? -1 : 1, Math.round(n(r.wk[2], 1, 2e9, 1)), n(r.wk[3], 0, 1), n(r.wk[4], 0, 150), n(r.wk[5], -150, 150), r.wk[6] ? 1 : 0] : null;
   }
   o.pz = r.pz ? 1 : 0; o.cs = r.cs ? 1 : 0;
+  o.av = !o.other ? walkClean(r.av) : null;   // walking about or riding (11j_walk.js)
   // send time on their clock, and their echo of ours: [our send time, ms they held it]
   o.ts = n(r.ts, 0, 1e12);
   const ak = r.ak && typeof r.ak === 'object' ? r.ak[MP.id] : null;
@@ -545,6 +546,7 @@ MP.state = function () {
     }
     if (S.derailed && T.wk) st.wk = [+T.wk.a.toFixed(1), T.wk.side, T.wk.seed, +T.wk.k.toFixed(2), +(T.wk.v0 || 0).toFixed(1), +(T.wk.vs || 0).toFixed(2), T.wk.hit ? 1 : 0];
   }
+  { const av = WALK.net(); if (av) st.av = av; }
   st.sw = NET.switches.map((sw, i) => MP.swv[i] * 2 + sw.state);
   if (MP.lt) st.lt = MP.lt;
   if (MP.hit) st.hx = MP.hit;
