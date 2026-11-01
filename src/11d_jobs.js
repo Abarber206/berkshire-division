@@ -52,6 +52,13 @@ const JOBS = [
       { type: 'pickup', from: 'Quarry Storage', text: 'Couple to the five loads on Quarry Storage', hint: 'West out of the yard past Delphos. The branch faces the other way at Quarry Jct: run past it, throw it, and back up the branch. Storage is off the runaround.' },
       { type: 'spot', to: 'Yard 2', tag: 'Y2', text: 'Set the loads out on Yard 2, clear of the switches', hint: 'Pull off the branch onto track 1 and head east over the river. Cross to track 2 at Kenton crossover B, then round the east curve and west past Fostoria. Cross back at Bellevue crossover A, in at Bellevue East and up the ladder to Yard 2.' },
     ] },
+  { id: 'wayfreight', name: 'Kenton & Delphos way freight', kind: 'switch', level: 'Medium', look: 'noon', train: 'light', spawn: 'yardEast', start: hm(9, 0), due: hm(10, 15),
+    brief: 'Five cars on Yard 3 are billed out on the line: coal and feed for Kenton Coal & Feed, fuel oil for the Delphos bulk plant. Take them round on track 1 and spot each car at its customer. Both spurs trail behind you: pull past the switch, then back the cars in.',
+    steps: [
+      { type: 'pickup', from: 'Yard 3', text: 'Couple to the way freight on Yard 3', hint: 'Out at Bellevue East, then back in over the ladder to Yard 3. The two tank cars are on the east end, the Kenton cars behind them. Couple at 4 mph or less.' },
+      { type: 'bills', to: 'kenton', by: hm(9, 50), text: 'Spot the coal and feed at Kenton Coal & Feed', hint: 'East on track 1 round to Kenton. Take the siding at Kenton East, run past the Kenton Spur switch, throw it and back in. Cut off the hoppers and the boxcar, and leave them clear of the switch.' },
+      { type: 'bills', to: 'delphos', text: 'Spot the tank cars at Delphos Oil', hint: 'Out of the siding at Kenton West and on over the river, past Quarry Jct to Delphos. Run past the Delphos Spur switch, throw it, back the tanks in and cut them off clear of the switch. Put the switch back for the main.' },
+    ] },
 ];
 
 const JOB = { run: null, best: {}, hz: 0 };
@@ -102,7 +109,12 @@ JOB.begin = function (def) {
   // waybill the cars this job moves
   for (const st of R.steps) if (st.type === 'pickup') {
     const dest = R.steps.find(x => x.type === 'spot');
-    for (const c of CARS.cuts) if (c.home === st.from) for (const v of c.vehicles) { v.job = { to: dest.to, tag: dest.tag }; R.cars.push(v); }
+    for (const c of CARS.cuts) if (c.home === st.from) for (const v of c.vehicles) {
+      // a way freight's cars go where their own waybills say
+      const d = !dest && v.wb && IND.def(v.wb);
+      v.job = d ? { to: d.track, tag: d.tag, ind: d.id } : { to: dest.to, tag: dest.tag };
+      R.cars.push(v);
+    }
   }
   carPanelState.key = '';
   JOB.ui();
@@ -283,7 +295,7 @@ JOB.steps = function (R, T, now) {
     // into the siding and clear of the main, then wait for the other train to go by
     const a = AI.trains.find(x => x.id === st.train);
     if (!a) { done(); return; }     // traffic is switched off
-    const inside = T.pts.every(p => p.tp.e.line && p.tp.e.line.name === st.at) && !NET.switches.some(sw => T.fouls(sw));
+    const inside = T.pts.every(p => p.tp.e.line && p.tp.e.line.name === st.at) && !NET.switches.some(sw => !sw.industry && T.fouls(sw));   // standing over a spur switch lined for the siding is fine
     if (inside && R.lastStop > 1 && st.inT == null) {
       st.inT = now; const late = lateBy(st.by);
       if (late > 0) JOB.dock('time', Math.min(12, 3 * Math.ceil(late / 60)), `Late into ${st.at}`, `${fmtDur(late)} behind ${fmtClock(st.by)}`);
@@ -300,6 +312,23 @@ JOB.steps = function (R, T, now) {
   if (st.type === 'pickup') {
     if (R.cars.length && R.cars.every(v => T.vehicles.includes(v))) { toast(`All ${R.cars.length} cars coupled. ${R.steps[R.i + 1].text}.`, 'good', 5200, 'jobpick'); done(); }
     else st.got = R.cars.filter(v => T.vehicles.includes(v)).length;
+    return;
+  }
+  if (st.type === 'bills') {
+    // every job car billed to this customer stands set out on its track, clear of the switches
+    const mine = R.cars.filter(v => v.job && v.job.ind === st.to), d = IND.def(st.to);
+    st.got = mine.filter(v => IND.at(v) === st.to).length; st.n = mine.length; st.why = '';
+    if (!mine.length) { done(); return; }
+    if (st.got < mine.length) {
+      const left = mine.find(v => IND.at(v) !== st.to), c = cutOf(left), ln = left.ptsAll[0].tp.e.line;
+      if (c && !c.rolling && ln && ln.name === d.track) { const sw = foulOf(c); if (sw) st.why = `The cars are foul of ${sw.name}: shove them clear`; }
+      return;
+    }
+    st.doneT = now;
+    const late = lateBy(stepDue(R, st));
+    if (late > 0) JOB.dock('time', Math.min(20, 3 * Math.ceil(late / 60)), `Late at ${d.name}`, `${fmtDur(late)} after ${fmtClock(stepDue(R, st))}`);
+    toast(`All ${mine.length} cars spotted at ${d.name}.${R.steps[R.i + 1] ? ' ' + R.steps[R.i + 1].text + '.' : ''}`, 'good', 5200, 'jobbills');
+    done();
     return;
   }
   if (st.type === 'spot') {
@@ -357,6 +386,7 @@ JOB.task = function () {
   if (st.type === 'pass') { const c = cd(st.by, 'by'); return { text: `Pass ${st.at}`, sub: c.s, kind: c.k }; }
   const c = cd(stepDue(R, st), 'by');
   if (st.type === 'pickup') return { text: st.text, sub: (st.got ? `${st.got} of ${R.cars.length} coupled · ` : '') + c.s, kind: c.k };
+  if (st.type === 'bills' && !st.why) return { text: st.text, sub: (st.got ? `${st.got} of ${st.n} spotted · ` : '') + c.s, kind: c.k };
   return { text: st.text, sub: st.why ? st.why : c.s, kind: st.why ? 'warn' : c.k };
 };
 
@@ -396,7 +426,7 @@ JOB.sheet = function (R, now, live) {
     if (st.type === 'depart') { what = `Depart ${st.at}`; sched = fmtClock(st.dep); act = st.depT != null ? fmtClockS(st.depT) : ''; }
     else if (st.type === 'stop') { what = st.dep ? `${st.at}` : `Arrive ${st.at}`; sched = st.dep ? `${fmtClock(st.arr)}–${fmtClock(st.dep)}` : fmtClock(st.arr); act = st.arrT != null ? fmtClockS(st.arrT) + (st.ft != null ? ` · ${st.ft < 25 ? 'on the mark' : st.ft + ' ft'}` : '') : st.state === 'missed' ? 'missed' : ''; }
     else if (st.type === 'pass') { what = `Pass ${st.at}`; sched = 'by ' + fmtClock(st.by); act = st.passT != null ? fmtClockS(st.passT) : ''; }
-    else { what = st.text; sched = (st.by || (st.type === 'spot' && R.def.due)) ? 'by ' + fmtClock(st.by || R.def.due) : ''; act = st.doneT != null ? fmtClockS(st.doneT) : st.t != null ? fmtClockS(st.t) : ''; }
+    else { what = st.text; sched = (st.by || ((st.type === 'spot' || st.type === 'bills') && R.def.due)) ? 'by ' + fmtClock(st.by || R.def.due) : ''; act = st.doneT != null ? fmtClockS(st.doneT) : st.t != null ? fmtClockS(st.t) : ''; }
     const late = (st.arrT != null && st.arrT - st.arr > 59) || (st.passT != null && st.passT > st.by) || (st.doneT != null && st.doneT > (st.by || R.def.due || Infinity));
     const hint = cur && st.hint ? `<div class="jh">${esc(st.hint)}</div>` : '';
     return `<div class="jr${cur ? ' cur' : ''}">${mark}<span class="jw">${esc(what)}${hint}</span><span class="js">${sched}</span><span class="ja${late ? ' late' : ''}">${act}</span></div>`;
@@ -477,7 +507,7 @@ function refreshJobGroups() {
 }
 
 function jobSetup() {
-  JOB.load();
+  JOB.load(); IND.load();
   if (GAME.settings.job && !JOB.def(GAME.settings.job)) GAME.settings.job = '';
   jobMenu();
   $('jobBox').addEventListener('click', () => { const R = JOB.run; if (!R) return; if (R.over) JOB.results(); else { const p = $('jobPanel'); p.hidden = !p.hidden; if (!p.hidden) { $('carPanel').hidden = true; $('btnCars').classList.remove('on'); $('mpPanel').hidden = true; JOB.panel(); } } });
@@ -500,8 +530,8 @@ JOB.drawMap = function (g, tx, ty, opt) {
   const R = JOB.run; if (!R || R.over) return;
   const st = R.steps[R.i]; if (!st) return;
   g.save();
-  if (st.type === 'spot') {
-    const ln = ROUTE.lines[st.to];
+  if (st.type === 'spot' || st.type === 'bills') {
+    const ln = ROUTE.lines[st.type === 'bills' ? IND.def(st.to).track : st.to];
     g.strokeStyle = 'rgba(207,166,81,0.85)'; g.lineWidth = 5 * opt.w; g.setLineDash([6 * opt.w, 5 * opt.w]);
     for (const e of ln.edges) { const L = MAP.lines.find(m => m.e === e); if (!L) continue; g.beginPath(); L.pts.forEach((p, i) => { const x = tx(p[0]), y = ty(p[1]); i ? g.lineTo(x, y) : g.moveTo(x, y); }); g.stroke(); }
     g.setLineDash([]);

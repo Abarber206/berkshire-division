@@ -249,7 +249,8 @@ CPL.point = function (x, y) {
   if (!t) { if (prev) { tip.hidden = true; $('gl').style.cursor = ''; } return; }   // the cab's own hover shares the tip
   $('gl').style.cursor = 'var(--cur-hot, pointer)';
   t.e.kn.material = RMAT.cplHi; t.e.lever.material = RMAT.cplHi;
-  tip.textContent = CPL.label(t); tip.hidden = false;
+  const car = t.c.vehicles[t.i], bill = car && typeof IND !== 'undefined' && IND.on() ? IND.describe(car) : '';
+  tip.textContent = CPL.label(t) + (bill ? ` · ${IND.mark(car)}: ${bill}` : ''); tip.hidden = false;
   tip.style.left = Math.min(innerWidth - tip.offsetWidth - 8, x + 14) + 'px'; tip.style.top = Math.max(8, y - 34) + 'px';
 };
 

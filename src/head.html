@@ -423,6 +423,18 @@ details.keys kbd{color:var(--brass)}
 .cj:active{background:rgba(207,166,81,.3)}
 .cjx{flex:none;width:6px;align-self:center;height:4px;background:#59636a}
 #carHint b{color:var(--ink);font-weight:600}
+/* waybills: the tag says where the car goes; a loaded car's tag is amber, an empty's pale blue */
+.cv>i.bl{background:#8fb8c9}.cv>i.bl.ld{background:#e0a050}
+.cv.full:before{content:'';position:absolute;left:3px;right:3px;top:15px;height:3px;border-radius:1px;background:rgba(224,160,80,.75)}
+#carList{border-top:1px solid rgba(255,255,255,.08);padding-top:6px}
+#carList summary{cursor:pointer;font-size:11px;letter-spacing:.6px;text-transform:uppercase;color:var(--ink-dim);list-style-position:inside}
+#carListBody{max-height:min(38vh,300px);overflow-y:auto;margin-top:6px;display:flex;flex-direction:column;gap:6px}
+#carListBody .lbl{display:flex;justify-content:space-between;gap:8px;font-size:10.5px;color:var(--ink-dim);text-transform:uppercase;letter-spacing:.5px}
+#carListBody .lbl em{font-style:normal;color:var(--brass);text-transform:none;letter-spacing:0}
+.il{display:flex;flex-direction:column;gap:1px;padding:5px 7px;border-radius:4px;background:rgba(255,255,255,.035);font-size:11.5px;color:var(--ink-dim)}
+.il b{color:var(--ink);font-weight:600;font-size:12px}.il small{font-size:10px;opacity:.8;margin-bottom:2px}
+.il .ic{color:#9fc6d6}.il .iw{color:#e9c46a}.il .ir{color:#e0a050}.il .in{opacity:.6}
+.indLog{font-size:10.5px;color:var(--ink-dim);opacity:.85}
 @media (max-height:500px) and (orientation:landscape){
   /* clear of the lever column so the train can still be worked with the panel open */
   #carPanel{top:calc(env(safe-area-inset-top,0px) + 42px);right:calc(env(safe-area-inset-right,0px) + 206px);width:min(420px,calc(100vw - 236px));gap:6px;padding:8px}
@@ -695,6 +707,7 @@ details.keys kbd{color:var(--brass)}
     <div id="carSum"></div>
     <div id="carStrip"></div>
     <div id="carHint" class="mpStatus"></div>
+    <details id="carList"><summary>Switch list</summary><div id="carListBody"></div></details>
   </div>
   <div id="jobPanel" class="hud-box" hidden>
     <div class="mpHead"><span id="jpTitle">Job</span><button class="btn" id="jpAbandon" type="button">Abandon job</button><button class="btn" id="jpClose" type="button" aria-label="Close">Close</button></div>

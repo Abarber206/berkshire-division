@@ -178,6 +178,7 @@ function setupButtons() {
   $('btnCam').addEventListener('click', () => cycleCamera());
   $('btnCars').addEventListener('click', () => carPanelToggle());
   $('carClose').addEventListener('click', () => carPanelToggle(false));
+  $('carList').addEventListener('toggle', () => { carPanelState.t = 0; carPanel(); });
   $('carStrip').addEventListener('click', e => { const b = e.target.closest('.cj'); if (b) CARS.uncouple(+b.dataset.j); });
   $('btnMap').addEventListener('click', () => MAP.open());
   $('minimap').addEventListener('click', () => MAP.open());
@@ -321,6 +322,7 @@ function drawNet(g, W, H, cx, cn, sc, opt) {
     T.vehicles.forEach((v, i) => { const x = tx(v.pos.x), y = ty(-v.pos.z); i ? g.lineTo(x, y) : g.moveTo(x, y); }); g.stroke();
     const p = T.lead.pos; g.fillStyle = '#ffffff'; g.beginPath(); g.arc(tx(p.x), ty(-p.z), 3.5 * opt.w, 0, TAU); g.fill();
   }
+  IND.drawMap(g, tx, ty, opt);
   JOB.drawMap(g, tx, ty, opt);
   AI.drawMap(g, tx, ty, opt);
   MP.drawMap(g, tx, ty, opt);
@@ -400,7 +402,9 @@ function carPanel() {
     let h = '';
     V.forEach((v, i) => {
       if (i > 0) h += CARS.canCut(T, i) ? `<button class="cj" type="button" data-j="${i}" aria-label="Pull the pin between ${carName(T, V[i - 1])} ${i} and ${carName(T, v)} ${i + 1}">${KNUCKLE}</button>` : '<span class="cjx"></span>';
-      h += `<div class="cv ${isPower(v) ? 'pw' : v.kind}${v.job ? ' wb' : ''}">${v.job ? `<i title="Waybilled to ${v.job.to}">${v.job.tag}</i>` : ''}<b>${carName(T, v)}</b></div>`;
+      const bill = !v.job && v.wb && IND.on() && IND.def(v.wb);
+      const tag = v.job ? `<i title="Waybilled to ${v.job.to}">${v.job.tag}</i>` : bill ? `<i class="bl${v.ld ? ' ld' : ''}">${bill.tag}</i>` : '';
+      h += `<div class="cv ${isPower(v) ? 'pw' : v.kind}${v.job ? ' wb' : ''}${v.ld ? ' full' : ''}" title="${indEsc(IND.describe(v))}">${tag}<b>${carName(T, v)}</b></div>`;
     });
     strip.innerHTML = h;
     const pw = strip.querySelector('.pw'); if (pw) strip.scrollLeft = pw.offsetLeft - strip.clientWidth / 2 + pw.offsetWidth;
@@ -415,6 +419,9 @@ function carPanel() {
   $('carHint').innerHTML = !cars.length ? 'Back gently into a cut of cars to couple: one knuckle has to be open, or the cars are only shoved. Tap a coupler on the cars to open or close it.'
     : (moving ? '<b>Moving:</b> pulling a pin kicks the cars. Brake right after and they roll free.' : '<b>Stopped:</b> tap a coupler here, or the cut lever on the cars themselves, to cut cars off. They are set out and tied down where they stand.')
       + (charging ? ` <b>${charging}</b> car${charging > 1 ? 's' : ''} still charging air (amber).` : '');
+  // the switch list: every half second at most, and only while it is open
+  const L = $('carList');
+  if (L) { L.hidden = !IND.on(); if (L.open && !L.hidden && performance.now() - carPanelState.t > 500) { carPanelState.t = performance.now(); const b = $('carListBody'), html = IND.listHTML() + (IND.log.length ? `<div class="indLog">${IND.log.slice(0, 3).map(l => indEsc(l.msg)).join('<br>')}</div>` : ''); if (b.innerHTML !== html) b.innerHTML = html; } }
 }
 CARS.onChange = () => carPanel();
 

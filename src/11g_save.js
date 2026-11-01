@@ -39,6 +39,7 @@ function vehicleOut(v, power) {
   if (v.placed) o.pl = true;
   if (v.slide) o.sl = true;
   if (v.job) o.j = v.job;
+  const ind = IND.carOut(v); if (ind) o.ind = ind;   // the load and the waybill
   return o;
 }
 function consistOut(c, power = []) {
@@ -60,6 +61,7 @@ function vehicleIn(v, o) {
   v.flip = !!o.f; v.kn = (o.kn || [0, 0]).slice(); v.brake = Object.assign({ AR: 90, BC: 0, BP: 90, emerg: false, released: true }, o.b); v.roll = o.r || 0;
   v.hb = !!o.hb; v.yard = !!o.y; v.placed = !!o.pl; v.slide = !!o.sl;
   if (o.j) v.job = o.j; else delete v.job;
+  IND.carIn(v, o.ind);
 }
 /* put a consist back on the rails: every tracked point where it was, or, if the track has changed, the
    front coupler where it was by line and the rest behind it as the switches lie */
@@ -159,6 +161,7 @@ SAVE.snapshot = function () {
     train: Object.assign(consistOut(T, power), { loco: T.locoKey, ck: T.consistKey, units: T.nUnits || 1 }),
     cuts: CARS.cuts.map(c => Object.assign(consistOut(c), { cv: rnd(c.v), rolling: !!c.rolling, stopT: rnd(c.stopT || 0), vented: !!c.vented, home: c.home || null })),
     job, ai: aiOut(), sky: { hour: rnd(SKY.hour, 1e5), weather: SKY.weather }, cam, wreck,
+    ind: IND.out(),
     misc: { placed: PLACE.made || 0, lastStation: GAME.lastStation || null, spawnName: GAME.spawnName || '' },
     sum: SAVE.summary(T, job),
   };
@@ -282,6 +285,7 @@ SAVE.apply = function (d) {
     CARS.cuts.push(c); all.push(...cv);
   }
   CARS.gen++;
+  IND.in(d.ind);
   PLACE.made = Math.max(PLACE.made || 0, (d.misc && d.misc.placed) || 0);
   // the engine's controls, boiler, air and the clock
   if (!t.diesel) applySteamFinish(g.finish);
