@@ -6630,8 +6630,9 @@ function haloTex() {
 const _lfA = new THREE.Vector3(), _lfB = new THREE.Vector3();
 function lampFacing(L, cam) {
   if (!L.headlightPos) return 1;
-  _lfA.copy(L.headlightPos).applyMatrix4(L.root.matrixWorld);
-  _lfB.set(1, 0, 0).transformDirection(L.root.matrixWorld);
+  const f = L.headFrame || L.root;
+  _lfA.copy(L.headlightPos).applyMatrix4(f.matrixWorld);
+  _lfB.set(1, 0, 0).transformDirection(f.matrixWorld);
   const d = _lfA.sub(cam.isObject3D ? cam.position : cam).multiplyScalar(-1).normalize().dot(_lfB);
   return smooth(-0.15, 0.55, d);
 }
@@ -11791,16 +11792,6 @@ function buildBigBoy(key, trim = '') {
     for (const s of [-1, 1]) { const sp = new THREE.Shape(); sp.moveTo(top[0], 0.84); sp.lineTo(bot[0], 0.09); sp.lineTo(bxF(pil.beam + 0.2), 0.09); sp.lineTo(bxF(pil.beam + 0.2), 0.84); sp.closePath(); gf.add('dark', new THREE.ExtrudeGeometry(sp, { depth: 0.06, bevelEnabled: false }).translate(0, 0, s * 1.36 - 0.03)); }
   }
   const coupler = addCoupler(gf, front, { x: bxF(0), out: 1, sx: -pil.beam, sb: 0.84, ly: 1.03, zh: 1.3, yp: 0.8, housing: true, hl: 0.3 });
-  // a pair of small lamps on the pilot beam either side of the coupler, lit with the headlight (flashing for crossings)
-  const ditchAt = [];
-  for (const s of [-1, 1]) {
-    const z = s * 1.0, y = 1.385, a = 0.5;
-    gf.box('black', 0.14, 0.04, 0.14, bxF(a), 1.29, z);                                // foot on the beam top
-    gf.cylX('black', 0.09, 0.09, 0.16, 18, bxF(a), y, z);                              // can
-    gf.cylX('black', 0.1, 0.1, 0.025, 18, bxF(a - 0.07), y, z);                         // bezel
-    gf.box('black', 0.1, 0.04, 0.2, bxF(a - 0.04), y + 0.1, z);                         // visor
-    ditchAt.push([bxF(a - 0.0835) + 0.002, y, z]);
-  }
   // steps up from the pilot to the deck at each corner, with a grab rail
   for (const s of [-1, 1]) {
     const z = s * 1.40;
@@ -11884,32 +11875,60 @@ function buildBigBoy(key, trim = '') {
   { const tg = [19.2, FB.cy + Math.sqrt(FB.r * FB.r - 0.9 * 0.9), -0.9]; gb.cylX('black', 0.17, 0.17, 0.58, 16, ax(tg[0]), tg[1] + 0.12, tg[2]); gb.box('black', 0.5, 0.18, 0.3, ax(tg[0]), tg[1] - 0.03, tg[2] + 0.04); }   // turbo-generator
   gb.cyl('black', 0.2, 0.24, 0.24, 18, ax(6.9), BBOIL.top(6.9) + 0.06, 0); gb.cyl('dark', 0.13, 0.13, 0.1, 14, ax(6.9), BBOIL.top(6.9) + 0.21, 0);   // top check
 
-  /* ---- smokebox front: headlight with number boards, bell, class lamps, air pumps ---- */
-  const numMat = decalMat(128, 64, (g, w, h) => { g.fillStyle = '#f2efe4'; g.fillRect(0, 0, w, h); g.fillStyle = '#121212'; g.font = 'bold 44px Arial'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(spec.num, w / 2, h / 2 + 2); });
-  RMAT['num' + key] = numMat;
-  const hl = { y: yB + 0.68, R: 0.29, D: 0.5 };
-  hl.aF = door.a - 0.04 - hl.D;
+  /* ---- front end, as on 4014: the headlight low on the pilot deck over the shielded air pumps, the bell and the
+     X4014 number boards on top of the smokebox front, class lamps at its corners, a plain door with a handrail ---- */
+  const numBoard = txt => decalMat(160, 64, (g, w, h) => { g.fillStyle = '#f2efe4'; g.fillRect(0, 0, w, h); g.fillStyle = '#121212'; g.font = 'bold 44px Arial'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(txt, w / 2, h / 2 + 2); });
+  RMAT['num' + key] = numBoard(spec.num); RMAT['numX' + key] = numBoard('X' + spec.num);
+  RMAT['shield' + key] = decalMat(128, 144, (g, w, h) => {
+    const sh = () => { g.beginPath(); g.moveTo(8, 10); g.quadraticCurveTo(w / 2, 26, w - 8, 10); g.lineTo(w - 8, 70); g.quadraticCurveTo(w - 14, 118, w / 2, h - 6); g.quadraticCurveTo(14, 118, 8, 70); g.closePath(); };
+    sh(); g.fillStyle = '#d9d4c4'; g.fill(); g.save(); g.translate(w / 2, h / 2); g.scale(0.86, 0.86); g.translate(-w / 2, -h / 2); sh(); g.fillStyle = '#16181a'; g.fill(); g.restore();
+    g.fillStyle = '#d9d4c4'; g.fillRect(16, 52, w - 32, 4); g.font = 'bold 34px Arial'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(spec.num, w / 2, 82);
+  });
+  // the pump shield: a box on the pilot deck across the front of the front engine, two grilles in its face
+  const PD = { a0: 0.50, a1: 1.70, y0: pil.deckY + 0.05, y1: 2.02, hw: 0.95 };
+  gf.box('black', PD.a1 - PD.a0, PD.y1 - PD.y0, 2 * PD.hw, bxF((PD.a0 + PD.a1) / 2), (PD.y0 + PD.y1) / 2, 0);
+  gf.box('dark', PD.a1 - PD.a0 + 0.1, 0.04, 2.72, bxF((PD.a0 + PD.a1) / 2), PD.y1 + 0.02, 0);                // its top: a walkway across the deck
+  for (const z of [-0.42, 0.42]) {
+    gf.box('dark', 0.02, 0.42, 0.5, bxF(PD.a0 - 0.005), 1.66, z);
+    for (let y = 1.48; y < 1.86; y += 0.055) gf.box('black', 0.03, 0.022, 0.48, bxF(PD.a0 - 0.02), y, z);
+    for (const zz of [z - 0.26, z + 0.26]) gf.box('black', 0.04, 0.48, 0.03, bxF(PD.a0 - 0.015), 1.66, zz);
+  }
+  for (const y of [PD.y0 + 0.04, PD.y1 - 0.04]) gf.box('black', 0.04, 0.05, 2 * PD.hw, bxF(PD.a0 - 0.015), y, 0);   // bolted flanges
+  // the UP shield standing on the walkway's front edge
+  gf.box('black', 0.04, 0.4, 0.34, bxF(PD.a0 + 0.06), PD.y1 + 0.24, 0);
+  gf.add('shield' + key, new THREE.PlaneGeometry(0.32, 0.36), M(bxF(PD.a0 + 0.04) + 0.002, PD.y1 + 0.24, 0, 0, Math.PI / 2, 0));
+  // railings up from the walkway either side of the headlight
+  for (const s of [-1, 1]) {
+    const z = s * 1.0, y0 = PD.y1 + 0.04, y1 = y0 + 0.82;
+    for (const a of [PD.a0 + 0.08, PD.a1 - 0.1]) gf.add('rod', barGeo(0.02, [bxF(a), y0, z], [bxF(a), y1, z], 6));
+    gf.add('rod', barGeo(0.02, [bxF(PD.a0 + 0.08), y1, z], [bxF(PD.a1 - 0.1), y1, z], 6));
+    gf.add('rod', barGeo(0.016, [bxF(PD.a0 + 0.08), y0 + 0.4, z], [bxF(PD.a1 - 0.1), y0 + 0.4, z], 6));
+  }
+  // the headlight on a pedestal behind the shield, small number boards either side of it
+  const hl = { y: PD.y1 + 0.42, R: 0.24, D: 0.46, aF: 0.70 };
   {
-    const aF = hl.aF, R = hl.R, D = hl.D, aB = aF + D, x0 = ax(aB);
+    const aF = hl.aF, R = hl.R, D = hl.D, aB = aF + D, x0 = bxF(aB);
     const prof = [[0, 0], [0.012, R * 0.5], [0.04, R * 0.8], [0.09, R * 0.95], [0.15, R], [D - 0.06, R], [D - 0.06, R + 0.022], [D - 0.014, R + 0.022], [D, R - 0.012], [D, R - 0.05], [D - 0.04, R - 0.055]];
-    gb.add('black', new THREE.LatheGeometry(prof.map(p => new THREE.Vector2(p[1], p[0])), 36).rotateZ(-Math.PI / 2).translate(x0, hl.y, 0));
-    gb.add('black', new THREE.TorusGeometry(R - 0.028, 0.018, 8, 36).rotateY(Math.PI / 2).translate(ax(aF + 0.01), hl.y, 0));
-    { const s = new THREE.Shape(), r0 = R + 0.005, r1 = R + 0.03, t0 = 0.3, t1 = Math.PI - 0.3;
-      s.absarc(0, 0, r1, t0, t1, false); s.lineTo(r0 * Math.cos(t1), r0 * Math.sin(t1)); s.absarc(0, 0, r0, t1, t0, true); s.lineTo(r1 * Math.cos(t0), r1 * Math.sin(t0));
-      gb.add('black', new THREE.ExtrudeGeometry(s, { depth: 0.13, bevelEnabled: false, curveSegments: 16 }).rotateY(Math.PI / 2).translate(ax(aF + 0.06), hl.y, 0)); }
-    gb.box('black', 0.3, 0.3, 0.3, ax(door.a - 0.08), hl.y - 0.12, 0);              // bracket onto the door
-    // number boards either side of the lamp, set into the bracket and facing ahead
-    for (const s of [-1, 1]) { const zc = s * (R + 0.3); gb.box('black', 0.16, 0.26, 0.5, ax(aF + 0.2), hl.y - 0.02, zc); gb.add('num' + key, new THREE.PlaneGeometry(0.44, 0.2), M(ax(aF + 0.12) + 0.002, hl.y - 0.02, zc, 0, Math.PI / 2, 0)); gb.box('black', 0.3, 0.06, 0.12, ax(aF + 0.38), hl.y - 0.02, s * (R + 0.04)); }
+    gf.add('black', new THREE.LatheGeometry(prof.map(p => new THREE.Vector2(p[1], p[0])), 36).rotateZ(-Math.PI / 2).translate(x0, hl.y, 0));
+    gf.add('black', new THREE.TorusGeometry(R - 0.028, 0.018, 8, 36).rotateY(Math.PI / 2).translate(bxF(aF + 0.01), hl.y, 0));
+    { const sp = new THREE.Shape(), r0 = R + 0.005, r1 = R + 0.03, t0 = 0.3, t1 = Math.PI - 0.3;
+      sp.absarc(0, 0, r1, t0, t1, false); sp.lineTo(r0 * Math.cos(t1), r0 * Math.sin(t1)); sp.absarc(0, 0, r0, t1, t0, true); sp.lineTo(r1 * Math.cos(t0), r1 * Math.sin(t0));
+      gf.add('black', new THREE.ExtrudeGeometry(sp, { depth: 0.13, bevelEnabled: false, curveSegments: 16 }).rotateY(Math.PI / 2).translate(bxF(aF + 0.06), hl.y, 0)); }
+    gf.box('black', 0.3, hl.y - R - PD.y1 + 0.02, 0.3, bxF(aF + D / 2), (hl.y - R + PD.y1) / 2, 0);           // pedestal
+    for (const s of [-1, 1]) { const zc = s * (R + 0.21); gf.box('black', 0.14, 0.2, 0.38, bxF(aF + 0.2), hl.y - 0.02, zc); gf.add('num' + key, new THREE.PlaneGeometry(0.34, 0.15), M(bxF(aF + 0.13) + 0.002, hl.y - 0.02, zc, 0, Math.PI / 2, 0)); gf.box('black', 0.2, 0.06, 0.06, bxF(aF + 0.2), hl.y - 0.02, s * (R + 0.01)); }
   }
   hl.lensA = hl.aF + 0.035; hl.r = hl.R - 0.05;
-  // bell on a bracket out of the door below the lamp, hung clear of the door's dish
+  // X4014 boards angled out on top of the smokebox front, the bell hung between them on a bracket off the smokebox top
+  for (const s of [-1, 1]) {
+    const z = s * 0.62, y = yB + 1.07, th = -s * 0.35;
+    gb.add('black', new THREE.BoxGeometry(0.14, 0.22, 0.6), M(ax(BBOIL.sb[0] - 0.06), y, z, 0, th, 0));
+    gb.add('numX' + key, new THREE.PlaneGeometry(0.54, 0.17), M(ax(BBOIL.sb[0] - 0.06) + 0.072 * Math.cos(th), y, z - 0.072 * Math.sin(th), 0, Math.PI / 2 + th, 0));
+  }
   let bellR;
-  { const bx = ax(door.a - 0.36), by = yB - 0.42;
-    for (const z of [-0.3, 0.3]) gb.box('black', 0.06, 0.38, 0.05, bx, by + 0.2, z);
-    gb.cylZ('dark', 0.025, 0.62, 8, bx, by + 0.22, 0);
-    gb.box('black', 0.08, 0.06, 0.66, bx, by + 0.4, 0);
-    gb.box('black', 0.42, 0.08, 0.12, ax(door.a - 0.16), by + 0.42, 0);
-    bellR = bellRig(body, bx, by + 0.22, 1, 0.3); }
+  { const ab = 1.66, bx = ax(ab), by = yB + BBOIL.sb[2] + 0.12;
+    for (const z of [-0.3, 0.3]) { gb.box('black', 0.5, 0.05, 0.05, ax(ab + 0.23), by + 0.03, z); gb.box('black', 0.08, by + 0.05 - (yB + BBOIL.sb[2] - 0.06), 0.05, ax(2.12), (by + 0.05 + yB + BBOIL.sb[2] - 0.06) / 2, z); }
+    gb.cylZ('dark', 0.025, 0.62, 8, bx, by, 0);
+    bellR = bellRig(body, bx, by, 0.9, 0.3); }
   // class lamps at the top corners of the smokebox front
   const cls = clsLampSet();
   for (const z of [-0.86, 0.86]) {
@@ -11917,15 +11936,12 @@ function buildBigBoy(key, trim = '') {
     gb.box('black', 0.2, 0.24, 0.2, ax(BBOIL.sb[0] - 0.13), y, z); gb.box('black', 0.06, 0.06, 0.2, ax(BBOIL.sb[0] - 0.02), y - 0.06, z * 0.9);
     clsLens(cls, body, 0.06, xf + 0.003, y, z, Math.PI / 2, 0.55, [xf - 0.1, y, z]);
   }
-  // two cross-compound air pumps hung on the smokebox front either side of the door, clear above the front engine's deck
-  const pump = (x, y0, z) => {
-    gb.cyl('black', 0.2, 0.2, 0.6, 18, x, y0 + 0.3, z); gb.cyl('black', 0.25, 0.25, 0.52, 18, x, y0 + 0.86, z);
-    gb.cyl('graphite', 0.23, 0.23, 0.06, 18, x, y0 + 1.15, z); gb.box('dark', 0.38, 0.08, 0.38, x, y0 + 0.6, z);
-    gb.box('dark', ax(BBOIL.sb[0]) - x + 0.02, 0.14, 0.14, (ax(BBOIL.sb[0]) + x) / 2, y0 + 0.9, z);   // strap back to the smokebox front
-  };
-  const pumpZ = 1.0, pumpY = 1.62, pumpX = ax(1.64);
-  for (const s of [-1, 1]) pump(pumpX, pumpY, s * pumpZ);
-  for (const s of [-1, 1]) gb.box('dark', ax(BBOIL.sb[0]) - pumpX + 0.3, 0.06, 0.5, (ax(BBOIL.sb[0]) + pumpX + 0.3) / 2, pumpY - 0.03, s * pumpZ);   // their shelf
+  // handrail across the smokebox front above the door
+  { const y = yB + 0.74, xr = ax(BBOIL.sb[0] - 0.24);
+    bar('rod', 0.017, [xr, y, -0.72], [xr, y, 0.72], 6);
+    // posts back to the face: the flat front ring outside the door, the door's dish inside it
+    for (const z of [-0.72, 0, 0.72]) { const r = Math.hypot(z, y - yB), af = r > door.r + 0.05 ? BBOIL.sb[0] : BBOIL.sb[0] - 0.17 + 0.17 * clamp((r - 0.62) / (door.r + 0.05 - 0.62), 0, 1); bar('dark', 0.012, [xr, y, z], [ax(af) + 0.03, y, z], 5); }
+  }
 
   /* ---- running boards, brackets, handrails, reservoirs, pipes ---- */
   for (const s of [-1, 1]) {
@@ -12047,19 +12063,13 @@ function buildBigBoy(key, trim = '') {
 
   body.add(gb.build({ ...RMAT }));
   front.add(gf.build({ ...RMAT }));
-  const ditch = ditchAt.map(([x, y, z]) => {
-    const lens = new THREE.Mesh(new THREE.CircleGeometry(0.072, 16), new THREE.MeshBasicMaterial({ color: 0xfff3d6 })); lens.position.set(x, y, z); lens.rotation.y = Math.PI / 2; front.add(lens);
-    const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: haloTex(), color: 0xffffff, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0 }));
-    halo.position.set(x + 0.03, y, z); halo.scale.set(1.2, 1.2, 1); front.add(halo);
-    return { lens, halo };
-  });
 
   /* ---- glows & lights ---- */
-  const lens = new THREE.Mesh(new THREE.CircleGeometry(hl.r, 36), RMAT.hlLens || RMAT.lens); lens.position.set(ax(hl.lensA) + 0.004, hl.y, 0); lens.rotation.y = Math.PI / 2; body.add(lens);
+  const lens = new THREE.Mesh(new THREE.CircleGeometry(hl.r, 36), RMAT.hlLens || RMAT.lens); lens.position.set(bxF(hl.lensA) + 0.004, hl.y, 0); lens.rotation.y = Math.PI / 2; front.add(lens);
   const fire = new THREE.Mesh(new THREE.PlaneGeometry(...cab.fireSize), RMAT.glow.clone()); fire.position.copy(cab.firePos); fire.rotation.y = -Math.PI / 2; body.add(fire);
-  const beam = headBeam(ax(hl.lensA), hl.y, -0.04); body.add(beam);
+  const beam = headBeam(bxF(hl.lensA), hl.y, -0.02); front.add(beam);
   const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: haloTex(), color: 0xffffff, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0 }));
-  halo.position.set(ax(hl.lensA) + 0.06, hl.y, 0); halo.scale.set(2.6, 2.6, 1); body.add(halo);
+  halo.position.set(bxF(hl.lensA) + 0.06, hl.y, 0); halo.scale.set(2.2, 2.2, 1); front.add(halo);
   const ash = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 1.0), new THREE.MeshBasicMaterial({ color: 0xff5a1a, transparent: true, opacity: 0.0, depthWrite: false, blending: THREE.AdditiveBlending }));
   ash.rotation.x = Math.PI / 2; ash.position.set(ax(21.0), FB.base - 0.35, 0); body.add(ash);
 
@@ -12121,12 +12131,12 @@ function buildBigBoy(key, trim = '') {
   for (const g of [root, front, leadTruck]) g.traverse(o => { if (o.isMesh) { o.castShadow = o.castShadow !== false && o.material !== RMAT.hit; o.receiveShadow = true; } });
   lens.castShadow = false; fire.castShadow = false; ash.castShadow = false;
 
-  const L = { root, body, front, parts, leadTruck, lens, couplers: [coupler, null], fire, ash, beam, halo, ditch, spec, rL: BB.rL, art: true,
+  const L = { root, body, front, parts, leadTruck, lens, couplers: [coupler, null], fire, ash, beam, halo, ditch: [], spec, rL: BB.rL, art: true,
     len: BB.len, frame: [BB.aDr[0], BB.aDr[3]], leadA: BB.leadA, rD: BB.rD,
     stackPos: new THREE.Vector3(ax(stk.a), 5.0, 0), cockPos: [new THREE.Vector3(bxR((BBW.f.cyl[0] + BBW.f.cyl[1]) / 2), 0.4, 1.2), new THREE.Vector3(bxR((BBW.r.cyl[0] + BBW.r.cyl[1]) / 2), 0.4, -1.2)],
     safetyPos: new THREE.Vector3(ax(17.1), fbTop + 0.35, 0), whistlePos: new THREE.Vector3(ax(wh[0]), wh[1] + 0.55, wh[2]),
-    pumpPos: new THREE.Vector3(pumpX, pumpY + 1.25, -pumpZ), injPos: new THREE.Vector3(ax(C.a0 - 0.5), 1.6, 1.47),
-    cabEye: cab.eye, cab, headlightPos: new THREE.Vector3(ax(hl.lensA), hl.y, 0), bellRig: bellR, cls,
+    pumpPos: new THREE.Vector3(ax(1.1), 1.8, -0.42), injPos: new THREE.Vector3(ax(C.a0 - 0.5), 1.6, 1.47),
+    cabEye: cab.eye, cab, headlightPos: new THREE.Vector3(bxF(hl.lensA), hl.y, 0), headFrame: front, bellRig: bellR, cls,
     fireLightPos: new THREE.Vector3(C.bh - 0.3, C.fl + 0.5, 0.1), cabLightPos: new THREE.Vector3(ax(23.9), 4.3, 0),
     extras: [front],
   };
@@ -12583,8 +12593,9 @@ class Train extends Consist {
     const L = this.loco;
     L.root.updateMatrixWorld(true);
     if (this.head) {
-      this.head.position.copy(L.headlightPos).applyMatrix4(L.root.matrixWorld);
-      this.head.target.position.copy(L.headlightPos).add(new THREE.Vector3(70, -L.headlightPos.y + 0.6, 0)).applyMatrix4(L.root.matrixWorld);   // aimed down the rails, meeting them about 70 m out
+      const hf = L.headFrame || L.root; if (hf !== L.root) hf.updateMatrixWorld(true);   // the Big Boy's lamp rides the front engine
+      this.head.position.copy(L.headlightPos).applyMatrix4(hf.matrixWorld);
+      this.head.target.position.copy(L.headlightPos).add(new THREE.Vector3(70, -L.headlightPos.y + 0.6, 0)).applyMatrix4(hf.matrixWorld);   // aimed down the rails, meeting them about 70 m out
     }
   }
   worldOf(local, out = new THREE.Vector3()) { return out.copy(local).applyMatrix4(this.loco.root.matrixWorld); }

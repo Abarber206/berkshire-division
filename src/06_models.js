@@ -163,8 +163,9 @@ function haloTex() {
 const _lfA = new THREE.Vector3(), _lfB = new THREE.Vector3();
 function lampFacing(L, cam) {
   if (!L.headlightPos) return 1;
-  _lfA.copy(L.headlightPos).applyMatrix4(L.root.matrixWorld);
-  _lfB.set(1, 0, 0).transformDirection(L.root.matrixWorld);
+  const f = L.headFrame || L.root;
+  _lfA.copy(L.headlightPos).applyMatrix4(f.matrixWorld);
+  _lfB.set(1, 0, 0).transformDirection(f.matrixWorld);
   const d = _lfA.sub(cam.isObject3D ? cam.position : cam).multiplyScalar(-1).normalize().dot(_lfB);
   return smooth(-0.15, 0.55, d);
 }
