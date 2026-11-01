@@ -138,6 +138,7 @@ class Emitter {
     if (this.pan) { this.g.connect(this.pan); this.pan.connect(AU.master); } else this.g.connect(AU.master);
     this.send = ctx.createGain(); this.send.gain.value = 0.15; this.g.connect(this.send); this.send.connect(AU.verbIn);
     this.ref = o.ref || 26; this.law = o.law || 1.25; this.d = -1;
+    this.bus = o.bus || null;   // a mixer bus (VOL_KEYS) this emitter's level follows; without one, its input is already mixed
   }
   /* p: world position; o.cab: heard from the cab of this train (no delay, close and muffled) */
   place(p, o = {}) {
@@ -149,9 +150,10 @@ class Emitter {
     else this.delay.delayTime.setTargetAtTime(dl, now, 0.09);
     this.d = d;
     const gain = o.cab ? (o.cabGain || 0.85) : 1 / (1 + Math.pow(d / this.ref, this.law));
-    this.g.gain.setTargetAtTime(gain * (o.gain === undefined ? 1 : o.gain), now, 0.08);
+    const bus = this.bus ? volGain(this.bus) : 1;
+    this.g.gain.setTargetAtTime(gain * bus * (o.gain === undefined ? 1 : o.gain), now, 0.08);
     this.lp.frequency.setTargetAtTime(o.cab ? (o.cabLP || 6500) : clamp(16000 / (1 + d / 90), 900, 16000), now, 0.1);
-    this.send.gain.setTargetAtTime(o.cab ? 0.05 : 0.12 + 0.55 * clamp(d / 400, 0, 1), now, 0.2);
+    this.send.gain.setTargetAtTime((o.cab ? 0.05 : 0.12 + 0.55 * clamp(d / 400, 0, 1)) * bus, now, 0.2);
     if (this.pan) {
       let x = 0;
       if (!o.cab) { _snA.subVectors(p, cam).normalize(); _snB.set(1, 0, 0).applyQuaternion(camera.quaternion); x = _snA.dot(_snB) * clamp(30 / (d + 10), 0.35, 0.85); }
@@ -190,8 +192,8 @@ function makeEcho() {
 SND.init = function () {
   SND.loco = new Emitter({ ref: 26 });
   AU.locoLP.disconnect(); AU.locoLP.connect(SND.loco.in);
-  SND.train = new Emitter({ ref: 16, law: 1.35 });
-  const L = AU.loco, W = SND.train.in, A = AU.world;
+  SND.train = new Emitter({ ref: 16, law: 1.35, bus: 'effects' });
+  const L = AU.loco, W = SND.train.in, A = AU.amb;
   SND.v = {
     blower: new Bed('blower', L), safety: new Bed('safety', L, { seg: [1.4, 2.8], xf: 0.5 }), injector: new Bed('injector', L),
     cocks: new Bed('cocks', L, { seg: [1, 2], xf: 0.4 }), fire: new Bed('fire', L), bpx: new Bed('bpx', L, { seg: [1, 2], xf: 0.4 }),
@@ -203,7 +205,7 @@ SND.init = function () {
   SND.dz = (SND_DZ || []).map((r, i) => ({ rpm: r.rpm, load: r.load || 0, bed: new Bed('dz', L, { i, seg: [1.6, 3.2], xf: 0.6 }) }));
   SND.whistle = null; SND.whKey = null;
   // the player's whistle or horn: to the engine, and to the echo off the hills
-  SND.whBus = AU.ctx.createGain(); SND.whBus.connect(L);
+  SND.whBus = AU.ctx.createGain(); SND.whBus.gain.value = volGain('whistle'); SND.whBus.connect(SND.loco.in);
   SND.echo = makeEcho(); SND.whBus.connect(SND.echo.in);
   SND.load();
 };
@@ -223,7 +225,7 @@ function soundMix(dt, T, fx, tv) {
   SND.ahead = clamp(dt * 4, 0.5, 2);   // schedule further ahead when frames come slowly
   SND.tick();
   SND.loco.place(fx.src, { cab: inCab, cabLP: DSL ? 5200 : 7000 });
-  AU.loco.gain.setTargetAtTime(1, now, 0.08); AU.locoLP.frequency.setTargetAtTime(16000, now, 0.1);
+  AU.locoLP.frequency.setTargetAtTime(16000, now, 0.1);
   // wheels, flanges and brakes: from the car nearest the listener
   let near = T.lead, nd = 1e9;
   if (inCab) near = T.lead; else for (const x of T.vehicles) { const d = x.pos.distanceTo(cp); if (d < nd) { nd = d; near = x; } }
@@ -414,8 +416,10 @@ function jointRec(gain, delay, pos, v) {
    wheels through another on the car nearest the listener. Recorded where the
    takes are loaded, with a small synthesized stand-in otherwise. */
 function makeRemoteBus(diesel) {
-  const ctx = AU.ctx, em = new Emitter({ ref: 26 }), wheels = new Emitter({ ref: 16, law: 1.35 });
-  const g = em.in, nodes = [];
+  const ctx = AU.ctx, em = new Emitter({ ref: 26 }), wheels = new Emitter({ ref: 16, law: 1.35, bus: 'effects' });
+  // the engine and its whistle reach the one emitter through their own mixer buses
+  const g = ctx.createGain(), wg = ctx.createGain(), nodes = [];
+  g.gain.value = volGain('engine'); wg.gain.value = volGain('whistle'); g.connect(em.in); wg.connect(em.in);
   const rs = ctx.createBufferSource(); rs.buffer = AU.noise; rs.loop = true; const rf = ctx.createBiquadFilter(); rf.type = 'lowpass'; rf.frequency.value = 260; rf.Q.value = 0.7;
   const roar = ctx.createGain(); roar.gain.value = 0; rs.connect(rf); rf.connect(roar); roar.connect(wheels.in); rs.start(0, Math.random()); nodes.push(rs);
   let eng = null;
@@ -429,7 +433,7 @@ function makeRemoteBus(diesel) {
   const beds = { roll: new Bed('roll', wheels.in, { seg: [2, 4], xf: 0.9 }), flange: new Bed('flange', wheels.in, { seg: [1.2, 2.6], xf: 0.5, vary: 0.05 }) };
   const dz = diesel ? (SND_DZ || []).map((r, i) => ({ rpm: r.rpm, bed: new Bed('dz', g, { i, seg: [1.6, 3.2], xf: 0.6 }) })) : [];
   return {
-    g, em, wheels, roar, eng, beds, dz, whistle: null,
+    g, wg, em, wheels, roar, eng, beds, dz, whistle: null,
     kill() { em.kill(); wheels.kill(); for (const b of Object.values(beds)) b.kill(); for (const d of dz) d.bed.kill(); if (this.whistle) this.whistle.kill(); nodes.forEach(n => { try { n.stop(); } catch (e) {} }); },
   };
 }
@@ -437,6 +441,7 @@ function remoteSound(R, dt, st, d, cam) {
   const T = R.train, L = T.loco, B = R.bus, now = AU.ctx.currentTime, v = Math.abs(R.v);
   const src = T.diesel ? T.unitWorld(T.units[0], T.units[0].enginePos, R.wp) : T.worldOf(L.stackPos, R.wp);
   B.em.place(d > 1500 ? T.lead.pos : src);
+  setG(B.g, volGain('engine'), 0.05); setG(B.wg, volGain('whistle'), 0.05);
   let near = T.lead, nd = 1e9;
   for (const x of T.vehicles) { const dx = x.pos.distanceTo(cam); if (dx < nd) { nd = dx; near = x; } }
   B.wheels.place(near.pos);
@@ -460,10 +465,10 @@ function remoteSound(R, dt, st, d, cam) {
   // whistle or horn: recorded through the emitter (which gives the Doppler), or the synthesized voices
   const key = LOCO_SPEC[st.lk].whistle, k = whTake(key);
   if (SND.has(k)) {
-    if (!B.whistle && st.wh > 0.02) B.whistle = new Loop(k, B.g);
+    if (!B.whistle && st.wh > 0.02) B.whistle = new Loop(k, B.wg);
     if (B.whistle) {
       const Rw = WHISTLE_REC[key], now = AU.ctx.currentTime, wh = whistleValve(B, st.wh, now);
-      whistleOnset(B, k, Rw, wh, B.g, now);
+      whistleOnset(B, k, Rw, wh, B.wg, now);
       B.whistle.set((SND_GAIN[k] || 1) * Math.pow(wh, T.diesel ? 0.5 : 0.8), (Rw.rate || 1) * (1 - Rw.quill * (1 - wh)), whistleTc(B, Rw, wh > (B.whPull || 0)));
       B.whistle.tick(); B.whPull = wh;
     }

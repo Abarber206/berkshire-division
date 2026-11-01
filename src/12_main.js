@@ -329,6 +329,7 @@ function buildMenu() {
   segButtons('optTraffic', { on: { name: 'Timetable', sub: ROUTE_KEY === 'laurel' ? 'No. 21, No. 22 and coal trains on the mountain' : 'No. 5, No. 12 and freights on the road' }, off: { name: 'Clear road', sub: 'Just you and the signals' } }, 'traffic', () => { if (GAME.ready && GAME.train) AI.setup(); saveSettings(); });
   specGrid();
   jobSetup();
+  volumeSliders();
   menuTabs();
   $('btnStart').addEventListener('click', () => GAME.start());
   $('bigRetry').addEventListener('click', () => GAME.rerail());
@@ -347,6 +348,23 @@ function specGrid() {
   const ht = $('helpText');
   if (ht) { if (!ht.dataset.steam) ht.dataset.steam = ht.innerHTML; ht.innerHTML = s.elec ? 'Release the <b>brake</b>, set the <b>reverser</b> forward and notch the <b>power</b> controller. The pantograph is up and the main breaker is in; <b>Pantograph</b> (I) drops it. Slow with the <b>regenerative brake</b>, which also blends in under the train brake. Out on the main a high-speed set runs at its own top speed, and each curve has its own posted limit: watch for it ahead.' : s.diesel ? 'Set the <b>reverser</b> forward, release the <b>engine brake</b>, then notch out the <b>throttle</b>. Every unit in the lashup answers the lead cab. Hold speed down the grades with the <b>dynamic brake</b>, and check the switch card before every turnout: diverging routes are 30 mph.' : ht.dataset.steam; }
   const ey = document.querySelector('.brandmark .eyebrow'); if (ey) ey.textContent = s.elec ? (s.set === 'e5' ? 'JR East · Shinkansen E5 series' : 'Amtrak · Acela Express') : s.diesel ? (GAME.settings.livery === 'custom' ? 'Custom paint' : LIVERIES[GAME.settings.livery].name) + ' · C-C diesel' : s.art ? 'Union Pacific · 4000 class Big Boy' : 'Lima Super Power · 2-8-4';
+}
+/* the Sound tab: one slider per mixer bus (see VOL in 09_audio.js), live while the train runs */
+const VOL_LABELS = { master: 'Master', whistle: 'Whistle & horn', engine: 'Engine', effects: 'Wheels & track', ambience: 'Countryside' };
+function volumeSliders() {
+  const box = $('optVol'); if (!box) return;
+  const rows = {};
+  for (const k of VOL_KEYS) {
+    const row = document.createElement('label'); row.className = 'vol';
+    const name = document.createElement('span'); name.textContent = VOL_LABELS[k];
+    const r = document.createElement('input'); r.type = 'range'; r.min = 0; r.max = 150; r.step = 5; r.value = VOL[k]; r.id = 'vol_' + k; r.setAttribute('aria-label', VOL_LABELS[k] + ' volume');
+    const out = document.createElement('output'); out.textContent = VOL[k] + '%';
+    r.addEventListener('input', () => { setVolume(k, +r.value); out.textContent = VOL[k] + '%'; });
+    row.append(name, r, out); box.appendChild(row); rows[k] = { r, out };
+  }
+  const reset = document.createElement('button'); reset.type = 'button'; reset.className = 'btn'; reset.textContent = 'Reset mix';
+  reset.addEventListener('click', () => { for (const k of VOL_KEYS) { setVolume(k, 100); rows[k].r.value = 100; rows[k].out.textContent = '100%'; } });
+  box.appendChild(reset);
 }
 /* The menu shows one tab of settings at a time. A tab whose groups are all hidden for the chosen engine
    (no paint to pick on a trainset) drops out of the row. Any group added to the form outside a tab
@@ -787,7 +805,7 @@ function steamFX(dt, T, tv) {
     for (let i = 0; i < steps; i++) {
       const k = q - i;
       if (working) {
-        sndChuff(k, n, intensity * (0.6 + 0.4 * Math.min(1, n * 1.2)) * (S.priming ? 0.7 : 1));
+        sndChuff(k, n, intensity * (0.6 + 0.4 * Math.min(1, n * 1.2)) * (S.priming ? 0.7 : 1) * (L.art ? 0.75 : 1));   // two engines' beats share the load
         const smokiness = clamp(0.25 + (S.stoker - S.fire * 0.75) * 1.4 + intensity * 0.2, 0.08, 0.85), gv = lerp(0.9, 0.24, smokiness);
         for (let j = 0; j < 3; j++) emit(stack, new THREE.Vector3(tv.x + (Math.random() - 0.5) * 1.5, 7 + 13 * intensity + Math.random() * 3, tv.z + (Math.random() - 0.5) * 1.5), 4 + Math.random() * 3 + intensity * 2, 1.1, 7 + intensity * 7, 0.55 + 0.25 * intensity, [gv, gv * 0.98, gv * 0.95], 0.9, 1.1);
         if (S.priming) emit(stack, new THREE.Vector3(tv.x, 9, tv.z), 2.5, 0.8, 5, 0.6, [0.95, 0.96, 0.98], 0.2, 1.2);

@@ -3,12 +3,28 @@
    recordings of 09b_sound.js when those can't be loaded
    ========================================================================== */
 const AU = { ctx: null, on: false };
+/* The mixer. Each slider (0-150 %, 100 by default) scales one bus: VOL_TRIM is where that bus sits
+   at 100 %, so the default mix leaves the whistle or horn well clear of the engine working, and the
+   compressor only catches the loudest peaks. The slider follows a square law, so it feels even. */
+const VOL_KEYS = ['master', 'whistle', 'engine', 'effects', 'ambience'];
+const VOL_TRIM = { master: 0.62, whistle: 1.55, engine: 0.55, effects: 0.6, ambience: 0.6 };
+const VOL = { master: 100, whistle: 100, engine: 100, effects: 100, ambience: 100 };
+try { const o = JSON.parse(localStorage.getItem('bd_vol') || 'null'); if (o) for (const k of VOL_KEYS) if (Number.isFinite(o[k])) VOL[k] = Math.max(0, Math.min(150, o[k])); } catch (e) {}
+function volGain(k) { return VOL_TRIM[k] * Math.pow(VOL[k] / 100, 2); }
+/* set one slider (or none, to re-apply them all) */
+function setVolume(k, v) {
+  if (k) { VOL[k] = Math.max(0, Math.min(150, Math.round(v))); try { localStorage.setItem('bd_vol', JSON.stringify(VOL)); } catch (e) {} }
+  if (!AU.ctx) return;
+  const now = AU.ctx.currentTime, put = (n, g) => { if (n) n.gain.setTargetAtTime(g, now, 0.05); };
+  put(AU.master, volGain('master')); put(AU.loco, volGain('engine')); put(AU.world, volGain('effects'));
+  put(AU.amb, volGain('ambience')); put(AU.whistleBus, volGain('whistle')); if (typeof SND !== 'undefined') put(SND.whBus, volGain('whistle'));
+}
 function audioInit() {
   if (AU.ctx) { if (AU.ctx.state === 'suspended') AU.ctx.resume(); return; }
   const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
   const ctx = new AC(); AU.ctx = ctx;
-  const comp = ctx.createDynamicsCompressor(); comp.threshold.value = -14; comp.ratio.value = 4; comp.knee.value = 10; comp.connect(ctx.destination);
-  AU.master = ctx.createGain(); AU.master.gain.value = 0.9; AU.master.connect(comp);
+  const comp = ctx.createDynamicsCompressor(); comp.threshold.value = -8; comp.ratio.value = 6; comp.knee.value = 6; comp.attack.value = 0.004; comp.release.value = 0.25; comp.connect(ctx.destination);
+  AU.master = ctx.createGain(); AU.master.gain.value = volGain('master'); AU.master.connect(comp);
   // reverb (open-country echo)
   const len = ctx.sampleRate * 3.2, ir = ctx.createBuffer(2, len, ctx.sampleRate);
   for (let c = 0; c < 2; c++) { const d = ir.getChannelData(c); for (let i = 0; i < len; i++) { const t = i / ctx.sampleRate; d[i] = (Math.random() * 2 - 1) * Math.exp(-t * 1.6) * (t < 0.08 ? t / 0.08 : 1) * (1 + 0.6 * Math.exp(-((t - 0.9) ** 2) * 40)); } }
@@ -20,10 +36,13 @@ function audioInit() {
   AU.noise = nb;
   const wb = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate), wd = wb.getChannelData(0); for (let i = 0; i < wd.length; i++) wd[i] = Math.random() * 2 - 1; AU.white = wb;
   // buses: locomotive (distance filtered), world
-  AU.loco = ctx.createGain(); AU.locoLP = ctx.createBiquadFilter(); AU.locoLP.type = 'lowpass'; AU.locoLP.frequency.value = 16000;
+  AU.loco = ctx.createGain(); AU.loco.gain.value = volGain('engine'); AU.locoLP = ctx.createBiquadFilter(); AU.locoLP.type = 'lowpass'; AU.locoLP.frequency.value = 16000;
   AU.loco.connect(AU.locoLP); AU.locoLP.connect(AU.master);
   AU.locoSend = ctx.createGain(); AU.locoSend.gain.value = 0.18; AU.locoLP.connect(AU.locoSend); AU.locoSend.connect(AU.verbIn);
-  AU.world = ctx.createGain(); AU.world.connect(AU.master);
+  AU.world = ctx.createGain(); AU.world.gain.value = volGain('effects'); AU.world.connect(AU.master);
+  // the countryside, and every whistle and horn (the player's goes through SND.whBus instead)
+  AU.amb = ctx.createGain(); AU.amb.gain.value = volGain('ambience'); AU.amb.connect(AU.master);
+  AU.whistleBus = ctx.createGain(); AU.whistleBus.gain.value = volGain('whistle'); AU.whistleBus.connect(AU.master);
   // continuous layers
   const loop = (buf, type, f, q, dest) => { const s = ctx.createBufferSource(); s.buffer = buf; s.loop = true; s.loopStart = Math.random(); const fl = ctx.createBiquadFilter(); fl.type = type; fl.frequency.value = f; fl.Q.value = q; const g = ctx.createGain(); g.gain.value = 0; s.connect(fl); fl.connect(g); g.connect(dest); s.start(0, Math.random()); return { g, fl }; };
   AU.blower = loop(AU.noise, 'bandpass', 520, 0.8, AU.loco);
@@ -32,7 +51,7 @@ function audioInit() {
   AU.cocks = loop(AU.white, 'highpass', 1200, 0.7, AU.loco);
   AU.roar = loop(AU.noise, 'lowpass', 260, 0.7, AU.loco);
   AU.drift = loop(AU.noise, 'bandpass', 380, 1.5, AU.loco);
-  AU.wind = loop(AU.noise, 'lowpass', 420, 0.5, AU.world);
+  AU.wind = loop(AU.noise, 'lowpass', 420, 0.5, AU.amb);
   AU.bpExhaust = loop(AU.white, 'bandpass', 1500, 1.1, AU.loco);
   AU.firedoor = loop(AU.noise, 'lowpass', 160, 0.6, AU.loco);
   // flange & brake squeal
@@ -73,7 +92,7 @@ function makeWhistle(def) {
   const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 140; hp.Q.value = 0.7;
   const pres = ctx.createBiquadFilter(); pres.type = 'peaking'; pres.frequency.value = def.pres; pres.Q.value = 0.8; pres.gain.value = horn ? 5 : 7;
   const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 6000; lp.Q.value = 0.5;
-  out.connect(hp); hp.connect(pres); pres.connect(lp); lp.connect(AU.master);
+  out.connect(hp); hp.connect(pres); pres.connect(lp); lp.connect(AU.whistleBus);
   const send = ctx.createGain(); send.gain.value = horn ? 0.6 : 0.85; lp.connect(send); send.connect(AU.verbIn);
   const real = new Float32Array(def.harm.length + 1), imag = new Float32Array(def.harm.length + 1);
   def.harm.forEach((h, i) => { imag[i + 1] = h; });
@@ -215,7 +234,7 @@ function sndPin(gain, dump) {
 function sndThrow() { if (!AU.on) return; if (SND.has('switch')) { SND.shot('switch', AU.world, { gain: SND_GAIN.switch || 1 }); return; } const t = AU.ctx.currentTime + 0.01; envNoise(t, 0.18, 900, 4, 0.25, AU.world, 'bandpass', AU.white, 0.003); envNoise(t + 0.25, 0.12, 1400, 5, 0.2, AU.world, 'bandpass', AU.white, 0.002); }
 function sndChirp(night) {
   if (!AU.on) return; const t = AU.ctx.currentTime + 0.01;
-  if (night) { for (let i = 0; i < 4; i++) envTone(t + i * 0.05, 0.03, 4600, 0.012, AU.world); }
-  else { const f = 2800 + Math.random() * 1600; envTone(t, 0.09, f, 0.02, AU.world, 'sine', f * 1.3); envTone(t + 0.12, 0.07, f * 1.1, 0.015, AU.world, 'sine', f * 0.9); }
+  if (night) { for (let i = 0; i < 4; i++) envTone(t + i * 0.05, 0.03, 4600, 0.012, AU.amb); }
+  else { const f = 2800 + Math.random() * 1600; envTone(t, 0.09, f, 0.02, AU.amb, 'sine', f * 1.3); envTone(t + 0.12, 0.07, f * 1.1, 0.015, AU.amb, 'sine', f * 0.9); }
 }
 function setG(node, v, tc = 0.06) { if (AU.on) node.gain.setTargetAtTime(v, AU.ctx.currentTime, tc); }
