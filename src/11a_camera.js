@@ -128,12 +128,12 @@ const camSpotFree = (p, gap) => camGap(p) >= gap && !inFoot(p.x, -p.z, 1.5) && !
 /* ---------------- views that follow the train ---------------- */
 function orbitView(cam, train, dt, drone) {
   const fwd = train.lead.fwd, pos = train.lead.pos, hdg = Math.atan2(fwd.x, fwd.z);
-  if (!CAM.sm) CAM.sm = { yaw: CAM.yaw, pitch: CAM.pitch, dist: CAM.dist, hdg, dyaw: CAM.droneYaw, dpitch: CAM.dronePitch };
+  if (!CAM.sm) CAM.sm = { yaw: CAM.yaw, pitch: CAM.pitch, dist: CAM.dist, hdg, dyaw: CAM.droneYaw, dpitch: CAM.dronePitch, pan: CAM.pan || 0 };
   const s = CAM.sm, k = camK(9, dt);
   if (!CAM.init) s.hdg = hdg;
   if (CAM.fling) { if (drone) CAM.droneYaw += CAM.fling * dt; else CAM.yaw += CAM.fling * dt; CAM.fling *= Math.exp(-dt * 3.2); if (Math.abs(CAM.fling) < 0.02) CAM.fling = 0; }
   s.yaw += angWrap(CAM.yaw - s.yaw) * k; s.pitch += (CAM.pitch - s.pitch) * k; s.dist += (CAM.dist - s.dist) * camK(7, dt);
-  s.dyaw += angWrap(CAM.droneYaw - s.dyaw) * k; s.dpitch += (CAM.dronePitch - s.dpitch) * k;
+  s.dyaw += angWrap(CAM.droneYaw - s.dyaw) * k; s.dpitch += (CAM.dronePitch - s.dpitch) * k; s.pan = (s.pan || 0) + ((CAM.pan || 0) - (s.pan || 0)) * camK(14, dt);
   // the view swings round curves a beat behind the engine, not locked to it
   s.hdg += angWrap(hdg - s.hdg) * camK(drone ? 2 : 3.5, dt);
   const portrait = cam.aspect < 1 ? clamp(1.25 / cam.aspect, 1, 2.2) : 1;
@@ -141,6 +141,8 @@ function orbitView(cam, train, dt, drone) {
   const tgt = _cc.copy(pos).addScaledVector(fwd, drone ? lead - 10 : lead); tgt.y += drone ? 1 : 2.6;
   const yaw = s.hdg + (drone ? s.dyaw : s.yaw), pitch = drone ? s.dpitch : s.pitch, dist = (drone ? s.dist * 3.2 + 40 : s.dist) * portrait;
   const dir = _cb.set(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch));
+  // right-drag side-scroll: slide the aim point along the screen's own left-right
+  if (s.pan) { tgt.x += Math.cos(yaw) * s.pan; tgt.z -= Math.sin(yaw) * s.pan; }
   // pull in at once when something gets between the camera and the engine, ease back out after
   const allowed = camClear(tgt, dir, dist, 4);
   if (!CAM.init || allowed < CAM.dAct) CAM.dAct = allowed; else CAM.dAct += (allowed - CAM.dAct) * camK(1.6, dt);
