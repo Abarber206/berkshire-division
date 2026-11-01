@@ -872,6 +872,31 @@ function barGeo(r, a, b, seg = 8) {
   g.translate((A.x + B.x) / 2, (A.y + B.y) / 2, (A.z + B.z) / 2);
   return g;
 }
+/* Wear for painted and bare metal, shared by every engine and car. wearRough: a mottled roughness map (green channel
+   scales the material's roughness) so paint has polished, chalky and oily patches instead of one even sheen.
+   wearSoot: a colour map of soot and road dirt blotches that multiplies the paint. Both tile, so they suit any UVs. */
+const WEAR = {};
+function wearRough() {
+  return WEAR.rough || (WEAR.rough = canvasTex(256, 256, (g, w, h) => {
+    const r = rng(4401); g.fillStyle = 'rgb(220,220,220)'; g.fillRect(0, 0, w, h);
+    for (let i = 0; i < 260; i++) { const x = r() * w, y = r() * h, rr = 6 + r() * 34, v = 150 + r() * 105 | 0, gr = g.createRadialGradient(x, y, 0, x, y, rr); gr.addColorStop(0, `rgba(${v},${v},${v},0.5)`); gr.addColorStop(1, `rgba(${v},${v},${v},0)`); for (const dx of [-w, 0, w]) for (const dy of [-h, 0, h]) { g.save(); g.translate(dx, dy); g.fillStyle = gr; g.fillRect(x - rr, y - rr, 2 * rr, 2 * rr); g.restore(); } }
+    for (let i = 0; i < 90; i++) { const v = 120 + r() * 60 | 0; g.strokeStyle = `rgba(${v},${v},${v},0.5)`; g.lineWidth = 1; const x = r() * w, y = r() * h, a = r() * TAU, l = 4 + r() * 16; g.beginPath(); g.moveTo(x, y); g.lineTo(x + Math.cos(a) * l, y + Math.sin(a) * l); g.stroke(); }
+  }, { repeat: true, srgb: false }));
+}
+function wearSoot(seed = 1225, amt = 1) {
+  const k = 'soot' + seed + '_' + amt;
+  return WEAR[k] || (WEAR[k] = canvasTex(256, 256, (g, w, h) => {
+    const r = rng(seed); g.fillStyle = '#ffffff'; g.fillRect(0, 0, w, h);
+    for (let i = 0; i < 180; i++) { const x = r() * w, y = r() * h, rr = 8 + r() * 40, br = r() < 0.6, a = (0.05 + r() * 0.12) * amt, c = br ? `110,92,72` : `40,36,32`, gr = g.createRadialGradient(x, y, 0, x, y, rr); gr.addColorStop(0, `rgba(${c},${a})`); gr.addColorStop(1, `rgba(${c},0)`); for (const dx of [-w, 0, w]) for (const dy of [-h, 0, h]) { g.save(); g.translate(dx, dy); g.fillStyle = gr; g.fillRect(x - rr, y - rr, 2 * rr, 2 * rr); g.restore(); } }
+  }, { repeat: true }));
+}
+/* give a material worn paint: the roughness mottle, and optionally a soot map (only where it has no map of its own) */
+function wear(m, soot = 0, seed) {
+  if (!m || m.userData.worn) return m; m.userData.worn = true;
+  m.roughnessMap = wearRough();
+  if (soot && !m.map) m.map = wearSoot(seed, soot);
+  m.needsUpdate = true; return m;
+}
 /* Canvas texture helper */
 function canvasTex(w, h, draw, opts = {}) {
   const c = document.createElement('canvas'); c.width = w; c.height = h;
@@ -5943,6 +5968,9 @@ function rollingMaterials() {
   RMAT.dWall = S(0x141516, 0.25, 0.5);     // outer face of driver & engine-truck tires
   for (const k of ['black', 'blackMatte', 'graphite', 'dark', 'tire', 'rod', 'brass', 'green', 'roof', 'oxide', 'oxide2', 'caboose', 'tank', 'steel', 'backhead', 'cabInt', 'wood']) RMAT[k].side = THREE.DoubleSide;
   trimMaterials();
+  // worn paint on the engines' black, the smokebox's heat-dulled graphite, oily running gear, dirty frames and trucks
+  wear(RMAT.black); wear(RMAT.blackMatte, 0.6, 21); wear(RMAT.graphite, 0.35, 22); wear(RMAT.dark, 0.5, 23); wear(RMAT.rod); wear(RMAT.steel, 0.35, 24);
+  wear(RMAT.tire, 0.7, 25); wear(RMAT.backhead, 0.6, 26); wear(RMAT.rbEdge); wear(RMAT.dWall); wear(RMAT.roof, 0.5, 27); wear(RMAT.tank); wear(RMAT.green); wear(RMAT.caboose); wear(RMAT.oxide); wear(RMAT.oxide2);
 }
 function decalMat(w, h, draw) { return new THREE.MeshStandardMaterial({ map: canvasTex(w, h, draw), transparent: true, alphaTest: 0.35, metalness: 0.2, roughness: 0.55, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }); }
 function romanText(g, txt, x, y, size, color = '#efede4', spacing = 0.06) {
@@ -7725,7 +7753,7 @@ function liveryMaterials(L, num) {
   const mk = (c, m, r, extra = {}) => new THREE.MeshStandardMaterial({ color: c, metalness: m, roughness: r, ...extra });
   const t = liveryTextures(L, num);
   const dec = map => new THREE.MeshStandardMaterial({ map, transparent: true, alphaTest: 0.35, metalness: 0.2, roughness: 0.5, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 });
-  return {
+  return wearSkin({
     lBody: mk(L.body, 0.3, 0.42, { side: THREE.DoubleSide }),
     lRoof: mk(L.roof, 0.3, 0.55, { side: THREE.DoubleSide }),
     lAccent: mk(L.accent, 0.2, 0.5, { side: THREE.DoubleSide }),
@@ -7735,8 +7763,10 @@ function liveryMaterials(L, num) {
     lPilot: mk(0xffffff, 0.25, 0.5, { map: t.pilot }),
     lRoad: dec(t.road), lNum: dec(t.number), lHerald: dec(t.herald),
     lBoard: new THREE.MeshBasicMaterial({ map: t.board }),
-  };
+  });
 }
+/* road wear on a livery: a mottled sheen on the paint, exhaust soot on the roof, brake dust on the pilot */
+function wearSkin(k) { for (const n of ['lBody', 'lAccent', 'lRail', 'lNose', 'lPilot', 'lLouver']) wear(k[n]); wear(k.lRoof, 0.6, 31); return k; }
 function applyLivery(model, L, num) {
   const M = model.skin, t = liveryTextures(L, num);
   const set = (m, hex) => { m.color.set(hex).convertSRGBToLinear(); m.userData.lin = true; };
@@ -7768,6 +7798,7 @@ function dieselMaterials() {
   RMAT.mesh = mk(0x1a1b1c, 0.5, 0.6, { map: canvasTex(64, 64, (g, w, h) => { g.fillStyle = '#0a0b0c'; g.fillRect(0, 0, w, h); g.strokeStyle = '#4a4e50'; g.lineWidth = 2; for (let x = 0; x < w; x += 8) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, h); g.stroke(); } for (let y = 0; y < h; y += 8) { g.beginPath(); g.moveTo(0, y); g.lineTo(w, y); g.stroke(); } }, { repeat: true }) });
   RMAT.fan = mk(0x161718, 0.5, 0.6, { map: canvasTex(128, 128, (g, w, h) => { g.fillStyle = '#0a0b0c'; g.fillRect(0, 0, w, h); g.strokeStyle = '#4a4e50'; g.lineWidth = 2; for (let r = 8; r < 64; r += 7) { g.beginPath(); g.arc(64, 64, r, 0, TAU); g.stroke(); } for (let a = 0; a < 12; a++) { g.beginPath(); g.moveTo(64, 64); g.lineTo(64 + Math.cos(a / 12 * TAU) * 62, 64 + Math.sin(a / 12 * TAU) * 62); g.stroke(); } g.fillStyle = '#2a2d2f'; g.beginPath(); g.arc(64, 64, 9, 0, TAU); g.fill(); }) });
   RMAT.headOff = mk(0x2a2a28, 0.6, 0.2);
+  wear(RMAT.dDeck, 0.5, 32); wear(RMAT.dUnder, 0.6, 33); wear(RMAT.dSteel, 0.35, 34); wear(RMAT.dSafety, 0.35, 35); wear(RMAT.grille); wear(RMAT.mesh); wear(RMAT.fan);
 }
 
 function buildDiesel(opts) {
@@ -9156,6 +9187,8 @@ function hsMaterials() {
   RMAT.hsTail = new THREE.MeshBasicMaterial({ color: 0xff2a1e });
   RMAT.hsTailOff = mk(0x5a1612, 0.4, 0.2);
   RMAT.hsLamp = mk(0xd9dde0, 0.6, 0.12);     // lamp housing behind the lens
+  // brake dust and road grime underneath, a lightly used sheen on the steel
+  wear(RMAT.hsUnder, 0.6, 41); wear(RMAT.hsBogie, 0.6, 42); wear(RMAT.hsSteel, 0.3, 43); wear(RMAT.hsPan);
 }
 
 /* ---------------- lofted bodies ----------------

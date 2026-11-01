@@ -100,6 +100,31 @@ function barGeo(r, a, b, seg = 8) {
   g.translate((A.x + B.x) / 2, (A.y + B.y) / 2, (A.z + B.z) / 2);
   return g;
 }
+/* Wear for painted and bare metal, shared by every engine and car. wearRough: a mottled roughness map (green channel
+   scales the material's roughness) so paint has polished, chalky and oily patches instead of one even sheen.
+   wearSoot: a colour map of soot and road dirt blotches that multiplies the paint. Both tile, so they suit any UVs. */
+const WEAR = {};
+function wearRough() {
+  return WEAR.rough || (WEAR.rough = canvasTex(256, 256, (g, w, h) => {
+    const r = rng(4401); g.fillStyle = 'rgb(220,220,220)'; g.fillRect(0, 0, w, h);
+    for (let i = 0; i < 260; i++) { const x = r() * w, y = r() * h, rr = 6 + r() * 34, v = 150 + r() * 105 | 0, gr = g.createRadialGradient(x, y, 0, x, y, rr); gr.addColorStop(0, `rgba(${v},${v},${v},0.5)`); gr.addColorStop(1, `rgba(${v},${v},${v},0)`); for (const dx of [-w, 0, w]) for (const dy of [-h, 0, h]) { g.save(); g.translate(dx, dy); g.fillStyle = gr; g.fillRect(x - rr, y - rr, 2 * rr, 2 * rr); g.restore(); } }
+    for (let i = 0; i < 90; i++) { const v = 120 + r() * 60 | 0; g.strokeStyle = `rgba(${v},${v},${v},0.5)`; g.lineWidth = 1; const x = r() * w, y = r() * h, a = r() * TAU, l = 4 + r() * 16; g.beginPath(); g.moveTo(x, y); g.lineTo(x + Math.cos(a) * l, y + Math.sin(a) * l); g.stroke(); }
+  }, { repeat: true, srgb: false }));
+}
+function wearSoot(seed = 1225, amt = 1) {
+  const k = 'soot' + seed + '_' + amt;
+  return WEAR[k] || (WEAR[k] = canvasTex(256, 256, (g, w, h) => {
+    const r = rng(seed); g.fillStyle = '#ffffff'; g.fillRect(0, 0, w, h);
+    for (let i = 0; i < 180; i++) { const x = r() * w, y = r() * h, rr = 8 + r() * 40, br = r() < 0.6, a = (0.05 + r() * 0.12) * amt, c = br ? `110,92,72` : `40,36,32`, gr = g.createRadialGradient(x, y, 0, x, y, rr); gr.addColorStop(0, `rgba(${c},${a})`); gr.addColorStop(1, `rgba(${c},0)`); for (const dx of [-w, 0, w]) for (const dy of [-h, 0, h]) { g.save(); g.translate(dx, dy); g.fillStyle = gr; g.fillRect(x - rr, y - rr, 2 * rr, 2 * rr); g.restore(); } }
+  }, { repeat: true }));
+}
+/* give a material worn paint: the roughness mottle, and optionally a soot map (only where it has no map of its own) */
+function wear(m, soot = 0, seed) {
+  if (!m || m.userData.worn) return m; m.userData.worn = true;
+  m.roughnessMap = wearRough();
+  if (soot && !m.map) m.map = wearSoot(seed, soot);
+  m.needsUpdate = true; return m;
+}
 /* Canvas texture helper */
 function canvasTex(w, h, draw, opts = {}) {
   const c = document.createElement('canvas'); c.width = w; c.height = h;
