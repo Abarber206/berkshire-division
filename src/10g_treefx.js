@@ -36,7 +36,7 @@ function treeShadowDepth() {
 function buildTreeShadows(scene) {
   if (typeof foliageGeos !== 'function') return;
   const G = foliageGeos();
-  TSH.cap = GFX.lite ? 150 : 320; TSH.R = GFX.lite ? 56 : 64;
+  TSH.cap = GFX.lite ? 200 : 480; TSH.R = (SKY.shadowHalf || 64) * 1.2;   // reach the corners of the shadow box
   // drawn in the main pass as nothing: every vertex lands outside the clip box
   const none = new THREE.ShaderMaterial({ vertexShader: 'void main(){ gl_Position = vec4(position * 0.0 + vec3(0.0, 0.0, 3.0), 1.0); }', fragmentShader: 'void main(){ gl_FragColor = vec4(0.0); }', side: THREE.DoubleSide });
   const depth = treeShadowDepth();
