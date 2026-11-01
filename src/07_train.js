@@ -291,8 +291,9 @@ class Train extends Consist {
     const L = this.loco;
     L.root.updateMatrixWorld(true);
     if (this.head) {
-      this.head.position.copy(L.headlightPos).applyMatrix4(L.root.matrixWorld);
-      this.head.target.position.copy(L.headlightPos).add(new THREE.Vector3(70, -L.headlightPos.y + 0.6, 0)).applyMatrix4(L.root.matrixWorld);   // aimed down the rails, meeting them about 70 m out
+      const hf = L.headFrame || L.root; if (hf !== L.root) hf.updateMatrixWorld(true);   // the Big Boy's lamp rides the front engine
+      this.head.position.copy(L.headlightPos).applyMatrix4(hf.matrixWorld);
+      this.head.target.position.copy(L.headlightPos).add(new THREE.Vector3(70, -L.headlightPos.y + 0.6, 0)).applyMatrix4(hf.matrixWorld);   // aimed down the rails, meeting them about 70 m out
     }
   }
   worldOf(local, out = new THREE.Vector3()) { return out.copy(local).applyMatrix4(this.loco.root.matrixWorld); }
