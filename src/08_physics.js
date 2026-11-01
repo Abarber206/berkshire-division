@@ -94,6 +94,9 @@ function physicsStep(dt, train) {
   S.W = clamp(S.W, -0.3, 1.15);
   }
 
+  // helper engines coupled in (07b_cars.js) work off the same throttle and reverser
+  const hk = helperK(train); TEcmd *= hk;
+
   /* ----------------- air brakes ----------------- */
   const z = brakeZone(S.brakeH);
   let erT = S.ER, erRate = 0;
@@ -147,7 +150,7 @@ function physicsStep(dt, train) {
   S.BCloco = Math.max(ind, autoLoco);
 
   /* ----------------- adhesion & tractive effort ----------------- */
-  const Wd = spec.adhesive * 0.4536 * 9.81 * nU;
+  const Wd = spec.adhesive * 0.4536 * 9.81 * nU * hk;
   S.railP = railPatch(S.odo);
   let mu = ENV.mu * (1 - 0.24 * S.railP) + (S.sander && S.sand > 0 ? 0.075 : 0);
   if (S.sander) S.sand = Math.max(0, S.sand - 0.9 * dt);

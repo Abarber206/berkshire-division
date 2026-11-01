@@ -127,7 +127,7 @@ function carTokenIn(t) {
   return { flip, type: p[0], num, rs: p[2], flag: p[3][0] === '1', tr: p[3][1] === 'p' ? 'polar' : '', rk: LOCO_SPEC[p[4]] ? p[4] : '', tons };
 }
 /* the engine's own vehicles in a train: everything a light engine of the same kind is built with */
-const trainPower = T => T.vehicles.filter(v => isPower(v) || (T.elec && T.units && T.units.some(m => m.vehicle === v)));
+const trainPower = T => T.vehicles.filter(v => !v.helper && (isPower(v) || (T.elec && T.units && T.units.some(m => m.vehicle === v))));
 /* the whole train front to back as tokens joined by commas */
 function trainCode(T) {
   const power = trainPower(T);
@@ -213,6 +213,28 @@ CARS.ahead = function (T, dir, range) {
 };
 
 /* ---------------- coupling ---------------- */
+/* Train X is being coupled into another: its engine (and tender or units) go in as a helper, MU'd to the
+   train's controls. Each helper vehicle keeps what it needs to be built again for a save. Returns X's name. */
+let HELPER_N = 0;
+function helperOf(X) {
+  const name = typeof FLEET !== 'undefined' && X.parkS ? FLEET.name(X) : 'the other engine';
+  const own = X.vehicles.filter(v => isPower(v) && !v.helper), g = ++HELPER_N + '.' + Math.round(performance.now());
+  const opts = JSON.parse(JSON.stringify(Object.assign({}, X.opts || {}, { remote: undefined })));
+  own.forEach((v, i) => { v.helper = { g, loco: X.locoKey, opts, i }; });
+  if (X.crew && typeof IX !== 'undefined') IX.release(X.crew.ix);
+  X.crew = null; X.parkS = null;
+  if (typeof FLEET !== 'undefined' && FLEET.card === X) FLEET.closeCard();
+  return name;
+}
+/* how much more pulling the helpers in train T add to its own engine, by weight on the rails */
+function helperK(T) {
+  if (T._hk && T._hk[0] === CARS.gen) return T._hk[1];
+  let own = 0, all = 0;
+  for (const v of T.vehicles) if (v.kind === 'loco' || v.kind === 'loco2') { all += v.mass; if (!v.helper) own += v.mass; }
+  const k = own > 0 ? all / own : 1;
+  T._hk = [CARS.gen, k];
+  return k;
+}
 /* K keeps going with X's cars added at its kEnd; X's coupler xEnd is the one that met it */
 function absorb(K, kEnd, X, xEnd) {
   const flip = kEnd === xEnd;
@@ -276,9 +298,9 @@ CARS.contact = function (A, dir, hit) {
   const ka = endCoupler(A, aEnd), kb = endCoupler(B, hit.end);
   // a high-speed trainset's nose coupler is under a fairing and only mates with another set: it buffs freight cars
   const sealed = ka.v.noCouple || kb.v.noCouple;
-  // two trains, each with its own engine, only buff: there is one set of controls per train
+  // two trains couple like anything else: the other one's engine becomes a helper, worked from this train's controls
   const twoTrains = isTrainC(A) && isTrainC(B);
-  const couple = !sealed && !twoTrains && (knOf(ka) === KN_OPEN || knOf(kb) === KN_OPEN);
+  const couple = !sealed && (knOf(ka) === KN_OPEN || knOf(kb) === KN_OPEN);
   if (!couple) {
     // both knuckles closed (or a lock still lifted against the other car): the cars buff and get shoved along
     const [uA, uB] = buff(consistMass(A), dir * velOf(A), consistMass(B), dir * vB, buffE(closing));
@@ -290,7 +312,6 @@ CARS.contact = function (A, dir, hit) {
     if (closing > COUPLE_DAMAGE) toast(`Slammed the cars at ${mph} mph. Nothing derailed, but that wrecks lading and draft gear.`, 'bad', 4200, 'slam');
     else if (closing > COUPLE_HARD) toast(`Hit the cars hard at ${mph} mph and shoved them along. Ease in at 4 mph or less.`, 'bad', 3800, 'hardshove');
     else if (CARS.cutFrom === X && performance.now() - CARS.cutAt < 6000) toast('Pin pulled, still shoving: the cars part as soon as you ease off or brake.', '', 3600, 'stillshove');
-    else if (twoTrains && closing > 0.3) toast('Two trains do not couple up: each keeps its own engine. Cut the cars off the other train first, then couple to them.', 'warn', 5200, 'twoTrains');
     else if (sealed && closing > 0.15) toast('A trainset\'s coupler sits behind its nose cover and only mates with another trainset, so it can push cars but not pick them up.', 'warn', 4800, 'sealed');
     else if (closing > 0.3) toast('Both knuckles are closed, so the cars are only shoved. Tap a coupler to open its knuckle, then ease in to couple.', 'warn', 4800, 'shove');
     return;
@@ -299,7 +320,13 @@ CARS.contact = function (A, dir, hit) {
   // the train keeps going with the cars added: yours, or another train's engine standing there; else the moving cut
   const K = B === T ? B : A === T ? A : isTrainC(B) ? B : A, X = K === A ? B : A;
   const kEnd = K === A ? aEnd : hit.end, xEnd = K === A ? hit.end : aEnd;
+  const helper = twoTrains ? helperOf(X) : null;
   const n = absorb(K, kEnd, X, xEnd);
+  if (helper) {
+    if (ours) toast(`Coupled to ${helper}. Its engine is MU'd to yours and works off your throttle and brakes.`, closing > COUPLE_HARD ? 'warn' : 'good', 5200, 'coupled');
+    if (CARS.onChange) CARS.onChange();
+    return;
+  }
   if (closing > COUPLE_OK) JOB.note('couple', { mph: closing / MPH });
   if (!ours) { toast(`A rolling cut coupled into the cars on ${K.home || 'the track'}${closing > COUPLE_HARD ? `, hard, at ${mph} mph` : ''}.`, closing > COUPLE_HARD ? 'warn' : '', 2600, 'cc'); return; }
   const what = `${n} car${n > 1 ? 's' : ''}`;
@@ -341,7 +368,9 @@ CARS.knuckle = function (c, end) {
 /* joint j sits between vehicles j-1 and j of a consist (the player's train unless c is given) */
 CARS.canCut = function (T, j) {
   const V = T.vehicles; if (j <= 0 || j >= V.length) return false;
-  return !(isPower(V[j - 1]) && isPower(V[j]));
+  // an engine and its tender (or units) stay together; a helper comes off its train's own engine
+  const grp = v => v.helper ? v.helper.g : '';
+  return !(isPower(V[j - 1]) && isPower(V[j]) && grp(V[j - 1]) === grp(V[j]));
 };
 CARS.uncouple = function (j, c0) {
   const T = c0 || GAME.train;

@@ -45,7 +45,7 @@ class Consist {
     this.vehicles.forEach((v, i) => {
       v.a0 = a;
       for (const p of v.ptsAll) { p.a = a + (v.flip ? v.len - p.loc : p.loc); this.pts.push(p); }
-      if (v.kind === 'loco') this.li = i;
+      if (v.kind === 'loco' && !v.helper) this.li = i;   // the engine you drive, not a helper coupled in (07b_cars.js)
       a += v.len;
     });
     this.length = a;
@@ -148,7 +148,8 @@ class Consist {
         if (D && v.rb.s0) tg.matrix.multiplyMatrices(D, v.rb.s0); tg.matrixWorldNeedsUpdate = true;
       }
       if (v.model && v.model.spin) v.model.spin(roll);
-      if ((v.kind === 'loco' || v.kind === 'loco2') && this.diesel) {
+      if (v.helper) helperAnimate(v, roll, theta, rev, D, this.dist);
+      else if ((v.kind === 'loco' || v.kind === 'loco2') && this.diesel) {
         const U = v.model;
         U.trucks.forEach((tg, k) => { tg.matrixAutoUpdate = false; frameMatrix(v.fp[k].F, tg.matrix); if (v.reversed) tg.matrix.multiply(_m4.makeRotationY(Math.PI)); if (D && v.rb.u0) tg.matrix.multiplyMatrices(D, v.rb.u0[k]); tg.matrixWorldNeedsUpdate = true; });
         const wa = (v.reversed ? 1 : -1) * this.dist / (U.rW || DG.rW); for (const w of U.wheels) w.rotation.z = wa;
@@ -169,6 +170,7 @@ class Consist {
     }
     for (const im of this.inst) im.instanceMatrix.needsUpdate = true;
   }
+  /* (helpers: see helperAnimate below) */
   /* Take the train off the rails around a point of impact (see WreckSim): spec = { a: metres back from
      the front coupler, side: ±1, seed, k: 0..1 how hard, v0: m/s, hit }. null puts every car back on. */
   wreck(spec) {
@@ -191,6 +193,25 @@ function carVehicle(m) {
     brake: { AR: 90, BC: 0, BP: 90, emerg: false, released: true }, kn: [0, 0] };
 }
 
+/* a helper engine coupled into another train: its trucks, wheels and rods turn with the train's own */
+function helperAnimate(v, roll, theta, rev, D, dist) {
+  const M = v.model; if (!M) return;
+  if (M.trucks && M.wheels) {
+    M.trucks.forEach((tg, k) => { if (!v.fp[k]) return; tg.matrixAutoUpdate = false; frameMatrix(v.fp[k].F, tg.matrix); if (v.reversed) tg.matrix.multiply(_m4.makeRotationY(Math.PI)); if (D && v.rb.u0) tg.matrix.multiplyMatrices(D, v.rb.u0[k]); tg.matrixWorldNeedsUpdate = true; });
+    const wa = (v.reversed ? 1 : -1) * dist / (M.rW || DG.rW); for (const w of M.wheels) w.rotation.z = wa;
+    v.root.updateMatrixWorld(true);
+    return;
+  }
+  if (v.kind !== 'loco' || !M.leadTruck || !v.leadPt) return;
+  const lt = M.leadTruck; lt.matrixAutoUpdate = false; frameMatrix(v.leadPt.F, lt.matrix); if (D && v.rb.l0) lt.matrix.multiplyMatrices(D, v.rb.l0); lt.matrixWorldNeedsUpdate = true;
+  if (M.art) { artFront(v, M, D); M.animate(roll, theta, rev, dist); return; }
+  if (M.parts) {
+    M.parts.lead.rotation.z = -roll / (M.rL || LG.rL);
+    M.parts.trail[0].rotation.z = -roll / LG.rT1;
+    M.parts.trail[1].rotation.z = -roll / LG.rT2;
+  }
+  animateBerkshire(M, theta, rev);
+}
 class Train extends Consist {
   constructor(scene, locoKey, consistKey, opts = {}) {
     super(scene);

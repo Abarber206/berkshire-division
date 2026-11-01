@@ -45,40 +45,59 @@ function twoTrains(sim, y) {
   return { A, B };
 }
 
-test('a train left standing keeps its controls, boiler and supplies, with the throttle shut and the brakes set', () => {
+test('a train you leave keeps its controls as you had them, its boiler and supplies', () => {
   const sim = h.load(), y = railroad(sim), S = sim.S;
   const A = train(sim, y.yard, 300); sim.GAME.train = A;
   Object.assign(S, { throttle: 0.6, reverser: 0.5, P: 201, W: 0.7, water: 50000, coal: 9000, fuel: 777, brakeH: 0.12, indH: 0, v: 0, time: 1234, bell: true, light: 2 });
   const st = sim.fleetPark(A);
   assert.ok(sim.CARS.cuts.includes(A), 'it stands among the consists on the rails');
-  assert.equal(st.throttle, 0); assert.equal(st.bell, false); assert.equal(st.indH, 1);
-  assert.ok(st.brakeH >= 0.5, 'train brake in service');
+  assert.equal(st.throttle, 0.6, 'throttle as you left it'); assert.equal(st.bell, false);
+  assert.equal(st.brakeH, 0.12, 'brakes not applied'); assert.equal(st.indH, 0);
+  assert.ok(A.crew && A.crew.keep, 'its engineer keeps hands off');
   assert.equal(st.P, 201); assert.equal(st.water, 50000); assert.equal(st.reverser, 0.5); assert.equal(st.light, 2);
   for (const k of sim.FLEET_WORLD) assert.ok(!(k in st), `${k} belongs to the railroad, not the engine`);
-  assert.ok(A.vehicles.every(v => v.hb), 'tied down');
-  assert.equal(A.rolling, false);
+  assert.ok(A.vehicles.every(v => !v.hb), 'no handbrakes');
   // meanwhile another train is driven
   const B = train(sim, y.yard, 500); sim.GAME.train = B;
   Object.assign(S, { P: 150, water: 1, throttle: 0.9, time: 2000, light: 0 });
   assert.ok(sim.fleetResume(A));
   assert.equal(sim.GAME.train, A);
-  assert.equal(S.P, 201); assert.equal(S.water, 50000); assert.equal(S.throttle, 0); assert.equal(S.light, 2);
+  assert.equal(S.P, 201); assert.equal(S.water, 50000); assert.equal(S.throttle, 0.6); assert.equal(S.light, 2);
+  assert.equal(A.crew, null);
   assert.equal(S.time, 2000, 'the clock runs on');
   assert.ok(!sim.CARS.cuts.includes(A)); assert.equal(A.parkS, null);
   assert.ok(A.vehicles.every(v => !v.hb), 'handbrakes off for the train being driven');
   assert.ok(!('dist0' in S));
 });
 
-test('two trains meeting buff and are shoved along, but never couple, even with a knuckle open', () => {
+test('two trains with both knuckles closed buff and are shoved along', () => {
   const sim = h.load(), y = railroad(sim), { A, B } = twoTrains(sim, y);
   sim.S.v = 1.2;   // easing ahead into B's rear
-  sim.endCoupler(B, 'rear').v.kn[1] = sim.KN_OPEN;
   sim.CARS.contact(A, 1, { c: B, end: 'rear', facing: true });
   assert.equal(A.vehicles.length, 4); assert.equal(B.vehicles.length, 2);
   assert.ok(sim.CARS.cuts.includes(B));
   assert.ok(B.v > 0 && B.rolling, 'B is shoved ahead');
   assert.ok(sim.S.v < 1.2);
-  assert.ok(sim.log.toasts.some(t => /do not couple/.test(t.msg)));
+});
+
+test('with a knuckle open two trains couple: the other engine is a helper, MU\'d to your throttle', () => {
+  const sim = h.load(), y = railroad(sim), { A, B } = twoTrains(sim, y);
+  const k0 = sim.helperK(A);
+  sim.S.v = 1.2;
+  sim.endCoupler(B, 'rear').v.kn[1] = sim.KN_OPEN;
+  sim.CARS.contact(A, 1, { c: B, end: 'rear', facing: true });
+  assert.equal(k0, 1);
+  assert.deepEqual(A.vehicles.map(v => v.kind), ['loco', 'tender', 'loco', 'tender', 'box', 'box']);
+  assert.ok(!sim.CARS.cuts.includes(B), 'B is part of your train now');
+  assert.equal(B.parkS, null);
+  assert.equal(A.lead, A.vehicles[2], 'you still drive your own engine');
+  assert.ok(A.vehicles[0].helper && A.vehicles[1].helper && !A.vehicles[2].helper);
+  assert.equal(sim.helperK(A), 2, 'two engines pulling');
+  assert.ok(sim.log.toasts.some(t => /MU/.test(t.msg)));
+  // cut it off again: back to one engine
+  sim.CARS.uncouple(2, A);
+  assert.deepEqual(A.vehicles.map(v => v.kind), ['loco', 'tender', 'box', 'box']);
+  assert.equal(sim.helperK(A), 1);
 });
 
 test('a rolling cut couples onto a standing train, and the train keeps its engine at the head', () => {
@@ -199,9 +218,25 @@ test('an engineer stops short of the end of the track, and a train with one goes
   assert.ok(Math.abs(A.v) < 0.05 && left > 3 && left < 40, `stood ${left.toFixed(1)} m short of the end`);
   Object.assign(A, { opts: {}, cfg: {}, fid: 2, nUnits: 1, consistKey: 'light' });
   const o = JSON.parse(JSON.stringify(sim.fleetOut(A)));
-  assert.deepEqual(o.crew, { mph: 20, dir: 1 });
+  assert.deepEqual(o.crew, { mph: 20, dir: 1, keep: 0 });
   sim.FLEET.reverse(A);
   assert.equal(A.crew.dir, -1);
   run(sim, A, 30);
   assert.ok(600 - A.endTP('front').s > left + 20, 'and backs away when sent the other way');
+});
+
+test('a train left with the throttle open keeps it open, and its engineer steps in only to stop short of a train ahead', () => {
+  const sim = h.load(), y = railroad(sim), S = sim.S; engineer(sim);
+  const D = train(sim, y.yard, 590); sim.GAME.train = D;
+  const A = train(sim, y.yard, 100, ['loco', 'tender', 'box', 'box']);
+  Object.assign(S, { v: 4 * sim.MPH, vw: 4 * sim.MPH, throttle: 0.5, reverser: 0.6, brakeH: 0.12, indH: 0 });
+  for (const v of A.vehicles) v.brake.BC = 0;
+  sim.fleetPark(A); sim.GAME.train = D;
+  run(sim, A, 5);
+  assert.ok(A.crew.keep && A.parkS.throttle === 0.5, 'hands off for now');
+  assert.ok(A.v > 4 * sim.MPH, 'still pulling');
+  run(sim, A, 200);
+  const gap = D.endTP('rear').s - A.endTP('front').s;
+  assert.ok(Math.abs(A.v) < 0.05 && gap > 3 && gap < 40, `stood ${gap.toFixed(1)} m short of your train`);
+  assert.equal(A.crew.keep, false, 'the engineer took over');
 });

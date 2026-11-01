@@ -33,6 +33,7 @@ function vehicleOut(v, power) {
   const o = { f: !!v.flip, kn: v.kn ? v.kn.slice() : [0, 0], b: brakeOut(v.brake), r: rnd(v.roll || 0), pts: v.ptsAll.map(p => tpOut(p.tp)) };
   const p = power.indexOf(v);
   if (p >= 0) o.p = p;
+  else if (v.helper) o.hp = v.helper;   // a helper engine: built again from its own engine
   else { o.m = v.made || { type: v.kind, num: 0 }; o.w = Math.round(v.mass); }
   if (v.hb) o.hb = true;
   if (v.yard) o.y = true;
@@ -144,19 +145,30 @@ const CAM_KEEP = ['yaw', 'pitch', 'dist', 'cabYaw', 'cabPitch', 'droneYaw', 'dro
 function stateOut() { const o = {}; for (const k in S) { const x = S[k]; if (typeof x === 'number' ? isFinite(x) : typeof x === 'boolean' || typeof x === 'string') o[k] = x; } delete o.paused; return o; }
 
 /* the vehicles a train was built with: its engine (and tender or trailing units), or every car of a trainset */
-const powerOf = T => T.vehicles.filter(v => isPower(v) || (T.elec && T.units.some(m => m.vehicle === v)));
+const powerOf = T => T.vehicles.filter(v => !v.helper && (isPower(v) || (T.elec && T.units.some(m => m.vehicle === v))));
 /* one of your other trains standing about (11l_fleet.js): how it was built, where every car is, and its engine as it was left */
 function fleetOut(c) {
   return Object.assign(consistOut(c, powerOf(c)), { loco: c.locoKey, ck: c.consistKey, units: c.nUnits || 1, opts: JSON.parse(JSON.stringify(c.opts || {})), cfg: c.cfg || null,
     ps: c.parkS, cv: rnd(c.v || 0), rolling: !!c.rolling, stopT: rnd(c.stopT || 0), fid: c.fid || 0,
-    crew: c.crew ? { mph: c.crew.mph, dir: c.crew.dir } : null, crewMph: c.crewMph || 0 });
+    crew: c.crew ? { mph: c.crew.mph, dir: c.crew.dir, keep: c.crew.keep ? 1 : 0 } : null, crewMph: c.crewMph || 0 });
+}
+/* a helper engine's vehicle from its record { g, loco, opts, i }: the engine is built once per helper (g) and
+   its vehicles handed out one by one */
+const HELPER_IN = new Map();
+function helperIn(h) {
+  if (!h || !LOCO_SPEC[h.loco]) throw new Error('a helper engine that can no longer be built');
+  let X = HELPER_IN.get(h.g);
+  if (!X) { X = new Train(scene, h.loco, 'light', Object.assign({}, h.opts, { dark: true })); for (const im of X.inst) scene.remove(im); HELPER_IN.set(h.g, X); }
+  const v = X.vehicles[h.i]; if (!v) throw new Error('a helper engine has changed since this save');
+  X.release(v); v.helper = h;
+  return v;
 }
 /* Build train t's consist again from its record o: the engine as the Train made it, and its cars as they were.
    t was made up as a light engine, so everything it built is the engine (or the whole trainset). */
 function trainIn(t, o, E) {
   const power = t.vehicles.slice(), V = [];
   for (const x of o.v) {
-    const v = x.p !== undefined ? power[x.p] : carIn(x);
+    const v = x.p !== undefined ? power[x.p] : x.hp ? helperIn(x.hp) : carIn(x);
     if (!v) throw new Error('the engine has changed since this save');
     vehicleIn(v, x);
     if (!v.ptsAll) t.track(v);
@@ -288,13 +300,14 @@ SAVE.apply = function (d) {
   // the train: its engine as built, and its cars as they were
   const t = new Train(scene, g.loco, 'light', dieselOpts());
   GAME.train = t;
+  HELPER_IN.clear();
   const V = trainIn(t, d.train, E);
   t.fid = d.train.fid || 0;
   // the cars standing about
   if (!CARS.geo) CARS.geo = carGeos();
   const all = [...V];
   for (const o of d.cuts || []) {
-    const cv = o.v.map(x => { const v = carIn(x); vehicleIn(v, x); linearizeObject(v.root); return v; });
+    const cv = o.v.map(x => { const v = x.hp ? helperIn(x.hp) : carIn(x); vehicleIn(v, x); linearizeObject(v.root); return v; });
     const c = new Cut(scene, cv);
     if (!seatConsist(c, o, E)) { c.dispose(); cv.forEach(freeVehicle); continue; }
     Object.assign(c, { v: o.cv || 0, rolling: !!o.rolling, stopT: o.stopT || 0, vented: !!o.vented, home: o.home || undefined });
@@ -310,7 +323,7 @@ SAVE.apply = function (d) {
     Object.assign(c, { parkS: Object.assign({}, o.ps), cfg: o.cfg || null, v: o.cv || 0, rolling: !!o.rolling, stopT: o.stopT || 0, fid: o.fid || 0 });
     if (c.parkS.dist0 === undefined) c.parkS.dist0 = c.dist;
     if (o.crewMph) c.crewMph = o.crewMph;
-    if (o.crew) c.crew = crewNew(c, o.crew.mph, o.crew.dir);   // its engineer carries on
+    if (o.crew) c.crew = crewNew(c, o.crew.mph, o.crew.dir, !!o.crew.keep);   // its engineer carries on
     c.update(0); FLEET.dim(c);
     CARS.cuts.push(c);
   }
