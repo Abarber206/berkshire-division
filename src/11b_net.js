@@ -199,14 +199,14 @@ function mpOpts(st) {
 function mpLocoLabel(st) {
   if (st && st.other) return 'On another railroad';
   if (!st || st.e < 0) return 'In the menu';
-  const loco = HSR[st.lk] ? HSR[st.lk].name : st.lk === 'diesel' ? (st.lv === 'custom' ? 'Custom' : LIVERIES[st.lv].init) + ' diesel' + (st.u > 1 ? ' ×' + st.u : '') : (st.lk === '765' ? 'NKP 765' : st.lk === '4014' ? 'UP 4014 Big Boy' : 'PM 1225');
+  const loco = HSR[st.lk] ? HSR[st.lk].name : st.lk === 'diesel' ? (st.lv === 'custom' ? 'Custom' : LIVERIES[st.lv].init) + ' diesel' + (st.u > 1 ? ' ×' + st.u : '') : (st.lk === '765' ? 'NKP 765' : st.lk === '4014' ? 'UP 4014 Big Boy' : st.lk === '18' ? 'UP 18 gas turbine' : 'PM 1225');
   return HSR[st.lk] ? loco : loco + ' · ' + CONSISTS[st.ck].name;
 }
 function mpJoints(T, mem, speed, cp) {
   for (const v of T.vehicles) {
     const dv = v.pos.distanceTo(cp); if (dv > 110) continue;
     const g = Math.min(1, Math.abs(speed) / 7) / (1 + Math.pow(dv / 13, 1.4));
-    const pts = (v.kind === 'loco' || v.kind === 'loco2') ? (T.diesel ? [[v.fp[0], v.emu ? 2 : 3, v.emu ? v.model.wb : DG.axle], [v.fp[1], v.emu ? 2 : 3, v.emu ? v.model.wb : DG.axle]] : [[v.leadPt, 1, 0], [v.fp[0], 4, 1.855]]) : v.tp.map((p, i) => [p, v.trucks[i].type === 'four' ? 2 : 3, v.trucks[i].sp || (v.trucks[i].type === 'four' ? 1.73 : 1.676)]);
+    const pts = (v.kind === 'loco' || v.kind === 'loco2') ? (T.diesel ? [[v.fp[0], v.emu ? 2 : 3, v.model.wb || DG.axle], [v.fp[1], v.emu ? 2 : 3, v.model.wb || DG.axle]] : [[v.leadPt, 1, 0], [v.fp[0], 4, 1.855]]) : v.tp.map((p, i) => [p, v.trucks[i].type === 'four' ? 2 : 3, v.trucks[i].sp || (v.trucks[i].type === 'four' ? 1.73 : 1.676)]);
     for (const [p, axles, sp] of pts) {
       const j = Math.floor(p.tp.s / 11.89), prev = mem.get(p);
       if (prev && prev.e === p.tp.e && prev.j !== j) for (let a = 0; a < axles; a++) sndJoint(g * (a === 0 ? 1 : 0.8), a * sp / Math.max(0.5, Math.abs(speed)), v.pos, Math.abs(speed));
@@ -247,7 +247,7 @@ class RemoteTrain {
   }
   repaint(st) {
     const p = `${st.lv}|${st.mx}|${st.cu}|${st.no}`; if (p === this.paint) return; this.paint = p;
-    if (!this.train.diesel || this.train.elec) return;
+    if (!this.train.diesel || this.train.elec || this.train.turb) return;
     const o = mpOpts(st);
     this.train.units.forEach((m, u) => { const lv = dieselLiveryFor(o, u); applyLivery(m, lv, (o.number || lv.num) + u); });
   }

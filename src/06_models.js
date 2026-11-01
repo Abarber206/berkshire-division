@@ -174,6 +174,8 @@ function lampFacing(L, cam) {
 const LOCO_SPEC = {   // front: 'nkp' headlight on top with number-board wings, bell on the door; 'pm' lamp in the door, bell on top, pumps on the pilot
   '765': { road: 'NICKEL PLATE ROAD', num: '765', short: 'NKP', cls: 'S-2', built: 'Lima, Sept 1944', weight: 440800, adhesive: 264300, te: 64135, fw: 'Worthington', whistle: 'nkp6', front: 'nkp', leadR: 0.457, cylR: 0.3175, wheels: 'spoked' },
   'diesel': { road: 'SANDUSKY & SCIOTO', num: '4401', short: 'S&S', cls: 'AC44', built: '2026', weight: 420000, adhesive: 420000, te: 183000, diesel: true, whistle: 'k5' },
+  // Union Pacific's 8500 hp gas turbine-electric, both units (the fuel tender rides on its own): 06j_turbine.js
+  '18': { road: 'UNION PACIFIC', num: '18', short: 'UP', cls: 'GTEL 8500', built: 'GE, 1960', weight: 424624, adhesive: 424624, te: 212312, diesel: true, turb: true, whistle: 's5t', tenderEmpty: 171000 * 0.4536 },
   '1225': { road: 'PERE MARQUETTE', num: '1225', short: 'PM', cls: 'N-1', built: 'Lima, Oct 1941', weight: 442500, adhesive: 277600, te: 69350, fw: 'Worthington', whistle: 'chime6', front: 'pm', leadR: 0.419, cylR: 0.330, wheels: 'boxpok' },
 };
 /* Engine geometry, a = metres back from the front coupler face, heights above the rail. Taken from an NKP

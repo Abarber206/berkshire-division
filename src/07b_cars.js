@@ -49,7 +49,7 @@ const isTrainC = c => !!c && (c === GAME.train || !!c.parkS);
 function consistMass(c) {
   let m = 0;
   const st = c.parkS || S;   // a standing train's tender holds what it had when it was left
-  for (const v of c.vehicles) m += v.kind === 'tender' ? c.tenderEmpty + st.water + st.coal : v.mass;
+  for (const v of c.vehicles) m += v.kind === 'tender' ? (c.turb ? turbineTenderMass(c, st) : c.tenderEmpty + st.water + st.coal) : v.mass;
   return m;
 }
 const velOf = c => c === GAME.train ? S.v : c.v;

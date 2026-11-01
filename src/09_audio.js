@@ -78,6 +78,8 @@ const WHISTLES = {
   chime6: { kind: 'steam', notes: [335.0, 375.4, 444.6, 505.4, 632.3, 825.8], harm: [1, 0.62, 0.38, 0.26, 0.16, 0.1, 0.06], breath: 0.14, breathF: 2200, vib: [5.4, 0.003], quill: 0.05, attack: 0.05, beat: 1.0025, pres: 2600 },
   /* Shinkansen air horn: a bright two-tone (A5 over F#5) with few upper partials */
   shin: { kind: 'horn', notes: [740.0, 880.0], harm: [1, 0.75, 0.5, 0.34, 0.22, 0.14, 0.08], breath: 0.025, breathF: 2400, vib: [0, 0], quill: 0, attack: 0.012, beat: 1.003, pres: 2400 },
+  /* Leslie S-5T-R on the gas turbine's cab roof: five bells, pitches read off the recording (audio/CREDITS.md) */
+  s5t: { kind: 'horn', notes: [263.3, 320.0, 371.7, 445.4, 526.7], harm: [1, 0.8, 0.62, 0.5, 0.4, 0.32, 0.26, 0.2, 0.15, 0.11], breath: 0.03, breathF: 1200, vib: [0, 0], quill: 0, attack: 0.03, beat: 1.003, pres: 1400 },
   k5: { kind: 'horn', notes: [311.1, 370.0, 415.3, 493.9, 622.3], harm: [1, 0.92, 0.8, 0.7, 0.6, 0.52, 0.45, 0.38, 0.32, 0.27, 0.22, 0.18, 0.15, 0.12], breath: 0.035, breathF: 1300, vib: [0, 0], quill: 0, attack: 0.015, beat: 1.004, pres: 1500 },
 };
 function buildWhistle(def) {

@@ -93,6 +93,8 @@ function resetState() {
   applyFireSetting(GAME.settings.fire);
   Object.assign(S, { notch: 0, dyn: 0, dbLoad: 0, DBF: 0, rpm: 300, engineRun: true, crank: 0, load: 0, fuel: 18927, turbo: 0.15, ditch: true, ditchFlash: 0, slipCtl: false, amps: 0 });
   Object.assign(S, { pan: 1, panUp: true, vcb: true, vcbT: 0, kW: 0, kWh: 0, rbMax: 0, blend: 0 });   // a trainset comes with its pantograph up and the breaker in
+  // the gas turbine comes up running at idle on Bunker C, the tender full, the aux diesel running beside it
+  Object.assign(S, LOCO_SPEC[GAME.settings.loco].turb ? { tOn: true, tStart: 0, tspd: GTE.idle, oil: GTP.oilFull, egt: GTE.egtIdle, fuel: GTP.dslFull, rpm: 450 } : { tOn: false, tStart: 0, tspd: 0, oil: 0, egt: 90 });
   if (LOCO_SPEC[GAME.settings.loco].diesel) { S.cocks = false; S.light = SKY.night ? 2 : 2; }
   else { const k = steamK(LOCO_SPEC[GAME.settings.loco]); Object.assign(S, { P: k.PL - 7, water: k.water, coal: k.coal }); }   // a bigger engine comes with its own pressure and tender
 }
@@ -191,7 +193,7 @@ GAME.swapLive = function () {
   else if ((j ? j.id : '') !== JOB.activeId()) return false;
   const ck = JOB.consist(), units = +g.units || 1, setNew = !!LOCO_SPEC[g.loco].set;
   const tw = LOCO_SPEC[g.loco].diesel ? '' : trimWanted(), newTrim = !LOCO_SPEC[g.loco].diesel && (old.trim || '') !== tw;
-  const newLoco = old.locoKey !== g.loco || (old.diesel && !old.elec && old.nUnits !== units) || newTrim;
+  const newLoco = old.locoKey !== g.loco || (old.diesel && !old.elec && !old.turb && old.nUnits !== units) || newTrim;
   // a trainset is the whole train: it drops the cars it replaces, and the cars come back when an engine replaces it
   const newCars = setNew ? newLoco : old.elec ? ck !== 'light' || newLoco : old.consistKey !== ck;
   if (!newLoco && !newCars) return true;
@@ -229,7 +231,7 @@ GAME.swapLive = function () {
   t.place(front);
   prepareTrain(t, true);
   GAME.train = t; t.fid = old.fid;   // the same train in the Trains list
-  if (old.diesel !== t.diesel) carryOver();
+  if (old.diesel !== t.diesel || !!old.turb !== !!t.turb) carryOver();
   else if (old.locoKey !== t.locoKey) {
     S.throttle = 0; S.notch = 0; S.dyn = 0;
     if (!t.diesel) { const k = steamK(LOCO_SPEC[t.locoKey]); S.water = Math.min(S.water, k.water); S.coal = Math.min(S.coal, k.coal); S.P = Math.min(S.P, k.PL); }
@@ -242,7 +244,7 @@ GAME.swapLive = function () {
   t.update(0, S.theta, S.reverser);
   CARS.gen++; if (CARS.onChange) CARS.onChange();
   if (MP.on) MP.dirty = true;
-  const what = t.elec ? `the ${HSR[LOCO_SPEC[g.loco].set].name}` : t.diesel ? (t.nUnits > 1 ? `${t.nUnits} diesels` : 'the diesel') : `${LOCO_SPEC[g.loco].short} ${g.loco}`, cars = { passenger: 'the passenger train', freight: 'the manifest freight' }[ck] || 'the train';
+  const what = t.elec ? `the ${HSR[LOCO_SPEC[g.loco].set].name}` : t.turb ? 'the UP gas turbine' : t.diesel ? (t.nUnits > 1 ? `${t.nUnits} diesels` : 'the diesel') : `${LOCO_SPEC[g.loco].short} ${g.loco}`, cars = { passenger: 'the passenger train', freight: 'the manifest freight' }[ck] || 'the train';
   if (newTrim && old.locoKey === g.loco && !newCars) toast(tw ? 'Dressed for the Polar Limited: wreaths, garland and snow on the roofs.' : 'Holiday trim taken down.', 'good', 3600, 'swap');
   else if (t.elec) toast(`Now running ${what}.`, 'good', 3200, 'swap');
   else if (old.elec) toast(`Now ${what} on ${cars}.`, 'good', 3200, 'swap');
@@ -270,7 +272,7 @@ function dieselOpts() {
   return { units: +g.units || 1, livery: g.livery, mix: !!g.mix, custom: g.custom, number: custom ? (+g.number || 4401) : null, trim: trimWanted() };
 }
 function applyLiveriesLive() {
-  const t = GAME.train; if (!t || !t.diesel) return;
+  const t = GAME.train; if (!t || !t.diesel || t.turb) return;
   const o = dieselOpts();
   t.units.forEach((m, u) => { const lv = dieselLiveryFor(o, u); applyLivery(m, lv, (o.number || lv.num) + u); });
 }
@@ -300,7 +302,7 @@ function segButtons(id, opts, key, onPick) {
 function buildMenu() {
   loadSettings();
   MP.init();
-  const locoOpts = { '765': { name: 'NKP 765', sub: 'S-2 · Lima 1944' }, '1225': { name: 'PM 1225', sub: 'N-1 · Lima 1941' }, '4014': { name: 'UP 4014 Big Boy', sub: '4-8-8-4 · Alco 1941' }, 'diesel': { name: 'Wide-cab diesel', sub: 'AC · 4,400 hp' },
+  const locoOpts = { '765': { name: 'NKP 765', sub: 'S-2 · Lima 1944' }, '1225': { name: 'PM 1225', sub: 'N-1 · Lima 1941' }, '4014': { name: 'UP 4014 Big Boy', sub: '4-8-8-4 · Alco 1941' }, '18': { name: 'UP 18 gas turbine', sub: 'GTEL · 8,500 hp · GE 1960' }, 'diesel': { name: 'Wide-cab diesel', sub: 'AC · 4,400 hp' },
     'e5': { name: 'E5 Shinkansen', sub: 'Bullet train · 200 mph' }, 'acela': { name: 'Acela Express', sub: 'High speed · 150 mph' } };
   // the mountain has no wires up for the high-speed sets
   if (ROUTE_KEY === 'laurel' && !PLAY_LAYOUT) { delete locoOpts.e5; delete locoOpts.acela; if (LOCO_SPEC[GAME.settings.loco].hs) GAME.settings.loco = '765'; }
@@ -352,14 +354,15 @@ function specGrid() {
   const items = s.set === 'e5'
     ? [['10 cars', '8 motored, 2 trailers'], ['9,600 kW', '32 AC motors'], ['320 km/h', '199 mph'], ['253 m', 'Length'], ['454 t', 'Empty'], ['25 kV', 'Pantograph']]
     : s.set === 'acela' ? [['2 + 6', 'Power cars + coaches'], ['9,200 kW', '12,400 hp'], ['150 mph', 'In service'], ['664 ft', 'Length'], ['4.2°', 'Coach tilt'], ['99k lbf', 'Starting effort']]
+    : s.turb ? [['C-C+C-C', '2 units + fuel tender'], ['8,500 hp', 'GE gas turbine'], ['212k lbf', 'Starting effort'], ['178 ft 11 in', 'Over the couplers'], ['849,248 lb', 'Without the tender'], ['24,384 gal', 'Bunker C']]
     : s.diesel
     ? [['C-C', 'Wheel arrangement'], ['42 in', 'Wheels'], ['4,400 hp', 'V12 four-stroke'], ['73 ft 2 in', 'Length'], ['183k lbf', 'Starting effort'], ['5,000 gal', 'Fuel']]
     : s.art ? [['4-8-8-4', 'Articulated'], ['68 in', 'Drivers, 16 of them'], ['4 × 23¾×32 in', 'Cylinders'], ['300 psi', 'Boiler'], [(s.te / 1000).toFixed(1) + 'k lbf', 'Tractive effort'], ['132 ft 9 in', 'Engine & tender']]
     : [['2-8-4', 'Wheel arrangement'], ['69 in', 'Drivers'], ['25×34 in', 'Cylinders'], ['245 psi', 'Boiler'], [(s.te / 1000).toFixed(1) + 'k lbf', 'Tractive effort'], [s.cls + ' · ' + s.short, 'Class']];
   $('specGrid').innerHTML = items.map(([b, l]) => `<div><b>${b}</b><span>${l}</span></div>`).join('');
   const ht = $('helpText');
-  if (ht) { if (!ht.dataset.steam) ht.dataset.steam = ht.innerHTML; ht.innerHTML = s.elec ? 'Release the <b>brake</b>, set the <b>reverser</b> forward and notch the <b>power</b> controller. The pantograph is up and the main breaker is in; <b>Pantograph</b> (I) drops it. Slow with the <b>regenerative brake</b>, which also blends in under the train brake. Out on the main a high-speed set runs at its own top speed, and each curve has its own posted limit: watch for it ahead.' : s.diesel ? 'Set the <b>reverser</b> forward, release the <b>engine brake</b>, then notch out the <b>throttle</b>. Every unit in the lashup answers the lead cab. Hold speed down the grades with the <b>dynamic brake</b>, and check the switch card before every turnout: diverging routes are 30 mph.' : ht.dataset.steam; }
-  const ey = document.querySelector('.brandmark .eyebrow'); if (ey) ey.textContent = s.elec ? (s.set === 'e5' ? 'JR East · Shinkansen E5 series' : 'Amtrak · Acela Express') : s.diesel ? (GAME.settings.livery === 'custom' ? 'Custom paint' : LIVERIES[GAME.settings.livery].name) + ' · C-C diesel' : s.art ? 'Union Pacific · 4000 class Big Boy' : 'Lima Super Power · 2-8-4';
+  if (ht) { if (!ht.dataset.steam) ht.dataset.steam = ht.innerHTML; ht.innerHTML = s.turb ? 'The turbine is running at idle on Bunker C. Set the <b>reverser</b> forward, release the <b>engine brake</b>, then notch out the <b>throttle</b>: 20 notches, and the power comes up with the turbine\'s speed, so give it a moment. <b>Turbine</b> (K) shuts it down or starts it again, cranked by the <b>auxiliary diesel</b> (I), which also excites the <b>dynamic brake</b> and can move the engine light on its own.' : s.elec ? 'Release the <b>brake</b>, set the <b>reverser</b> forward and notch the <b>power</b> controller. The pantograph is up and the main breaker is in; <b>Pantograph</b> (I) drops it. Slow with the <b>regenerative brake</b>, which also blends in under the train brake. Out on the main a high-speed set runs at its own top speed, and each curve has its own posted limit: watch for it ahead.' : s.diesel ? 'Set the <b>reverser</b> forward, release the <b>engine brake</b>, then notch out the <b>throttle</b>. Every unit in the lashup answers the lead cab. Hold speed down the grades with the <b>dynamic brake</b>, and check the switch card before every turnout: diverging routes are 30 mph.' : ht.dataset.steam; }
+  const ey = document.querySelector('.brandmark .eyebrow'); if (ey) ey.textContent = s.turb ? 'Union Pacific · GTEL 8500 gas turbine' : s.elec ? (s.set === 'e5' ? 'JR East · Shinkansen E5 series' : 'Amtrak · Acela Express') : s.diesel ? (GAME.settings.livery === 'custom' ? 'Custom paint' : LIVERIES[GAME.settings.livery].name) + ' · C-C diesel' : s.art ? 'Union Pacific · 4000 class Big Boy' : 'Lima Super Power · 2-8-4';
 }
 /* the Sound tab: one slider per mixer bus (see VOL in 09_audio.js), live while the train runs */
 const VOL_LABELS = { master: 'Master', whistle: 'Whistle & horn', engine: 'Engine', effects: 'Wheels & track', ambience: 'Countryside' };
@@ -420,7 +423,7 @@ function startLabel() {
   b.textContent = GAME.needNewTrain() ? 'New train' : 'Resume';
 }
 function refreshMenuGroups() {
-  const sp = LOCO_SPEC[GAME.settings.loco], d = !!sp.diesel && !sp.set;
+  const sp = LOCO_SPEC[GAME.settings.loco], d = !!sp.diesel && !sp.set && !sp.turb;
   $('grpLivery').hidden = !d; $('grpUnits').hidden = !d; $('grpMix').hidden = !d || (+GAME.settings.units || 1) < 2;
   $('customPaint').hidden = !d || GAME.settings.livery !== 'custom';
   $('grpFinish').hidden = !!sp.diesel; $('optFire').parentElement.hidden = !!sp.diesel;
@@ -526,6 +529,9 @@ GAME.event = function (k) {
   else if (k === 'started') { toast('Prime mover running.', 'good', 2200, 'start'); GAME.refreshKeys(); }
   else if (k === 'noFuel') { toast('Out of fuel. The engine has shut down.', 'bad', 4000, 'fuel'); GAME.refreshKeys(); }
   else if (k === 'dynInterlock') toast(GAME.train && GAME.train.elec ? 'Power controller must be off while the regenerative brake is applied.' : 'Throttle must be in idle while the dynamic brake is set up.', 'warn', 2800, 'dyn');
+  else if (k === 'turbineOn') { toast('Turbine up to idle: transferring to Bunker C.', 'good', 3000, 'turb'); GAME.refreshKeys(); }
+  else if (k === 'tAbort') { toast('Start aborted: the auxiliary diesel stopped cranking the turbine.', 'bad', 3600, 'turb'); GAME.refreshKeys(); }
+  else if (k === 'flameOut') { toast('Flame out: the fuel tender is dry. The turbine is running down.', 'bad', 5000, 'turb'); GAME.refreshKeys(); }
   else if (k === 'vcb') { toast('On the wire: main breaker closed.', 'good', 2200, 'vcb'); GAME.refreshKeys(); }
   else if (k === 'vcbOpen') { toast('Main breaker open: no power and no regenerative brake.', 'warn', 3000, 'vcb'); GAME.refreshKeys(); }
 };
@@ -534,6 +540,8 @@ GAME.manualFire = function (what) {
   if (S.autoFire) { applyFireSetting('hand'); GAME.settings.fire = 'hand'; toast('You have the fire now: watch the pressure and the water glass.', 'warn', 4500); const b = $('optFire_hand'); if (b) b.click(); }
 };
 GAME.isDiesel = () => !!(GAME.train && GAME.train.diesel);
+GAME.isTurbine = () => !!(GAME.train && GAME.train.turb);
+GAME.notches = () => GAME.isTurbine() ? 20 : 8;   // the gas turbine's throttle has 20 running notches
 GAME.refreshKeys = function () {
   const on = (id, v) => $(id).classList.toggle('on', !!v);
   const D = GAME.isDiesel();
@@ -545,6 +553,9 @@ GAME.refreshKeys = function () {
   if (E) {
     on('btnCocks', S.ditch); $('btnCocks').firstChild.textContent = 'Ditch lights';
     on('btnInj', S.panUp); $('btnInj').firstChild.textContent = S.panUp ? (S.vcb ? 'Pantograph' : 'Raising') : 'Pan down';
+  } else if (GAME.isTurbine()) {
+    on('btnCocks', S.tOn || S.tStart > 0); $('btnCocks').firstChild.textContent = S.tStart > 0 ? 'Starting' : S.tOn ? 'Turbine' : 'Turbine off';
+    on('btnInj', S.engineRun || S.crank > 0); $('btnInj').firstChild.textContent = S.crank > 0 ? 'Cranking' : (S.engineRun ? 'Aux diesel' : 'Aux off');
   } else if (D) {
     on('btnCocks', S.ditch); $('btnCocks').firstChild.textContent = 'Ditch lights';
     on('btnInj', S.engineRun || S.crank > 0); $('btnInj').firstChild.textContent = S.crank > 0 ? 'Starting' : (S.engineRun ? 'Engine run' : 'Engine off');
@@ -872,7 +883,7 @@ function electricFX(dt, T, tv) {
 function effectsAndSound(dt, T) {
   const DSL = T.diesel;
   const tv = new THREE.Vector3().copy(T.lead.fwd).multiplyScalar(S.v);
-  const fx = T.elec ? electricFX(dt, T, tv) : DSL ? dieselFX(dt, T, tv) : steamFX(dt, T, tv);
+  const fx = T.elec ? electricFX(dt, T, tv) : T.turb ? turbineFX(dt, T, tv) : DSL ? dieselFX(dt, T, tv) : steamFX(dt, T, tv);
   const bellP = DSL ? 1.05 : 0.86; let struck = false;
   if (S.bell) { bellT += dt; if (bellT > bellP) { bellT = 0; struck = true; sndBell(DSL); } } else bellT = 0.8;
   bellSwing(T, S.bell, bellT, bellP, struck, dt);

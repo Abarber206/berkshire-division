@@ -199,7 +199,7 @@ SAVE.snapshot = function () {
 /* the line shown for a save in the menu */
 SAVE.summary = function (T, job) {
   const sp = LOCO_SPEC[T.locoKey];
-  const loco = sp.set ? HSR[sp.set].name : sp.diesel ? (T.nUnits > 1 ? `${T.nUnits} diesels` : 'Diesel') : `${sp.short} ${T.locoKey}`;
+  const loco = sp.set ? HSR[sp.set].name : sp.turb ? 'UP 18 gas turbine' : sp.diesel ? (T.nUnits > 1 ? `${T.nUnits} diesels` : 'Diesel') : `${sp.short} ${T.locoKey}`;
   const cars = T.vehicles.filter(v => !isPower(v)).length;
   let near = null, best = 3000;
   for (const st of ROUTE.stations) { const d = st.p ? st.p.distanceTo(T.lead.pos) : Infinity; if (d < best) { best = d; near = st.name; } }
@@ -273,7 +273,7 @@ SAVE.apply = function (d) {
   const g = GAME.settings;
   for (const k of SAVE_KEYS) if (d.settings[k] !== undefined) g[k] = d.settings[k];
   g.loco = d.train.loco; if (!LOCO_SPEC[g.loco]) throw new Error('unknown engine ' + g.loco);
-  if (LOCO_SPEC[g.loco].diesel && !LOCO_SPEC[g.loco].set) g.units = d.train.units || 1;
+  if (LOCO_SPEC[g.loco].diesel && !LOCO_SPEC[g.loco].set && !LOCO_SPEC[g.loco].turb) g.units = d.train.units || 1;
   saveSettings(); SAVE.menuSync();
   const E = d.print === SAVE.print() ? new Map(NET.edges.map(e => [e.id, e])) : null;
   // clear the railroad

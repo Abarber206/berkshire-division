@@ -86,7 +86,7 @@ function hudThemeKey(loco, finish) {
   const steam = loco === '765' || loco === '1225' || loco === '4014';
   if (steam && finish === 'polar') return 'polar';
   if (loco === '1225') return 'pm';
-  if (loco === '4014') return 'up';
+  if (loco === '4014' || loco === '18') return 'up';   // Union Pacific: the Big Boy and the gas turbine
   if (loco === 'diesel' || loco === 'e5' || loco === 'acela') return loco;
   return 'nkp';
 }
@@ -96,6 +96,7 @@ function hudPlate(loco, finish, number) {
   if (loco === 'diesel') return 'AC44 · ' + (number || 4401);
   if (loco === 'e5') return 'E5 · Shinkansen';
   if (loco === 'acela') return 'Acela Express';
+  if (loco === '18') return 'UP 18 · Gas turbine';
   const n = loco === '1225' ? 'PM 1225' : loco === '4014' ? 'UP 4014 · Big Boy' : 'NKP 765';
   return finish === 'polar' ? n + ' · Polar' : n;
 }
