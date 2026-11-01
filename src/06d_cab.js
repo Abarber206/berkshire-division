@@ -93,6 +93,7 @@ function cabMaterials() {
   RMAT.cabHi.color.convertSRGBToLinear(); RMAT.cabHi.emissive.convertSRGBToLinear(); RMAT.cabHi.userData.lin = true;
   RMAT.gglass = S2(0xcfe3ea, 0.1, 0.05, { transparent: true, opacity: 0.3, depthWrite: false });
   RMAT.winGlass = S2(0x15232a, 0.6, 0.05, { transparent: true, opacity: 0.25, depthWrite: false }); RMAT.winGlass.userData.noShadow = true;   // cab window panes, clear enough to see out
+  if (typeof rainGlass === 'function') rainGlass(RMAT.winGlass, false);
   RMAT.water = S2(0x6fa9c4, 0.1, 0.2, { emissive: 0x2c5f78, emissiveIntensity: 0.4 });
   RMAT.knob = S2(0x1a1a1a, 0.2, 0.35);
   RMAT.grip = S2(0x6b4a2c, 0.05, 0.6);

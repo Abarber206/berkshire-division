@@ -60,6 +60,7 @@ function hsMaterials() {
   if (RMAT.hsGlass) return;
   const mk = (c, m, r, extra = {}) => new THREE.MeshStandardMaterial({ color: c, metalness: m, roughness: r, ...extra });
   RMAT.hsGlass = mk(0x0d1418, 0.6, 0.06, { side: THREE.DoubleSide, transparent: true, opacity: 0.4, depthWrite: false });
+  if (typeof rainGlass === 'function') rainGlass(RMAT.hsGlass, false);   // rain on the windshield (10f_rainglass.js)
   RMAT.hsWin = new THREE.MeshStandardMaterial({ color: 0x141b20, metalness: 0.4, roughness: 0.08, emissive: 0xeaf1ff, emissiveIntensity: 0 });
   SCN.winMats.push(RMAT.hsWin);
   RMAT.hsUnder = mk(0x2b2e30, 0.4, 0.7, { side: THREE.DoubleSide });
