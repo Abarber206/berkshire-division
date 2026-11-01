@@ -15,6 +15,16 @@ const S = {
 };
 const ENV = { mu: 0.27, wind: new THREE.Vector3(-1.2, 0, 0.6) };
 const DRIVER_C = Math.PI * 2 * LG.rD, VCYL = Math.PI / 4 * 0.635 * 0.635 * 0.864;
+/* The steam engine on the rails, in the figures the boiler and front end need. The Berkshire's are the defaults;
+   a bigger engine (the Big Boy) brings its own drivers, cylinders (teK = d^2 s / D summed, vcyl = steam swept per
+   revolution, m^3), working pressure and a boiler scale k: grate, evaporation, firing, water and steam all grow
+   by k, so the boiler steams the same way, only bigger. */
+function steamK(spec) {
+  const rD = (spec && spec.rD) || LG.rD;
+  return { rD, C: Math.PI * 2 * rD, teK: (spec && spec.teK) || 307.97, vcyl: (spec && spec.vcyl) || 4 * VCYL, k: (spec && spec.boil) || 1, PL: (spec && spec.psi) || 245,
+    water: (spec && spec.water) || 83280, coal: (spec && spec.coal) || 19958 };
+}
+let SK = steamK(null);
 
 function brakeZone(h) {
   if (h < 0.06) return 'REL'; if (h < 0.18) return 'RUN'; if (h < 0.28) return 'LAP'; if (h < 0.9) return 'SRV'; return 'EMG';
@@ -36,11 +46,13 @@ function physicsStep(dt, train) {
   else if (DSL) TEcmd = dieselPower(dt) * nU;
   else {
   /* ----------------- boiler & front end ----------------- */
-  const n = Math.abs(S.vw) / DRIVER_C;                 // driver revolutions per second
+  SK = steamK(spec);
+  const K = SK.k, PL = SK.PL;
+  const n = Math.abs(S.vw) / SK.C;                     // driver revolutions per second
   const dir = Math.sign(S.reverser) * (Math.abs(S.reverser) > 0.03 ? 1 : 0);
   let cut = Math.abs(S.reverser) * 0.85; if (dir && cut < 0.1) cut = 0.1;
   // easy driving: hook the reverser up as the engine gains speed, so the boiler can keep up
-  S.cutA += (autoCutoff(n, S.P) - S.cutA) * Math.min(1, dt * 0.8);
+  S.cutA += (autoCutoff(n, S.P, SK) - S.cutA) * Math.min(1, dt * 0.8);
   if (S.autoCut && dir) cut = Math.min(cut, S.cutA);
   S.cut = dir ? cut : 0;
   const valve = Math.pow(S.throttle, 1.12);
@@ -51,30 +63,30 @@ function physicsStep(dt, train) {
   const back = 1.0 + 0.55 * n * n * cut;
   let mep = Math.max(0, S.Psc * ratio * wire - (S.Psc > 5 ? back : 0));
   if (S.priming) mep *= 0.55 + 0.25 * Math.sin(S.time * 9);
-  TEcmd = dir * mep * 307.97 * LBF;                   // 2 cyl: mep * d^2 * s / D
+  TEcmd = dir * mep * SK.teK * LBF;                   // mep * d^2 * s / D, every cylinder
   // steam consumption
   const rho = (S.Psc + 14.7) * 0.02323;
-  const useCyl = dir ? n * 4 * VCYL * (cut + 0.08) * rho : 0;
+  const useCyl = dir ? n * SK.vcyl * (cut + 0.08) * rho : 0;
   const aux = (S.pumping ? 0.07 : 0) + (S.light ? 0.02 : 0) + S.blower * 0.38 + (S.injector ? 0.28 : 0) + (S.cocks ? 0.45 * valve : 0) + S.whistle * 0.3 + (S.safety ? 4.8 : 0);
-  S.use = useCyl + aux;
+  S.use = useCyl + aux * K;
   // firing: stoker feeds, draft from exhaust & blower burns
   if (S.autoFire && !S.dead) autoFireman(dt);
-  const draft = clamp(0.16 + 0.78 * Math.min(1, useCyl / 7.5) + 0.72 * S.blower, 0, 1.25);
+  const draft = clamp(0.16 + 0.78 * Math.min(1, useCyl / (7.5 * K)) + 0.72 * S.blower, 0, 1.25);
   const fireT = S.coal > 0 && !S.dead ? Math.min(S.stoker * 1.18, draft * 1.08) : 0;
   S.fire += (fireT - S.fire) * dt / 16;
   S.fire = Math.max(0, S.fire);
-  S.coal = Math.max(0, S.coal - S.fire * 1.35 * dt);
-  S.gen = 9.9 * S.fire * (1 - 0.22 * clamp((S.P - 200) / 60, 0, 1));
+  S.coal = Math.max(0, S.coal - S.fire * 1.35 * K * dt);
+  S.gen = 9.9 * K * S.fire * (1 - 0.22 * clamp((S.P - (PL - 45)) / 60, 0, 1));
   // water
   let cooling = 0;
-  if (S.injector && S.water > 0 && S.P > 60) { const feed = 11.5; S.W += feed * dt / 2600; S.water -= feed * dt; cooling = feed * (spec.fw === 'Worthington' ? 0.1 : 0.13); }
-  S.W -= S.gen * dt / 2600;
+  if (S.injector && S.water > 0 && S.P > 60) { const feed = 11.5 * K; S.W += feed * dt / (2600 * K); S.water -= feed * dt; cooling = feed * (spec.fw === 'Worthington' ? 0.1 : 0.13); }
+  S.W -= S.gen * dt / (2600 * K);
   S.water = Math.max(0, S.water);
-  S.P += (S.gen - S.use - cooling) / 3.4 * dt;
-  if (S.P > 245.5) S.safety = true; else if (S.P < 241) S.safety = false;
-  S.P = clamp(S.P, 0, 250);
+  S.P += (S.gen - S.use - cooling) / (3.4 * K) * dt;
+  if (S.P > PL + 0.5) S.safety = true; else if (S.P < PL - 4) S.safety = false;
+  S.P = clamp(S.P, 0, PL + 5);
   if (S.autoCut && S.cocks && Math.abs(S.v) > 3) { S.cocks = false; GAME.event('cocksShut'); }
-  if (!S.autoCut && dir && S.P < 175 && cut > 0.4 && n > 1.6 && S.throttle > 0.3) GAME.event('lowSteam');
+  if (!S.autoCut && dir && S.P < PL - 70 && cut > 0.4 && n > 1.6 && S.throttle > 0.3) GAME.event('lowSteam');
   S.lowWater = S.W < 0.04; S.priming = S.W > 1.0;
   if (S.W < -0.2 && !S.dead) { S.dead = true; S.fire = 0; GAME.fail('Fusible plug dropped', 'The water level fell below the crown sheet and the fusible plug melted, venting steam into the firebox. The fire is out. Keep the water glass above the bottom nut.'); }
   S.W = clamp(S.W, -0.3, 1.15);
@@ -229,7 +241,7 @@ function physicsStep(dt, train) {
   S.v += a * dt;
   S.accel = a;
   if (S.slide) S.vw = 0; else if (!S.slip) S.vw = S.v;
-  S.theta -= S.vw * dt / LG.rD;
+  S.theta -= S.vw * dt / (DSL ? LG.rD : SK.rD);
   S.M = M;
   return S.v * dt;
 }
@@ -266,10 +278,10 @@ function hsLimit(tp, spec) {
 function applyFireSetting(k) { S.autoFire = k !== 'hand'; S.autoCut = k === 'easy' || k === undefined; }
 /* The cutoff that holds steam at this speed: long at a start for the pull, shorter as the drivers turn faster,
    and shorter still if the pressure sags. What an engineer does with the reverser, notch by notch. */
-function autoCutoff(n, P) {
-  const budget = 7.2 * clamp((P - 150) / 80, 0.35, 1);
+function autoCutoff(n, P, K = SK) {
+  const f = K.PL / 245, budget = 7.2 * K.k * clamp((P - 150 * f) / (80 * f), 0.35, 1);
   const rho = (P + 14.7) * 0.02323;
-  return clamp(budget / Math.max(0.05, n * 4 * VCYL * rho) - 0.08, 0.2, 0.85);
+  return clamp(budget / Math.max(0.05, n * K.vcyl * rho) - 0.08, 0.2, 0.85);
 }
 /* Rail condition along the line: patches of dew, leaves and grease where adhesion falls by up to a quarter.
    An engine working hard there slips unless the sander is on. 0 is clean rail, 1 the worst of a patch. */
@@ -281,12 +293,12 @@ function railPatch(x) {
 /* An attentive fireman: holds 240 psi and half a glass. */
 function autoFireman(dt) {
   const demand = S.use;
-  const want = clamp(0.25 + demand / 9.5 + (240 - S.P) * 0.025, 0.05, 1);
+  const want = clamp(0.25 + demand / (9.5 * SK.k) + (SK.PL - 5 - S.P) * 0.025, 0.05, 1);
   S.stoker += (want - S.stoker) * Math.min(1, dt * 0.8);
   if (S.W < 0.52 && S.P > 65) S.injector = true;   // the injector still lifts at low pressure: never let the crown sheet go dry
   if (S.W > 0.72) S.injector = false;
   const working = Math.abs(S.reverser) > 0.05 && S.throttle > 0.05;
-  const bt = working ? 0.05 : (S.P < 235 ? 0.55 : 0.2);
+  const bt = working ? 0.05 : (S.P < SK.PL - 10 ? 0.55 : 0.2);
   S.blower += (bt - S.blower) * Math.min(1, dt * 0.7);
 }
 

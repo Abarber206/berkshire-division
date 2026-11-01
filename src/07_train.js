@@ -4,6 +4,8 @@
 const CONSISTS = {
   passenger: { name: 'Passenger', sub: '8 heavyweights · 660 tons', build: () => { const a = []; for (let i = 0; i < 7; i++) a.push(['coach', 0]); a.push(['coach', 1]); return a; } },
   freight: { name: 'Manifest freight', sub: '36 cars · 2,700 tons', build: (r) => { const a = []; const t = ['box', 'box', 'hopper', 'hopper', 'tank', 'gon', 'box', 'hopper']; for (let i = 0; i < 35; i++) a.push([t[(r() * t.length) | 0], 0]); a.push(['caboose', 0]); return a; } },
+  // loaded hoppers: the Big Boy lifts this up Laurel Mountain's 1.9% at about 15 mph, a Berkshire stalls with half of it
+  coal: { name: 'Coal drag', sub: '26 cars · 2,300 tons', build: () => { const a = []; for (let i = 0; i < 25; i++) a.push(['hopper', 0]); a.push(['caboose', 0]); return a; } },
   light: { name: 'Light engine', sub: 'Pick up cars in the yard', build: () => [] },
   // made up for the BD-2 time freight job; not offered in the menu
   timefreight: { name: 'Time freight', sub: '18 cars · 1,400 tons', hidden: true, build: () => ['box', 'box', 'tank', 'box', 'hopper', 'box', 'gon', 'box', 'box', 'tank', 'tank', 'box', 'hopper', 'hopper', 'box', 'gon', 'box', 'box', 'caboose'].map(t => [t, 0]) },
@@ -28,8 +30,12 @@ class Consist {
     const pt = loc => ({ loc, a: 0, tp: null, F: newFrame(), v });
     v.fp = v.frame.map(pt);
     v.tp = v.trucks.map(t => pt(t.a));
-    if (v.kind === 'loco' && !this.diesel) v.leadPt = pt(LG.aL); else if (v.kind === 'loco') v.leadPt = v.fp[0];
-    v.ptsAll = [...v.fp, ...v.tp]; if (v.leadPt && !v.ptsAll.includes(v.leadPt)) v.ptsAll.push(v.leadPt);
+    const m = v.model || {};
+    if (v.kind === 'loco' && !this.diesel) v.leadPt = pt(m.leadA !== undefined ? m.leadA : LG.aL); else if (v.kind === 'loco') v.leadPt = v.fp[0];
+    v.extraPts = [];
+    if (m.art) v.extraPts.push(v.artPt = pt(BB.refF));                  // the articulated front engine's middle
+    if (m.swivelA !== undefined) v.extraPts.push(v.swPt = pt(m.swivelA));   // a tender's swivelling truck
+    v.ptsAll = [...v.fp, ...v.tp, ...v.extraPts]; if (v.leadPt && !v.ptsAll.includes(v.leadPt)) v.ptsAll.push(v.leadPt);
   }
   /* offsets from the front coupler, front to back. A vehicle with flip set stands turned in this consist. */
   layout() {
@@ -136,11 +142,22 @@ class Consist {
           for (const x of [-0.865, 0.865]) { _m4.copy(_tm).multiply(new THREE.Matrix4().makeTranslation(x, t.R, 0)).multiply(new THREE.Matrix4().makeRotationZ(wAng4)); this.ax4[0].setMatrixAt(a4, _m4); this.ax4[1].setMatrixAt(a4, _m4); a4++; }
         }
       }
+      // a tender with its own swivelling truck and wheels in the frame (the Big Boy's centipede)
+      if (v.swPt && v.model.truck) {
+        const tg = v.model.truck; tg.matrixAutoUpdate = false; frameMatrix(v.swPt.F, tg.matrix); if (v.flip) tg.matrix.multiply(_m4.makeRotationY(Math.PI));
+        if (D && v.rb.s0) tg.matrix.multiplyMatrices(D, v.rb.s0); tg.matrixWorldNeedsUpdate = true;
+      }
+      if (v.model && v.model.spin) v.model.spin(roll);
       if ((v.kind === 'loco' || v.kind === 'loco2') && this.diesel) {
         const U = v.model;
         U.trucks.forEach((tg, k) => { tg.matrixAutoUpdate = false; frameMatrix(v.fp[k].F, tg.matrix); if (v.reversed) tg.matrix.multiply(_m4.makeRotationY(Math.PI)); if (D && v.rb.u0) tg.matrix.multiplyMatrices(D, v.rb.u0[k]); tg.matrixWorldNeedsUpdate = true; });
         const wa = (v.reversed ? 1 : -1) * this.dist / (U.rW || DG.rW); for (const w of U.wheels) w.rotation.z = wa;
         v.root.updateMatrixWorld(true);
+      } else if (v.kind === 'loco' && this.loco.art) {
+        const L = this.loco;
+        const lt = L.leadTruck; lt.matrixAutoUpdate = false; frameMatrix(v.leadPt.F, lt.matrix); if (D && v.rb.l0) lt.matrix.multiplyMatrices(D, v.rb.l0); lt.matrixWorldNeedsUpdate = true;
+        artFront(v, L, D);
+        L.animate(roll, theta, rev, this.dist);
       } else if (v.kind === 'loco') {
         const lf = v.leadPt.F;
         const lt = this.loco.leadTruck; lt.matrixAutoUpdate = false; frameMatrix(lf, lt.matrix); if (D && v.rb.l0) lt.matrix.multiplyMatrices(D, v.rb.l0); lt.matrixWorldNeedsUpdate = true;
@@ -216,10 +233,11 @@ class Train extends Consist {
     } else {
       // a holiday trim (see TRIM) is built into a steam train and the coaches it brings
       this.trim = TRIM[opts.trim] ? opts.trim : '';
-      L = buildBerkshire(locoKey, this.trim);
-      scene.add(L.root); scene.add(L.leadTruck);
-      this.vehicles.push({ kind: 'loco', model: L, root: L.root, len: LG.len, frame: [LG.aD[0], LG.aD[3]], trucks: [], mass: engMass, axles: 10, area: 125, brakeA: 0.55, cpl: L.couplers });
-      const T = buildTender(locoKey, this.trim);
+      L = spec.art ? buildBigBoy(locoKey, this.trim) : buildBerkshire(locoKey, this.trim);
+      scene.add(L.root); scene.add(L.leadTruck); if (L.front) scene.add(L.front);
+      this.vehicles.push({ kind: 'loco', model: L, root: L.root, len: L.len || LG.len, frame: L.frame || [LG.aD[0], LG.aD[3]], trucks: [], mass: engMass, axles: spec.axles || 10, area: 125, brakeA: 0.55, cpl: L.couplers });
+      const T = spec.art ? buildBigBoyTender(locoKey, this.trim) : buildTender(locoKey, this.trim);
+      if (T.truck) scene.add(T.truck);
       scene.add(T.root);
       this.tender = T;
       this.vehicles.push({ kind: 'tender', model: T, root: T.root, len: T.len, frame: T.frame, trucks: T.trucks, mass: 0, axles: 6, area: 0, brakeA: 0.6, cpl: T.couplers });
@@ -237,7 +255,7 @@ class Train extends Consist {
       this.vehicles.push(v);
     }
     // tender mass varies with water & coal
-    this.tenderEmpty = 92000;
+    this.tenderEmpty = spec.tenderEmpty || 92000;
     for (const v of this.vehicles) { v.brake = v.brake || { AR: 90, BC: 0, BP: 90, emerg: false, released: true }; v.kn = v.kn || [0, 0]; this.track(v); }
     this.layout();
     this.buildInstances(carGeos());
@@ -249,7 +267,7 @@ class Train extends Consist {
       this.head.castShadow = false;
       scene.add(this.head); scene.add(this.head.target);
       this.fireLight = new THREE.PointLight(0xff7a2a, 0, 7, 2);
-      L.body.add(this.fireLight); this.fireLight.position.set(CABDIM.bh - 0.3, CABDIM.fl + 0.5, 0.1);
+      L.body.add(this.fireLight); if (L.fireLightPos) this.fireLight.position.copy(L.fireLightPos); else this.fireLight.position.set(CABDIM.bh - 0.3, CABDIM.fl + 0.5, 0.1);
       this.cabLight = new THREE.PointLight(0xffd09a, 0, 5, 2); L.body.add(this.cabLight); if (L.cabLightPos) this.cabLight.position.copy(L.cabLightPos); else this.cabLight.position.set(ax(15.8), 4.1, 0);
     } else { this.head = null; this.fireLight = null; this.cabLight = null; }
     for (const v of this.vehicles) this.markerLamps(v);
@@ -279,9 +297,11 @@ class Train extends Consist {
   }
   worldOf(local, out = new THREE.Vector3()) { return out.copy(local).applyMatrix4(this.loco.root.matrixWorld); }
   unitWorld(m, local, out = new THREE.Vector3()) { return out.copy(local).applyMatrix4(m.root.matrixWorld); }
+  /* the steam engine's pieces that ride in the scene on their own: lead truck, articulated front engine, tender truck */
+  steamExtras() { return this.diesel ? [] : [this.loco.leadTruck, ...(this.loco.extras || []), ...(this.tender && this.tender.extras || [])]; }
   dispose() {
     for (const v of this.vehicles) { this.scene.remove(v.root); }
-    if (this.diesel) this.units.forEach(m => m.trucks.forEach(t => this.scene.remove(t))); else this.scene.remove(this.loco.leadTruck);
+    if (this.diesel) this.units.forEach(m => m.trucks.forEach(t => this.scene.remove(t))); else for (const o of this.steamExtras()) this.scene.remove(o);
     for (const im of this.inst) this.scene.remove(im);
     if (this.head) { this.scene.remove(this.head); this.scene.remove(this.head.target); }
   }
@@ -289,13 +309,13 @@ class Train extends Consist {
   disposeDeep() {
     this.dispose();
     const seen = new Set(), roots = [...this.vehicles.map(v => v.root), ...this.inst];
-    if (this.diesel) this.units.forEach(m => roots.push(...m.trucks)); else roots.push(this.loco.leadTruck);
+    if (this.diesel) this.units.forEach(m => roots.push(...m.trucks)); else roots.push(...this.steamExtras());
     for (const r of roots) if (r) r.traverse(o => { if (o.geometry && !seen.has(o.geometry)) { seen.add(o.geometry); o.geometry.dispose(); } });
     if (this.diesel) for (const m of this.units) for (const k in m.skin) { const mt = m.skin[k]; if (mt.map) mt.map.dispose(); mt.dispose(); }
   }
   setVisible(v) {
     super.setVisible(v);
-    if (this.diesel) this.units.forEach(m => m.trucks.forEach(t => { t.visible = v; })); else this.loco.leadTruck.visible = v;
+    if (this.diesel) this.units.forEach(m => m.trucks.forEach(t => { t.visible = v; })); else for (const o of this.steamExtras()) o.visible = v;
   }
 }
 

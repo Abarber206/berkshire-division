@@ -9,7 +9,7 @@ const vm = require('vm');
 
 const SRC = path.join(__dirname, '..', 'src');
 const THREE_JS = path.join(__dirname, 'vendor', 'three.min.js');
-const FILES = ['01_util.js', '06_models.js', '06b_diesel.js', '06c_couplers.js', '06d_cab.js', '06g_person.js'];
+const FILES = ['01_util.js', '06_models.js', '06b_diesel.js', '06c_couplers.js', '06d_cab.js', '06g_person.js', '06h_bigboy.js'];
 const have = fs.existsSync(THREE_JS);
 
 function Anything() {
@@ -38,7 +38,7 @@ function world() {
     const _build = GeoBin.prototype.build;
     GeoBin.prototype.build = function (mats, opt) { const grp = _build.call(this, mats, opt); grp.userData.pieces = this.pieces || []; return grp; };
     rollingMaterials();
-    globalThis.__W = { THREE, RMAT, SCN, LOCO_SPEC, TRIM, TD, DG, GeoBin, buildBerkshire, buildTender, buildDiesel, bellRig, bellSwing, clsLampsShow, BELL_KICK, coachModel, freightModel, truckBins, plainAxle, mergeGeos, AXJ, CH, LIVERIES, buildPerson, PD, coachInterior, coachSeats, COACH_IN, coachPairs };`,
+    globalThis.__W = { THREE, RMAT, SCN, LOCO_SPEC, TRIM, TD, DG, GeoBin, buildBerkshire, buildTender, buildDiesel, bellRig, bellSwing, clsLampsShow, BELL_KICK, coachModel, freightModel, truckBins, plainAxle, mergeGeos, AXJ, CH, LIVERIES, buildPerson, PD, coachInterior, coachSeats, COACH_IN, coachPairs, buildBigBoy, buildBigBoyTender, animateBigBoy, artFront, artSwing, BB, BBT, BBCAB, bxR, bxF };`,
   ctx, { filename: 'rolling.js' });
   return (W = ctx.__W);
 }

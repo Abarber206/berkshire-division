@@ -135,6 +135,8 @@ button:focus-visible,.lever:focus-visible{outline:2px solid var(--brass);outline
   padding:0 6px;margin:0 0 2px -2px;border-radius:2px;white-space:nowrap;color:#1a1307;
   background:linear-gradient(#f3d98f,#c39a43 60%,#8d6b27);box-shadow:inset 0 1px 0 rgba(255,255,255,.55),0 1px 2px rgba(0,0,0,.6)}
 #hud[data-theme=nkp] .hud-box{box-shadow:inset 0 1px 0 rgba(207,166,81,.22)}
+#hud[data-theme=up] #hudPlate{color:#161004;background:linear-gradient(#ffd25a,#f0b323 60%,#b07a0c);border-bottom:2px solid #c8102e}
+#hud[data-theme=up] .hud-box{box-shadow:inset 0 1px 0 rgba(240,179,35,.2)}
 #hud[data-theme=pm] #hudPlate{color:#0c1420;background:linear-gradient(#ffffff,#b9c6cf 60%,#7d8a94)}
 #hud[data-theme=pm] .hud-box{box-shadow:inset 0 0 0 1px rgba(195,208,218,.12),inset 0 1px 0 rgba(255,255,255,.18)}
 #hud[data-theme=polar] #hudPlate{color:#fff4d6;background:linear-gradient(#d8463a,#9c2219);border:1px solid #e2c066;line-height:12px}
@@ -6625,7 +6627,7 @@ function lampFacing(L, cam) {
 
 /* =================== THE BERKSHIRE =================== */
 const LOCO_SPEC = {   // front: 'nkp' headlight on top with number-board wings, bell on the door; 'pm' lamp in the door, bell on top, pumps on the pilot
-  '765': { road: 'NICKEL PLATE ROAD', num: '765', short: 'NKP', cls: 'S-2', built: 'Lima, Sept 1944', weight: 440800, adhesive: 264300, te: 64135, fw: 'Worthington', whistle: 'deep6', front: 'nkp', leadR: 0.457, cylR: 0.3175, wheels: 'spoked' },
+  '765': { road: 'NICKEL PLATE ROAD', num: '765', short: 'NKP', cls: 'S-2', built: 'Lima, Sept 1944', weight: 440800, adhesive: 264300, te: 64135, fw: 'Worthington', whistle: 'nkp6', front: 'nkp', leadR: 0.457, cylR: 0.3175, wheels: 'spoked' },
   'diesel': { road: 'SANDUSKY & SCIOTO', num: '4401', short: 'S&S', cls: 'AC44', built: '2026', weight: 420000, adhesive: 420000, te: 183000, diesel: true, whistle: 'k5' },
   '1225': { road: 'PERE MARQUETTE', num: '1225', short: 'PM', cls: 'N-1', built: 'Lima, Oct 1941', weight: 442500, adhesive: 277600, te: 69350, fw: 'Worthington', whistle: 'chime6', front: 'pm', leadR: 0.419, cylR: 0.330, wheels: 'boxpok' },
 };
@@ -9603,8 +9605,8 @@ function steamCab(gb, body, d) {
     // a red-globe hand lantern on a hook off the wall
     const xl = xs - 0.1, yl = ffl + 1.55, zl = -(wallZ - 0.13);
     gb.add('dark', barGeo(0.008, [xl, yl + 0.3, -wallZ], [xl, yl + 0.3, zl], 5));
-    gb.add('dark', barGeo(0.006, [xl, yl + 0.3, zl], [xl, yl + 0.2, zl], 5));
-    gb.add('steel', new THREE.TorusGeometry(0.07, 0.004, 4, 16, Math.PI).translate(xl, yl + 0.13, zl));   // bail
+    gb.add('dark', barGeo(0.006, [xl, yl + 0.3, zl], [xl, yl + 0.17, zl], 5));
+    gb.add('steel', new THREE.TorusGeometry(0.066, 0.004, 4, 16, Math.PI).translate(xl, yl + 0.105, zl));   // bail, its ends in the cap's rim
     gb.cyl('steel', 0.03, 0.06, 0.04, 12, xl, yl + 0.12, zl);
     gb.cyl('redKnob', 0.05, 0.05, 0.12, 12, xl, yl + 0.04, zl);
     for (let i = 0; i < 4; i++) { const a = i * Math.PI / 2 + 0.4; gb.add('steel', barGeo(0.004, [xl + Math.cos(a) * 0.055, yl - 0.02, zl + Math.sin(a) * 0.055], [xl + Math.cos(a) * 0.055, yl + 0.1, zl + Math.sin(a) * 0.055], 4)); }
@@ -11649,11 +11651,626 @@ function coachInLight(dark) {
 }
 
 /* ============================================================================
+   Union Pacific 4000 class "Big Boy", No. 4014: a simple articulated 4-8-8-4
+   (American Locomotive Co., 1941), built to the published figures:
+     132 ft 9-1/4 in over the couplers (engine 85 ft 3-2/5 in), 11 ft wide,
+     16 ft 2-1/2 in high; engine wheelbase 72 ft 5-1/2 in, engine and tender
+     117 ft 7 in; 68 in drivers, two groups of four at 73 in centres (rigid
+     wheelbase 18 ft 3 in, 47 ft 3 in over all eight); 36 in lead and 42 in
+     trailing wheels; four 23-3/4 x 32 in cylinders, Walschaerts gear; 300 psi;
+     762,000 lb engine, 540,000 lb on the drivers, 135,375 lbf.
+   The rear engine is the main frame: boiler, firebox and cab ride on it. The
+   front engine (its cylinders, eight drivers, the pilot and the front coupler)
+   hangs from a hinge just ahead of the rear cylinders and swings out under the
+   smokebox on curves, the boiler resting on it through a sliding bearing.
+   Tender: "centipede" type, a four-wheel lead truck and five axles in the
+   frame, 25,000 gal of water and 28 tons of coal.
+   a = metres back from the front coupler face, heights above the rail. Local x
+   on the main frame is BB.refR - a, on the front engine BB.refF - a, so the two
+   agree on straight track.
+   ========================================================================== */
+Object.assign(LOCO_SPEC, {
+  '4014': { road: 'UNION PACIFIC', num: '4014', short: 'UP', cls: '4000 · 4-8-8-4', built: 'Alco, Dec 1941', weight: 762000, adhesive: 540000, te: 135375, fw: 'Worthington', whistle: 'deep6',
+    art: true, wheels: 'spoked', psi: 300, rD: 0.8636, teK: 2 * 23.75 * 23.75 * 32 / 68, vcyl: 8 * Math.PI / 4 * 0.6033 * 0.6033 * 0.8128, boil: 1.7,
+    water: 94635, coal: 25401, tenderEmpty: 120000, axles: 12 },
+});
+const BB = {
+  len: 25.99, rD: 0.8636, rL: 0.457, rT: 0.533, cr: 0.4064,
+  aL: [2.40, 4.53], aDf: [6.200, 8.053, 9.906, 11.759], aDr: [15.039, 16.892, 18.745, 20.598], aT: [22.39, 24.49],
+  yC: 1.10, zC: 1.25, cylR: 0.42, Lm: 3.756, yV: 1.78, zV: 1.20, aH: 12.45,
+  yB: 3.38, hw: 1.62,
+};
+BB.refF = (BB.aDf[0] + BB.aDf[3]) / 2; BB.refR = (BB.aDr[0] + BB.aDr[3]) / 2;
+BB.leadA = (BB.aL[0] + BB.aL[1]) / 2;
+const bxR = a => BB.refR - a, bxF = a => BB.refF - a;
+/* the two engines' cylinders and Walschaerts gear, a values on each engine's own frame */
+const BBW = (() => {
+  const mk = aD => {
+    const aX = aD[2] - BB.Lm;                            // crosshead at mid stroke
+    return { aD, aX, cyl: [aX - 2.30, aX - 1.10], aLink: aX + 0.92, yLink: 1.74, rl: 0.42, dMax: 0.30, e: 0.21, Lrr: 1.62, yR: BB.yV - 0.14, a: 0.14, b: 0.80, Lu: 0.72 };
+  };
+  return { f: mk(BB.aDf), r: mk(BB.aDr) };
+})();
+/* the boiler: smokebox, first course, cone, the big rear course, firebox back into the cab */
+const BBOIL = { sb: [1.95, 6.10, 1.22], c1: [6.10, 9.40, 1.24], cone: [9.40, 11.10], c3: [11.10, 16.60, 1.36], fb: [16.60, 22.55], yR: 3.40 };
+BBOIL.bR = a => a < BBOIL.sb[1] ? BBOIL.sb[2] : a < BBOIL.cone[0] ? BBOIL.c1[2] : a < BBOIL.cone[1] ? lerp(BBOIL.c1[2], BBOIL.c3[2], (a - BBOIL.cone[0]) / (BBOIL.cone[1] - BBOIL.cone[0])) : BBOIL.c3[2];
+BBOIL.bY = a => a < BBOIL.cone[0] ? BB.yB : a < BBOIL.cone[1] ? lerp(BB.yB, BBOIL.yR, (a - BBOIL.cone[0]) / (BBOIL.cone[1] - BBOIL.cone[0])) : BBOIL.yR;
+const BBCAB = (() => {
+  const C = { a0: 22.25, a1: 25.45, fl: 2.30, bottom: 2.20, roofY: 4.48, crown: 4.93, hw: 1.58, roofT: 0.05, aBh: 22.55,
+    FB: { cy: 3.40, r: 1.36, base: 1.96, wb: 1.42 },
+    side: { a0: 22.75, a1: 24.85, y0: 3.08, y1: 3.88 },
+    front: { y0: 3.98, y1: 4.38, zi: 1.27, zo: 1.56 } };
+  C.x0 = bxR(C.a0); C.x1 = bxR(C.a1); C.bh = bxR(C.aBh);
+  C.arch = z => C.crown - (C.crown - C.roofY) * (z / C.hw) ** 2;
+  C.ceil = z => C.arch(z) - C.roofT;
+  C.fbHalf = y => y >= C.FB.cy ? Math.sqrt(Math.max(0, C.FB.r ** 2 - (y - C.FB.cy) ** 2)) : C.FB.r + (C.FB.wb - C.FB.r) * (C.FB.cy - y) / (C.FB.cy - C.FB.base);
+  return C;
+})();
+BBOIL.top = a => a >= BBOIL.fb[0] ? BBCAB.FB.cy + BBCAB.FB.r : BBOIL.bY(a) + BBOIL.bR(a);
+BBOIL.half = (a, y) => { if (a >= BBOIL.fb[0]) return BBCAB.fbHalf(y); const r = BBOIL.bR(a), d = y - BBOIL.bY(a); return Math.sqrt(Math.max(0, r * r - d * d)); };
+/* the drift between the two engines: they are not geared together, so their exhausts wander in and out of step */
+const bbDrift = odo => 0.9 * Math.sin(odo / 61) + 0.5 * Math.sin(odo / 23 + 1.3);
+
+/* one engine unit's frame, cylinders, saddle, guides, gear brackets, brake rigging; bx maps a to local x */
+function bbEngineUnit(gb, bx, W, front) {
+  const bar = (k, r, a, b, seg = 8) => gb.add(k, barGeo(r, a, b, seg));
+  const aD = W.aD, a0 = front ? 1.35 : W.cyl[0] - 0.25, a1 = front ? BB.aH + 0.05 : 25.9;
+  for (const s of [-1, 1]) {
+    gb.box('dark', (front ? aD[3] + 0.75 : 21.3) - a0, 0.46, 0.15, bx(((front ? aD[3] + 0.75 : 21.3) + a0) / 2), 1.22, s * 0.56);   // frame over the drivers
+    for (let i = 0; i < 4; i++) {
+      const xd = bx(aD[i]);
+      gb.box('dark', 0.34, 0.5, 0.2, xd, BB.rD + 0.02, s * 0.58);                     // driving box
+      for (const d of [-0.22, 0.22]) gb.box('dark', 0.08, 0.62, 0.17, xd + d, 1.05, s * 0.58);
+      for (let k = 0; k < 5; k++) gb.box('dark', 0.9 - k * 0.12, 0.035, 0.14, xd, 1.47 + k * 0.035, s * 0.6);   // spring
+      gb.box('dark', 0.14, 0.42, 0.18, xd + 0.95, 0.62, s * 0.75); gb.box('dark', 0.05, 0.62, 0.05, xd + 1.0, 1.1, s * 0.62);   // brake shoe & hanger
+    }
+  }
+  for (const a of front ? [1.55, aD[0] - 0.9, (aD[1] + aD[2]) / 2, aD[3] + 0.6] : [W.cyl[1] + 0.5, (aD[1] + aD[2]) / 2, aD[3] + 0.7]) gb.box('dark', 0.24, 0.4, 0.98, bx(a), 1.22, 0);   // cross ties
+  /* cylinders, valve chests, saddle */
+  const cA = (W.cyl[0] + W.cyl[1]) / 2, cL = W.cyl[1] - W.cyl[0];
+  for (const s of [-1, 1]) {
+    const z = s * BB.zC;
+    gb.cylX('black', BB.cylR, BB.cylR, cL - 0.12, 28, bx(cA), BB.yC, z);
+    for (const a of [W.cyl[0] + 0.04, W.cyl[1] - 0.04]) gb.cylX('graphite', BB.cylR + 0.025, BB.cylR + 0.025, 0.08, 28, bx(a), BB.yC, z);
+    gb.cylX('graphite', BB.cylR - 0.06, BB.cylR - 0.1, 0.08, 24, bx(W.cyl[0] - 0.04), BB.yC, z);
+    gb.cylX('black', 0.30, 0.30, cL + 0.1, 20, bx(cA), BB.yV, s * BB.zV);           // valve chest
+    for (const a of [cA - (cL + 0.1) / 2, cA + (cL + 0.1) / 2]) gb.cylX('graphite', 0.32, 0.32, 0.06, 20, bx(a), BB.yV, s * BB.zV);
+    gb.box('black', cL - 0.1, BB.yV - BB.yC, 0.34, bx(cA), (BB.yV + BB.yC) / 2, s * 1.16);
+    gb.box('black', 0.5, 0.18, 0.18, bx(W.cyl[1] + 0.3), BB.yV, s * BB.zV);           // valve stem guide
+    for (const a of [W.cyl[0] + 0.15, W.cyl[1] - 0.15]) gb.add('dark', new THREE.CylinderGeometry(0.025, 0.025, 0.35, 6), M(bx(a), BB.yC - BB.cylR - 0.1, z));   // drain cocks
+    for (const dy of [-0.19, 0.19]) gb.box('rod', W.aLink - 0.1 - W.cyl[1], 0.06, 0.14, bx((W.cyl[1] + W.aLink - 0.1) / 2), BB.yC + dy, z);   // crosshead guides
+    gb.box('black', 0.16, 1.01, 0.42, bx(W.aLink - 0.1), 1.795, s * 0.98);                      // guide yoke, above the wheel, up to the link bridge
+    // link bracket: a plate standing outboard of the link, carrying its trunnions, bridged over the link's top to the yoke
+    gb.box('black', 0.62, 0.86, 0.04, bx(W.aLink), W.yLink + 0.17, s * 1.47);
+    gb.box('black', 0.3, 0.1, 0.53, bx(W.aLink - 0.05), 2.25, s * 1.215);
+    gb.cylZ('dark', 0.06, 0.12, 12, bx(W.aLink), W.yLink, s * 1.43);
+  }
+  gb.box('black', cL - 0.05, (front ? 2.05 : 2.30) - BB.yV + 0.25, 2.0, bx(cA), ((front ? 2.05 : 2.30) + BB.yV - 0.25) / 2, 0);   // saddle
+  return cA;
+}
+
+function buildBigBoy(key, trim = '') {
+  const spec = LOCO_SPEC[key];
+  const root = new THREE.Group(), body = new THREE.Group(); root.add(body);
+  const front = new THREE.Group(); front.matrixAutoUpdate = false;                 // the front engine, placed by the train
+  const gb = new GeoBin(), gf = new GeoBin();
+  const C = BBCAB, FB = C.FB, yB = BB.yB, ax = bxR;
+  const bar = (k, r, a, b, seg = 8) => gb.add(k, barGeo(r, a, b, seg));
+  const RB = { y: 2.66, zi: 1.18, zo: 1.65, t: 0.05, a0: 1.85 };
+
+  /* ===================== front engine ===================== */
+  const cylF = bbEngineUnit(gf, bxF, BBW.f, true);
+  // the hinge: a tongue off the back of the front frame into a clevis under the rear cylinders
+  gf.box('dark', 0.9, 0.3, 0.7, bxF(BB.aH - 0.35), 1.15, 0);
+  gf.cyl('dark', 0.16, 0.16, 0.42, 16, bxF(BB.aH), 1.15, 0);
+  // the boiler's sliding bearing: a pad on a pedestal from the frame up under the first course
+  { const a = 9.0, top = BB.yB - BBOIL.bR(a) - 0.005;
+    gf.box('dark', 0.5, top - 1.45, 0.5, bxF(a), (top + 1.45) / 2 - 0.02, 0);
+    gf.box('steel', 0.62, 0.04, 0.56, bxF(a), top - 0.02, 0); }
+  // pilot beam, a slatted cast pilot sloping down to the rail, the deck back toward the smokebox
+  const pil = { beam: 0.48, deckA: 0.55, deckY: 1.36 };
+  gf.box('black', 0.26, 0.44, 2.9, bxF(pil.beam + 0.13), 1.05, 0);
+  gf.box('dark', 2.05 - pil.deckA, 0.05, 2.9, bxF((pil.deckA + 2.05) / 2), pil.deckY + 0.025, 0);
+  gf.box('dark', 1.0, 0.36, 1.4, bxF(1.2), 1.15, 0);
+  {
+    const top = [bxF(pil.beam + 0.02), 0.84], bot = [bxF(0.12), 0.09], L = Math.hypot(top[0] - bot[0], top[1] - bot[1]), th = Math.atan2(top[1] - bot[1], top[0] - bot[0]) - Math.PI / 2;
+    const mx = (top[0] + bot[0]) / 2, my = (top[1] + bot[1]) / 2;
+    for (let z = -1.27; z <= 1.28; z += 0.127) gf.add('dark', new THREE.BoxGeometry(0.05, L, 0.065), M(mx, my, z, 0, 0, th));
+    for (const t of [0.12, 0.55, 0.95]) gf.add('dark', new THREE.BoxGeometry(0.09, 0.09, 2.7 - t * 0.3), M(lerp(top[0], bot[0], t), lerp(top[1], bot[1], t), 0, 0, 0, th));
+    for (const s of [-1, 1]) { const sp = new THREE.Shape(); sp.moveTo(top[0], 0.84); sp.lineTo(bot[0], 0.09); sp.lineTo(bxF(pil.beam + 0.2), 0.09); sp.lineTo(bxF(pil.beam + 0.2), 0.84); sp.closePath(); gf.add('dark', new THREE.ExtrudeGeometry(sp, { depth: 0.06, bevelEnabled: false }).translate(0, 0, s * 1.36 - 0.03)); }
+  }
+  const coupler = addCoupler(gf, front, { x: bxF(0), out: 1, sx: -pil.beam, sb: 0.84, ly: 1.03, zh: 1.3, yp: 0.8, housing: true, hl: 0.3 });
+  // steps up from the pilot to the deck at each corner, with a grab rail
+  for (const s of [-1, 1]) {
+    const z = s * 1.40;
+    for (const y of [0.62, 0.98]) gf.box('dark', 0.36, 0.035, 0.3, bxF(pil.beam + 0.32), y, z);
+    for (const d of [-0.17, 0.17]) gf.box('dark', 0.035, pil.deckY - 0.6, 0.3, bxF(pil.beam + 0.32) + d, (pil.deckY + 0.6) / 2, z);
+    gf.add('rod', barGeo(0.016, [bxF(0.75), pil.deckY + 0.05, s * 1.32], [bxF(0.75), pil.deckY + 0.95, s * 1.32], 6));
+  }
+  // steam pipes: out of the flexible joint at the back of the saddle down into each valve chest
+  for (const s of [-1, 1]) gf.tube('black', [[bxF(cylF + 0.1), 2.0, s * 0.5], [bxF(cylF), 2.02, s * 0.9], [bxF(cylF), BB.yV + 0.25, s * BB.zV]], 0.14, 12, 12);
+  // sand pipes to the front drivers from the sand box (on the boiler) through a flexible hose at the frame
+  for (const s of [-1, 1]) for (let i = 0; i < 4; i++) { const xd = bxF(BB.aDf[i]); gf.add('dark', barGeo(0.022, [xd + 0.95, 1.6, s * 1.0], [xd + 0.9, 0.18, s * 0.78], 5)); }
+
+  /* ===================== rear engine (main frame) ===================== */
+  const cylR = bbEngineUnit(gb, bxR, BBW.r, false);
+  gb.box('dark', 0.6, 0.3, 0.9, ax(BB.aH + 0.05), 1.42, 0);                        // clevis over the front engine's tongue
+  for (const s of [-1, 1]) gb.box('dark', 5.0, 0.36, 0.15, ax(23.3), 1.55, s * 0.56);   // cradle under the firebox and cab
+  gb.box('dark', 0.24, 0.4, 0.98, ax(25.7), 1.5, 0);
+  // the rear cylinders take their steam straight off the boiler
+  for (const s of [-1, 1]) gb.tube('black', [[ax(cylR), BB.yB - 0.6, s * 0.95], [ax(cylR), 2.1, s * 1.08], [ax(cylR), BB.yV + 0.25, s * BB.zV]], 0.15, 12, 12);
+  // the flexible front steam pipe's ball joint and the boiler's sliding-bearing shoe
+  gb.box('dark', 0.5, 0.2, 0.6, ax(9.0), BB.yB - BBOIL.bR(9.0) + 0.06, 0);
+
+  /* ---- boiler ---- */
+  const sbTop = yB + BBOIL.sb[2];
+  gb.add('graphite', new THREE.CylinderGeometry(BBOIL.sb[2], BBOIL.sb[2], BBOIL.sb[1] - BBOIL.sb[0], 48).rotateZ(Math.PI / 2).translate(ax((BBOIL.sb[0] + BBOIL.sb[1]) / 2), yB, 0));
+  gb.add('graphite', new THREE.CylinderGeometry(BBOIL.sb[2] + 0.025, BBOIL.sb[2] + 0.025, 0.09, 48).rotateZ(Math.PI / 2).translate(ax(BBOIL.sb[0] + 0.045), yB, 0));
+  const lathe = (pts, a0) => { const g = new THREE.LatheGeometry(pts.map(p => new THREE.Vector2(p[1], p[0])), 48); g.rotateZ(-Math.PI / 2); g.translate(ax(a0), yB, 0); return g; };
+  const door = { r: 0.95, a: BBOIL.sb[0] - 0.17 };
+  gb.add('graphite', lathe([[0, door.r + 0.05], [0.04, door.r + 0.05], [0.07, door.r], [0.14, 0.62], [0.17, 0.0]], BBOIL.sb[0] - 0.005));
+  for (let i = 0; i < 18; i++) { const t = (i + 0.5) / 18 * TAU; gb.add('dark', new THREE.BoxGeometry(0.07, 0.13, 0.07), M(ax(BBOIL.sb[0] - 0.03), yB + 1.05 * Math.cos(t), 1.05 * Math.sin(t), t, 0, 0)); }
+  gb.box('dark', 0.06, 0.08, 0.5, ax(door.a + 0.02), yB - 0.3, 0);                   // door handle
+  gb.add('black', new THREE.CylinderGeometry(BBOIL.c1[2], BBOIL.c1[2], BBOIL.c1[1] - BBOIL.c1[0] + 0.02, 48, 1, true).rotateZ(Math.PI / 2).translate(ax((BBOIL.c1[0] + BBOIL.c1[1]) / 2 - 0.01), yB, 0));
+  gb.add('black', new THREE.CircleGeometry(BBOIL.c1[2], 48).rotateY(Math.PI / 2).translate(ax(BBOIL.c1[0] - 0.01), yB, 0));
+  {
+    const L = BBOIL.cone[1] - BBOIL.cone[0], g = new THREE.CylinderGeometry(BBOIL.c1[2], BBOIL.c3[2], L, 48, 1, true).rotateZ(-Math.PI / 2);
+    const p = g.attributes.position;
+    for (let i = 0; i < p.count; i++) p.setY(i, p.getY(i) + (BBOIL.yR - yB) * (L / 2 - p.getX(i)) / L);
+    g.computeVertexNormals(); g.translate(ax((BBOIL.cone[0] + BBOIL.cone[1]) / 2), yB, 0); gb.add('black', g);
+  }
+  gb.add('black', new THREE.CylinderGeometry(BBOIL.c3[2], BBOIL.c3[2], BBOIL.c3[1] - BBOIL.c3[0] + 0.3, 48, 1, true).rotateZ(Math.PI / 2).translate(ax((BBOIL.c3[0] + BBOIL.c3[1] + 0.3) / 2), BBOIL.yR, 0));
+  for (const a of [BBOIL.sb[1], 7.7, BBOIL.cone[0], BBOIL.cone[1], 12.9, 14.8, BBOIL.c3[1] - 0.02]) { const r = BBOIL.bR(a + 0.01) + 0.012; gb.add('dark', new THREE.CylinderGeometry(r, r, 0.07, 48, 1, true).rotateZ(Math.PI / 2).translate(ax(a), BBOIL.bY(a + 0.01), 0)); }
+  // firebox: round top over sides flaring to the mud ring, from the throat back to the backhead in the cab
+  {
+    const s = new THREE.Shape();
+    s.moveTo(-FB.wb, FB.base); s.lineTo(-FB.r, FB.cy); s.absarc(0, FB.cy, FB.r, Math.PI, 0, true); s.lineTo(FB.wb, FB.base); s.lineTo(-FB.wb, FB.base);
+    const g = new THREE.ExtrudeGeometry(s, { depth: BBOIL.fb[1] - BBOIL.fb[0], bevelEnabled: false, curveSegments: 28 });
+    g.rotateY(Math.PI / 2); g.translate(ax(BBOIL.fb[1]), 0, 0); gb.add('graphite', g);
+    gb.box('dark', BBOIL.fb[1] - BBOIL.fb[0] + 0.05, 0.1, 2 * FB.wb + 0.08, ax((BBOIL.fb[0] + BBOIL.fb[1]) / 2), FB.base - 0.05, 0);   // mud ring
+    gb.box('dark', 2.6, 0.24, 1.0, ax(21.0), FB.base - 0.22, 0);                                   // ashpan
+  }
+  /* ---- stack, domes, top fittings ---- */
+  // the double stack: one oblong casing over two exhaust nozzles, squat to clear the loading gauge
+  const stk = { a: 4.05, L: 1.30, w: 0.78, top: 4.94 };
+  {
+    const casing = (rx, rz, h, y, k, open = false) => gb.add(k, new THREE.CylinderGeometry(1, 1, h, 40, 1, open).scale(rx, 1, rz).translate(ax(stk.a), y, 0));
+    casing(stk.L / 2 + 0.12, stk.w / 2 + 0.12, 0.24, sbTop - 0.04, 'black');
+    casing(stk.L / 2, stk.w / 2, stk.top - 0.05 - sbTop, (stk.top - 0.05 + sbTop) / 2, 'black');
+    gb.add('black', new THREE.TorusGeometry(1, 0.06, 10, 40).scale(stk.L / 2, stk.w / 2, 1).rotateX(Math.PI / 2).translate(ax(stk.a), stk.top - 0.06, 0));
+    gb.add('blackMatte', new THREE.CircleGeometry(1, 32).scale(stk.L / 2 - 0.02, stk.w / 2 - 0.02, 1).rotateX(-Math.PI / 2).translate(ax(stk.a), stk.top - 0.12, 0));
+  }
+  const dome = (a0, a1, w, top, k) => {
+    const L = a1 - a0, base = BBOIL.top((a0 + a1) / 2) - 0.32, h = top - base, g = new THREE.SphereGeometry(1, 32, 16, 0, TAU, 0, Math.PI / 2);
+    const p = g.attributes.position;
+    for (let i = 0; i < p.count; i++) {
+      const x = p.getX(i), z = p.getZ(i), y = p.getY(i), r = Math.hypot(x, z), ang = Math.atan2(z, x), c = Math.cos(ang), sn = Math.sin(ang);
+      const se = Math.pow(Math.pow(Math.abs(c), 4) + Math.pow(Math.abs(sn), 4), -0.25);
+      p.setXYZ(i, c * se * r * L / 2, Math.pow(y, 0.55) * h, sn * se * r * w / 2);
+    }
+    g.computeVertexNormals(); g.translate(ax((a0 + a1) / 2), base, 0); gb.add(k || 'black', g);
+    gb.add(k || 'black', new THREE.CylinderGeometry(1, 1, 0.34, 32, 1, true).scale(L / 2, 1, w / 2).translate(ax((a0 + a1) / 2), base - 0.17 + 0.001, 0));
+  };
+  dome(7.4, 10.4, 0.98, 4.86);                                                     // the long sand dome
+  dome(12.2, 13.5, 1.08, 4.90);                                                    // steam dome
+  for (const s of [-1, 1]) for (let i = 0; i < 4; i++) { const a = 7.9 + i * 0.66; gb.box('dark', 0.2, 0.14, 0.08, ax(a), BBOIL.top(a) - 0.12, s * 0.46); }
+  const fbTop = FB.cy + FB.r;
+  for (const z of [-0.26, 0, 0.26]) { gb.cyl('brass', 0.08, 0.1, 0.16, 14, ax(17.1), fbTop + 0.05, z); gb.cyl('brass', 0.115, 0.115, 0.05, 14, ax(17.1), fbTop + 0.14, z); }
+  gb.box('black', 0.5, 0.12, 0.76, ax(17.1), fbTop - 0.02, 0);
+  const wh = [17.9, FB.cy + Math.sqrt(FB.r * FB.r - 0.7 * 0.7), 0.7];                 // the whistle, low on the engineer's shoulder to clear the loading gauge
+  gb.cyl('brass', 0.1, 0.1, 0.24, 16, ax(wh[0]), wh[1] + 0.16, wh[2]); gb.cyl('brass', 0.13, 0.13, 0.05, 16, ax(wh[0]), wh[1] + 0.3, wh[2]); gb.cyl('brass', 0.05, 0.05, 0.14, 8, ax(wh[0]), wh[1] + 0.02, wh[2]);
+  gb.cyl('black', 0.24, 0.28, 0.24, 18, ax(18.3), fbTop - 0.03, -0.05);              // steam turret
+  { const tg = [19.2, FB.cy + Math.sqrt(FB.r * FB.r - 0.9 * 0.9), -0.9]; gb.cylX('black', 0.17, 0.17, 0.58, 16, ax(tg[0]), tg[1] + 0.12, tg[2]); gb.box('black', 0.5, 0.18, 0.3, ax(tg[0]), tg[1] - 0.03, tg[2] + 0.04); }   // turbo-generator
+  gb.cyl('black', 0.2, 0.24, 0.24, 18, ax(6.9), BBOIL.top(6.9) + 0.06, 0); gb.cyl('dark', 0.13, 0.13, 0.1, 14, ax(6.9), BBOIL.top(6.9) + 0.21, 0);   // top check
+
+  /* ---- smokebox front: headlight with number boards, bell, class lamps, air pumps ---- */
+  const numMat = decalMat(128, 64, (g, w, h) => { g.fillStyle = '#f2efe4'; g.fillRect(0, 0, w, h); g.fillStyle = '#121212'; g.font = 'bold 44px Arial'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(spec.num, w / 2, h / 2 + 2); });
+  RMAT['num' + key] = numMat;
+  const hl = { y: yB + 0.68, R: 0.29, D: 0.5 };
+  hl.aF = door.a - 0.04 - hl.D;
+  {
+    const aF = hl.aF, R = hl.R, D = hl.D, aB = aF + D, x0 = ax(aB);
+    const prof = [[0, 0], [0.012, R * 0.5], [0.04, R * 0.8], [0.09, R * 0.95], [0.15, R], [D - 0.06, R], [D - 0.06, R + 0.022], [D - 0.014, R + 0.022], [D, R - 0.012], [D, R - 0.05], [D - 0.04, R - 0.055]];
+    gb.add('black', new THREE.LatheGeometry(prof.map(p => new THREE.Vector2(p[1], p[0])), 36).rotateZ(-Math.PI / 2).translate(x0, hl.y, 0));
+    gb.add('black', new THREE.TorusGeometry(R - 0.028, 0.018, 8, 36).rotateY(Math.PI / 2).translate(ax(aF + 0.01), hl.y, 0));
+    { const s = new THREE.Shape(), r0 = R + 0.005, r1 = R + 0.03, t0 = 0.3, t1 = Math.PI - 0.3;
+      s.absarc(0, 0, r1, t0, t1, false); s.lineTo(r0 * Math.cos(t1), r0 * Math.sin(t1)); s.absarc(0, 0, r0, t1, t0, true); s.lineTo(r1 * Math.cos(t0), r1 * Math.sin(t0));
+      gb.add('black', new THREE.ExtrudeGeometry(s, { depth: 0.13, bevelEnabled: false, curveSegments: 16 }).rotateY(Math.PI / 2).translate(ax(aF + 0.06), hl.y, 0)); }
+    gb.box('black', 0.3, 0.3, 0.3, ax(door.a - 0.08), hl.y - 0.12, 0);              // bracket onto the door
+    // number boards either side of the lamp, set into the bracket and facing ahead
+    for (const s of [-1, 1]) { const zc = s * (R + 0.3); gb.box('black', 0.16, 0.26, 0.5, ax(aF + 0.2), hl.y - 0.02, zc); gb.add('num' + key, new THREE.PlaneGeometry(0.44, 0.2), M(ax(aF + 0.12) + 0.002, hl.y - 0.02, zc, 0, Math.PI / 2, 0)); gb.box('black', 0.3, 0.06, 0.12, ax(aF + 0.38), hl.y - 0.02, s * (R + 0.04)); }
+  }
+  hl.lensA = hl.aF + 0.035; hl.r = hl.R - 0.05;
+  // bell on a bracket out of the door below the lamp, hung clear of the door's dish
+  let bellR;
+  { const bx = ax(door.a - 0.36), by = yB - 0.42;
+    for (const z of [-0.3, 0.3]) gb.box('black', 0.06, 0.38, 0.05, bx, by + 0.2, z);
+    gb.cylZ('dark', 0.025, 0.62, 8, bx, by + 0.22, 0);
+    gb.box('black', 0.08, 0.06, 0.66, bx, by + 0.4, 0);
+    gb.box('black', 0.42, 0.08, 0.12, ax(door.a - 0.16), by + 0.42, 0);
+    bellR = bellRig(body, bx, by + 0.22, 1, 0.3); }
+  // class lamps at the top corners of the smokebox front
+  const cls = clsLampSet();
+  for (const z of [-0.86, 0.86]) {
+    const y = yB + 0.8, xf = ax(BBOIL.sb[0] - 0.23);
+    gb.box('black', 0.2, 0.24, 0.2, ax(BBOIL.sb[0] - 0.13), y, z); gb.box('black', 0.06, 0.06, 0.2, ax(BBOIL.sb[0] - 0.02), y - 0.06, z * 0.9);
+    clsLens(cls, body, 0.06, xf + 0.003, y, z, Math.PI / 2, 0.55, [xf - 0.1, y, z]);
+  }
+  // two cross-compound air pumps hung on the smokebox front either side of the door, clear above the front engine's deck
+  const pump = (x, y0, z) => {
+    gb.cyl('black', 0.2, 0.2, 0.6, 18, x, y0 + 0.3, z); gb.cyl('black', 0.25, 0.25, 0.52, 18, x, y0 + 0.86, z);
+    gb.cyl('graphite', 0.23, 0.23, 0.06, 18, x, y0 + 1.15, z); gb.box('dark', 0.38, 0.08, 0.38, x, y0 + 0.6, z);
+    gb.box('dark', ax(BBOIL.sb[0]) - x + 0.02, 0.14, 0.14, (ax(BBOIL.sb[0]) + x) / 2, y0 + 0.9, z);   // strap back to the smokebox front
+  };
+  const pumpZ = 1.0, pumpY = 1.62, pumpX = ax(1.64);
+  for (const s of [-1, 1]) pump(pumpX, pumpY, s * pumpZ);
+  for (const s of [-1, 1]) gb.box('dark', ax(BBOIL.sb[0]) - pumpX + 0.3, 0.06, 0.5, (ax(BBOIL.sb[0]) + pumpX + 0.3) / 2, pumpY - 0.03, s * pumpZ);   // their shelf
+
+  /* ---- running boards, brackets, handrails, reservoirs, pipes ---- */
+  for (const s of [-1, 1]) {
+    const w = RB.zo - RB.zi, z = s * (RB.zi + w / 2);
+    const fa = BBOIL.fb[0], zf = BBOIL.half(fa + 0.5, RB.y) + 0.01, wf = RB.zo - zf;   // over the firebox the boards narrow to clear its wrapper
+    gb.box('black', fa - RB.a0 + 0.02, RB.t, w, ax((RB.a0 + fa) / 2), RB.y - RB.t / 2, z);
+    gb.box('black', C.a0 - fa + 0.02, RB.t, wf, ax((fa + C.a0) / 2), RB.y - RB.t / 2, s * (zf + wf / 2));
+    gb.box('rbEdge', C.a0 - RB.a0, 0.16, 0.03, ax((RB.a0 + C.a0) / 2), RB.y - 0.08, s * (RB.zo + 0.015));
+    for (let a = RB.a0 + 0.35; a < C.a0 - 0.2; a += 1.5) { const zs = BBOIL.half(a, RB.y - 0.14) - 0.03; gb.box('dark', 0.08, 0.14, RB.zo - zs - 0.04, ax(a), RB.y - RB.t - 0.07, s * (zs + (RB.zo - zs - 0.04) / 2)); }
+    gb.box('black', 0.05, RB.y - 1.5, w, ax(RB.a0), (RB.y + 1.5) / 2 - 0.02, z);                     // front end of the board, down to a step
+    for (const y of [1.55, 2.1]) gb.box('dark', 0.3, 0.035, w - 0.04, ax(RB.a0 - 0.12), y, z);
+    const hy = 3.95;
+    bar('rod', 0.018, [ax(2.3), hy, s * (BBOIL.half(2.3, hy) + 0.08)], [ax(C.a0 - 0.1), hy, s * (BBOIL.half(2.3, hy) + 0.08)], 6);
+    for (let a = 2.5; a < C.a0 - 0.1; a += 1.5) { const zs = BBOIL.half(a, hy) - 0.02; bar('rod', 0.013, [ax(a), hy, s * zs], [ax(a), hy, s * (BBOIL.half(2.3, hy) + 0.09)], 5); }
+    for (const y of [1.1, 1.65]) gb.box('dark', 0.5, 0.04, 0.32, ax(C.a0 + 0.55), y, s * 1.47);       // cab steps
+    for (const d of [-0.24, 0.24]) gb.box('dark', 0.04, C.bottom - 1.08, 0.32, ax(C.a0 + 0.55) + d, (C.bottom + 1.08) / 2, s * 1.47);
+  }
+  // air reservoirs under the boards behind the rear gear, hung on straps
+  for (const s of [1]) {
+    const a0 = 9.4, a1 = 12.2, r = 0.27, y = RB.y - RB.t - 0.04 - r, z = s * 1.38;
+    gb.cylX('black', r, r, a1 - a0, 20, ax((a0 + a1) / 2), y, z);
+    const yb = RB.y - RB.t, ys = y + Math.sqrt(r * r - 0.14 * 0.14) - 0.01;
+    for (const a of [a0 + 0.3, a1 - 0.3]) { gb.add('dark', new THREE.TorusGeometry(r + 0.012, 0.016, 6, 20, Math.PI).rotateY(Math.PI / 2).rotateX(Math.PI).translate(ax(a), y, z)); for (const d of [-0.14, 0.14]) gb.box('dark', 0.05, yb - ys, 0.06, ax(a), (yb + ys) / 2, z + d); }
+  }
+  // sand pipes off the dome to the rear drivers, down the boiler side
+  for (const s of [-1, 1]) for (let i = 0; i < 4; i++) {
+    const xd = ax(BB.aDr[i]), as = 9.9, xs = ax(as), y0 = BBOIL.top(as) - 0.1, z0 = BBOIL.half(as, y0) - 0.03;
+    const y2 = RB.y + 0.2, z2 = BBOIL.half(as, y2) + 0.03;
+    gb.tube('dark', [[xs, y0, s * z0], [xs - 0.05, BBOIL.bY(as), s * (BBOIL.half(as, BBOIL.bY(as)) + 0.03)], [xs - 0.1, y2, s * z2], [lerp(xs, xd + 1.0, 0.6), RB.y - 0.3, s * 1.12], [xd + 1.0, 1.7, s * 1.08], [xd + 0.95, 0.45, s * 0.82], [xd + 0.88, 0.16, s * 0.76]], 0.024, 48, 5);
+  }
+  // injector and feed lines, engineer's side; Worthington feedwater pump on the fireman's side
+  gb.cylX('brass', 0.1, 0.1, 0.4, 10, ax(C.a0 - 0.6), 1.85, 1.44);
+  const feed = (s, a0, y0) => { const z = a => s * (BBOIL.half(a, 2.95) + 0.06);
+    gb.tube('dark', [[ax(a0), y0, s * 1.44], [ax(a0 - 0.3), 2.95, s * 1.48], [ax(16.0), 2.95, z(16.0)], [ax(12.0), 2.95, z(12.0)], [ax(7.3), 2.98, z(7.3)], [ax(6.95), 3.7, s * (BBOIL.half(6.95, 3.7) + 0.03)], [ax(6.9), 4.45, s * 0.36]], 0.05, 64, 6); };
+  feed(1, C.a0 - 0.6, 1.85);
+  gb.cyl('black', 0.22, 0.22, 0.9, 16, ax(11.0), 2.1, -1.36); gb.cyl('dark', 0.26, 0.26, 0.08, 16, ax(11.0), 2.58, -1.36); gb.cyl('dark', 0.26, 0.26, 0.08, 16, ax(11.0), 1.62, -1.36);
+  gb.box('dark', 0.14, RB.y - RB.t - 2.62, 0.14, ax(11.0), (RB.y - RB.t + 2.62) / 2, -1.36);
+  gb.tube('dark', [[ax(11.0), 2.55, -1.36], [ax(10.6), 2.95, -(BBOIL.half(10.6, 2.95) + 0.06)], [ax(7.3), 2.98, -(BBOIL.half(7.3, 2.98) + 0.06)], [ax(6.95), 3.7, -(BBOIL.half(6.95, 3.7) + 0.03)], [ax(6.9), 4.45, -0.36]], 0.05, 48, 6);
+  // power reverse, engineer's side, with reach rods to both engines' reverse shafts
+  gb.cylX('black', 0.17, 0.17, 1.1, 16, ax(21.4), 2.35, 1.38);
+  gb.box('dark', 0.14, RB.y - RB.t - 2.35, 0.14, ax(21.4), (RB.y - RB.t + 2.35) / 2, 1.38);
+  bar('black', 0.024, [ax(20.85), 2.35, 1.38], [ax(BBW.r.aLink + 0.3), 2.1, 1.38], 6);
+
+  /* ---- cab ---- */
+  let cab;
+  {
+    const x0 = C.x0, x1 = C.x1, hw = C.hw, L = x0 - x1, aRoof1 = 26.2, fl = C.fl;
+    for (const s of [-1, 1]) {
+      const sh = new THREE.Shape();
+      sh.moveTo(x1, C.bottom); sh.lineTo(x0, C.bottom); sh.lineTo(x0, C.roofY); sh.lineTo(ax(26.0), C.roofY);
+      sh.quadraticCurveTo(x1 - 0.05, C.roofY - 0.05, x1, C.roofY - 0.62); sh.lineTo(x1, C.bottom);
+      const w = C.side, mid = (w.a0 + w.a1) / 2;
+      for (const [a0, a1] of [[w.a0, mid - 0.04], [mid + 0.04, w.a1]]) { const h = new THREE.Path(); h.moveTo(ax(a1), w.y0); h.lineTo(ax(a0), w.y0); h.lineTo(ax(a0), w.y1); h.lineTo(ax(a1), w.y1); h.closePath(); sh.holes.push(h); }
+      gb.add('black', new THREE.ExtrudeGeometry(sh, { depth: 0.05, bevelEnabled: false, curveSegments: 12 }).translate(0, 0, s * hw - 0.025));
+      for (const [a0, a1] of [[w.a0, mid - 0.04], [mid + 0.04, w.a1]]) {
+        const am = (a0 + a1) / 2, wa = a1 - a0, hy = w.y1 - w.y0, ym = (w.y0 + w.y1) / 2;
+        gb.box('winGlass', wa, hy, 0.012, ax(am), ym, s * (hw - 0.03));
+        gb.box('black', 0.04, hy, 0.03, ax(am), ym, s * (hw - 0.012)); gb.box('black', wa, 0.04, 0.03, ax(am), ym, s * (hw - 0.012));
+      }
+      gb.box('black', w.a1 - w.a0 + 0.14, 0.04, 0.06, ax((w.a0 + w.a1) / 2), w.y1 + 0.05, s * (hw + 0.03));
+      gb.box('black', w.a1 - w.a0 + 0.1, 0.05, 0.10, ax((w.a0 + w.a1) / 2), w.y0 - 0.03, s * (hw + 0.05));
+      gb.box('dark', 0.05, 0.05, 0.08, ax(w.a0 + 0.1), w.y0 - 0.03, s * (hw + 0.03)); gb.box('dark', 0.05, 0.05, 0.08, ax(w.a1 - 0.1), w.y0 - 0.03, s * (hw + 0.03));
+      bar('rod', 0.014, [ax(C.a1 - 0.08), C.bottom + 0.15, s * (hw + 0.06)], [ax(C.a1 - 0.08), C.roofY - 0.8, s * (hw + 0.06)], 6);
+      for (const y of [C.bottom + 0.15, C.roofY - 0.8]) gb.box('dark', 0.04, 0.04, 0.07, ax(C.a1 - 0.08), y, s * (hw + 0.03));
+    }
+    {
+      const sh = new THREE.Shape(); sh.moveTo(-hw, fl); sh.lineTo(hw, fl); sh.lineTo(hw, C.roofY);
+      for (let i = 1; i < 16; i++) { const z = hw - i / 16 * 2 * hw; sh.lineTo(z, C.arch(z) - 0.01); }
+      sh.lineTo(-hw, C.roofY); sh.lineTo(-hw, fl);
+      const yb = fl + 0.03, hole = new THREE.Path(), pad = 0.012;
+      hole.moveTo(-C.fbHalf(yb) - pad, yb); hole.lineTo(C.fbHalf(yb) + pad, yb); hole.lineTo(FB.r + pad, FB.cy); hole.absarc(0, FB.cy, FB.r + pad, 0, Math.PI, false); hole.lineTo(-C.fbHalf(yb) - pad, yb);
+      sh.holes.push(hole);
+      const fw = C.front;
+      for (const s of [-1, 1]) { const h = new THREE.Path(), lo = Math.min(s * fw.zi, s * fw.zo), hi = Math.max(s * fw.zi, s * fw.zo); h.moveTo(lo, fw.y0); h.lineTo(lo, fw.y1); h.lineTo(hi, fw.y1); h.lineTo(hi, fw.y0); h.lineTo(lo, fw.y0); sh.holes.push(h); }
+      const g = new THREE.ExtrudeGeometry(sh, { depth: 0.05, bevelEnabled: false, curveSegments: 24 });
+      g.rotateY(Math.PI / 2); g.translate(x0 - 0.025, 0, 0); gb.add('black', g);
+      for (const s of [-1, 1]) gb.box('winGlass', 0.012, fw.y1 - fw.y0, fw.zo - fw.zi, x0 - 0.01, (fw.y0 + fw.y1) / 2, s * (fw.zi + fw.zo) / 2);
+      gb.box('black', 0.08, 0.05, 2 * hw, x0 + 0.03, fl + 0.02, 0);
+    }
+    {
+      const rs = new THREE.Shape(), o = 0.07, n = 20;
+      rs.moveTo(-hw - o, C.roofY - 0.02);
+      for (let i = 0; i <= n; i++) { const z = -hw - o + i / n * 2 * (hw + o); rs.lineTo(z, C.arch(clamp(z, -hw, hw))); }
+      for (let i = n; i >= 0; i--) { const z = -hw - o + i / n * 2 * (hw + o); rs.lineTo(z, C.arch(clamp(z, -hw, hw)) - C.roofT); }
+      const rg = new THREE.ExtrudeGeometry(rs, { depth: aRoof1 - C.a0 + 0.1, bevelEnabled: false });
+      rg.rotateY(Math.PI / 2); rg.translate(ax(aRoof1), 0, 0); gb.add('roof', rg);
+      for (const s of [-1, 1]) gb.box('black', aRoof1 - C.a0 + 0.1, 0.06, 0.05, ax((aRoof1 + C.a0 - 0.1) / 2), C.roofY - 0.03, s * (hw + 0.05));
+      gb.box('roof', 0.05, 0.25, 2 * hw + 0.1, ax(aRoof1) + 0.025, C.roofY - 0.1, 0);
+      if (trim) {
+        const pts = []; for (let i = 0; i <= 24; i++) { const z = -hw + i / 24 * 2 * hw; pts.push([z, C.arch(z)]); }
+        gb.add('snow', snowCap(pts, 0.05, aRoof1 - C.a0 - 0.12, 0.35).translate(ax(aRoof1 - 0.06), 0, 0));
+      }
+    }
+    gb.box('dark', L + 0.05, 0.08, 2 * hw - 0.02, x1 + (L + 0.05) / 2, fl - 0.04, 0);
+    gb.box('dark', 0.48, 0.02, 1.5, x1 - 0.24 + 0.01, fl + 0.01, 0);
+    for (const s of [-1, 1]) gb.box('dark', L, C.bottom - 1.73, 0.12, x1 + L / 2, (C.bottom + 1.73) / 2, s * 0.9);
+    const cabNum = decalMat(256, 128, (g, w, h) => romanText(g, spec.num, w / 2, h / 2 + 4, 104, '#ebe8dd', 0.02));
+    RMAT['cab' + key] = cabNum;
+    for (const s of [-1, 1]) gb.add('cab' + key, new THREE.PlaneGeometry(1.1, 0.55), M(ax(23.8), 2.62, s * (hw + 0.026), 0, s > 0 ? 0 : Math.PI, 0));
+    cab = steamCab(gb, body, { x0: C.x0, x1: C.x1, fl: C.fl, floor: C.fl, hw: C.hw, bh: C.bh, FB: C.FB, ceil: C.ceil, fwin: C.front, side: C.side, eyeY: 3.92 });
+  }
+  /* ---- trailing truck: cast frame outside the wheels, pivoted ahead of the firebox ---- */
+  for (const s of [-1, 1]) {
+    const z = s * 1.02, [t0, t1] = BB.aT;
+    gb.box('dark', t1 - t0 + 0.9, 0.3, 0.15, ax((t0 + t1) / 2), 0.9, z);
+    for (const a of BB.aT) { gb.box('dark', 0.36, 0.48, 0.26, ax(a), BB.rT, z); gb.box('dark', 0.24, 0.3, 0.03, ax(a), BB.rT, s * 1.17); }
+    gb.box('dark', 0.14, 0.3, 0.17, ax((t0 + t1) / 2), 1.18, z);
+    for (let k = 0; k < 6; k++) gb.box('dark', 1.6 - 0.22 * k, 0.026, 0.12, ax((t0 + t1) / 2), 1.27 - 0.028 * k, z);
+    bar('dark', 0.07, [ax(t0 - 0.4), 1.0, z], [ax(21.6), 1.3, s * 0.4], 8);
+    for (const a of BB.aT) gb.box('dark', 0.08, 0.3, 0.13, ax(a - BB.rT - 0.04), BB.rT, s * 0.76);
+  }
+  for (const a of BB.aT) bar('dark', 0.03, [ax(a - BB.rT - 0.04), BB.rT, -1.0], [ax(a - BB.rT - 0.04), BB.rT, 1.0], 6);   // brake beams out to the side frames
+  gb.box('dark', 0.3, 0.3, 2.1, ax(BB.aT[0] - 0.45), 1.0, 0);
+  gb.box('dark', 0.3, 0.3, 2.1, ax(BB.aT[1] + 0.55), 1.1, 0);
+  gb.box('dark', 0.5, 0.36, 0.9, ax(21.6), 1.4, 0);
+  for (const s of [-1, 1]) gb.box('dark', 0.4, (C.bottom - 0.1) - 1.25, 0.2, ax(BB.aT[1] + 0.55), ((C.bottom - 0.1) + 1.25) / 2, s * 0.9);
+  gb.box('dark', 0.6, 0.3, 1.2, ax(BB.len - 0.2), 1.0, 0);                          // drawbar pocket
+  gb.box('dark', 0.2, 0.9, 2.0, ax(BB.len - 0.1), 1.6, 0);                          // rear buffer beam under the deck
+
+  body.add(gb.build({ ...RMAT }));
+  front.add(gf.build({ ...RMAT }));
+
+  /* ---- glows & lights ---- */
+  const lens = new THREE.Mesh(new THREE.CircleGeometry(hl.r, 36), RMAT.hlLens || RMAT.lens); lens.position.set(ax(hl.lensA) + 0.004, hl.y, 0); lens.rotation.y = Math.PI / 2; body.add(lens);
+  const fire = new THREE.Mesh(new THREE.PlaneGeometry(...cab.fireSize), RMAT.glow.clone()); fire.position.copy(cab.firePos); fire.rotation.y = -Math.PI / 2; body.add(fire);
+  const beam = headBeam(ax(hl.lensA), hl.y, -0.04); body.add(beam);
+  const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: haloTex(), color: 0xffffff, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0 }));
+  halo.position.set(ax(hl.lensA) + 0.06, hl.y, 0); halo.scale.set(2.6, 2.6, 1); body.add(halo);
+  const ash = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 1.0), new THREE.MeshBasicMaterial({ color: 0xff5a1a, transparent: true, opacity: 0.0, depthWrite: false, blending: THREE.AdditiveBlending }));
+  ash.rotation.x = Math.PI / 2; ash.position.set(ax(21.0), FB.base - 0.35, 0); body.add(ash);
+
+  /* ---- moving parts ---- */
+  const centre = spec.wheels === 'boxpok' ? boxpokCentre : spokedCentre;
+  const mainG = driverAxle(BB.rD, true, centre), sideG = driverAxle(BB.rD, false, centre);
+  const wallG = R => mergeGeos([new THREE.RingGeometry(R - 0.062, R + 0.001, 36).translate(0, 0, RAIL_OFF + 0.0665), new THREE.RingGeometry(R - 0.062, R + 0.001, 36).rotateY(Math.PI).translate(0, 0, -(RAIL_OFF + 0.0665))]);
+  const mk = (G, R) => { const grp = new THREE.Group(); for (const k of ['black', 'tire']) { const m = new THREE.Mesh(G[k], k === 'black' ? RMAT.black : RMAT.tire); m.castShadow = true; grp.add(m); } grp.add(new THREE.Mesh(wallG(R), RMAT.dWall)); return grp; };
+  const engine = (parent, bx, W) => {
+    const E = { drivers: [], rods: {}, bx, W };
+    for (let i = 0; i < 4; i++) {
+      const g = i === 2 ? mainG : sideG, grp = new THREE.Group(); grp.position.set(bx(W.aD[i]), BB.rD, 0);
+      for (const k of ['black', 'tire', 'rod', 'wall']) { const m = new THREE.Mesh(g[k], k === 'black' ? RMAT.black : k === 'tire' ? RMAT.tire : k === 'wall' ? RMAT.dWall : RMAT.rod); m.castShadow = k !== 'wall'; m.receiveShadow = true; grp.add(m); }
+      parent.add(grp); E.drivers.push(grp);
+    }
+    const R = RMAT.rod, add = m => { m.castShadow = true; parent.add(m); return m; };
+    // the eccentric rod's length is set with the crank on the front centre
+    const C3 = [bx(W.aD[2]), BB.rD], Lk = [bx(W.aLink), W.yLink];
+    W.Lecc = Math.hypot(Lk[0] - C3[0], (Lk[1] - W.rl) - (BB.rD - W.e));
+    for (const s of [-1, 1]) {
+      E.rods[s] = {
+        side: [0, 1, 2].map(i => add(new THREE.Mesh(rodGeo(W.aD[i + 1] - W.aD[i], 0.17, 0.17, 0.075, 0.135, 0.135), R))),
+        main: add(new THREE.Mesh(rodGeo(BB.Lm, 0.27, 0.16, 0.09, 0.2, 0.13), R)),
+        cross: (() => { const g = new GeoBin(); g.box('rod', 0.52, 0.3, 0.2, 0, 0, 0); g.box('dark', 0.12, 0.42, 0.1, 0.05, -0.32, 0); return add(g.build(RMAT)); })(),
+        piston: add(new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 2.0, 10).rotateZ(Math.PI / 2).translate(1.0, 0, 0), R)),
+        ecc: add(new THREE.Mesh(rodGeo(W.e, 0.12, 0.1, 0.06, 0.1, 0.07), R)),
+        eccRod: add(new THREE.Mesh(rodGeo(W.Lecc, 0.1, 0.085, 0.05, 0.065, 0.06), R)),
+        // the expansion link: a curved slotted casting hung on its trunnion, foot down to the eccentric rod
+        link: (() => { const g = new GeoBin(); for (const dz of [-0.05, 0.05]) g.box('rod', 0.07, W.rl + 0.42, 0.025, 0, -(W.rl - 0.42) / 2, dz); g.box('rod', 0.12, 0.08, 0.13, 0, -W.rl, 0); g.cylZ('dark', 0.05, 0.16, 10, 0, 0, 0); return add(g.build(RMAT)); })(),
+        rrod: add(new THREE.Mesh(rodGeo(W.Lrr, 0.08, 0.07, 0.045, 0.05, 0.05), R)),
+        comb: add(new THREE.Mesh(new THREE.BoxGeometry(0.08, W.a + W.b + 0.1, 0.05).translate(0, -(W.a + W.b) / 2, 0), R)),
+        union: add(new THREE.Mesh(rodGeo(W.Lu, 0.07, 0.07, 0.04, 0.045, 0.045), R)),
+        vstem: (() => { const g = new GeoBin(); g.add('rod', new THREE.CylinderGeometry(0.035, 0.035, 1.0, 8).rotateZ(Math.PI / 2).translate(0.5, 0, 0)); g.box('rod', 0.18, 0.14, 0.3, 0, 0, s * 0.11); return add(g.build(RMAT)); })(),
+        lifter: add(new THREE.Mesh(rodGeo(0.55, 0.06, 0.05, 0.03, 0.04, 0.04), RMAT.black)),
+      };
+    }
+    return E;
+  };
+  const parts = { drivers: [], lead: null, trail: [], rods: {}, eng: { f: engine(front, bxF, BBW.f), r: engine(body, bxR, BBW.r) } };
+  parts.drivers = [...parts.eng.f.drivers, ...parts.eng.r.drivers];
+  // lead truck: equalized frame with journal boxes outside the two axles, swivelling under the front engine
+  const leadTruck = new THREE.Group();
+  { const lg = new GeoBin(), sp = (BB.aL[1] - BB.aL[0]) / 2, rL = BB.rL;
+    for (const s of [-1, 1]) {
+      lg.box('dark', 2 * sp + 0.6, 0.2, 0.14, 0, rL + 0.03, s * 0.98);             // kept low: the cylinders sit over the rear axle
+      for (const x of [-sp, sp]) lg.box('dark', 0.34, 0.36, 0.24, x, rL, s * 0.98);
+    }
+    lg.box('dark', 0.4, 0.24, 2.1, 0, rL + 0.24, 0);
+    lg.box('dark', 0.6, 0.12, 0.6, 0, rL + 0.42, 0);                              // centre bearing up under the front engine's cradle
+    leadTruck.add(lg.build(RMAT));
+    parts.lead = [];
+    for (const x of [-sp, sp]) { const w = mk(plainAxle(rL, true, RAIL_OFF, AXJ), rL); w.position.set(x, rL, 0); leadTruck.add(w); parts.lead.push(w); } }
+  // the cradle the truck's centre bearing rides under, on the front engine
+  { const g2 = new GeoBin(), y0 = BB.rL + 0.48; g2.box('dark', 0.9, 1.36 - y0, 1.3, bxF(BB.leadA), (1.36 + y0) / 2, 0); front.add(g2.build(RMAT)); }
+  for (const a of BB.aT) { const t = mk(plainAxle(BB.rT, true, RAIL_OFF, AXJ), BB.rT); t.position.set(ax(a), BB.rT, 0); body.add(t); parts.trail.push(t); }
+  // tap hitboxes
+  const hit = new THREE.Mesh(new THREE.BoxGeometry(BB.len - BB.aH, 4.9, 3.35), RMAT.hit); hit.position.set(ax((BB.len + BB.aH) / 2), 2.45, 0); body.add(hit);
+  const hitF = new THREE.Mesh(new THREE.BoxGeometry(BB.aH, 2.4, 3.35), RMAT.hit); hitF.position.set(bxF(BB.aH / 2), 1.2, 0); front.add(hitF);
+  for (const g of [root, front, leadTruck]) g.traverse(o => { if (o.isMesh) { o.castShadow = o.castShadow !== false && o.material !== RMAT.hit; o.receiveShadow = true; } });
+  lens.castShadow = false; fire.castShadow = false; ash.castShadow = false;
+
+  const L = { root, body, front, parts, leadTruck, lens, couplers: [coupler, null], fire, ash, beam, halo, spec, rL: BB.rL, art: true,
+    len: BB.len, frame: [BB.aDr[0], BB.aDr[3]], leadA: BB.leadA, rD: BB.rD,
+    stackPos: new THREE.Vector3(ax(stk.a), 5.0, 0), cockPos: [new THREE.Vector3(bxR((BBW.f.cyl[0] + BBW.f.cyl[1]) / 2), 0.4, 1.2), new THREE.Vector3(bxR((BBW.r.cyl[0] + BBW.r.cyl[1]) / 2), 0.4, -1.2)],
+    safetyPos: new THREE.Vector3(ax(17.1), fbTop + 0.35, 0), whistlePos: new THREE.Vector3(ax(wh[0]), wh[1] + 0.55, wh[2]),
+    pumpPos: new THREE.Vector3(pumpX, pumpY + 1.25, -pumpZ), injPos: new THREE.Vector3(ax(C.a0 - 0.5), 1.6, 1.47),
+    cabEye: cab.eye, cab, headlightPos: new THREE.Vector3(ax(hl.lensA), hl.y, 0), bellRig: bellR, cls,
+    fireLightPos: new THREE.Vector3(C.bh - 0.3, C.fl + 0.5, 0.1), cabLightPos: new THREE.Vector3(ax(23.9), 4.3, 0),
+    extras: [front],
+  };
+  L.animate = (roll, theta, rev, odo) => animateBigBoy(L, roll, theta, rev, odo);
+  return L;
+}
+
+/* Walschaerts gear for one side of one engine. phi: this side's crank angle. */
+function bbGear(E, P, phi, rev, s) {
+  const W = E.W, bx = E.bx, cr = BB.cr, rD = BB.rD, z = s;
+  const pins = W.aD.map(a => [bx(a) + cr * Math.cos(phi), rD + cr * Math.sin(phi)]);
+  for (let i = 0; i < 3; i++) { const a = pins[i + 1], b = pins[i]; P.side[i].position.set(a[0], a[1], z * 0.99); P.side[i].rotation.z = Math.atan2(b[1] - a[1], b[0] - a[0]); }
+  const pin = pins[2], wy = BB.yC, wx = pin[0] + Math.sqrt(BB.Lm * BB.Lm - (wy - pin[1]) ** 2);
+  P.main.position.set(pin[0], pin[1], z * 1.1); P.main.rotation.z = Math.atan2(wy - pin[1], wx - pin[0]);
+  P.cross.position.set(wx, wy, z * BB.zC); P.piston.position.set(wx, wy, z * BB.zC);
+  // return crank on the main pin, a quarter turn behind the crank
+  const C3 = [bx(W.aD[2]), rD], Ec = [C3[0] + W.e * Math.cos(phi - Math.PI / 2), C3[1] + W.e * Math.sin(phi - Math.PI / 2)];
+  P.ecc.position.set(pin[0], pin[1], z * 1.22); P.ecc.rotation.z = Math.atan2(Ec[1] - pin[1], Ec[0] - pin[0]);
+  P.ecc.scale.x = Math.hypot(Ec[0] - pin[0], Ec[1] - pin[1]) / W.e;
+  // the link swings on its trunnion; its foot is where the eccentric rod reaches
+  const Lk = [bx(W.aLink), W.yLink], F = circLow(Lk[0], Lk[1], W.rl, Ec[0], Ec[1], W.Lecc);
+  P.eccRod.position.set(Ec[0], Ec[1], z * 1.27); P.eccRod.rotation.z = Math.atan2(F[1] - Ec[1], F[0] - Ec[0]);
+  const ux = (Lk[0] - F[0]) / W.rl, uy = (Lk[1] - F[1]) / W.rl;                       // up the link
+  P.link.position.set(Lk[0], Lk[1], z * 1.36); P.link.rotation.z = Math.atan2(-ux, uy);
+  // the die block rides up the link for forward gear, down for back; the radius rod runs forward to the combination lever
+  const d = -rev * W.dMax, D = [Lk[0] + ux * d, Lk[1] + uy * d];
+  const Cx = D[0] + Math.sqrt(Math.max(0, W.Lrr * W.Lrr - (W.yR - D[1]) ** 2)), Cy = W.yR;
+  P.rrod.position.set(D[0], D[1], z * 1.36); P.rrod.rotation.z = Math.atan2(Cy - D[1], Cx - D[0]);
+  P.lifter.position.set(D[0] + 0.05, D[1] + 0.05, z * 1.42); P.lifter.rotation.z = Math.PI / 2 - 0.15;
+  const By = BB.yV - W.a - W.b, Ux = wx + 0.1, Uy = By - 0.02, Bx = Ux + W.Lu;
+  P.union.position.set(Ux, Uy, z * 1.36); P.union.rotation.z = Math.atan2(By - Uy, Bx - Ux);
+  const Tvx = Cx + (Cx - Bx) * (W.a / W.b), Tvy = BB.yV;
+  P.comb.position.set(Tvx, Tvy, z * 1.36); P.comb.rotation.z = Math.atan2(Bx - Tvx, -(By - Tvy));
+  P.vstem.position.set(Tvx, Tvy, z * BB.zV);
+}
+/* wheels and gear for both engines. The front engine runs a little out of step with the rear (bbDrift). */
+function animateBigBoy(L, roll, theta, rev, odo = 0) {
+  const p = L.parts;
+  for (const w of p.lead) w.rotation.z = -roll / BB.rL;
+  for (const w of p.trail) w.rotation.z = -roll / BB.rT;
+  for (const [E, th] of [[p.eng.r, theta], [p.eng.f, theta + bbDrift(odo)]]) {
+    for (const d of E.drivers) d.rotation.z = th;
+    for (const s of [-1, 1]) bbGear(E, E.rods[s], th + (s > 0 ? 0 : Math.PI / 2), rev, s);
+  }
+}
+
+/* place the front engine: hinged to the main frame at BB.aH, its middle on the rails (v.artPt), so it swings out
+   from under the boiler on a curve. Off the rails it goes with the wreck (v.rb.f0 is where it was). */
+const _afH = new THREE.Vector3(), _afX = new THREE.Vector3(), _afU = new THREE.Vector3(), _afR = new THREE.Vector3();
+function artFront(v, L, D) {
+  const g = L.front; g.matrixAutoUpdate = false;
+  if (D && v.rb.f0) { g.matrix.multiplyMatrices(D, v.rb.f0); g.matrixWorldNeedsUpdate = true; return; }
+  const F = v.artPt.F;
+  _afH.set(bxR(BB.aH), 0, 0).applyMatrix4(v.root.matrix);
+  _afX.subVectors(F.p, _afH).normalize();
+  _afR.crossVectors(_afX, F.u).normalize(); _afU.crossVectors(_afR, _afX).normalize();
+  g.matrix.makeBasis(_afX, _afU, _afR).setPosition(_afH.addScaledVector(_afX, -bxF(BB.aH)));
+  g.matrixWorldNeedsUpdate = true;
+}
+/* how far the front engine stands out from under the boiler at the pilot, metres (for the tests and the camera) */
+function artSwing(L) {
+  const p = new THREE.Vector3(bxF(0.5), 0, 0).applyMatrix4(L.front.matrix), q = new THREE.Vector3(bxR(0.5), 0, 0).applyMatrix4(L.root.matrix);
+  return p.distanceTo(q);
+}
+
+/* ===================== the centipede tender ===================== */
+/* t = metres back from the tender's front (its drawbar). A four-wheel truck under the front, five axles in the cast
+   frame behind it, 42 in wheels throughout. 14.48 m long, so engine and tender make 132 ft 9 in. */
+const BBT = { len: 14.48, truckA: [1.60, 3.43], rigid: [5.53, 7.21, 8.89, 10.57, 12.25], R: 0.533, hw: 1.62,
+  t0: 0.62, t1: 13.95, yBot: 1.32, yTank: 3.98, yBunk: 4.62, bunk: [1.2, 6.9, 7.9], deck: 2.30 };
+BBT.truck = (BBT.truckA[0] + BBT.truckA[1]) / 2;
+BBT.ref = (BBT.truck + BBT.rigid[2]) / 2;
+function buildBigBoyTender(key, trim = '') {
+  const spec = LOCO_SPEC[key], D = BBT, tx = a => D.ref - a, hw = D.hw;
+  const root = new THREE.Group(), gb = new GeoBin();
+  const bar = (k, r, a, b, seg = 8) => gb.add(k, barGeo(r, a, b, seg));
+  // cast frame: centre sill, side sills, pedestals and journal boxes for the five rigid axles
+  gb.box('dark', D.t1 - 0.4, 0.3, 0.9, tx((0.4 + D.t1) / 2), D.yBot - 0.15, 0);
+  for (const s of [-1, 1]) {
+    gb.box('dark', D.t1 - D.t0, 0.2, 0.12, tx((D.t0 + D.t1) / 2), D.yBot - 0.1, s * (hw - 0.08));
+    gb.box('dark', D.rigid[4] - D.rigid[0] + 0.8, 0.26, 0.14, tx((D.rigid[0] + D.rigid[4]) / 2), 1.02, s * 1.0);   // side frame over the boxes
+    for (const a of D.rigid) {
+      gb.box('dark', 0.34, 0.42, 0.24, tx(a), D.R, s * 1.0);
+      gb.box('dark', 0.24, 0.28, 0.03, tx(a), D.R, s * 1.13);
+      for (const d of [-0.2, 0.2]) gb.box('dark', 0.06, 1.02 - D.R + 0.1, 0.16, tx(a) + d, (1.02 + D.R) / 2, s * 1.0);
+      gb.box('dark', 0.08, 0.3, 0.12, tx(a - D.R - 0.04), D.R, s * 0.76);           // brake shoe
+    }
+    for (let i = 0; i < 4; i++) { const am = (D.rigid[i] + D.rigid[i + 1]) / 2; for (let k = 0; k < 4; k++) gb.box('dark', 0.9 - 0.15 * k, 0.025, 0.12, tx(am), 1.2 - 0.025 * k, s * 1.0); }
+  }
+  // cross bolsters from the side frames up under the tank, and brake beams across to the shoes
+  for (let i = 0; i < 4; i++) gb.box('dark', 0.3, D.yBot - 1.12, 2.14, tx((D.rigid[i] + D.rigid[i + 1]) / 2 + 0.25), (D.yBot + 1.12) / 2, 0);
+  for (const a of D.rigid) bar('dark', 0.03, [tx(a - D.R - 0.04), D.R, -0.8], [tx(a - D.R - 0.04), D.R, 0.8], 6);
+  gb.box('dark', 0.7, D.yBot - 0.955, 2.4, tx(D.truck), (D.yBot + 0.955) / 2, 0);          // bolster down onto the front truck's centre plate
+  gb.box('dark', 0.3, 0.4, 2.9, tx(D.t1 + 0.15), 1.08, 0);                               // rear end sill
+  // tank and bunker sides from one profile
+  const prof = new THREE.Shape();
+  prof.moveTo(tx(D.t0), D.yBot); prof.lineTo(tx(D.t1), D.yBot); prof.lineTo(tx(D.t1), D.yTank); prof.lineTo(tx(D.bunk[2]), D.yTank);
+  prof.lineTo(tx(D.bunk[1]), D.yBunk); prof.lineTo(tx(D.bunk[0]), D.yBunk);
+  prof.quadraticCurveTo(tx(D.t0 + 0.1), D.yBunk - 0.05, tx(D.t0), D.yTank - 0.02); prof.lineTo(tx(D.t0), D.yBot);
+  const side = typeof tenderSideMat === 'function' && RMAT.tSide ? 'tSide' : 'black';
+  for (const s of [-1, 1]) gb.add(side, new THREE.ExtrudeGeometry(prof, { depth: 0.04, bevelEnabled: false, curveSegments: 10 }).translate(0, 0, s * (hw - 0.02) - 0.02));
+  gb.box('black', D.t1 - D.t0, 0.04, 2 * hw - 0.04, tx((D.t0 + D.t1) / 2), D.yBot + 0.02, 0);
+  gb.box('black', 0.04, D.yTank - D.yBot, 2 * hw, tx(D.t1) - 0.02, (D.yTank + D.yBot) / 2, 0);
+  gb.box('black', D.t1 - D.bunk[2] + 0.02, 0.04, 2 * hw, tx((D.bunk[2] + D.t1) / 2), D.yTank - 0.02, 0);
+  { const a = [tx(D.bunk[2]), D.yTank], b = [tx(D.bunk[1]), D.yBunk], L = Math.hypot(a[0] - b[0], a[1] - b[1]); gb.add('black', new THREE.BoxGeometry(L, 0.04, 2 * hw - 0.04), M((a[0] + b[0]) / 2, (a[1] + b[1]) / 2 - 0.02, 0, 0, 0, Math.atan2(b[1] - a[1], b[0] - a[0]))); }
+  gb.box('black', 0.04, D.deck - D.yBot, 2 * hw, tx(D.t0) + 0.02, (D.deck + D.yBot) / 2, 0);
+  gb.box('dark', D.t0 + 0.3 - 0.25, 0.06, 2 * hw - 0.1, tx((0.25 + D.t0 + 0.3) / 2), D.deck - 0.03, 0);
+  gb.box('dark', 0.25, D.deck - 0.03 - 1.0, 1.2, tx(0.38), (D.deck - 0.03 + 1.0) / 2, 0);
+  { const bt = D.t0 + 0.3;
+    gb.box('black', 0.05, D.yTank - D.deck, 2 * hw - 0.04, tx(bt), (D.yTank + D.deck) / 2, 0);
+    gb.box('dark', 0.03, 0.75, 0.8, tx(bt) + 0.03, D.deck + 0.42, 0);
+    for (const z of [-0.43, 0.43]) gb.box('black', 0.06, 0.8, 0.05, tx(bt) + 0.035, D.deck + 0.42, z); }
+  // coal heaped in the bunker
+  {
+    const a0 = D.t0 + 0.34, a1 = D.bunk[2] - 0.2, La = a1 - a0, Wd = 2 * hw - 0.1;
+    const g = new THREE.PlaneGeometry(La, Wd, 28, 12); g.rotateX(-Math.PI / 2);
+    const p = g.attributes.position, r = rng(4014);
+    for (let i = 0; i < p.count; i++) {
+      const x = p.getX(i), z = p.getZ(i), u = 1 - (x / (La / 2)) ** 2, v = 1 - (z / (Wd / 2)) ** 2, h = Math.max(0, u) ** 0.5 * Math.max(0, v) ** 0.6;
+      const t = a0 + La / 2 - x, wallTop = t > D.bunk[1] ? lerp(D.yBunk, D.yTank, (t - D.bunk[1]) / (D.bunk[2] - D.bunk[1])) : D.yBunk;
+      p.setY(i, Math.min(wallTop - 0.25, D.yTank - 0.1) + h * 0.6 + h * (r() - 0.5) * 0.08);
+    }
+    g.computeVertexNormals(); g.translate(tx(a0 + La / 2), 0, 0); gb.add('coal', g);
+  }
+  // water hatches, back-up light, ladders, grab irons, steps
+  for (const a of [10.2, 12.4]) { gb.cyl('black', 0.42, 0.42, 0.22, 20, tx(a), D.yTank + 0.09, 0); gb.cyl('black', 0.47, 0.47, 0.05, 20, tx(a), D.yTank + 0.22, 0); }
+  gb.box('black', 0.5, 0.45, 0.5, tx(D.t1 - 0.3), D.yTank + 0.225, 0);
+  const bl = new THREE.Mesh(new THREE.CircleGeometry(0.15, 18), RMAT.lensOff); bl.position.set(tx(D.t1 - 0.05) - 0.003, D.yTank + 0.24, 0); bl.rotation.y = -Math.PI / 2;
+  for (const s of [-1, 1]) {
+    const xr = tx(D.t1) - 0.07;
+    for (let y = D.yBot + 0.25; y < D.yTank; y += 0.36) gb.box('rod', 0.03, 0.03, 0.42, xr, y, s * 1.3);
+    for (const z of [1.08, 1.52]) { gb.box('dark', 0.04, D.yTank + 0.3 - 1.1, 0.04, xr, (D.yTank + 0.3 + 1.1) / 2, s * z); for (const y of [1.5, D.yTank - 0.1]) gb.box('dark', 0.07, 0.04, 0.04, xr + 0.035, y, s * z); }
+    bar('dark', 0.016, [tx(D.t0) + 0.02, D.deck - 0.3, s * (hw + 0.045)], [tx(D.t0) + 0.02, D.yTank - 0.2, s * (hw + 0.045)], 6);
+    for (const y of [D.deck - 0.3, D.yTank - 0.2]) gb.box('dark', 0.04, 0.04, 0.06, tx(D.t0) + 0.02, y, s * (hw + 0.03));
+    const steps = (a, ys) => { for (const y of ys) gb.box('dark', 0.45, 0.04, 0.3, tx(a), y, s * 1.47); for (const d of [-0.2, 0.2]) gb.box('dark', 0.04, D.yBot - 0.1 - ys[0] + 0.03, 0.3, tx(a) + d, (ys[0] - 0.03 + D.yBot - 0.1) / 2, s * 1.47); };
+    steps(D.t0 + 0.3, [0.75, 1.15]); steps(D.t1 - 0.25, [0.75]);
+    gb.box('blackMatte', D.t1 - D.t0, 0.025, 0.006, tx((D.t0 + D.t1) / 2), D.yBot + 0.06, s * (hw + 0.002));
+  }
+  const coupler = addCoupler(gb, root, { x: tx(D.len), out: -1, sx: tx(D.t1 + 0.3) - tx(D.len), sb: 0.88, ly: 1.12, zh: 1.3, yp: 0.86, housing: true, hl: 0.3 });
+  const road = decalMat(1024, 128, (g, w, h) => { g.font = '600 88px "Arial Narrow", Arial, sans-serif'; g.fillStyle = '#ecE9de'; g.textAlign = 'center'; g.textBaseline = 'middle'; if (g.letterSpacing !== undefined) g.letterSpacing = '10px'; g.fillText(spec.road, w / 2, h / 2 + 4); });
+  RMAT['road' + key] = road;
+  for (const s of [-1, 1]) gb.add('road' + key, new THREE.PlaneGeometry(10.4, 1.3), M(tx(7.4), 2.75, s * (hw + 0.008), 0, s > 0 ? 0 : Math.PI, 0));
+  root.add(gb.build(RMAT)); root.add(bl);
+  // wheels: the rigid axles turn in the frame, the front truck swivels (placed by the train)
+  const wheels = [], ax6 = plainAxle(D.R, true, RAIL_OFF, typeof AXJ !== 'undefined' ? AXJ : 0);
+  const wheel = () => { const g = new THREE.Group(); for (const k of ['black', 'tire']) { const m = new THREE.Mesh(ax6[k], k === 'black' ? RMAT.black : RMAT.tire); m.castShadow = true; g.add(m); } return g; };
+  for (const a of D.rigid) { const w = wheel(); w.position.set(tx(a), D.R, 0); root.add(w); wheels.push(w); }
+  const truck = new THREE.Group(); truck.matrixAutoUpdate = false;
+  { const tg = new GeoBin(), sp = (D.truckA[1] - D.truckA[0]) / 2;
+    for (const s of [-1, 1]) {
+      tg.box('dark', 2 * sp + 0.7, 0.24, 0.14, 0, D.R + 0.1, s * 1.0);
+      for (const x of [-sp, sp]) { tg.box('dark', 0.34, 0.42, 0.24, x, D.R, s * 1.0); tg.box('dark', 0.08, 0.3, 0.12, x - D.R - 0.04, D.R, s * 0.76); }
+      for (let k = 0; k < 4; k++) tg.box('dark', 1.0 - 0.15 * k, 0.025, 0.12, 0, D.R + 0.28 - 0.025 * k, s * 1.0);
+    }
+    tg.box('dark', 0.5, 0.26, 2.1, 0, D.R + 0.2, 0); tg.box('dark', 0.7, 0.1, 0.7, 0, D.R + 0.38, 0);
+    truck.add(tg.build(RMAT));
+    for (const x of [-sp, sp]) { const w = wheel(); w.position.set(x, D.R, 0); truck.add(w); wheels.push(w); } }
+  root.traverse(o => { if (o.isMesh && !o.userData.cpl) { o.castShadow = true; o.receiveShadow = true; } });
+  truck.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  return { root, len: D.len, ref0: D.ref, trucks: [], frame: [D.truck, D.rigid[2]], backup: bl, waterHatchA: 10.2, couplers: [null, coupler],
+    truck, extras: [truck], swivelA: D.truck, wheels, spin: roll => { for (const w of wheels) w.rotation.z = -roll / D.R; } };
+}
+
+/* ============================================================================
    Train: consist, track-following, poses, wheel & rod animation
    ========================================================================== */
 const CONSISTS = {
   passenger: { name: 'Passenger', sub: '8 heavyweights · 660 tons', build: () => { const a = []; for (let i = 0; i < 7; i++) a.push(['coach', 0]); a.push(['coach', 1]); return a; } },
   freight: { name: 'Manifest freight', sub: '36 cars · 2,700 tons', build: (r) => { const a = []; const t = ['box', 'box', 'hopper', 'hopper', 'tank', 'gon', 'box', 'hopper']; for (let i = 0; i < 35; i++) a.push([t[(r() * t.length) | 0], 0]); a.push(['caboose', 0]); return a; } },
+  // loaded hoppers: the Big Boy lifts this up Laurel Mountain's 1.9% at about 15 mph, a Berkshire stalls with half of it
+  coal: { name: 'Coal drag', sub: '26 cars · 2,300 tons', build: () => { const a = []; for (let i = 0; i < 25; i++) a.push(['hopper', 0]); a.push(['caboose', 0]); return a; } },
   light: { name: 'Light engine', sub: 'Pick up cars in the yard', build: () => [] },
   // made up for the BD-2 time freight job; not offered in the menu
   timefreight: { name: 'Time freight', sub: '18 cars · 1,400 tons', hidden: true, build: () => ['box', 'box', 'tank', 'box', 'hopper', 'box', 'gon', 'box', 'box', 'tank', 'tank', 'box', 'hopper', 'hopper', 'box', 'gon', 'box', 'box', 'caboose'].map(t => [t, 0]) },
@@ -11678,8 +12295,12 @@ class Consist {
     const pt = loc => ({ loc, a: 0, tp: null, F: newFrame(), v });
     v.fp = v.frame.map(pt);
     v.tp = v.trucks.map(t => pt(t.a));
-    if (v.kind === 'loco' && !this.diesel) v.leadPt = pt(LG.aL); else if (v.kind === 'loco') v.leadPt = v.fp[0];
-    v.ptsAll = [...v.fp, ...v.tp]; if (v.leadPt && !v.ptsAll.includes(v.leadPt)) v.ptsAll.push(v.leadPt);
+    const m = v.model || {};
+    if (v.kind === 'loco' && !this.diesel) v.leadPt = pt(m.leadA !== undefined ? m.leadA : LG.aL); else if (v.kind === 'loco') v.leadPt = v.fp[0];
+    v.extraPts = [];
+    if (m.art) v.extraPts.push(v.artPt = pt(BB.refF));                  // the articulated front engine's middle
+    if (m.swivelA !== undefined) v.extraPts.push(v.swPt = pt(m.swivelA));   // a tender's swivelling truck
+    v.ptsAll = [...v.fp, ...v.tp, ...v.extraPts]; if (v.leadPt && !v.ptsAll.includes(v.leadPt)) v.ptsAll.push(v.leadPt);
   }
   /* offsets from the front coupler, front to back. A vehicle with flip set stands turned in this consist. */
   layout() {
@@ -11786,11 +12407,22 @@ class Consist {
           for (const x of [-0.865, 0.865]) { _m4.copy(_tm).multiply(new THREE.Matrix4().makeTranslation(x, t.R, 0)).multiply(new THREE.Matrix4().makeRotationZ(wAng4)); this.ax4[0].setMatrixAt(a4, _m4); this.ax4[1].setMatrixAt(a4, _m4); a4++; }
         }
       }
+      // a tender with its own swivelling truck and wheels in the frame (the Big Boy's centipede)
+      if (v.swPt && v.model.truck) {
+        const tg = v.model.truck; tg.matrixAutoUpdate = false; frameMatrix(v.swPt.F, tg.matrix); if (v.flip) tg.matrix.multiply(_m4.makeRotationY(Math.PI));
+        if (D && v.rb.s0) tg.matrix.multiplyMatrices(D, v.rb.s0); tg.matrixWorldNeedsUpdate = true;
+      }
+      if (v.model && v.model.spin) v.model.spin(roll);
       if ((v.kind === 'loco' || v.kind === 'loco2') && this.diesel) {
         const U = v.model;
         U.trucks.forEach((tg, k) => { tg.matrixAutoUpdate = false; frameMatrix(v.fp[k].F, tg.matrix); if (v.reversed) tg.matrix.multiply(_m4.makeRotationY(Math.PI)); if (D && v.rb.u0) tg.matrix.multiplyMatrices(D, v.rb.u0[k]); tg.matrixWorldNeedsUpdate = true; });
         const wa = (v.reversed ? 1 : -1) * this.dist / (U.rW || DG.rW); for (const w of U.wheels) w.rotation.z = wa;
         v.root.updateMatrixWorld(true);
+      } else if (v.kind === 'loco' && this.loco.art) {
+        const L = this.loco;
+        const lt = L.leadTruck; lt.matrixAutoUpdate = false; frameMatrix(v.leadPt.F, lt.matrix); if (D && v.rb.l0) lt.matrix.multiplyMatrices(D, v.rb.l0); lt.matrixWorldNeedsUpdate = true;
+        artFront(v, L, D);
+        L.animate(roll, theta, rev, this.dist);
       } else if (v.kind === 'loco') {
         const lf = v.leadPt.F;
         const lt = this.loco.leadTruck; lt.matrixAutoUpdate = false; frameMatrix(lf, lt.matrix); if (D && v.rb.l0) lt.matrix.multiplyMatrices(D, v.rb.l0); lt.matrixWorldNeedsUpdate = true;
@@ -11866,10 +12498,11 @@ class Train extends Consist {
     } else {
       // a holiday trim (see TRIM) is built into a steam train and the coaches it brings
       this.trim = TRIM[opts.trim] ? opts.trim : '';
-      L = buildBerkshire(locoKey, this.trim);
-      scene.add(L.root); scene.add(L.leadTruck);
-      this.vehicles.push({ kind: 'loco', model: L, root: L.root, len: LG.len, frame: [LG.aD[0], LG.aD[3]], trucks: [], mass: engMass, axles: 10, area: 125, brakeA: 0.55, cpl: L.couplers });
-      const T = buildTender(locoKey, this.trim);
+      L = spec.art ? buildBigBoy(locoKey, this.trim) : buildBerkshire(locoKey, this.trim);
+      scene.add(L.root); scene.add(L.leadTruck); if (L.front) scene.add(L.front);
+      this.vehicles.push({ kind: 'loco', model: L, root: L.root, len: L.len || LG.len, frame: L.frame || [LG.aD[0], LG.aD[3]], trucks: [], mass: engMass, axles: spec.axles || 10, area: 125, brakeA: 0.55, cpl: L.couplers });
+      const T = spec.art ? buildBigBoyTender(locoKey, this.trim) : buildTender(locoKey, this.trim);
+      if (T.truck) scene.add(T.truck);
       scene.add(T.root);
       this.tender = T;
       this.vehicles.push({ kind: 'tender', model: T, root: T.root, len: T.len, frame: T.frame, trucks: T.trucks, mass: 0, axles: 6, area: 0, brakeA: 0.6, cpl: T.couplers });
@@ -11887,7 +12520,7 @@ class Train extends Consist {
       this.vehicles.push(v);
     }
     // tender mass varies with water & coal
-    this.tenderEmpty = 92000;
+    this.tenderEmpty = spec.tenderEmpty || 92000;
     for (const v of this.vehicles) { v.brake = v.brake || { AR: 90, BC: 0, BP: 90, emerg: false, released: true }; v.kn = v.kn || [0, 0]; this.track(v); }
     this.layout();
     this.buildInstances(carGeos());
@@ -11899,7 +12532,7 @@ class Train extends Consist {
       this.head.castShadow = false;
       scene.add(this.head); scene.add(this.head.target);
       this.fireLight = new THREE.PointLight(0xff7a2a, 0, 7, 2);
-      L.body.add(this.fireLight); this.fireLight.position.set(CABDIM.bh - 0.3, CABDIM.fl + 0.5, 0.1);
+      L.body.add(this.fireLight); if (L.fireLightPos) this.fireLight.position.copy(L.fireLightPos); else this.fireLight.position.set(CABDIM.bh - 0.3, CABDIM.fl + 0.5, 0.1);
       this.cabLight = new THREE.PointLight(0xffd09a, 0, 5, 2); L.body.add(this.cabLight); if (L.cabLightPos) this.cabLight.position.copy(L.cabLightPos); else this.cabLight.position.set(ax(15.8), 4.1, 0);
     } else { this.head = null; this.fireLight = null; this.cabLight = null; }
     for (const v of this.vehicles) this.markerLamps(v);
@@ -11929,9 +12562,11 @@ class Train extends Consist {
   }
   worldOf(local, out = new THREE.Vector3()) { return out.copy(local).applyMatrix4(this.loco.root.matrixWorld); }
   unitWorld(m, local, out = new THREE.Vector3()) { return out.copy(local).applyMatrix4(m.root.matrixWorld); }
+  /* the steam engine's pieces that ride in the scene on their own: lead truck, articulated front engine, tender truck */
+  steamExtras() { return this.diesel ? [] : [this.loco.leadTruck, ...(this.loco.extras || []), ...(this.tender && this.tender.extras || [])]; }
   dispose() {
     for (const v of this.vehicles) { this.scene.remove(v.root); }
-    if (this.diesel) this.units.forEach(m => m.trucks.forEach(t => this.scene.remove(t))); else this.scene.remove(this.loco.leadTruck);
+    if (this.diesel) this.units.forEach(m => m.trucks.forEach(t => this.scene.remove(t))); else for (const o of this.steamExtras()) this.scene.remove(o);
     for (const im of this.inst) this.scene.remove(im);
     if (this.head) { this.scene.remove(this.head); this.scene.remove(this.head.target); }
   }
@@ -11939,13 +12574,13 @@ class Train extends Consist {
   disposeDeep() {
     this.dispose();
     const seen = new Set(), roots = [...this.vehicles.map(v => v.root), ...this.inst];
-    if (this.diesel) this.units.forEach(m => roots.push(...m.trucks)); else roots.push(this.loco.leadTruck);
+    if (this.diesel) this.units.forEach(m => roots.push(...m.trucks)); else roots.push(...this.steamExtras());
     for (const r of roots) if (r) r.traverse(o => { if (o.geometry && !seen.has(o.geometry)) { seen.add(o.geometry); o.geometry.dispose(); } });
     if (this.diesel) for (const m of this.units) for (const k in m.skin) { const mt = m.skin[k]; if (mt.map) mt.map.dispose(); mt.dispose(); }
   }
   setVisible(v) {
     super.setVisible(v);
-    if (this.diesel) this.units.forEach(m => m.trucks.forEach(t => { t.visible = v; })); else this.loco.leadTruck.visible = v;
+    if (this.diesel) this.units.forEach(m => m.trucks.forEach(t => { t.visible = v; })); else for (const o of this.steamExtras()) o.visible = v;
   }
 }
 
@@ -12694,6 +13329,8 @@ class WreckSim {
     b.t0 = v.tp.map(t => { const m4 = frameMatrix(t.F, new THREE.Matrix4()); if (v.flip) m4.multiply(new THREE.Matrix4().makeRotationY(Math.PI)); return m4; });
     if ((v.kind === 'loco' || v.kind === 'loco2') && this.T.diesel) b.u0 = v.model.trucks.map(tg => tg.matrix.clone());
     else if (v.kind === 'loco' && this.T.loco && this.T.loco.leadTruck) b.l0 = this.T.loco.leadTruck.matrix.clone();
+    if (v.kind === 'loco' && this.T.loco && this.T.loco.front) b.f0 = this.T.loco.front.matrix.clone();
+    if (v.model && v.model.truck) b.s0 = v.model.truck.matrix.clone();
     v.rb = b; this.bodies.push(b);
     this.pose(b);
     if (typeof sndClunk === 'function' && AU.on) sndClunk(clamp(Math.abs(sp) / 8, 0.4, 1.5), 0);
@@ -12877,6 +13514,16 @@ const S = {
 };
 const ENV = { mu: 0.27, wind: new THREE.Vector3(-1.2, 0, 0.6) };
 const DRIVER_C = Math.PI * 2 * LG.rD, VCYL = Math.PI / 4 * 0.635 * 0.635 * 0.864;
+/* The steam engine on the rails, in the figures the boiler and front end need. The Berkshire's are the defaults;
+   a bigger engine (the Big Boy) brings its own drivers, cylinders (teK = d^2 s / D summed, vcyl = steam swept per
+   revolution, m^3), working pressure and a boiler scale k: grate, evaporation, firing, water and steam all grow
+   by k, so the boiler steams the same way, only bigger. */
+function steamK(spec) {
+  const rD = (spec && spec.rD) || LG.rD;
+  return { rD, C: Math.PI * 2 * rD, teK: (spec && spec.teK) || 307.97, vcyl: (spec && spec.vcyl) || 4 * VCYL, k: (spec && spec.boil) || 1, PL: (spec && spec.psi) || 245,
+    water: (spec && spec.water) || 83280, coal: (spec && spec.coal) || 19958 };
+}
+let SK = steamK(null);
 
 function brakeZone(h) {
   if (h < 0.06) return 'REL'; if (h < 0.18) return 'RUN'; if (h < 0.28) return 'LAP'; if (h < 0.9) return 'SRV'; return 'EMG';
@@ -12898,11 +13545,13 @@ function physicsStep(dt, train) {
   else if (DSL) TEcmd = dieselPower(dt) * nU;
   else {
   /* ----------------- boiler & front end ----------------- */
-  const n = Math.abs(S.vw) / DRIVER_C;                 // driver revolutions per second
+  SK = steamK(spec);
+  const K = SK.k, PL = SK.PL;
+  const n = Math.abs(S.vw) / SK.C;                     // driver revolutions per second
   const dir = Math.sign(S.reverser) * (Math.abs(S.reverser) > 0.03 ? 1 : 0);
   let cut = Math.abs(S.reverser) * 0.85; if (dir && cut < 0.1) cut = 0.1;
   // easy driving: hook the reverser up as the engine gains speed, so the boiler can keep up
-  S.cutA += (autoCutoff(n, S.P) - S.cutA) * Math.min(1, dt * 0.8);
+  S.cutA += (autoCutoff(n, S.P, SK) - S.cutA) * Math.min(1, dt * 0.8);
   if (S.autoCut && dir) cut = Math.min(cut, S.cutA);
   S.cut = dir ? cut : 0;
   const valve = Math.pow(S.throttle, 1.12);
@@ -12913,30 +13562,30 @@ function physicsStep(dt, train) {
   const back = 1.0 + 0.55 * n * n * cut;
   let mep = Math.max(0, S.Psc * ratio * wire - (S.Psc > 5 ? back : 0));
   if (S.priming) mep *= 0.55 + 0.25 * Math.sin(S.time * 9);
-  TEcmd = dir * mep * 307.97 * LBF;                   // 2 cyl: mep * d^2 * s / D
+  TEcmd = dir * mep * SK.teK * LBF;                   // mep * d^2 * s / D, every cylinder
   // steam consumption
   const rho = (S.Psc + 14.7) * 0.02323;
-  const useCyl = dir ? n * 4 * VCYL * (cut + 0.08) * rho : 0;
+  const useCyl = dir ? n * SK.vcyl * (cut + 0.08) * rho : 0;
   const aux = (S.pumping ? 0.07 : 0) + (S.light ? 0.02 : 0) + S.blower * 0.38 + (S.injector ? 0.28 : 0) + (S.cocks ? 0.45 * valve : 0) + S.whistle * 0.3 + (S.safety ? 4.8 : 0);
-  S.use = useCyl + aux;
+  S.use = useCyl + aux * K;
   // firing: stoker feeds, draft from exhaust & blower burns
   if (S.autoFire && !S.dead) autoFireman(dt);
-  const draft = clamp(0.16 + 0.78 * Math.min(1, useCyl / 7.5) + 0.72 * S.blower, 0, 1.25);
+  const draft = clamp(0.16 + 0.78 * Math.min(1, useCyl / (7.5 * K)) + 0.72 * S.blower, 0, 1.25);
   const fireT = S.coal > 0 && !S.dead ? Math.min(S.stoker * 1.18, draft * 1.08) : 0;
   S.fire += (fireT - S.fire) * dt / 16;
   S.fire = Math.max(0, S.fire);
-  S.coal = Math.max(0, S.coal - S.fire * 1.35 * dt);
-  S.gen = 9.9 * S.fire * (1 - 0.22 * clamp((S.P - 200) / 60, 0, 1));
+  S.coal = Math.max(0, S.coal - S.fire * 1.35 * K * dt);
+  S.gen = 9.9 * K * S.fire * (1 - 0.22 * clamp((S.P - (PL - 45)) / 60, 0, 1));
   // water
   let cooling = 0;
-  if (S.injector && S.water > 0 && S.P > 60) { const feed = 11.5; S.W += feed * dt / 2600; S.water -= feed * dt; cooling = feed * (spec.fw === 'Worthington' ? 0.1 : 0.13); }
-  S.W -= S.gen * dt / 2600;
+  if (S.injector && S.water > 0 && S.P > 60) { const feed = 11.5 * K; S.W += feed * dt / (2600 * K); S.water -= feed * dt; cooling = feed * (spec.fw === 'Worthington' ? 0.1 : 0.13); }
+  S.W -= S.gen * dt / (2600 * K);
   S.water = Math.max(0, S.water);
-  S.P += (S.gen - S.use - cooling) / 3.4 * dt;
-  if (S.P > 245.5) S.safety = true; else if (S.P < 241) S.safety = false;
-  S.P = clamp(S.P, 0, 250);
+  S.P += (S.gen - S.use - cooling) / (3.4 * K) * dt;
+  if (S.P > PL + 0.5) S.safety = true; else if (S.P < PL - 4) S.safety = false;
+  S.P = clamp(S.P, 0, PL + 5);
   if (S.autoCut && S.cocks && Math.abs(S.v) > 3) { S.cocks = false; GAME.event('cocksShut'); }
-  if (!S.autoCut && dir && S.P < 175 && cut > 0.4 && n > 1.6 && S.throttle > 0.3) GAME.event('lowSteam');
+  if (!S.autoCut && dir && S.P < PL - 70 && cut > 0.4 && n > 1.6 && S.throttle > 0.3) GAME.event('lowSteam');
   S.lowWater = S.W < 0.04; S.priming = S.W > 1.0;
   if (S.W < -0.2 && !S.dead) { S.dead = true; S.fire = 0; GAME.fail('Fusible plug dropped', 'The water level fell below the crown sheet and the fusible plug melted, venting steam into the firebox. The fire is out. Keep the water glass above the bottom nut.'); }
   S.W = clamp(S.W, -0.3, 1.15);
@@ -13091,7 +13740,7 @@ function physicsStep(dt, train) {
   S.v += a * dt;
   S.accel = a;
   if (S.slide) S.vw = 0; else if (!S.slip) S.vw = S.v;
-  S.theta -= S.vw * dt / LG.rD;
+  S.theta -= S.vw * dt / (DSL ? LG.rD : SK.rD);
   S.M = M;
   return S.v * dt;
 }
@@ -13128,10 +13777,10 @@ function hsLimit(tp, spec) {
 function applyFireSetting(k) { S.autoFire = k !== 'hand'; S.autoCut = k === 'easy' || k === undefined; }
 /* The cutoff that holds steam at this speed: long at a start for the pull, shorter as the drivers turn faster,
    and shorter still if the pressure sags. What an engineer does with the reverser, notch by notch. */
-function autoCutoff(n, P) {
-  const budget = 7.2 * clamp((P - 150) / 80, 0.35, 1);
+function autoCutoff(n, P, K = SK) {
+  const f = K.PL / 245, budget = 7.2 * K.k * clamp((P - 150 * f) / (80 * f), 0.35, 1);
   const rho = (P + 14.7) * 0.02323;
-  return clamp(budget / Math.max(0.05, n * 4 * VCYL * rho) - 0.08, 0.2, 0.85);
+  return clamp(budget / Math.max(0.05, n * K.vcyl * rho) - 0.08, 0.2, 0.85);
 }
 /* Rail condition along the line: patches of dew, leaves and grease where adhesion falls by up to a quarter.
    An engine working hard there slips unless the sander is on. 0 is clean rail, 1 the worst of a patch. */
@@ -13143,12 +13792,12 @@ function railPatch(x) {
 /* An attentive fireman: holds 240 psi and half a glass. */
 function autoFireman(dt) {
   const demand = S.use;
-  const want = clamp(0.25 + demand / 9.5 + (240 - S.P) * 0.025, 0.05, 1);
+  const want = clamp(0.25 + demand / (9.5 * SK.k) + (SK.PL - 5 - S.P) * 0.025, 0.05, 1);
   S.stoker += (want - S.stoker) * Math.min(1, dt * 0.8);
   if (S.W < 0.52 && S.P > 65) S.injector = true;   // the injector still lifts at low pressure: never let the crown sheet go dry
   if (S.W > 0.72) S.injector = false;
   const working = Math.abs(S.reverser) > 0.05 && S.throttle > 0.05;
-  const bt = working ? 0.05 : (S.P < 235 ? 0.55 : 0.2);
+  const bt = working ? 0.05 : (S.P < SK.PL - 10 ? 0.55 : 0.2);
   S.blower += (bt - S.blower) * Math.min(1, dt * 0.7);
 }
 
@@ -13273,6 +13922,8 @@ function audioInit() {
    keeps every one of them audible on a phone speaker. */
 const WHISTLES = {
   deep6: { kind: 'steam', notes: [164.8, 196.0, 220.0, 246.9, 293.7, 329.6], harm: [1, 0.56, 0.36, 0.24, 0.15, 0.09, 0.05], breath: 0.13, breathF: 1400, vib: [4.8, 0.0025], quill: 0.06, attack: 0.06, beat: 1.0018, pres: 2200 },
+  // the 765: no recording of its own exists, so it blows the Big Boy's take a little lower (see WHISTLE_REC.nkp6)
+  nkp6: { kind: 'steam', notes: [153.3, 182.3, 204.6, 229.6, 273.1, 306.5], harm: [1, 0.56, 0.36, 0.24, 0.15, 0.09, 0.05], breath: 0.13, breathF: 1400, vib: [4.8, 0.0025], quill: 0.06, attack: 0.06, beat: 1.0018, pres: 2200 },
   chime6: { kind: 'steam', notes: [335.0, 375.4, 444.6, 505.4, 632.3, 825.8], harm: [1, 0.62, 0.38, 0.26, 0.16, 0.1, 0.06], breath: 0.14, breathF: 2200, vib: [5.4, 0.003], quill: 0.05, attack: 0.05, beat: 1.0025, pres: 2600 },
   /* Shinkansen air horn: a bright two-tone (A5 over F#5) with few upper partials */
   shin: { kind: 'horn', notes: [740.0, 880.0], harm: [1, 0.75, 0.5, 0.34, 0.22, 0.14, 0.08], breath: 0.025, breathF: 2400, vib: [0, 0], quill: 0, attack: 0.012, beat: 1.003, pres: 2400 },
@@ -13484,7 +14135,10 @@ const SND_DZ = [{ rpm: 300 }, { rpm: 650, load: 0.6 }, { rpm: 1050, load: 1 }];
 // quill: how far a part-open valve drops the pitch; attack/release: how fast it opens and closes (s); on: length of the opening take (s);
 // xf: for a whistle with a recorded closing take (wh_<key>_off), how fast the loop hands over to it (s)
 const WHISTLE_REC = {
-  deep6: { quill: 0.05, attack: 0.05, release: 0.12, on: 1.2 },
+  deep6: { quill: 0.05, attack: 0.05, release: 0.12, on: 1.2 },   // Big Boy 4014 itself
+  // take: borrow another whistle's recording, rate: played this much lower. No PD recording of NKP 765 exists, so it
+  // blows the Big Boy's take a whole tone down, which keeps the two engines apart.
+  nkp6: { quill: 0.05, attack: 0.05, release: 0.12, on: 1.2, take: 'deep6', rate: 0.93 },
   chime6: { quill: 0.05, attack: 0.05, release: 0.12, on: 1.2, xf: 0.03 },
   k5: { quill: 0, attack: 0.02, release: 0.08, on: 1.2 },
 };
@@ -13780,11 +14434,13 @@ function whistleValve(o, pull, now) {
    shuts and its ring dying away, taking over from the loop at the level the loop was sounding
    (lv: the caller's trim). o.whShut is set while that take has the whistle, so the loop under it
    is faded out in R.xf rather than lingering. */
+/* the recorded take a whistle key plays (WHISTLE_REC[key].take borrows another's) */
+const whTake = key => 'wh_' + ((WHISTLE_REC[key] && WHISTLE_REC[key].take) || key);
 function whistleOnset(o, k, R, pull, dest, now, lv = 1) {
-  const was = o.whPull || 0;
-  if (pull > 0.05 && was <= 0.05) { whistleCut(o, now, 0.01); o.whShut = false; o.whOn = SND.shot(k + '_on', dest, { gain: (SND_GAIN[k] || 1) * Math.pow(pull, 0.6), vary: 0.01, dur: R.on }); }
+  const was = o.whPull || 0, rr = R.rate || 1;
+  if (pull > 0.05 && was <= 0.05) { whistleCut(o, now, 0.01); o.whShut = false; o.whOn = SND.shot(k + '_on', dest, { gain: (SND_GAIN[k] || 1) * Math.pow(pull, 0.6), vary: 0.01, dur: R.on / rr, rate: rr }); }
   else if (pull <= 0.05 && was > 0.05) {
-    const off = R.xf && SND.has(k + '_off') ? SND.shot(k + '_off', dest, { gain: (SND_GAIN[k] || 1) * Math.pow(was, 0.8) * lv, rate: 1 - R.quill * (1 - was), vary: 0 }) : null;
+    const off = R.xf && SND.has(k + '_off') ? SND.shot(k + '_off', dest, { gain: (SND_GAIN[k] || 1) * Math.pow(was, 0.8) * lv, rate: rr * (1 - R.quill * (1 - was)), vary: 0 }) : null;
     o.whShut = !!off; whistleCut(o, now, off ? R.xf : R.release);
   }
 }
@@ -13799,7 +14455,7 @@ function whistleCut(o, now, tc) {
    while the cord is pulled; a part-open valve sounds lower and breathier (the quill).
    Doppler comes from the emitter. Synthesized: the voices of 09_audio.js. */
 function whistleMix(T, tv, inCab) {
-  const DSL = T.diesel, key = LOCO_SPEC[GAME.settings.loco].whistle, k = 'wh_' + key, now = AU.ctx.currentTime;
+  const DSL = T.diesel, key = LOCO_SPEC[GAME.settings.loco].whistle, k = whTake(key), now = AU.ctx.currentTime;
   let pull = S.whistle;
   if (SND.has(k)) {
     if (SND.whKey !== k) { if (SND.whistle) SND.whistle.kill(); SND.whistle = new Loop(k, SND.whBus); SND.whKey = k; SND.whPull = 0; }
@@ -13807,7 +14463,7 @@ function whistleMix(T, tv, inCab) {
     pull = whistleValve(SND, pull, now);
     const opening = pull > SND.whPull + 0.002;
     whistleOnset(SND, k, R, pull, SND.whBus, now, lv);
-    SND.whistle.set((SND_GAIN[k] || 1) * Math.pow(pull, DSL ? 0.5 : 0.8) * lv, 1 - R.quill * (1 - pull), whistleTc(SND, R, opening));
+    SND.whistle.set((SND_GAIN[k] || 1) * Math.pow(pull, DSL ? 0.5 : 0.8) * lv, (R.rate || 1) * (1 - R.quill * (1 - pull)), whistleTc(SND, R, opening));
     SND.whPull = pull;
     // the echo comes back off the hills, so it fades less with distance than the whistle itself
     const d = inCab ? 3 : camera.position.distanceTo(T.worldOf(DSL ? T.loco.hornPos : T.loco.whistlePos));
@@ -13947,13 +14603,13 @@ function remoteSound(R, dt, st, d, cam) {
   }
   if (R.bellHit) { R.bellHit = false; if (d < 1200) sndBell(T.diesel, B.g); }   // strokes are timed in fx, where the bell swings
   // whistle or horn: recorded through the emitter (which gives the Doppler), or the synthesized voices
-  const key = LOCO_SPEC[st.lk].whistle, k = 'wh_' + key;
+  const key = LOCO_SPEC[st.lk].whistle, k = whTake(key);
   if (SND.has(k)) {
     if (!B.whistle && st.wh > 0.02) B.whistle = new Loop(k, B.g);
     if (B.whistle) {
       const Rw = WHISTLE_REC[key], now = AU.ctx.currentTime, wh = whistleValve(B, st.wh, now);
       whistleOnset(B, k, Rw, wh, B.g, now);
-      B.whistle.set((SND_GAIN[k] || 1) * Math.pow(wh, T.diesel ? 0.5 : 0.8), 1 - Rw.quill * (1 - wh), whistleTc(B, Rw, wh > (B.whPull || 0)));
+      B.whistle.set((SND_GAIN[k] || 1) * Math.pow(wh, T.diesel ? 0.5 : 0.8), (Rw.rate || 1) * (1 - Rw.quill * (1 - wh)), whistleTc(B, Rw, wh > (B.whPull || 0)));
       B.whistle.tick(); B.whPull = wh;
     }
     return;
@@ -16096,7 +16752,7 @@ function mpOpts(st) {
 function mpLocoLabel(st) {
   if (st && st.other) return 'On another railroad';
   if (!st || st.e < 0) return 'In the menu';
-  const loco = HSR[st.lk] ? HSR[st.lk].name : st.lk === 'diesel' ? (st.lv === 'custom' ? 'Custom' : LIVERIES[st.lv].init) + ' diesel' + (st.u > 1 ? ' ×' + st.u : '') : (st.lk === '765' ? 'NKP 765' : 'PM 1225');
+  const loco = HSR[st.lk] ? HSR[st.lk].name : st.lk === 'diesel' ? (st.lv === 'custom' ? 'Custom' : LIVERIES[st.lv].init) + ' diesel' + (st.u > 1 ? ' ×' + st.u : '') : (st.lk === '765' ? 'NKP 765' : st.lk === '4014' ? 'UP 4014 Big Boy' : 'PM 1225');
   return HSR[st.lk] ? loco : loco + ' · ' + CONSISTS[st.ck].name;
 }
 function mpJoints(T, mem, speed, cp) {
@@ -16441,7 +17097,7 @@ MP.state = function () {
     Object.assign(st, {
       lk: T.locoKey, ck: T.consistKey, u: T.nUnits || 1, lv: g.livery, mx: g.mix ? 1 : 0, cu: g.livery === 'custom' ? [g.custom.body, g.custom.accent, g.custom.letter] : 0, no: g.livery === 'custom' ? (+g.number || 0) : 0, tm: T.trim || '',
       e: f.e.id, s: +f.s.toFixed(2), o: f.o, v: PLACE.on ? 0 : +S.v.toFixed(2), rv: +S.reverser.toFixed(2), wh: +S.whistle.toFixed(2), bl: S.bell ? 1 : 0, cl: S.classLamps ? 1 : 0, hl: S.light, dl: S.ditch ? 1 : 0,
-      ex: T.diesel ? +S.load.toFixed(2) : (S.Psc > 6 && S.cut > 0 && S.throttle > 0.02 ? +clamp((S.Psc / 245) * (0.35 + S.cut * 1.25), 0, 1.3).toFixed(2) : 0),
+      ex: T.diesel ? +S.load.toFixed(2) : (S.Psc > 6 && S.cut > 0 && S.throttle > 0.02 ? +clamp((S.Psc / SK.PL) * (0.35 + S.cut * 1.25), 0, 1.3).toFixed(2) : 0),
       rpm: T.diesel && !T.elec && S.engineRun ? Math.round(S.rpm) : 0, dr: S.derailed ? 1 : 0,
     });
     // a train made up differently from what its engine and train build (cars picked up, set out or placed) says what is in it
@@ -18469,7 +19125,7 @@ function wreckOut(T) {
   const R = T.rb, W = GAME.wrecking; if (!R || !S.derailed) return null;
   return {
     spec: T.wk, broken: [...R.broken], title: W ? W.title : 'Derailed', why: W ? W.why : '',
-    bodies: R.bodies.map(b => ({ i: T.vehicles.indexOf(b.v), M0: m4Out(b.M0), t0: b.t0.map(m4Out), u0: b.u0 ? b.u0.map(m4Out) : null, l0: b.l0 ? m4Out(b.l0) : null, p: b.p.toArray().map(x => rnd(x)), q: b.q.toArray().map(x => rnd(x, 1e5)) })),
+    bodies: R.bodies.map(b => ({ i: T.vehicles.indexOf(b.v), M0: m4Out(b.M0), t0: b.t0.map(m4Out), u0: b.u0 ? b.u0.map(m4Out) : null, l0: b.l0 ? m4Out(b.l0) : null, f0: b.f0 ? m4Out(b.f0) : null, s0: b.s0 ? m4Out(b.s0) : null, p: b.p.toArray().map(x => rnd(x)), q: b.q.toArray().map(x => rnd(x, 1e5)) })),
   };
 }
 /* the pile as it came to rest: each car off the rails where it lay, asleep until it is re-railed */
@@ -18484,7 +19140,7 @@ function wreckIn(T, w) {
       const v = T.vehicles[s.i]; if (!v || v.rb) continue;
       v.root.matrix.fromArray(s.M0);
       const b = R.derail(s.i, 0); if (!b) continue;
-      b.t0 = s.t0.map(m4In); if (s.u0) b.u0 = s.u0.map(m4In); if (s.l0) b.l0 = m4In(s.l0);
+      b.t0 = s.t0.map(m4In); if (s.u0) b.u0 = s.u0.map(m4In); if (s.l0) b.l0 = m4In(s.l0); if (s.f0) b.f0 = m4In(s.f0); if (s.s0) b.s0 = m4In(s.s0);
       b.p.fromArray(s.p); b.q.fromArray(s.q).normalize(); b.lv.set(0, 0, 0); b.av.set(0, 0, 0); b.sleep = true;
       R.pose(b); v.pos.copy(b.p);
     }
@@ -19371,6 +20027,16 @@ const HUD_THEMES = {
       acc: '#c3d0da', dim: '#8fa0b2', txt: '#e4eaf0', cap: '#56626c', glass: '#0b131d' },
     cur: { fill: '#0c1420', edge: '#d6e0e7', lamp: '#bfe3ff' },
   },
+  // Union Pacific 4014: graphite and black iron with Armour Yellow and a scarlet line, like the road's shields
+  up: {
+    name: 'Union Pacific Armour Yellow',
+    css: { steel: '#111214', 'steel-2': '#1b1d20', rule: '#3a3d42', ink: '#eeebe3', 'ink-dim': '#9c9a93', brass: '#f0b323', 'brass-deep': '#8a5f08',
+      panel: 'rgba(17,18,20,.78)', radius: '4px', knob: 'linear-gradient(#ffd25a,#f0b323 50%,#a8700c)', 'knob-edge': '#5b3c05',
+      key: 'linear-gradient(#25272b,#151619)', 'key-edge': '#3f4247', 'key-on': 'linear-gradient(#ffd25a,#e0a10f)', 'key-on-ink': '#161004' },
+    g: { bezel: ['#d7d9db', '#7b7f84', '#2b2d30'], face: '#f3efe4', tick: '#161616', label: '#3b3b3b', needle: '#121212', needle2: '#c8102e', hub: '#1b1b1b',
+      acc: '#f0b323', dim: '#9c9a93', txt: '#eeebe3', cap: '#5a5e63', glass: '#0f1012' },
+    cur: { fill: '#121315', edge: '#f0b323', lamp: '#ff5a4a' },
+  },
   // the Polar Limited holiday finish: evergreen, gold leaf and candy-stripe knobs
   polar: {
     name: 'Polar Limited',
@@ -19415,9 +20081,10 @@ const HUD_THEMES = {
 
 /* which theme an engine wears: the holiday finish only dresses the steam engines */
 function hudThemeKey(loco, finish) {
-  const steam = loco === '765' || loco === '1225';
+  const steam = loco === '765' || loco === '1225' || loco === '4014';
   if (steam && finish === 'polar') return 'polar';
   if (loco === '1225') return 'pm';
+  if (loco === '4014') return 'up';
   if (loco === 'diesel' || loco === 'e5' || loco === 'acela') return loco;
   return 'nkp';
 }
@@ -19427,7 +20094,7 @@ function hudPlate(loco, finish, number) {
   if (loco === 'diesel') return 'AC44 · ' + (number || 4401);
   if (loco === 'e5') return 'E5 · Shinkansen';
   if (loco === 'acela') return 'Acela Express';
-  const n = loco === '1225' ? 'PM 1225' : 'NKP 765';
+  const n = loco === '1225' ? 'PM 1225' : loco === '4014' ? 'UP 4014 · Big Boy' : 'NKP 765';
   return finish === 'polar' ? n + ' · Polar' : n;
 }
 
@@ -20290,6 +20957,7 @@ function resetState() {
   Object.assign(S, { notch: 0, dyn: 0, dbLoad: 0, DBF: 0, rpm: 300, engineRun: true, crank: 0, load: 0, fuel: 18927, turbo: 0.15, ditch: true, ditchFlash: 0, slipCtl: false, amps: 0 });
   Object.assign(S, { pan: 1, panUp: true, vcb: true, vcbT: 0, kW: 0, kWh: 0, rbMax: 0, blend: 0 });   // a trainset comes with its pantograph up and the breaker in
   if (LOCO_SPEC[GAME.settings.loco].diesel) { S.cocks = false; S.light = SKY.night ? 2 : 2; }
+  else { const k = steamK(LOCO_SPEC[GAME.settings.loco]); Object.assign(S, { P: k.PL - 7, water: k.water, coal: k.coal }); }   // a bigger engine comes with its own pressure and tender
 }
 function makeTrain() {
   CARS.clear(GAME.train);
@@ -20361,7 +21029,7 @@ function finishTrain(t) {
 /* colour-space fix-up and fresh brakes for a newly built train (ours or another player's) */
 function prepareTrain(t, keepBrakes) {
   for (const v of t.vehicles) linearizeObject(v.root);
-  if (t.diesel) t.units.forEach(m => m.trucks.forEach(linearizeObject)); else linearizeObject(t.loco.leadTruck);
+  if (t.diesel) t.units.forEach(m => m.trucks.forEach(linearizeObject)); else t.steamExtras().forEach(linearizeObject);
   for (const im of t.inst) linearizeObject(im);
   if (!keepBrakes) for (const v of t.vehicles) v.brake = { AR: 90, BC: 0, BP: 90, emerg: false, released: true };
 }
@@ -20418,6 +21086,7 @@ GAME.swapLive = function () {
   if (old.diesel !== t.diesel) carryOver();
   else if (old.locoKey !== t.locoKey) {
     S.throttle = 0; S.notch = 0; S.dyn = 0;
+    if (!t.diesel) { const k = steamK(LOCO_SPEC[t.locoKey]); S.water = Math.min(S.water, k.water); S.coal = Math.min(S.coal, k.coal); S.P = Math.min(S.P, k.PL); }
     // between a diesel and an electric set: the new power comes up running
     if (old.elec !== t.elec) Object.assign(S, { engineRun: true, crank: 0, rpm: 300, panUp: true, pan: 1, vcb: true, vcbT: 0 });
   }
@@ -20482,7 +21151,7 @@ function segButtons(id, opts, key, onPick) {
 function buildMenu() {
   loadSettings();
   MP.init();
-  const locoOpts = { '765': { name: 'NKP 765', sub: 'S-2 · Lima 1944' }, '1225': { name: 'PM 1225', sub: 'N-1 · Lima 1941' }, 'diesel': { name: 'Wide-cab diesel', sub: 'AC · 4,400 hp' },
+  const locoOpts = { '765': { name: 'NKP 765', sub: 'S-2 · Lima 1944' }, '1225': { name: 'PM 1225', sub: 'N-1 · Lima 1941' }, '4014': { name: 'UP 4014 Big Boy', sub: '4-8-8-4 · Alco 1941' }, 'diesel': { name: 'Wide-cab diesel', sub: 'AC · 4,400 hp' },
     'e5': { name: 'E5 Shinkansen', sub: 'Bullet train · 200 mph' }, 'acela': { name: 'Acela Express', sub: 'High speed · 150 mph' } };
   // the mountain has no wires up for the high-speed sets
   if (ROUTE_KEY === 'laurel' && !PLAY_LAYOUT) { delete locoOpts.e5; delete locoOpts.acela; if (LOCO_SPEC[GAME.settings.loco].hs) GAME.settings.loco = '765'; }
@@ -20535,11 +21204,12 @@ function specGrid() {
     : s.set === 'acela' ? [['2 + 6', 'Power cars + coaches'], ['9,200 kW', '12,400 hp'], ['150 mph', 'In service'], ['664 ft', 'Length'], ['4.2°', 'Coach tilt'], ['99k lbf', 'Starting effort']]
     : s.diesel
     ? [['C-C', 'Wheel arrangement'], ['42 in', 'Wheels'], ['4,400 hp', 'V12 four-stroke'], ['73 ft 2 in', 'Length'], ['183k lbf', 'Starting effort'], ['5,000 gal', 'Fuel']]
+    : s.art ? [['4-8-8-4', 'Articulated'], ['68 in', 'Drivers, 16 of them'], ['4 × 23¾×32 in', 'Cylinders'], ['300 psi', 'Boiler'], [(s.te / 1000).toFixed(1) + 'k lbf', 'Tractive effort'], ['132 ft 9 in', 'Engine & tender']]
     : [['2-8-4', 'Wheel arrangement'], ['69 in', 'Drivers'], ['25×34 in', 'Cylinders'], ['245 psi', 'Boiler'], [(s.te / 1000).toFixed(1) + 'k lbf', 'Tractive effort'], [s.cls + ' · ' + s.short, 'Class']];
   $('specGrid').innerHTML = items.map(([b, l]) => `<div><b>${b}</b><span>${l}</span></div>`).join('');
   const ht = $('helpText');
   if (ht) { if (!ht.dataset.steam) ht.dataset.steam = ht.innerHTML; ht.innerHTML = s.elec ? 'Release the <b>brake</b>, set the <b>reverser</b> forward and notch the <b>power</b> controller. The pantograph is up and the main breaker is in; <b>Pantograph</b> (I) drops it. Slow with the <b>regenerative brake</b>, which also blends in under the train brake. Out on the main a high-speed set runs at its own top speed, and each curve has its own posted limit: watch for it ahead.' : s.diesel ? 'Set the <b>reverser</b> forward, release the <b>engine brake</b>, then notch out the <b>throttle</b>. Every unit in the lashup answers the lead cab. Hold speed down the grades with the <b>dynamic brake</b>, and check the switch card before every turnout: diverging routes are 30 mph.' : ht.dataset.steam; }
-  const ey = document.querySelector('.brandmark .eyebrow'); if (ey) ey.textContent = s.elec ? (s.set === 'e5' ? 'JR East · Shinkansen E5 series' : 'Amtrak · Acela Express') : s.diesel ? (GAME.settings.livery === 'custom' ? 'Custom paint' : LIVERIES[GAME.settings.livery].name) + ' · C-C diesel' : 'Lima Super Power · 2-8-4';
+  const ey = document.querySelector('.brandmark .eyebrow'); if (ey) ey.textContent = s.elec ? (s.set === 'e5' ? 'JR East · Shinkansen E5 series' : 'Amtrak · Acela Express') : s.diesel ? (GAME.settings.livery === 'custom' ? 'Custom paint' : LIVERIES[GAME.settings.livery].name) + ' · C-C diesel' : s.art ? 'Union Pacific · 4000 class Big Boy' : 'Lima Super Power · 2-8-4';
 }
 /* The menu shows one tab of settings at a time. A tab whose groups are all hidden for the chosen engine
    (no paint to pick on a trainset) drops out of the row. Any group added to the form outside a tab
@@ -20831,7 +21501,7 @@ function nearbyService() {
 }
 
 /* ---------------- main loop ---------------- */
-let chuffQ = 0, pumpT = 0, bellT = 0, idleT = 0, prevV = 0, stopT = 0, tipT = 0;
+let chuffQ = 0, chuffQF = 0, pumpT = 0, bellT = 0, idleT = 0, prevV = 0, stopT = 0, tipT = 0;
 function loop() {
   requestAnimationFrame(loop);
   let dt = Math.min(clock.getDelta(), 0.05);
@@ -20877,8 +21547,8 @@ function simStep(dt, T) {
     // filling at water column / coal chute
     if (GAME.filling) {
       if (!nearbyService()) GAME.filling = null;
-      else if (GAME.filling === 'water') { S.water = Math.min(83280, S.water + 240 * dt); if (S.water >= 83279) { GAME.filling = null; toast('Tender full: 22,000 gallons.', 'good'); } }
-      else { S.coal = Math.min(19958, S.coal + 300 * dt); if (S.coal >= 19957) { GAME.filling = null; toast('Coal bunker full: 22 tons.', 'good'); } }
+      else if (GAME.filling === 'water') { S.water = Math.min(SK.water, S.water + 240 * dt); if (S.water >= SK.water - 1) { GAME.filling = null; toast(`Tender full: ${Math.round(SK.water / 3.785 / 1000)},000 gallons.`, 'good'); } }
+      else { S.coal = Math.min(SK.coal, S.coal + 300 * dt); if (S.coal >= SK.coal - 1) { GAME.filling = null; toast(`Coal bunker full: ${Math.round(SK.coal / STON)} tons.`, 'good'); } }
     }
     JOB.tick(dt);
     IND.tick(dt);
@@ -20966,14 +21636,17 @@ function stationStop(T) {
 
 function steamFX(dt, T, tv) {
   const L = T.loco;
-  const n = Math.abs(S.vw) / DRIVER_C;
+  const n = Math.abs(S.vw) / SK.C;
   const stack = T.worldOf(L.stackPos);
   const working = S.Psc > 6 && S.cut > 0 && S.throttle > 0.02;
-  const intensity = clamp((S.Psc / 245) * (0.35 + S.cut * 1.25), 0, 1.3);
-  // exhaust beats: four per driver revolution
-  const q = Math.floor(-S.theta / (Math.PI / 2));
-  if (q !== chuffQ) {
-    const steps = Math.min(6, Math.abs(q - chuffQ));
+  const intensity = clamp((S.Psc / SK.PL) * (0.35 + S.cut * 1.25), 0, 1.3);
+  // exhaust beats: four per driver revolution, from each engine of an articulated (they drift in and out of step)
+  beats(Math.floor(-S.theta / (Math.PI / 2)), 0);
+  if (L.art) beats(Math.floor(-(S.theta + bbDrift(T.dist)) / (Math.PI / 2)), 1);
+  function beats(q, e) {
+  const cq = e ? chuffQF : chuffQ;
+  if (q !== cq) {
+    const steps = Math.min(6, Math.abs(q - cq));
     for (let i = 0; i < steps; i++) {
       const k = q - i;
       if (working) {
@@ -20984,7 +21657,8 @@ function steamFX(dt, T, tv) {
         if (S.cocks) for (const cp of L.cockPos) { const p = T.worldOf(cp); const side = new THREE.Vector3(0, 0, Math.sign(cp.z) * (4 + Math.random() * 3)).applyQuaternion(_cq.setFromRotationMatrix(_cm.extractRotation(L.root.matrixWorld))); emit(p, new THREE.Vector3(tv.x + side.x + T.lead.fwd.x * 3, -0.6, tv.z + side.z + T.lead.fwd.z * 3), 1.1 + Math.random() * 0.4, 0.4, 3.2, 0.7, [0.95, 0.95, 0.97], 0.4, 1.6); }
       } else if (k % 2 === 0 && n > 0.15) sndClank(n);
     }
-    chuffQ = q;
+    if (e) chuffQF = q; else chuffQ = q;
+  }
   }
   idleT += dt;
   if (idleT > 0.09) {
