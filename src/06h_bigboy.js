@@ -264,7 +264,7 @@ function buildBigBoy(key, trim = '') {
   { const ab = 1.66, bx = ax(ab), by = yB + BBOIL.sb[2] + 0.12;
     for (const z of [-0.3, 0.3]) { gb.box('black', 0.5, 0.05, 0.05, ax(ab + 0.23), by + 0.03, z); gb.box('black', 0.08, by + 0.05 - (yB + BBOIL.sb[2] - 0.06), 0.05, ax(2.12), (by + 0.05 + yB + BBOIL.sb[2] - 0.06) / 2, z); }
     gb.cylZ('dark', 0.025, 0.62, 8, bx, by, 0);
-    bellR = bellRig(body, bx, by, 0.9, 0.3); }
+    bellR = bellRig(body, bx, by, 0.9, 0.3, 'up'); }
   // class lamps at the top corners of the smokebox front
   const cls = clsLampSet();
   for (const z of [-0.86, 0.86]) {

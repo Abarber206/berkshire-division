@@ -884,8 +884,8 @@ function effectsAndSound(dt, T) {
   const DSL = T.diesel;
   const tv = new THREE.Vector3().copy(T.lead.fwd).multiplyScalar(S.v);
   const fx = T.elec ? electricFX(dt, T, tv) : T.turb ? turbineFX(dt, T, tv) : DSL ? dieselFX(dt, T, tv) : steamFX(dt, T, tv);
-  const bellP = DSL ? 1.05 : 0.86; let struck = false;
-  if (S.bell) { bellT += dt; if (bellT > bellP) { bellT = 0; struck = true; sndBell(DSL); } } else bellT = 0.8;
+  const BV = bellVoice(GAME.settings.loco), bellP = BV.P; let struck = false;
+  if (S.bell) { bellT += dt; if (bellT > bellP) { bellT = 0; struck = true; sndBell(BV); } } else bellT = 0.8;
   bellSwing(T, S.bell, bellT, bellP, struck, dt);
   if (!DSL && T.loco) clsLampsShow(T.loco.cls, S.classLamps);
   if (!AU.on) return;

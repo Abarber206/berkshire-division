@@ -201,7 +201,7 @@ function buildDiesel(opts) {
   box('dUnder', bellA - 0.16, bellA + 0.16, bellY - 0.03, bellY + 0.025, -0.22, 0.22);                  // base plate on the roof
   for (const s of [-1, 1]) box('dUnder', bellA - 0.035, bellA + 0.035, bellY, bp + 0.05, s * 0.17, s * 0.2);   // stand posts
   gb.cylZ('dSteel', 0.016, 0.4, 8, dx(bellA), bp, 0);                                                  // trunnion shaft
-  const bellRigD = bellRig(body, dx(bellA), bp, bs, 0.35);
+  const bellRigD = bellRig(body, dx(bellA), bp, bs, 0.35, 'diesel');
   const lenses = [];
   for (const y of [3.04, 2.78]) {
     const ln = new THREE.Mesh(new THREE.CircleGeometry(0.105, 20), lead ? RMAT.lens : RMAT.headOff); ln.position.set(dx(N0 - 0.035), y, 0); ln.rotation.y = Math.PI / 2; body.add(ln); lenses.push(ln);

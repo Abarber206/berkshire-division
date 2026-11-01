@@ -302,7 +302,7 @@ function buildTurbineUnit(opts) {
     const bellA = 1.05, bp = GT.sill - 0.2;
     for (const z of [-0.2, 0.2]) box('dark', bellA - 0.035, bellA + 0.035, bp - 0.03, GT.sill + 0.005, z - 0.015, z + 0.015);   // hangers from the frame
     gb.cylZ('dSteel', 0.014, 0.43, 8, dx(bellA), bp, 0);                                                                      // trunnion shaft
-    out.bellRig = bellRig(body, dx(bellA), bp, 0.55, 0.3);
+    out.bellRig = bellRig(body, dx(bellA), bp, 0.55, 0.3, 'gt');
     const beam = headBeam(dx(N0) + 0.1, 3.36); body.add(beam); out.beam = beam;
     const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: haloTex(), color: 0xffffff, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0 }));
     halo.position.set(dx(N0) + 0.16, 3.36, 0); halo.scale.set(2.4, 2.4, 1); body.add(halo); out.halo = halo;

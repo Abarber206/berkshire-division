@@ -18,6 +18,8 @@ function rollingMaterials() {
   RMAT.steel = S(0x5c6064, 0.8, 0.42);
   RMAT.dark = S(0x202123, 0.65, 0.55);
   RMAT.brass = S(0xd4a24a, 1.0, 0.26);
+  // bells: the Nickel Plate's darker cast bronze, the diesel's grey-painted steel
+  RMAT.bronze = S(0x8a5524, 1.0, 0.4); RMAT.bellGrey = S(0x5f6468, 0.25, 0.5);
   RMAT.copper = S(0xb5703f, 1.0, 0.35);
   RMAT.glass = S(0x0a1216, 0.2, 0.06);
   RMAT.white = S(0xe9e7df, 0.1, 0.6);
@@ -50,7 +52,7 @@ function rollingMaterials() {
   RMAT.hit = new THREE.MeshBasicMaterial({ visible: false });
   RMAT.rbEdge = S(0x141516, 0.25, 0.48);   // running-board edge (white on excursion finish)
   RMAT.dWall = S(0x141516, 0.25, 0.5);     // outer face of driver & engine-truck tires
-  for (const k of ['black', 'blackMatte', 'graphite', 'dark', 'tire', 'rod', 'brass', 'green', 'roof', 'oxide', 'oxide2', 'caboose', 'tank', 'steel', 'backhead', 'cabInt', 'wood']) RMAT[k].side = THREE.DoubleSide;
+  for (const k of ['black', 'blackMatte', 'graphite', 'dark', 'tire', 'rod', 'brass', 'bronze', 'bellGrey', 'green', 'roof', 'oxide', 'oxide2', 'caboose', 'tank', 'steel', 'backhead', 'cabInt', 'wood']) RMAT[k].side = THREE.DoubleSide;
   trimMaterials();
   // worn paint on the engines' black, the smokebox's heat-dulled graphite, oily running gear, dirty frames and trucks
   wear(RMAT.black); wear(RMAT.blackMatte, 0.6, 21); wear(RMAT.graphite, 0.35, 22); wear(RMAT.dark, 0.5, 23); wear(RMAT.rod); wear(RMAT.steel, 0.35, 24);
@@ -425,7 +427,7 @@ function buildBerkshire(key, trim = '') {
     for (const z of [-0.3, 0.3]) gb.box('black', 0.06, 0.38, 0.05, bx, by + 0.2, z);
     gb.cylZ('dark', 0.025, 0.62, 8, bx, by + 0.22, 0);
     gb.box('black', 0.08, 0.06, 0.66, bx, by + 0.4, 0);
-    bellR = bellRig(body, bx, by + 0.22, 1, 0.3);
+    bellR = bellRig(body, bx, by + 0.22, 1, 0.3, key === '765' ? 'nkp' : 'pm');
   };
   /* A Pyle-National headlight case: a drum with a rounded back, a hinged front door whose rim holds the lens
      a little behind its lip, a visor over the top of the door, a ventilator cap on top, the door hinge on the
@@ -758,10 +760,25 @@ function buildBerkshire(key, trim = '') {
 /* A locomotive bell that swings on its yoke while it rings. (x, y) is the trunnion axis, which runs across the
    engine, s scales the 765's bell (0.25 m across the mouth) and A is the swing either way in radians. The bell,
    its clapper and the ringer's crank arm are built round the axis in their own group; bellSwing turns it. */
-function bellRig(parent, x, y, s = 1, A = 0.3) {
-  const gb = new GeoBin(), py = 0.22;
-  gb.add('brass', new THREE.LatheGeometry([[0, 0.27], [0.09, 0.27], [0.16, 0.24], [0.21, 0.13], [0.25, 0.0], [0.24, -0.01]].map(p => new THREE.Vector2(p[0] * s, (p[1] - py) * s)), 28));
-  gb.add('brass', new THREE.LatheGeometry([[0.2, 0.0], [0.21, 0.13], [0.16, 0.24], [0.0, 0.25]].map(p => new THREE.Vector2(p[0] * s, (p[1] - py) * s)), 28));   // inside of the bell
+/* Each engine's bell has its own casting (BELL_LOOK), all inside the same swing envelope:
+   pm    the Pere Marquette's polished brass bell, a plain classic profile
+   nkp   the Nickel Plate's darker cast bronze, waisted, with a bead at the crown and a heavy lip
+   up    the Big Boy's tall polished brass bell with a stepped crown and a ring cast round the waist
+   diesel a small grey steel bell, straight-sided like a modern air-rung bell
+   gt    the gas turbine's squat black-painted bell, hung under the frame behind the pilot */
+const BELL_LOOK = {
+  pm: { mat: 'brass', out: [[0, 0.27], [0.09, 0.27], [0.16, 0.24], [0.21, 0.13], [0.25, 0.0], [0.24, -0.01]], inn: [[0.24, -0.01], [0.2, 0.0], [0.21, 0.13], [0.16, 0.24], [0.0, 0.25]] },
+  nkp: { mat: 'bronze', out: [[0, 0.275], [0.06, 0.275], [0.085, 0.262], [0.075, 0.25], [0.14, 0.235], [0.165, 0.16], [0.18, 0.08], [0.23, 0.03], [0.25, 0.0], [0.245, -0.012]],
+    inn: [[0.245, -0.012], [0.21, -0.012], [0.17, 0.03], [0.155, 0.1], [0.14, 0.2], [0.0, 0.22]] },
+  up: { mat: 'brass', out: [[0, 0.28], [0.05, 0.28], [0.06, 0.265], [0.12, 0.26], [0.13, 0.245], [0.17, 0.2], [0.19, 0.12], [0.205, 0.115], [0.205, 0.095], [0.21, 0.07], [0.235, 0.015], [0.24, 0.0], [0.228, -0.006]],
+    inn: [[0.228, -0.006], [0.212, -0.006], [0.18, 0.06], [0.16, 0.18], [0.0, 0.23]] },
+  gt: { mat: 'black', out: [[0, 0.2], [0.1, 0.2], [0.13, 0.19], [0.18, 0.12], [0.215, 0.05], [0.245, 0.0], [0.24, -0.012]], inn: [[0.24, -0.012], [0.21, -0.012], [0.19, 0.04], [0.15, 0.13], [0.0, 0.17]] },
+  diesel: { mat: 'bellGrey', out: [[0, 0.26], [0.13, 0.26], [0.14, 0.25], [0.2, 0.06], [0.235, 0.0], [0.225, -0.01]], inn: [[0.225, -0.01], [0.2, -0.01], [0.17, 0.08], [0.12, 0.24], [0.0, 0.245]] },
+};
+function bellRig(parent, x, y, s = 1, A = 0.3, look = 'pm') {
+  const gb = new GeoBin(), py = 0.22, L = BELL_LOOK[look] || BELL_LOOK.pm;
+  gb.add(L.mat, new THREE.LatheGeometry(L.out.map(p => new THREE.Vector2(p[0] * s, (p[1] - py) * s)), 28));
+  gb.add(L.mat, new THREE.LatheGeometry(L.inn.map(p => new THREE.Vector2(p[0] * s, (p[1] - py) * s)), 28));   // inside of the bell
   gb.cyl('dark', 0.01 * s, 0.01 * s, 0.16 * s, 6, 0, -0.1 * s, 0); gb.add('dark', new THREE.SphereGeometry(0.035 * s, 10, 8).translate(0, -0.19 * s, 0));    // clapper
   gb.box('black', 0.04 * s, 0.16 * s, 0.03 * s, 0, 0.07 * s, 0.25 * s);                                                     // ringer's crank arm
   gb.cylZ('black', 0.045 * s, 0.05 * s, 10, 0, 0, 0.25 * s);
