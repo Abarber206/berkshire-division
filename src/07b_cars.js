@@ -6,11 +6,14 @@
 const CARS = { cuts: [], geo: null, gen: 0, cutAt: 0, cutFrom: null };
 
 /* cars spotted around the railroad when a new train is made up (single player) */
+/* Each car is 'type/lading>destination' (industries in 11k_industry.js): no lading is an empty, and the
+   cut's first car stands at its east end. Yard 3 holds the way freight for Kenton and Delphos, made up so
+   the cars for the first stop are at the far end from the engine; Yard 4 the empties the shippers ordered. */
 const YARD_CUTS = [
-  { line: 'Yard 3', at: 0.62, cars: ['box', 'box', 'tank', 'box', 'hopper', 'hopper', 'box', 'gon', 'box', 'tank'] },
-  { line: 'Yard 4', at: 0.78, cars: ['hopper', 'hopper', 'hopper', 'hopper', 'hopper', 'hopper'] },
-  { line: 'Elevator Track', end: 24, cars: ['box', 'box', 'box', 'box'] },     // grain moved in boxcars in the 1940s
-  { line: 'Quarry Storage', end: 20, cars: ['hopper', 'hopper', 'gon', 'gon', 'hopper'] },
+  { line: 'Yard 3', at: 0.62, cars: ['tank/oil>delphos', 'tank/oil>delphos', 'box/feed>kenton', 'hopper/coal>kenton', 'hopper/coal>kenton'] },
+  { line: 'Yard 4', at: 0.78, cars: ['box/>elevator', 'box/>elevator', 'box/>elevator', 'hopper/>quarry', 'hopper/>quarry', 'hopper/>quarry', 'gon/>quarry', 'gon/>quarry'] },
+  { line: 'Elevator Track', end: 24, cars: ['box/grain>yard', 'box/grain>yard', 'box/grain>yard', 'box/grain>yard'] },     // grain moved in boxcars in the 1940s
+  { line: 'Quarry Storage', end: 20, cars: ['hopper/stone>yard', 'hopper/stone>yard', 'gon/stone>yard', 'gon/stone>yard', 'hopper/stone>yard'] },
 ];
 const CAR_NAMES = { box: 'Box', hopper: 'Hopper', tank: 'Tank', gon: 'Gon', caboose: 'Caboose', coach: 'Coach', tender: 'Tender' };
 /* closing speeds: clean, hard, damaging (lading and draft gear), and a wreck that derails the cars */
@@ -63,6 +66,7 @@ CARS.clear = function (oldTrain, all) {
 };
 CARS.setup = function () {
   if (MP.on || WORLD.custom) return;
+  IND.reset();
   CARS.yard();
 };
 /* the cuts spotted around the yard, as every new run (and every room) starts with them. In a room each car is
@@ -74,11 +78,13 @@ CARS.yard = function (road) {
   let num = 21000;
   YARD_CUTS.forEach((def, i) => {
     const line = ROUTE.lines[def.line]; if (!line) return;
-    const vehicles = def.cars.map(type => {
+    const vehicles = def.cars.map(spec => {
+      const { type, ld, to } = IND.parse(spec);
       const m = freightModel(type, num += 7 + ((r() * 40) | 0), r);
       scene.add(m.root); linearizeObject(m.root);
       const v = carVehicle(m); v.yard = true; v.hb = true; v.made = { type, num, rs: ROAD_SHORT };
       v.brake = { AR: 0, BC: 0, BP: 0, emerg: false, released: true };   // bled off and tied down
+      IND.setLoad(v, ld); IND.bill(v, to);
       return v;
     });
     const c = new Cut(scene, vehicles);

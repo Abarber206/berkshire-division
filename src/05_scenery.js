@@ -63,6 +63,8 @@ function sceneryMaterials() {
   SMAT.yardLimit = new THREE.MeshLambertMaterial({ map: canvasTex(256, 96, (g, w, h) => { g.fillStyle = '#f2f1ec'; g.fillRect(0, 0, w, h); g.fillStyle = '#111'; g.font = 'bold 40px Arial Narrow, Arial'; g.textAlign = 'center'; g.fillText('YARD', w / 2, 42); g.fillText('LIMIT', w / 2, 84); }) });
 }
 const nameBoard = (txt) => new THREE.MeshLambertMaterial({ map: canvasTex(512, 96, (g, w, h) => { g.fillStyle = '#1b1d1c'; g.fillRect(0, 0, w, h); g.strokeStyle = '#e8e3d0'; g.lineWidth = 5; g.strokeRect(8, 8, w - 16, h - 16); g.fillStyle = '#efe9d6'; g.font = 'bold 58px "Arial Narrow", Arial'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(txt, w / 2, h / 2 + 3); }) });
+/* a name board whose lettering is sized to fit, for the longer firm names */
+const nameBoardFit = (txt) => new THREE.MeshLambertMaterial({ map: canvasTex(512, 96, (g, w, h) => { g.fillStyle = '#1b1d1c'; g.fillRect(0, 0, w, h); g.strokeStyle = '#e8e3d0'; g.lineWidth = 5; g.strokeRect(8, 8, w - 16, h - 16); g.fillStyle = '#efe9d6'; let f = 58; g.font = `bold ${f}px "Arial Narrow", Arial`; const tw = +g.measureText(txt).width || 0; if (tw > w - 48) { f = Math.floor(f * (w - 48) / tw); g.font = `bold ${f}px "Arial Narrow", Arial`; } g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(txt, w / 2, h / 2 + 3); }) });
 const numberPlate = (txt) => new THREE.MeshLambertMaterial({ map: canvasTex(64, 128, (g, w, h) => { g.fillStyle = '#f0eee6'; g.fillRect(0, 0, w, h); g.fillStyle = '#111'; g.font = 'bold 30px Arial'; g.textAlign = 'center'; const t = String(txt); for (let i = 0; i < t.length; i++) g.fillText(t[i], w / 2, 34 + i * 30); }) });
 
 /* -------- placement helpers -------- */
@@ -459,6 +461,139 @@ function grainElevator(pl) {
   keep(pl.X, pl.N, 34);
   const nb = nameBoard('FOSTORIA GRAIN CO.'); SMAT.nbGrain = nb;
   gb.add('nbGrain', new THREE.PlaneGeometry(8.4, 1.47), P(base, 21, 43.6, 1.79, 0, Math.PI, 0));
+}
+/* ---------- the customers on the two industry spurs ----------
+   Each is laid out in a frame on its spur: local x along the track, z outward (away from the main), y = 0 at the
+   railhead. A boxcar's floor is 1.17 m above the rail, so the docks stand at that height, 2.0 m from the track
+   centre (a car body is 1.63 m either side); anything lower than 4.9 m keeps out of the 1.9 m swept envelope. */
+function spurFrame(name, s) {
+  const ln = ROUTE.lines[name]; if (!ln) return null;
+  const skip = ln.edges, a = linePlace(ln, s, 10), b = linePlace(ln, s, -10);
+  const out = trackGap(a.X, a.N, skip) >= trackGap(b.X, b.N, skip) ? 1 : -1;   // the side away from the other tracks
+  const pl = linePlace(ln, s, 0);
+  return { pl, base: baseM(pl.X, pl.y, pl.N, pl.yaw + (out > 0 ? 0 : Math.PI)), gb: binAt(pl.X, pl.N) };
+}
+/* a timber freight dock along the track: x0..x1, from z0 out to z1, top at y */
+function freightDock(gb, base, x0, x1, z0, z1, y) {
+  const L = x1 - x0, xc = (x0 + x1) / 2, W = z1 - z0, zc = (z0 + z1) / 2;
+  gb.add('wood', boxT(L, 0.12, W, 2), P(base, xc, y - 0.06, zc));                       // deck planks
+  gb.add('trim', boxT(L, 0.22, 0.14, 2), P(base, xc, y - 0.13, z0 + 0.07));             // rub rail on the track face
+  footing(gb, 'wood', base, xc, z0 + 0.12, L, 0.24, y - 0.12);                          // timber face, down into the ground
+  for (let x = x0 + 0.3; x <= x1 - 0.29; x += (L - 0.6) / Math.max(1, Math.round((L - 0.6) / 2.4))) footing(gb, 'trim', base, x, zc + 0.2, 0.3, W - 0.6, y - 0.12);   // posts
+  walkDeck(base, xc, zc, L, W, y);
+}
+function kentonCoalFeed() {
+  const F = spurFrame('Kenton Spur', 225); if (!F) return;
+  const { base, gb } = F, dock = 1.17;
+  /* the feed house: a frame warehouse on a dock, sliding doors to the track, a gable roof with a name board */
+  const wx0 = -38, wx1 = -8, wz0 = 4.0, wz1 = 15, wL = wx1 - wx0, wW = wz1 - wz0, wxc = (wx0 + wx1) / 2, wzc = (wz0 + wz1) / 2, wH = 5.2;
+  const [glo, ghi] = groundUnder(base, wxc, wzc, wL, wW), floor = Math.max(dock, ghi + 0.15);
+  freightDock(gb, base, wx0 - 2, wx1 + 2, 2.0, wz0 + 0.05, dock);
+  footing(gb, 'concrete', base, wxc, wzc, wL + 0.2, wW + 0.2, floor);
+  gb.add('barn', boxT(wL, wH, wW, 2.5), P(base, wxc, floor + wH / 2, wzc)); foot(base, wxc, wzc, wL, wW);
+  walkBlock(base, wxc, wzc, wL, wW, floor - 1, floor + wH);
+  gb.add('trim', boxT(wL + 0.12, 0.2, wW + 0.12), P(base, wxc, floor + wH - 0.1, wzc));
+  gb.add('tin', gableRoof(wL, wW, 2.4, 0.5), P(base, wxc, floor + wH, wzc));
+  for (const x of [-31, -16]) {           // sliding doors on their track, a little proud of the wall
+    gb.add('trim', boxT(3.4, 3.2, 0.08, 2), P(base, x, floor + 1.6, wz0 - 0.05));
+    gb.add('steel', new THREE.BoxGeometry(7.2, 0.12, 0.12), P(base, x + 1.7, floor + 3.32, wz0 - 0.12));
+  }
+  windowsRow(gb, base, -25, -21, floor + 2.6, wz0, 1.0, 1.3, 2, -1);
+  windowsRow(gb, base, wx0 + 3, wx1 - 3, floor + 2.6, wz1, 1.0, 1.3, 5);
+  SMAT.nbKenton = nameBoardFit('KENTON COAL & FEED');
+  gb.add('nbKenton', new THREE.PlaneGeometry(7.5, 1.4), P(base, wxc + 0.5, floor + 4.3, wz0 - 0.03, 0, Math.PI, 0));
+  /* the coal pocket: three concrete silos fed by a bucket elevator from a track hopper under the spur */
+  const sz = 10.5, sr = 3.1, sh = 15, sxs = [4, 10.8, 17.6];
+  const [slo, shi] = groundUnder(base, 10.8, sz, 21, 2 * sr + 1), sy = shi + 0.25;
+  footing(gb, 'concrete', base, 10.8, sz, 21.2, 2 * sr + 1, sy);
+  for (const x of sxs) { gb.add('concrete', new THREE.CylinderGeometry(sr, sr, sh, 28), P(base, x, sy + sh / 2, sz)); gb.add('concrete', new THREE.CylinderGeometry(sr + 0.12, sr + 0.12, 0.35, 28), P(base, x, sy + sh + 0.17, sz)); walkPost(base, x, sz, sr, sh); }
+  foot(base, 10.8, sz, 21, 2 * sr);
+  gb.add('tin', boxT(18.4, 2.4, 3.2, 2), P(base, 10.8, sy + sh + 1.55, sz));                    // gallery over the silos
+  gb.add('tin', gableRoof(18.4, 3.2, 0.8, 0.2), P(base, 10.8, sy + sh + 2.75, sz));
+  // the elevator leg stands beside the track, its boot in the track hopper pit
+  const lx = 10.8, lz = 4.2, top = sy + sh + 5;
+  gb.add('tin', boxT(1.6, top + 1.2, 1.6, 2), P(base, lx, top / 2 - 0.6, lz)); walkPost(base, lx, lz, 1.1, top);
+  footing(gb, 'concrete', base, lx, lz, 2.0, 2.0, 0.05);
+  gb.add('tin', boxT(2.6, 2.6, 2.6, 2), P(base, lx, top + 1.3, lz)); gb.add('tin', gableRoof(2.6, 2.6, 0.8, 0.15), P(base, lx, top + 2.6, lz));
+  const dz = sz - lz, dy = top - 0.2 - (sy + sh + 2.2);   // spout from the head down to the gallery
+  gb.add('steel', new THREE.BoxGeometry(0.6, 0.6, Math.hypot(dz, dy) - 1.0), P(base, lx, top - 0.2 - dy / 2, lz + dz / 2, Math.atan2(dy, dz), 0, 0));
+  gb.add('steel', new THREE.BoxGeometry(2.2, 0.08, 1.4), P(base, lx, 0.0, 0));             // track hopper grating between the rails
+  // truck loading chutes on the far side
+  for (const x of sxs) gb.add('steel', new THREE.BoxGeometry(0.7, 0.7, 2.6), P(base, x, sy + 3.6, sz + sr + 0.6, 0.6, 0, 0));
+  /* the office and scale house, with the truck scale in front */
+  const ox = 28, oz = 11, [olo, ohi] = groundUnder(base, ox, oz, 6, 5), oy = ohi + 0.25;
+  footing(gb, 'brick', base, ox, oz, 6.2, 5.2, oy);
+  gb.add('white', boxT(6, 3.2, 5, 2), P(base, ox, oy + 1.6, oz)); foot(base, ox, oz, 6, 5); walkBlock(base, ox, oz, 6, 5, oy - 1, oy + 3.2);
+  gb.add('slate', hipRoof(6, 5, 1.6, 0.4), P(base, ox, oy + 3.2, oz));
+  windowsRow(gb, base, ox - 1.5, ox + 1.5, oy + 1.7, oz - 2.5, 1.0, 1.2, 2, -1);
+  const [clo] = groundUnder(base, ox, oz + 8, 3.6, 9);
+  gb.add('concrete', boxT(3.6, 0.4, 9, 2), P(base, ox, clo + 0.12, oz + 8)); gb.add('steel', new THREE.BoxGeometry(3.2, 0.06, 8.6), P(base, ox, clo + 0.34, oz + 8));
+  for (const [x, z, r] of [[wxc, wzc, 22], [10.8, sz, 14], [ox, oz + 4, 9]]) { const c = new THREE.Vector3(x, 0, z).applyMatrix4(base); keep(c.x, -c.z, r); }
+}
+function delphosOil() {
+  const F = spurFrame('Delphos Spur', 235); if (!F) return;
+  const { base, gb } = F;
+  /* the unloading rack: a timber walkway at tank-dome height beside the track, posts, stairs, and stairs; the unloading line runs from the rack out to the tanks */
+  const rz0 = 2.05, rz1 = 3.05, ry = 3.72, rx0 = -14, rx1 = 14;
+  gb.add('wood', boxT(rx1 - rx0, 0.1, rz1 - rz0, 2), P(base, 0, ry - 0.05, (rz0 + rz1) / 2));
+  for (let x = rx0 + 0.2; x <= rx1 - 0.19; x += (rx1 - rx0 - 0.4) / 7) for (const z of [rz0 + 0.12, rz1 - 0.12]) {
+    const [lo] = groundUnder(base, x, z, 0.4, 0.4);
+    gb.add('trim', boxT(0.2, ry - 0.1 - lo + 0.3, 0.2), P(base, x, (ry - 0.1 + lo - 0.3) / 2, z)); walkPost(base, x, z, 0.15, ry);
+  }
+  for (const x of [rx0 + 0.1, rx1 - 0.1]) gb.add('steel', new THREE.BoxGeometry(0.05, 1.0, 0.05), P(base, x, ry + 0.5, rz1 - 0.05));
+  gb.add('steel', new THREE.BoxGeometry(rx1 - rx0, 0.05, 0.05), P(base, 0, ry + 1.0, rz1 - 0.05));   // handrail on the back of the walkway
+  { // stairs down the back at the west end
+    const [lo] = groundUnder(base, rx0 + 1.5, rz1 + 2.2, 1.2, 4), h = ry - lo, run = h * 1.1;
+    gb.add('wood', boxT(1.1, 0.12, Math.hypot(h, run)), P(base, rx0 + 1.2, (ry + lo) / 2, rz1 + run / 2, Math.atan2(h, run), 0, 0));
+    for (const x of [rx0 + 0.65, rx0 + 1.75]) gb.add('wood', boxT(0.06, 0.25, Math.hypot(h, run)), P(base, x, (ry + lo) / 2 + 0.1, rz1 + run / 2, Math.atan2(h, run), 0, 0));
+  }
+  walkDeck(base, 0, (rz0 + rz1) / 2, rx1 - rx0, rz1 - rz0, ry);
+  /* the tanks, inside an earth dike, each on a concrete ring */
+  const tz = 21, tanks = [[-13, 4.2, 9.5], [0, 4.2, 9.5], [13, 4.2, 9.5], [24, 2.6, 6.5]];
+  let ty = -Infinity; for (const [x, r] of tanks) ty = Math.max(ty, groundUnder(base, x, tz, 2 * r + 1, 2 * r + 1)[1] + 0.35);
+  for (const [x, r, h] of tanks) {
+    const [lo] = groundUnder(base, x, tz, 2 * r + 1, 2 * r + 1);
+    gb.add('concrete', new THREE.CylinderGeometry(r + 0.4, r + 0.5, ty - lo + 0.3, 28), P(base, x, (ty + lo - 0.3) / 2, tz));
+    gb.add('silver', new THREE.CylinderGeometry(r, r, h, 32), P(base, x, ty + h / 2, tz));
+    gb.add('silver', new THREE.ConeGeometry(r + 0.08, 0.7, 32), P(base, x, ty + h + 0.35, tz));
+    for (const y of [h * 0.33, h * 0.66]) gb.add('steel', new THREE.CylinderGeometry(r + 0.03, r + 0.03, 0.08, 32, 1, true), P(base, x, ty + y, tz));
+    // ladder up the side facing the track, with a hoop cage at the top
+    for (const dx of [-0.22, 0.22]) gb.add('steel', new THREE.BoxGeometry(0.05, h, 0.05), P(base, x + dx, ty + h / 2, tz - r - 0.2));
+    for (let y = 0.4; y < h; y += 0.4) gb.add('steel', new THREE.BoxGeometry(0.44, 0.03, 0.03), P(base, x, ty + y, tz - r - 0.2));
+    for (const dx of [-0.22, 0.22]) gb.add('steel', new THREE.BoxGeometry(0.04, 0.04, 0.2), P(base, x + dx, ty + h - 0.3, tz - r - 0.1));
+    walkPost(base, x, tz, r, h);
+    foot(base, x, tz, 2 * r, 2 * r);
+  }
+  // the fire wall: a low concrete wall all round the tank field, its top level, its foot in the ground
+  const wTop = ty + 0.8, wx0 = -20, wx1 = 30, wz0 = 14, wz1 = 28;
+  for (const [x, z, L, W] of [[(wx0 + wx1) / 2, wz0, wx1 - wx0 + 0.3, 0.3], [(wx0 + wx1) / 2, wz1, wx1 - wx0 + 0.3, 0.3], [wx0, (wz0 + wz1) / 2, 0.3, wz1 - wz0], [wx1, (wz0 + wz1) / 2, 0.3, wz1 - wz0]]) {
+    const n = Math.max(1, Math.round(Math.max(L, W) / 5));
+    for (let k = 0; k < n; k++) {   // in short panels, so each one's foot follows the ground under it
+      const px = L > W ? x - L / 2 + (k + 0.5) * L / n : x, pz = L > W ? z : z - W / 2 + (k + 0.5) * W / n, pl = L > W ? L / n : L, pw = L > W ? W : W / n;
+      footing(gb, 'concrete', base, px, pz, pl + 0.02, pw + 0.02, wTop);
+    }
+    walkBlock(base, x, z, L, W, -2, wTop);
+  }
+  // the unloading line: up from under the rack, on piers over the fire wall, and into the side of the middle tank
+  const pipe = [[-6, 3.4], [-6, 17], [0, 17]], py = wTop + 0.45;
+  for (let i = 0; i + 1 < pipe.length; i++) {
+    const [ax, az] = pipe[i], [bx, bz] = pipe[i + 1], L = Math.hypot(bx - ax, bz - az), n = Math.max(1, Math.round(L / 3.5));
+    gb.add('steel', barGeo(0.11, [ax, py, az], [bx, py, bz], 10), base);
+    for (let k = i ? 1 : 0; k < n; k++) { const x = lerp(ax, bx, k / n), z = lerp(az, bz, k / n); if (Math.abs(z - wz0) < 0.5) continue; footing(gb, 'concrete', base, x, z, 0.35, 0.35, py - 0.11); }
+  }
+  gb.add('steel', new THREE.SphereGeometry(0.13, 10, 8), P(base, -6, py, 17));
+  { const [lo] = groundUnder(base, -6, 3.4, 0.3, 0.3); gb.add('steel', barGeo(0.11, [-6, lo - 0.2, 3.4], [-6, py, 3.4], 10), base); gb.add('steel', new THREE.SphereGeometry(0.13, 10, 8), P(base, -6, py, 3.4)); }
+  /* the warehouse and office: brick, with a truck dock and a loading rack for the delivery trucks */
+  const hx = -36, hz = 14, hL = 14, hW = 8, [hlo, hhi] = groundUnder(base, hx, hz, hL, hW), hy = hhi + 0.3;
+  footing(gb, 'concrete', base, hx, hz, hL + 0.2, hW + 0.2, hy);
+  gb.add('brick', boxT(hL, 4.2, hW, 2), P(base, hx, hy + 2.1, hz)); foot(base, hx, hz, hL, hW); walkBlock(base, hx, hz, hL, hW, hy - 1, hy + 4.2);
+  gb.add('trim', boxT(hL + 0.12, 0.22, hW + 0.12), P(base, hx, hy + 4.1, hz));
+  gb.add('tin', gableRoof(hL, hW, 1.4, 0.4), P(base, hx, hy + 4.2, hz));
+  windowsRow(gb, base, hx - 4, hx + 4, hy + 2.3, hz - hW / 2, 1.0, 1.3, 3, -1);
+  gb.add('trim', boxT(3, 3, 0.08, 2), P(base, hx + 4.5, hy + 1.5, hz + hW / 2 + 0.04));
+  SMAT.nbDelphos = nameBoardFit('DELPHOS OIL CO.');
+  gb.add('nbDelphos', new THREE.PlaneGeometry(5, 0.9), P(base, hx, hy + 3.45, hz - hW / 2 - 0.03, 0, Math.PI, 0));
+  for (const [x, z, r] of [[0, 21, 26], [hx, hz, 10]]) { const c = new THREE.Vector3(x, 0, z).applyMatrix4(base); keep(c.x, -c.z, r); }
 }
 function interlockingTower(pl, label) {
   const base = baseM(pl.X, pl.y - 0.2, pl.N, pl.yaw + (pl.lat < 0 ? 0 : Math.PI));
@@ -946,6 +1081,7 @@ function buildStations() {
   yardFloods();
   const fe = ROUTE.lines['Elevator Track'];
   const ge = linePlace(fe, 190, -24); ge.lat = -1; grainElevator(ge);
+  kentonCoalFeed(); delphosOil();
   // Quarry Jct tower
   const sw = NET.switches.find(s => s.name === 'Quarry Jct');
   const lineMain = ROUTE.main;

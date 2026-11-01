@@ -685,6 +685,7 @@ function simStep(dt, T) {
       else { S.coal = Math.min(19958, S.coal + 300 * dt); if (S.coal >= 19957) { GAME.filling = null; toast('Coal bunker full: 22 tons.', 'good'); } }
     }
     JOB.tick(dt);
+    IND.tick(dt);
     AI.tick(dt);
     // station stop detection
     if (Math.abs(S.v) < 0.05) { stopT += dt; if (stopT > 1.2) stationStop(T); } else stopT = 0;

@@ -216,6 +216,19 @@ function buildRoute() {
   const ken = div('Kenton Siding', sK1, -4.5, RS, KL - 2 * jS, true, { kind: 'siding', limit: 30, startNode: nK1, endNode: nK2 });
   const kenProf = projMain(sK1 + KL / 2);
 
+  /* ---------- industry spurs ----------
+     Kenton Coal & Feed off the Kenton siding, and the Delphos Oil bulk plant off track 1, both on the outside of
+     the loop. Each trails for a train working round on track 1 (+s): it pulls by the switch and backs its cars
+     in, with no runaround. So a spur leaves its switch heading back down the line (-s). */
+  const backSpur = (name, from, s, len) => {
+    const p = from.poseAt(s), node = from.cut(s);
+    const b = new PathBuilder(p.X, p.N, p.h + Math.PI); b.jog(4.5, RY); b.straight(len);
+    return { line: new Line(name, b.pts, { kind: 'yard', limit: 10, startNode: node }), node, from };
+  };
+  const kSp = backSpur('Kenton Spur', ken.line, 1250, 300);
+  const sDel = 17950, dSp = backSpur('Delphos Spur', main, sDel, 300);
+  const delProf = projMain(sDel - 180);
+
   /* ---------- Quarry branch ---------- */
   const sBR = sBridge + 900;
   const nBR = main.cut(sBR);
@@ -264,6 +277,8 @@ function buildRoute() {
   fos.line.build((s, X, N) => mainY(fosProf(X, N)));
   spur.build((s, X, N) => mainY(fosProf(X, N)));
   ken.line.build((s, X, N) => mainY(kenProf(X, N)));
+  kSp.line.build((s, X, N) => mainY(kenProf(X, N)));
+  dSp.line.build((s, X, N) => mainY(delProf(X, N)));
   branch.build((s) => brY(s));
   run.build((s, X, N) => brY(brProj(X, N)));
   stub.build((s, X, N) => brY(brProj(X, N)));
@@ -294,6 +309,11 @@ function buildRoute() {
   SW('Quarry South', nQ1, branch, run, true, ['Branch', 'Runaround']);
   SW('Quarry North', nQ2, branch, run, false, ['Branch', 'Runaround']);
   SW('Storage', nQS, run, stub, true, ['Runaround', 'Storage']);
+  // the spurs leave toward the line's 'before' side, so the trunk is the track beyond the switch
+  for (const [sp, legs] of [[kSp, ['Siding', 'Spur']], [dSp, ['Main', 'Spur']]]) {
+    const lm = sp.from.map.get(sp.node);
+    NET.addSwitch(sp.node, lm.after, lm.before, sp.line.first(), sp.line.name, legs).industry = true;
+  }
   // the two switches of a crossover are thrown together
   for (const x of xos) {
     const a = SW(x.line.name, x.nA, x.from, x.line, true, [x.from === main ? 'Track 1' : 'Track 2', 'Crossover']);
