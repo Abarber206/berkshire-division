@@ -131,7 +131,18 @@ const trainPower = T => T.vehicles.filter(v => !v.helper && (isPower(v) || (T.el
 /* the whole train front to back as tokens joined by commas */
 function trainCode(T) {
   const power = trainPower(T);
-  return T.vehicles.map(v => { const i = power.indexOf(v); return i >= 0 ? '#' + i : carToken(v); }).join(',');
+  const groups = [];
+  return T.vehicles.map(v => {
+    const i = power.indexOf(v); if (i >= 0) return '#' + i;
+    // a helper engine coupled in: @engine.vehicle.group.units.livery, built from its own engine at the other end
+    const h = v.helper;
+    if (h && LOCO_SPEC[h.loco]) {
+      let gi = groups.indexOf(h.g); if (gi < 0) gi = groups.push(h.g) - 1;
+      const o = h.opts || {}, lv = /^[a-z0-9]{1,12}$/i.test(o.livery || '') ? o.livery : '';
+      return `@${h.loco}.${h.i | 0}.${gi}.${Math.max(1, Math.min(3, o.units | 0 || 1))}.${lv}`;
+    }
+    return carToken(v);
+  }).join(',');
 }
 /* a car built from its token (not on the track yet) */
 function carFromToken(k) {

@@ -94,6 +94,8 @@ test('with a knuckle open two trains couple: the other engine is a helper, MU\'d
   assert.ok(A.vehicles[0].helper && A.vehicles[1].helper && !A.vehicles[2].helper);
   assert.equal(sim.helperK(A), 2, 'two engines pulling');
   assert.ok(sim.log.toasts.some(t => /MU/.test(t.msg)));
+  // the room is told it is an engine, not a car
+  assert.match(sim.trainCode(A), /^@765\.0\.0\.1\.,@765\.1\.0\.1\.,#0,#1,/);
   // cut it off again: back to one engine
   sim.CARS.uncouple(2, A);
   assert.deepEqual(A.vehicles.map(v => v.kind), ['loco', 'tender', 'box', 'box']);
