@@ -343,9 +343,9 @@
   "name": "wh_chime6",
   "kind": "loop",
   "src": "steam-exhaust/gcry-29-4960-doubleheader-arriving.flac",
-  "start": 105.5,
-  "end": 108.3,
-  "len": 2.0,
+  "start": 105.4,
+  "end": 108.4,
+  "len": 2.6,
   "db": -14,
   "hp": 200,
   "lp": 4000
@@ -356,6 +356,24 @@
   "src": "steam-exhaust/gcry-29-4960-doubleheader-arriving.flac",
   "start": 104.72,
   "end": 106.0,
+  "db": -14,
+  "hp": 200,
+  "lp": 4000
+ },
+ {
+  "name": "wh_chime6_off",
+  "kind": "shot",
+  "src": "steam-exhaust/gcry-29-4960-doubleheader-arriving.flac",
+  "start": 108.36,
+  "end": 109.5,
+  "ref": [
+   105.4,
+   108.4
+  ],
+  "fade": [
+   0.004,
+   0.35
+  ],
   "db": -14,
   "hp": 200,
   "lp": 4000
