@@ -211,11 +211,13 @@ function hsBody(gb, B, ref) {
     }
   }
   // flat ends at a joint (the rubber gangway cover closes the rest)
-  for (const [s, n] of [[st[0], 1], [st[st.length - 1], -1]]) {
-    if (s.R[0][1] >= s.R[HS_HALF - 1][1] - 0.01) continue;   // a nose closes to a point
+  // (B.doorway: the floor height at each end where a doorway goes through to the next car)
+  [[st[0], 1], [st[st.length - 1], -1]].forEach(([s, n], e) => {
+    if (s.R[0][1] >= s.R[HS_HALF - 1][1] - 0.01) return;   // a nose closes to a point
     const pts = []; for (let j = 0; j < RING_N - 1; j++) pts.push([ref - s.a, s.R[j][1], s.R[j][0]]);
-    capInto(under, pts, [n, 0, 0]);
-  }
+    if (B.doorway && B.doorway[e]) gb.add('hsUnder', holeCapGeo(pts, ref - s.a, B.doorway[e]));
+    else capInto(under, pts, [n, 0, 0]);
+  });
   gb.add(B.skin, meshGeo(skin));
   gb.add('hsUnder', meshGeo(under));
   return st;
@@ -242,12 +244,13 @@ function hsCanopy(gb, B, cst, ref) {
   gb.add(B.skin, meshGeo(fr)); gb.add('hsRubber', meshGeo(rb)); gb.add('hsGlass', meshGeo(gl));
 }
 /* Full-section rubber gangway cover from the body end out to the car end (a0 -> a1), a little inside the body */
-function hsGangway(gb, sect, a0, a1, ref, k = 0.975) {
+function hsGangway(gb, sect, a0, a1, ref, k = 0.975, door = 0) {
   const p = sect(a0), R = hsRing({ ...p, w: p.w * k, yt: 1.6 + (p.yt - 1.6) * k, yb: p.yb + 0.08, ys: p.ys, ch: p.ch * k }, 1.0);
   const acc = newMesh(), idx = []; for (let j = 0; j < RING_N; j++) idx.push(j);
   loftInto(acc, [{ a: a0, R }, { a: a1, R }], idx, ref, 1, 1);
   const pts = []; for (let j = 0; j < RING_N - 1; j++) pts.push([ref - a1, R[j][1], R[j][0]]);
-  capInto(acc, pts, [a1 > a0 ? -1 : 1, 0, 0]);
+  if (door) gb.add('hsRubber', holeCapGeo(pts, ref - a1, door));   // open through to the next car's gangway
+  else capInto(acc, pts, [a1 > a0 ? -1 : 1, 0, 0]);
   gb.add('hsRubber', meshGeo(acc));
   // folds of the bellows
   for (let a = Math.min(a0, a1) + 0.05; a < Math.max(a0, a1) - 0.02; a += 0.075) {
@@ -324,9 +327,9 @@ function buildE5Car(def, idx) {
   if (nose) { for (const a of [0, 0.01, 0.03, 0.06, 0.1, 0.16, 0.24, 0.34, 0.47, 0.62, 0.8, 1.0, 1.25]) stations.push(a); for (let a = 1.5; a < E5.LN; a += 0.35) stations.push(a); }
   for (const a of [nose ? E5.LN : E5.GW, L - E5.GW]) stations.push(a);
   const wells = [[t0 - 1.75, t0 + 1.75], [t1 - 1.75, t1 + 1.75]];
-  const st = hsBody(gb, { len: L, a0: nose ? 0 : E5.GW, a1: L - E5.GW, stations, wells, cut: E5.CUT, sect, skin: skinKey, uvL: L, uvH: 4, holes, canopy, extra: nose ? [S0, S1, CB.A0, CB.A1] : [S0, S1] }, ref);
-  if (!nose) hsGangway(gb, sect, E5.GW, 0.0, ref);
-  hsGangway(gb, sect, L - E5.GW, L, ref);
+  const st = hsBody(gb, { len: L, a0: nose ? 0 : E5.GW, a1: L - E5.GW, stations, wells, cut: E5.CUT, sect, skin: skinKey, uvL: L, uvH: 4, holes, canopy, extra: nose ? [S0, S1, CB.A0, CB.A1] : [S0, S1], doorway: [nose ? 0 : 1.25, 1.25] }, ref);
+  if (!nose) hsGangway(gb, sect, E5.GW, 0.0, ref, undefined, 1.25);
+  hsGangway(gb, sect, L - E5.GW, L, ref, undefined, 1.25);
 
   /* ---- windows, doors, lettering ---- */
   const HW = E5.HW, side = s => s * (HW + 0.004);
@@ -383,8 +386,11 @@ function buildE5Car(def, idx) {
   const ib = new GeoBin(), nIn = body.children.length;
   const inside = (a0, a1) => st.filter(s => s.a >= a0 - 1e-6 && s.a <= a1 + 1e-6);
   const face = rev ? -1 : 1;
-  hsSaloon(gb, ib, { st: inside(S0, S1), ref, yF: 1.25, holes, r: Math.min(wW, 0.5) * 0.22, skin: skinKey, uvL: L, uvH: 4, cls: def.cls, face, rows: wins.map(a => x(a)),
-    layout: { ord: [3, 2], green: [2, 2], gran: [2, 1] }[def.cls], rackY: 2.82 });
+  const sal = hsSaloon(gb, ib, { st: inside(S0, S1), ref, yF: 1.25, holes, r: Math.min(wW, 0.5) * 0.22, skin: skinKey, uvL: L, uvH: 4, cls: def.cls, face, rows: wins.map(a => x(a)),
+    layout: { ord: [3, 2], green: [2, 2], gran: [2, 1] }[def.cls], rackY: 2.82, doorway: [!nose, true] });
+  // the vestibules at the ends, through to the next car; the nose car has one only at its back
+  const vest = [nose ? null : hsVestibule(ib, { ref, sect, cut: E5.CUT, yF: 1.25, aEnd: 0, aGW: E5.GW, aWall: S0, doors: [1.85], winY: 2.22 }),
+    hsVestibule(ib, { ref, sect, cut: E5.CUT, yF: 1.25, aEnd: L, aGW: L - E5.GW, aWall: S1, doors: [door1], winY: 2.22 })];
   let cab = null;
   if (nose) {
     const gW = a => a > canopy.A0 && a < canopy.A1 ? hsSup(sect(a), canopy.th0(a))[1] : Infinity;
@@ -409,6 +415,7 @@ function buildE5Car(def, idx) {
     root, body, trucks, wheels, rW: E5.R, wb: E5.WB, len: L, frame: [t0, t1], ref, pans, lens, lenses, beam, halo, ditch: [], set: 'e5', nose, motor: def.motor, mass: def.t * 1000, num: def.num,
     cab, cabEye: cab ? cab.eye : new THREE.Vector3(x(10.35), 3.18, -0.3),
     inner, shell: { sect, cut: E5.CUT, yF: 1.25, saloon: [S0, S1], cabA: nose ? [CB.A0, CB.A1] : null, holes },
+    walk: { yF: 1.25, hw: E5.HW, saloon: sal.walk, vest },
     headlightPos: new THREE.Vector3(x(0.6), 1.25, 0), hornPos: new THREE.Vector3(x(2.0), 1.0, 0), cabLightPos: new THREE.Vector3(x(11.0), 2.9, 0),
     enginePos: new THREE.Vector3(x(L / 2), 0.8, 0), skin: {},
   };
@@ -601,9 +608,9 @@ function buildAcelaCar(def, idx) {
   stations.push(L - AC.GW);
   const half = power ? 1.85 : 1.6;
   const wells = [[t0 - half, t0 + half], [t1 - half, t1 + half]];
-  const st = hsBody(gb, { len: L, a0: power ? 0 : AC.GW, a1: L - AC.GW, stations, wells, cut, sect, skin: skinKey, uvL: L, uvH: 4.4, holes, canopy, extra: power ? [CB.A0, CB.A1] : [S0, S1] }, ref);
-  if (!power) hsGangway(gb, () => AC_GANG(), AC.GW, 0, ref, 1);
-  hsGangway(gb, () => AC_GANG(), L - AC.GW, L, ref, 1);
+  const st = hsBody(gb, { len: L, a0: power ? 0 : AC.GW, a1: L - AC.GW, stations, wells, cut, sect, skin: skinKey, uvL: L, uvH: 4.4, holes, canopy, extra: power ? [CB.A0, CB.A1] : [S0, S1], doorway: power ? null : [1.27, 1.27] }, ref);
+  if (!power) hsGangway(gb, () => AC_GANG(), AC.GW, 0, ref, 1, 1.27);
+  hsGangway(gb, () => AC_GANG(), L - AC.GW, L, ref, 1, power ? 0 : 1.27);
   const R0 = hsRing(sect(L / 2), cut);
   /* a window or panel lying on the (leaning) side at height y */
   const onSide = (k, geo, a, y, out = 0.004) => {
@@ -664,7 +671,7 @@ function buildAcelaCar(def, idx) {
   /* ---- inside: a coach's saloon, or a power car's cab ---- */
   const ib = new GeoBin(), nIn = body.children.length;
   const inside = (a0, a1) => st.filter(s => s.a >= a0 - 1e-6 && s.a <= a1 + 1e-6);
-  let cab = null;
+  let cab = null, sal = null, vest = null;
   if (power) {
     const gW = a => a > canopy.A0 && a < canopy.A1 ? hsSup(sect(a), canopy.th0(a))[1] : Infinity;
     cab = hsCab(gb, body, ib, { st: inside(CB.A0, CB.A1), ref, yF: CB.yF, th0: a => a >= canopy.A0 && a <= canopy.A1 ? canopy.th0(a) : Math.PI / 2, dx: x,
@@ -677,9 +684,11 @@ function buildAcelaCar(def, idx) {
     const mid = faces ? rows.length / 2 : -1;
     const tables = cafe ? rows.slice(0, -1).map((a, i) => i % 2 ? null : [x(a), x(rows[i + 1])]).filter(Boolean)
       : faces && mid >= 1 ? [[x(rows[mid - 1]), x(rows[mid])]] : [];
-    hsSaloon(gb, ib, { st: inside(S0, S1), ref, yF: 1.27, holes, r: 0.1, skin: skinKey, uvL: L, uvH: 4.4, cls: def.cls, rows: rows.map(a => x(a)), face: 1,
+    sal = hsSaloon(gb, ib, { st: inside(S0, S1), ref, yF: 1.27, holes, r: 0.1, skin: skinKey, uvL: L, uvH: 4.4, cls: def.cls, rows: rows.map(a => x(a)), face: 1,
       faces: cafe ? rows.map((_, i) => i % 2 ? 1 : -1) : faces, tables, counter: cafe ? [S0 + 0.6, wins[half - 1] + 0.5] : null,
-      layout: def.cls === 'first' ? [2, 1] : [2, 2], rackY: 3.2 });
+      layout: def.cls === 'first' ? [2, 1] : [2, 2], rackY: 3.2, doorway: [true, true] });
+    vest = [hsVestibule(ib, { ref, sect, cut, yF: 1.27, aEnd: 0, aGW: AC.GW, aWall: S0, doors: [1.55], winY: 2.5 }),
+      hsVestibule(ib, { ref, sect, cut, yF: 1.27, aEnd: L, aGW: L - AC.GW, aWall: S1, doors: [], winY: 2.5 })];
   }
   const cabParts = body.children.slice(nIn);
   const pans = [];
@@ -701,6 +710,7 @@ function buildAcelaCar(def, idx) {
     tilt: !power, tiltY: 1.3,
     cab, cabEye: cab ? cab.eye : new THREE.Vector3(x(2.9), 3.25, 0.62),
     inner, shell: { sect, cut, yF: 1.27, saloon: power ? null : [S0, S1], cabA: power ? [CB.A0, CB.A1] : null, holes },
+    walk: power ? null : { yF: 1.27, hw: AC.CW, saloon: sal.walk, vest },
     headlightPos: new THREE.Vector3(x(0.4), 1.12, 0), hornPos: new THREE.Vector3(x(6), AC.PROOF + 0.1, 0), cabLightPos: new THREE.Vector3(x(3.2), 3.6, 0),
     enginePos: new THREE.Vector3(x(L / 2), 2.0, 0), skin: {},
   };

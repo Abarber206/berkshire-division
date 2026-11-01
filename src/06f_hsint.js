@@ -31,6 +31,9 @@ function hsIntMaterials() {
   RMAT.hsLight.userData.lamp = true;
   RMAT.hsSign = new THREE.MeshBasicMaterial({ map: canvasTex(512, 64, (g, w, h) => { g.fillStyle = '#0b0c0c'; g.fillRect(0, 0, w, h); g.fillStyle = '#ff9a2a'; g.font = 'bold 40px "IBM Plex Mono", monospace'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('NEXT · BELLEVUE', w / 2, h / 2 + 2); }) });
   RMAT.hsPane = mk(0x1d2e33, 0.5, 0.05, { transparent: true, opacity: 0.32, depthWrite: false }); RMAT.hsPane.userData.noShadow = true;
+  // the sliding doors between saloon and vestibule are meshes of their own, so they can open (11j_walk)
+  RMAT.hsSlide = RMAT.hsDoor; RMAT.hsSlidePane = RMAT.hsPane;
+  RMAT.hsVFloor = lit(0x4b5054, 0.1, 0.9);      // vestibule floor
   // the cabs: dark blue-grey panels, a near-black desk
   RMAT.hsCabLine = lit(0x6d747a, 0.15, 0.7);
   RMAT.hsCabFloor = lit(0x2f3337, 0.1, 0.9);
@@ -115,6 +118,25 @@ function skinUV(g, ref, uvL, uvH) {
    omitted for a full roof), holes [[a0, a1]] (windows, on the section's wy), r (window corner radius),
    skin/uvL/uvH (skin material and texture size), line/floor (material keys), caps [front, rear].
    Skin-side parts (window frames) go in gb; the rest in ib. Returns the lining halves by station. */
+/* an end wall at x across the car, outline pts [x, y, z] closed along the floor yF, with a doorway notched out of
+   it from the floor up (w wide, h high) */
+const HS_DOOR = { w: 0.8, h: 1.95 };
+function notchCapGeo(pts, x, yF, w = HS_DOOR.w, h = HS_DOOR.h) {
+  const s = new THREE.Shape(), hw = w / 2;
+  pts.forEach(([, y, z], i) => (i ? s.lineTo(z, y) : s.moveTo(z, y)));
+  for (const [z, y] of [[-hw, yF], [-hw, yF + h], [hw, yF + h], [hw, yF]]) s.lineTo(z, y);
+  s.closePath();
+  return new THREE.ShapeGeometry(s).applyMatrix4(new THREE.Matrix4().makeRotationY(-Math.PI / 2)).translate(x, 0, 0);
+}
+/* a closed end (outline pts [x, y, z] all round) with a doorway cut through it from yF up */
+function holeCapGeo(pts, x, yF, w = HS_DOOR.w, h = HS_DOOR.h) {
+  const s = new THREE.Shape(), hw = w / 2;
+  pts.forEach(([, y, z], i) => (i ? s.lineTo(z, y) : s.moveTo(z, y)));
+  s.closePath();
+  const p = new THREE.Path(); p.moveTo(-hw, yF); p.lineTo(-hw, yF + h); p.lineTo(hw, yF + h); p.lineTo(hw, yF); p.closePath();
+  s.holes.push(p);
+  return new THREE.ShapeGeometry(s).applyMatrix4(new THREE.Matrix4().makeRotationY(-Math.PI / 2)).translate(x, 0, 0);
+}
 function hsShell(gb, ib, o) {
   const st = o.st, holes = o.holes || [], thAt = a => o.th0 ? o.th0(a) : Math.PI / 2;
   const lin = st.map(s => {
@@ -133,6 +155,7 @@ function hsShell(gb, ib, o) {
     const l = e ? lin[lin.length - 1] : lin[0], pts = [];
     for (const [z, y] of l.H) pts.push([o.ref - l.a, y, z]);
     for (let i = l.H.length - (l.th0 > Math.PI / 2 - 1e-6 ? 2 : 1); i >= 0; i--) pts.push([o.ref - l.a, l.H[i][1], -l.H[i][0]]);
+    if (o.doorway && o.doorway[e]) { ib.add(o.cap || o.line, notchCapGeo(pts, o.ref - l.a, o.yF)); return; }
     const acc = newMesh(); capInto(acc, pts, [e ? 1 : -1, 0, 0]); ib.add(o.cap || o.line, meshGeo(acc));
   });
   // the windscreen's reveal: from the lining's edge out to the glass, all round the opening
@@ -233,14 +256,14 @@ function hsSaloon(gb, ib, o) {
   // a light panel down the middle of the ceiling, its edges let into the curve
   { const hw = 0.17, y = polyY(mid, hw) + 0.004; ib.box('hsLight', len - 0.3, 0.03, 2 * hw, xm, y - 0.015, 0); }
   // a sliding door in each end wall, with a window, and the information display over it
-  for (const [l, e] of [[lin[0], 1], [lin[lin.length - 1], -1]]) {
-    const x = o.ref - l.a - e * 0.02, dh = 1.95;
-    ib.box('hsDoor', 0.04, dh, 0.86, x, yF + dh / 2, 0);
-    ib.box('hsPane', 0.044, 0.6, 0.42, x, yF + 1.4, 0);
+  [[lin[0], 1], [lin[lin.length - 1], -1]].forEach(([l, e], i) => {
+    const x = o.ref - l.a - e * 0.02, dh = 1.95, open = o.doorway && o.doorway[i];
+    ib.box(open ? 'hsSlide' : 'hsDoor', 0.04, dh, 0.86, x, yF + dh / 2, 0);
+    ib.box(open ? 'hsSlidePane' : 'hsPane', 0.044, 0.6, 0.42, x, yF + 1.4, 0);
     ib.box('hsRack', 0.05, 0.03, 0.9, x, yF + dh + 0.015, 0);
     ib.box('hsShell', 0.04, 0.14, 0.92, x, yF + dh + 0.18, 0);
     ib.add('hsSign', new THREE.PlaneGeometry(0.84, 0.1), M(x - e * 0.021, yF + dh + 0.18, 0, 0, e > 0 ? -Math.PI / 2 : Math.PI / 2, 0));
-  }
+  });
   const fit = new GeoBin();   // seats and tables, built on the floor at y 0
   // the seats: a row per window, against the walls with the aisle between
   const S = seatParts(o.cls), zR = Math.min(zW(yF + 0.3), zW(yF + 1.25)) - 0.04;
@@ -256,7 +279,41 @@ function hsSaloon(gb, ib, o) {
     ib.box('hsWood', cl + 0.04, 0.04, 0.68, xc, yF + 1.0, zR - 0.32);
   }
   for (const k in fit.bins) for (const g of fit.bins[k]) ib.add(k, g.translate(0, yF, 0));
+  // where a passenger can sit and walk (11j_walk): each place's cushion centre and the way it faces, the aisle
+  // between the seat groups, the saloon's two end walls and the side walls
+  const seats = [];
+  o.rows.forEach((x, i) => {
+    const f = o.faces ? o.faces[i] : o.face;
+    groups.forEach(([z0, n, d], gi) => { for (let k = 0; k < n; k++) seats.push({ x: x - 0.03 * f, z: z0 + d * S.sw * (k + 0.5), h: 0.465, yaw: f > 0 ? Math.PI / 2 : -Math.PI / 2, ax: x + f * 0.45, row: i, grp: gi }); });
+  });
+  lin.walk = { seats, aisle: [-zR + nL * S.sw + 0.03, zR - nR * S.sw - 0.03], x0: o.ref - lin[0].a, x1: o.ref - lin[lin.length - 1].a, zWall: zW(yF + 1.0), counter: o.counter ? [o.ref - o.counter[1], o.ref - o.counter[0], zR - 0.62] : null };
   return lin;
+}
+
+/* ---------------- a vestibule ----------------
+   Between a saloon's end wall (a = aWall) and the end of the car (aEnd), through the body's end at aGW and the
+   rubber gangway: a floor, plain walls and a ceiling inside the body, the inside of the side doors (doors: a of
+   each, winY the height of their windows), a lamp, and an inner end wall with a doorway through to the next car. */
+function hsVestibule(ib, o) {
+  const x = a => o.ref - a, e = Math.sign(o.aWall - o.aGW), yF = o.yF;
+  const R = hsRing(o.sect((o.aGW + o.aWall) / 2), o.cut), ceil = Math.min(yF + 2.05, ringTop(R, 0.6) - 0.2);
+  const zw = Math.min(ringZ(R, yF + 0.04), ringZ(R, ceil + 0.03)) - HS_TH - 0.03;
+  const a0 = o.aGW + e * 0.02, xa = x(a0), xb = x(o.aWall), xm = (xa + xb) / 2, len = Math.abs(xa - xb);
+  ib.box('hsVFloor', len, 0.03, 2 * zw, xm, yF - 0.015, 0);
+  ib.box('hsVFloor', Math.abs(o.aGW - o.aEnd) + 0.02, 0.03, HS_DOOR.w, x((o.aGW + o.aEnd) / 2), yF - 0.015, 0);   // over the gangway
+  for (const s of [-1, 1]) ib.box('hsEnd', len, ceil - yF, 0.03, xm, (yF + ceil) / 2, s * (zw + 0.015));
+  ib.box('hsLine', len, 0.03, 2 * zw + 0.06, xm, ceil + 0.015, 0);
+  ib.box('hsLight', Math.min(0.9, len - 0.4), 0.02, 0.3, xm, ceil - 0.01, 0);
+  // the end of the car from inside, a doorway to the gangway
+  const pts = [[0, yF, zw + 0.03], [0, ceil + 0.03, zw + 0.03], [0, ceil + 0.03, -zw - 0.03], [0, yF, -zw - 0.03]];
+  ib.add('hsEnd', notchCapGeo(pts, xa, yF));
+  // the side doors from inside: the leaf, its window, a step plate across the doorway
+  for (const a of o.doors || []) for (const s of [-1, 1]) {
+    ib.box('hsDoor', 0.9, 1.9, 0.02, x(a), yF + 0.95, s * (zw - 0.01));
+    ib.box('hsPane', 0.34, 0.48, 0.024, x(a), o.winY, s * (zw - 0.012));
+    ib.box('hsRack', 0.9, 0.012, 0.3, x(a), yF + 0.006, s * (zw - 0.15));
+  }
+  return { zw, ceil, xa, xb, x0: Math.min(xa, xb), x1: Math.max(xa, xb), xEnd: x(o.aEnd), doors: (o.doors || []).map(x) };
 }
 
 /* ---------------- a driving cab ----------------
