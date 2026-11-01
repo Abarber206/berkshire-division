@@ -372,13 +372,18 @@ function hsCab(gb, body, ib, o) {
   // seats on pedestals: the driver's, and for the Acela the second man's across the cab
   const seatTop = o.eye.y - 0.78, sa = o.seatA;
   for (const z of o.seats) {
-    const x = dx(sa);
-    ib.cyl('dSteel', 0.2, 0.22, 0.03, 16, x, o.yF + 0.015, z);
-    ib.cyl('dSteel', 0.045, 0.045, seatTop - 0.08 - o.yF, 10, x, (seatTop - 0.08 + o.yF) / 2, z);
-    ib.box('hsSeatCab', 0.5, 0.1, 0.5, x, seatTop - 0.05, z);
-    ib.box('hsSeatCab', 0.1, 0.66, 0.48, x - 0.3, seatTop + 0.33, z, 0, 0, 0.12);
-    ib.box('hsSeatCab', 0.1, 0.2, 0.3, x - 0.36, seatTop + 0.76, z, 0, 0, 0.12);
-    ib.box('dSteel', 0.16, 0.04, 0.06, x - 0.22, seatTop + 0.02, z);
+    cabChair(ib, 'hsSeatCab', dx(sa), z, seatTop, o.yF);
+  }
+  // the timetable card in its holder in front of the driver, and the train radio handset in its cradle
+  {
+    const a = aH + 0.02, z = o.drv - 0.1, m = M(dx(a), yD + 0.1, z, 0, 0, -0.35);
+    ib.box('hsDesk', 0.06, 0.03, 0.26, dx(a) - 0.01, yD + 0.015, z);
+    ib.add('hsDesk', new THREE.BoxGeometry(0.012, 0.2, 0.24).applyMatrix4(m));
+    ib.add('white', new THREE.BoxGeometry(0.004, 0.17, 0.2).translate(-0.008, 0.005, 0).applyMatrix4(m));
+    const zr = o.drv + (o.drv > 0 ? -0.75 : 0.75), ar = dA0 + 0.12;
+    ib.box('hsDesk', 0.16, 0.03, 0.08, dx(ar), yD + 0.015, zr);
+    ib.box('knob', 0.05, 0.04, 0.2, dx(ar), yD + 0.05, zr);
+    ib.add('dUnder', new THREE.TorusGeometry(0.03, 0.004, 4, 10).rotateY(Math.PI / 2).translate(dx(ar) - 0.04, yD + 0.03, zr + 0.12));
   }
   // a door in the back wall to the corridor
   {
