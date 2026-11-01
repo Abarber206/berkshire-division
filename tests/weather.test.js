@@ -33,7 +33,7 @@ test('a fixed choice holds its weather; a changing sky goes round the kinds and 
   run(6 * 3600, 0.5, 1, () => {
     if (X.WX.changed) changes++;
     seen.add(X.WX.to);
-    for (const n of ['cover', 'rain', 'gray', 'fogK', 'sunK']) worst = Math.max(worst, Math.abs(X.WX.P[n] - last[n]) / (n === 'fogK' ? 50 : 1));
+    for (const n of ['cover', 'rain', 'gray', 'fogK', 'sunK']) worst = Math.max(worst, Math.abs(X.WX.P[n] - last[n]) / (n === 'fogK' ? 70 : 1));
     last = { ...X.WX.P };
   });
   assert.ok(changes >= 25 && changes <= 90, `${changes} changes in six hours`);

@@ -169,7 +169,7 @@ function skyLight(force) {
   if (fl > 0) _skC.addScalar(fl * 0.25);
   scene.fog.color.copy(_skC).convertSRGBToLinear(); scene.fog.density = L.fogD * W.fogK;
   // in thick fog the sky itself is the fog: the dome and the clouds fade into it
-  const fogSky = smooth(3, 30, W.fogK); SKY.fogSky = fogSky;
+  const fogSky = smooth(3, 40, W.fogK); SKY.fogSky = fogSky;
   if (fogSky > 0) { u.uTop.value.lerp(_skC, fogSky); u.uHor.value.lerp(_skC, fogSky); u.uGray.value = Math.max(u.uGray.value, fogSky); }
   // fog lies low in the valleys; ordinary haze thins slowly with height
   SKY.fogHaze.y = W.haze;

@@ -18,7 +18,7 @@ const WX_KINDS = {
   overcast: { name: 'Overcast', cover: 0.95, base: 900,  thick: 900,  strat: 0.85, dark: 0.5,  dens: 0.7,   rain: 0,   snow: 0,   fogK: 1.9, haze: 220, sunK: 0.32, gray: 0.55, wind: 2.6, bolt: 0 },
   rain:     { name: 'Rain',     cover: 1,    base: 650,  thick: 1500, strat: 0.7,  dark: 0.75, dens: 1.2, rain: 0.6, snow: 0,   fogK: 2.7, haze: 200, sunK: 0.2,  gray: 0.7,  wind: 3.4, bolt: 0 },
   storm:    { name: 'Thunderstorm', cover: 1, base: 520, thick: 2800, strat: 0.35, dark: 1,    dens: 1.5, rain: 1,   snow: 0,   fogK: 3.1, haze: 200, sunK: 0.12, gray: 0.8,  wind: 6,   bolt: 5 },
-  fog:      { name: 'Fog',      cover: 1,    base: 380,  thick: 500,  strat: 1,    dark: 0.3,  dens: 0.9, rain: 0,   snow: 0,   fogK: 50,  haze: 60,  sunK: 0.3,  gray: 0.75,  wind: 0.5, bolt: 0 },
+  fog:      { name: 'Fog',      cover: 1,    base: 380,  thick: 500,  strat: 1,    dark: 0.3,  dens: 0.9, rain: 0,   snow: 0,   fogK: 70,  haze: 60,  sunK: 0.3,  gray: 0.75,  wind: 0.5, bolt: 0 },
   snow:     { name: 'Snow',     cover: 1,    base: 700,  thick: 1300, strat: 0.8,  dark: 0.45, dens: 1.1, rain: 0,   snow: 0.8, fogK: 3.4, haze: 220, sunK: 0.25, gray: 0.7,  wind: 3,   bolt: 0 },
 };
 const WX_NUMS = ['cover', 'base', 'thick', 'strat', 'dark', 'dens', 'rain', 'snow', 'fogK', 'haze', 'sunK', 'gray', 'wind', 'bolt'];

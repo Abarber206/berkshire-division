@@ -582,7 +582,7 @@ function updateDetailLOD(cam, scene, dt) {
   for (const p of WORLD.pieces) {
     const U = p.userData, d = U.sphere.center.distanceTo(cp) - U.sphere.radius;
     if (!U.grass && d < 360 && budget > 0) { genGrass(p, scene); budget--; }
-    if (U.grass) { U.grass.visible = d < 420; for (const m of U.grass.children) m.visible = d < (m.userData.kind === 'bush' ? 420 : SKY.snow ? -1 : m.userData.kind === 'grass' ? 230 : 300); }
+    if (U.grass) { U.grass.visible = d < 420; for (const m of U.grass.children) { const k = m.userData.kind; m.visible = k === 'bush' ? d < 420 : !SKY.snow && d < (k === 'grass' ? 230 : 300); } }
   }
   coverUpdate(cam, scene);
   for (const g of DET.cornGroups) g.visible = g.userData.c.distanceTo(cp) - g.userData.r < 3200;
