@@ -96,6 +96,9 @@ function cabMaterials() {
   RMAT.water = S2(0x6fa9c4, 0.1, 0.2, { emissive: 0x2c5f78, emissiveIntensity: 0.4 });
   RMAT.knob = S2(0x1a1a1a, 0.2, 0.35);
   RMAT.grip = S2(0x6b4a2c, 0.05, 0.6);
+  RMAT.dSeat = S2(0x2c3340, 0.0, 0.95); RMAT.dLining = S2(0xb8b2a4, 0.0, 0.85); RMAT.dMat = S2(0x1e1e1e, 0.0, 1.0);
+  RMAT.cabWood = S2(0xffffff, 0.0, 0.8, { map: TEX.wood }); RMAT.cabWood.color.setHex(0x6a5236);   // worn oak deck boards
+  RMAT.cabWood2 = RMAT.cabWood.clone(); RMAT.cabWood2.color.setHex(0x5b4630);
   RMAT.redKnob = S2(0x9e1d16, 0.2, 0.4);
   RMAT.handle = S2(0xb8bcc0, 0.9, 0.3);
   RMAT.hand = new THREE.MeshBasicMaterial({ color: 0x111111 });
@@ -426,11 +429,71 @@ function steamCab(gb, body, d) {
     gb.box('cabInt', xa - xb + 0.02, 0.12, z1 - z0 - 0.02, xm, seatTop - 0.06, zm);
     gb.box('cabInt', 0.07, 0.46, 0.42, xb + 0.045, seatTop + 0.23, sd * 1.27);
     gb.box('dark', 0.05, 0.04, z1 - z0, xa + 0.02, ffl + 0.32, zm);                         // foot rail
+    gb.box('dark', 0.015, 0.025, z1 - z0 - 0.02, xa + 0.015, seatTop - 0.1, zm);              // piping along the cushion's front
+    for (const dz of [-0.1, 0.1]) gb.add('dark', new THREE.SphereGeometry(0.012, 6, 4).translate(xb + 0.08, seatTop + 0.3, sd * 1.27 + dz));   // buttons in the back pad
+    gb.box('dark', 0.04, 0.3, 0.06, xb + 0.0, seatTop + 0.18, sd * (wallZ - 0.03));          // the back pad's bracket off the wall
+    gb.box('cabInt', 0.52, 0.06, 0.13, xm + 0.05, seatTop + 0.3, sd * (wallZ - 0.065));        // padded armrest on the window sill
+  }
+  // the deck: oak boards laid fore and aft over the steel floor, from the seat boxes forward to the backhead
+  { const xa = F - 0.06, xb = eye.x - 0.6, n = 13, w = 2 * wallZ / n;
+    for (let i = 0; i < n; i++) gb.box(i % 3 ? 'cabWood' : 'cabWood2', xa - xb, 0.012, w - 0.008, (xa + xb) / 2, ffl + 0.006, -wallZ + w * (i + 0.5)); }
+  /* ---- the working cab's clutter: steel carlines under the roof, the injector steam lines down each side of the
+     backhead, gauge siphons up to the turret, gauge lamps, an oil can shelf and a hung lantern on the fireman's side ---- */
+  for (let x = d.x1 + 0.25; x < d.x0 - 0.15; x += 0.42) {
+    const pts = []; for (let i = 0; i <= 12; i++) { const z = -wallZ + 2 * wallZ * i / 12; pts.push([x, d.ceil(z) - 0.022, z]); }
+    gb.tube('dark', pts, 0.024, 24, 4);
+  }
+  for (const sd of [-1, 1]) gb.tube('steel', [[tx, ty, sd * (tL / 2 + 0.02)], [tx - 0.02, ty - 0.02, sd * (tL / 2 + 0.14)], [F - 0.08, ty - 0.22, sd * 0.86], [F - 0.08, cy + 0.2, sd * 1.02], [F - 0.08, ffl + 0.5, sd * 1.04], [F - 0.08, ffl - 0.02, sd * 1.04]], 0.026, 28, 8);
+  for (const o of dials) {
+    const z0 = o.p.z, zt = clamp(z0, -0.38, 0.38);
+    gb.tube('copper', [[F - 0.02, o.p.y + o.r + 0.005, z0], [F - 0.03, o.p.y + o.r + 0.07, z0], [tx + 0.01, ty - 0.12, (z0 + zt) / 2], [tx, ty - 0.05, zt]], 0.007, 16, 5);
+    // a little hooded lamp over each dial
+    gb.box('dark', 0.1, 0.02, 0.1, F - 0.05, o.p.y + o.r + 0.035, z0 + (z0 > 0 ? 0.08 : -0.08));
+    gb.box('dark', 0.04, 0.04, 0.03, F - 0.02, o.p.y + o.r + 0.035, z0 + (z0 > 0 ? 0.08 : -0.08));
+  }
+  {
+    const xs = eye.x - 0.75, ys = ffl + 1.05, zs = -(wallZ - 0.08);
+    gb.box('dark', 0.44, 0.025, 0.16, xs, ys, zs);                                          // the shelf
+    for (const d2 of [-0.18, 0.18]) gb.box('dark', 0.025, 0.12, 0.025, xs + d2, ys - 0.07, -(wallZ - 0.0125));   // its brackets
+    gb.box('dark', 0.44, 0.04, 0.01, xs, ys + 0.03, zs + 0.075);                            // lip
+    for (const [dx2, h] of [[-0.12, 0.16], [0.08, 0.12]]) {                                 // long-spout oil cans
+      gb.cyl('steel', 0.05, 0.055, h, 12, xs + dx2, ys + 0.0125 + h / 2, zs);
+      gb.cyl('steel', 0.02, 0.05, 0.05, 12, xs + dx2, ys + 0.0125 + h + 0.025, zs);
+      gb.add('steel', barGeo(0.005, [xs + dx2, ys + h + 0.05, zs], [xs + dx2 + 0.14, ys + h + 0.2, zs + 0.03], 5));
+    }
+    // a red-globe hand lantern on a hook off the wall
+    const xl = xs - 0.1, yl = ffl + 1.55, zl = -(wallZ - 0.13);
+    gb.add('dark', barGeo(0.008, [xl, yl + 0.3, -wallZ], [xl, yl + 0.3, zl], 5));
+    gb.add('dark', barGeo(0.006, [xl, yl + 0.3, zl], [xl, yl + 0.2, zl], 5));
+    gb.add('steel', new THREE.TorusGeometry(0.07, 0.004, 4, 16, Math.PI).translate(xl, yl + 0.13, zl));   // bail
+    gb.cyl('steel', 0.03, 0.06, 0.04, 12, xl, yl + 0.12, zl);
+    gb.cyl('redKnob', 0.05, 0.05, 0.12, 12, xl, yl + 0.04, zl);
+    for (let i = 0; i < 4; i++) { const a = i * Math.PI / 2 + 0.4; gb.add('steel', barGeo(0.004, [xl + Math.cos(a) * 0.055, yl - 0.02, zl + Math.sin(a) * 0.055], [xl + Math.cos(a) * 0.055, yl + 0.1, zl + Math.sin(a) * 0.055], 4)); }
+    gb.cyl('steel', 0.065, 0.065, 0.04, 12, xl, yl - 0.04, zl);
   }
   // cab lamp in the middle of the roof
   { const xl = F - 0.9, yt = d.ceil(0) + 0.01; gb.cyl('dark', 0.05, 0.05, 0.05, 12, xl, yt - 0.025, 0); gb.add('white', new THREE.SphereGeometry(0.045, 12, 6, 0, TAU, Math.PI / 2, Math.PI / 2).translate(xl, yt - 0.05, 0)); }
 
   return K.out(eye, { firePos, fireSize, look: [{ yaw: 0.06, pitch: -0.04 }, { yaw: 0.75, pitch: -0.32 }] });
+}
+
+/* a cab chair on a pedestal: the column and its foot, the seat pan, a cushion with a rolled front edge, a back
+   leaning 7 degrees with its headrest, and an armrest each side on its post */
+function cabChair(gb, key, x, z, seatTop, floorY) {
+  gb.cyl('dSteel', 0.2, 0.22, 0.03, 16, x, floorY + 0.015, z);
+  gb.cyl('dSteel', 0.045, 0.045, seatTop - 0.08 - floorY, 10, x, (seatTop - 0.08 + floorY) / 2, z);
+  gb.box('dSteel', 0.4, 0.04, 0.4, x, seatTop - 0.1, z);
+  gb.add(key, new THREE.CylinderGeometry(0.06, 0.06, 0.48, 10).rotateX(Math.PI / 2).translate(x + 0.2, seatTop - 0.03, z));
+  gb.box(key, 0.46, 0.1, 0.5, x - 0.02, seatTop - 0.035, z);
+  const back = M(x - 0.27, seatTop + 0.33, z, 0, 0, 0.12);
+  gb.add(key, new THREE.BoxGeometry(0.1, 0.66, 0.48).applyMatrix4(back));
+  gb.add(key, new THREE.BoxGeometry(0.12, 0.2, 0.3).translate(-0.01, 0.42, 0).applyMatrix4(back));
+  gb.add('dSteel', new THREE.BoxGeometry(0.03, 0.1, 0.04).translate(0, 0.35, 0).applyMatrix4(back));
+  gb.box('dSteel', 0.14, 0.04, 0.06, x - 0.21, seatTop + 0.02, z);
+  for (const e of [-1, 1]) {
+    gb.box(key, 0.36, 0.06, 0.07, x - 0.05, seatTop + 0.22, z + e * 0.28);
+    gb.box('dSteel', 0.04, 0.24, 0.03, x - 0.18, seatTop + 0.08, z + e * 0.27);
+  }
 }
 
 /* ======================= the diesel's cab ======================= */
@@ -583,15 +646,32 @@ function dieselCab(gb, body, d) {
     K.hit(ph, h, 0.07, 0.12, 0.07, 0, 0.08, 0);
   }
 
-  /* ---- seats on pedestals ---- */
+  /* ---- seats on pedestals: a padded cushion and a tall back with its headrest, an armrest each side ---- */
   const seatTop = eye.y - 0.76;
-  for (const sd of [-1, 1]) {
-    const x = dx(4.25), z = sd * 0.86;
-    gb.cyl('dSteel', 0.2, 0.22, 0.03, 16, x, FL + 0.015, z);
-    gb.cyl('dSteel', 0.045, 0.045, seatTop - 0.08 - FL, 10, x, (seatTop - 0.08 + FL) / 2, z);
-    gb.box('dDesk', 0.5, 0.09, 0.5, x, seatTop - 0.045, z);
-    gb.box('dDesk', 0.08, 0.6, 0.46, x - 0.27, seatTop + 0.29, z);
-    gb.box('dSteel', 0.14, 0.04, 0.06, x - 0.21, seatTop + 0.02, z);                        // back support
+  for (const sd of [-1, 1]) cabChair(gb, 'dSeat', dx(4.25), sd * 0.86, seatTop, FL);
+  /* ---- lining: beige panels inside the walls below and above the side windows and across the back, a ceiling
+     with a dome light and an air vent, a ribbed rubber mat on the floor, the back wall's door and extinguisher ---- */
+  {
+    const aB0 = aS + 0.01, aB1 = d.CAB1 - 0.06, zl = wallZ - 0.01, yC = d.ceil;
+    for (const sd of [-1, 1]) {
+      box('dLining', aB0, aB1, FL, 3.49, sd * (zl - 0.01), sd * (zl + 0.01));
+      box('dLining', aB0, aB1, 4.25, yC, sd * (zl - 0.01), sd * (zl + 0.01));
+      box('dLining', 5.06, aB1, 3.49, 4.25, sd * (zl - 0.01), sd * (zl + 0.01));
+      box('dSteel', aB0, aB1, 3.46, 3.5, sd * (zl - 0.04), sd * (zl - 0.01));                 // window sill trim
+    }
+    box('dLining', aB1 - 0.02, aB1, FL, yC, -zl, zl);                                          // back wall
+    box('dUnder', aB1 - 0.035, aB1 - 0.02, FL + 0.05, FL + 1.95, -0.95, -0.25);                // door to the short hood
+    box('glassT', aB1 - 0.04, aB1 - 0.035, FL + 1.25, FL + 1.75, -0.85, -0.35);
+    box('dSteel', aB1 - 0.09, aB1 - 0.035, FL + 0.98, FL + 1.02, -0.38, -0.3);                // its handle
+    gb.cyl('redKnob', 0.07, 0.07, 0.45, 12, dx(aB1 - 0.11), FL + 0.6, 0.5);                    // fire extinguisher on its bracket
+    gb.cyl('dUnder', 0.025, 0.035, 0.06, 8, dx(aB1 - 0.11), FL + 0.855, 0.5);
+    box('dSteel', aB1 - 0.04, aB1 - 0.02, FL + 0.5, FL + 0.7, 0.45, 0.55);
+    box('dLining', aB0 - 0.25, aB1 - 0.02, yC - 0.02, yC, -zl, zl);                            // ceiling
+    gb.cyl('dSteel', 0.12, 0.12, 0.02, 16, dx(4.2), yC - 0.03, 0);
+    gb.add('white', new THREE.SphereGeometry(0.1, 16, 6, 0, TAU, 0, Math.PI / 2).scale(1, 0.4, 1).rotateX(Math.PI).translate(dx(4.2), yC - 0.04, 0));
+    box('grille', 4.6, 5.0, yC - 0.035, yC - 0.02, -0.3, 0.3);                                 // air vent
+    box('dMat', aB0, aB1 - 0.02, FL, FL + 0.008, -zl, zl);
+    for (let a = aB0 + 0.08; a < aB1 - 0.06; a += 0.1) box('dMat', a, a + 0.03, FL + 0.008, FL + 0.014, -zl + 0.04, zl - 0.04);
   }
   return K.out(eye, { look: [{ yaw: 0.0, pitch: -0.1 }, { yaw: 0.45, pitch: -0.42 }] });
 }

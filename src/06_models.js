@@ -639,9 +639,37 @@ function buildBerkshire(key, trim = '') {
     cab = steamCab(gb, body, { x0: C.x0, x1: C.x1, fl: C.fl, floor: C.fl, hw: C.hw, bh: C.bh, FB: C.FB, ceil: C.ceil, fwin: C.front, side: C.side, eyeY: 3.6 });
   }
   /* ---- trailing truck: Delta cast frame outside the wheels, pivoted ahead of the firebox ---- */
+  {
+    // the cast side frame: deep over the journal boxes, a fish belly between the axles with a lightening hole
+    const [t0, t1] = LG.aT, a0 = t0 - 0.45, a1 = t1 + 0.45, am = (t0 + t1) / 2;
+    const sf = new THREE.Shape(), P = [[a0, 0.89], [a1, 0.89], [a1, 0.62], [t1 - 0.25, 0.62], [t1 - 0.45, 0.47], [am, 0.41], [t0 + 0.45, 0.47], [t0 + 0.25, 0.62], [a0, 0.62]];
+    sf.moveTo(ax(P[0][0]), P[0][1]); for (const [a, y] of P.slice(1)) sf.lineTo(ax(a), y); sf.closePath();
+    const hole = new THREE.Path(); hole.absellipse(ax(am), 0.66, 0.26, 0.11, 0, TAU, false); sf.holes.push(hole);
+    for (const s of [-1, 1]) gb.add('dark', new THREE.ExtrudeGeometry(sf, { depth: 0.14, bevelEnabled: false, curveSegments: 16 }).translate(0, 0, s * 1.0 - 0.07));
+    for (const s of [-1, 1]) {
+      const z = s * 1.0;
+      for (let i = 0; i < 2; i++) {
+        const R = i ? LG.rT2 : LG.rT1, xa = ax(LG.aT[i]);
+        for (const d of [-0.21, 0.21]) gb.box('dark', 0.06, 0.89 - (R - 0.27), 0.16, xa + d, (0.89 + R - 0.27) / 2, z);   // pedestal jaws
+        gb.box('dark', 0.5, 0.05, 0.16, xa, R - 0.27, z);                                                  // pedestal tie
+        gb.box('dark', 0.24, 0.3, 0.03, xa, R, s * 1.145);                                                 // journal box lid
+        gb.box('dark', 0.08, 0.05, 0.05, xa, R + 0.17, s * 1.14);                                          // its hinge lug
+      }
+      // a semi-elliptic leaf spring on the frame between the axles, hung from the frame at each end
+      gb.box('dark', 0.14, 0.2, 0.17, ax(am), 0.99, z);
+      for (let k = 0; k < 6; k++) gb.box('dark', 1.6 - 0.22 * k, 0.026, 0.12, ax(am), 1.065 - 0.028 * k, z);
+      for (const d of [-1, 1]) gb.add('dark', barGeo(0.022, [ax(am + d * 0.78), 1.065, z], [ax(am + d * 0.95), 0.88, z], 6));
+    }
+    // brake shoes on the leading face of each wheel, on beams across the truck
+    for (let i = 0; i < 2; i++) {
+      const R = i ? LG.rT2 : LG.rT1, xs = ax(LG.aT[i] - R - 0.04);
+      for (const s of [-1, 1]) gb.box('dark', 0.08, 0.3, 0.13, xs, R, s * 0.76);
+      bar('dark', 0.03, [xs, R, i ? -1.0 : -0.76], [xs, R, i ? 1.0 : 0.76], 6);
+      if (!i) for (const s of [-1, 1]) bar('dark', 0.025, [xs, R + 0.1, s * 0.76], [xs, 0.75, s * 0.76], 6);   // hangers up to the front tie
+    }
+  }
   for (const s of [-1, 1]) {
     const z = s * 1.0;
-    gb.box('dark', LG.aT[1] - LG.aT[0] + 0.9, 0.34, 0.16, ax((LG.aT[0] + LG.aT[1]) / 2), 0.72, z);
     for (let i = 0; i < 2; i++) gb.box('dark', 0.36, 0.5, 0.26, ax(LG.aT[i]), i ? LG.rT2 : LG.rT1, z);   // journal boxes
     gb.box('dark', 0.16, 0.36, 0.16, ax(LG.aT[1] + 0.5), 0.88, z * 0.9);
     bar('dark', 0.07, [ax(LG.aT[0] - 0.4), 0.8, z], [ax(11.4), 1.1, s * 0.4], 8);               // the Delta arms to the pivot
@@ -1110,6 +1138,120 @@ function carMaterials() {
   const sill = canvasTex(2048, 64, (g, w, h) => { g.fillStyle = '#ffffff'; g.fillRect(0, 0, w, h); const b = g.createLinearGradient(0, 0, 0, h); b.addColorStop(0, 'rgba(50,40,32,0.1)'); b.addColorStop(1, 'rgba(50,40,32,0.45)'); g.fillStyle = b; g.fillRect(0, 0, w, h); rivetRow(g, 4, 8, w - 4, 8, 320, 1.6); rivetRow(g, 4, h - 8, w - 4, h - 8, 320, 1.6); });
   RMAT.greenLow = S(RMAT.green, lower); RMAT.greenSill = S(RMAT.green, sill);
   RMAT.holLow = S(RMAT.holBody, lower); RMAT.holSill = S(RMAT.holBody, sill);
+  // the coach interior: mahogany wainscot in panels (a stile under every window pier), plush seats, a cream ceiling
+  // and frosted lamp globes that light up at dusk, seen through clear glass
+  const M2 = (c, m, r, x = {}) => new THREE.MeshStandardMaterial({ color: c, metalness: m, roughness: r, ...x });
+  RMAT.mahog = M2(0xffffff, 0.05, 0.45, { map: canvasTex(2048, 128, (g, w, h) => {
+    const r = rng(765); g.fillStyle = '#5c2a17'; g.fillRect(0, 0, w, h);
+    for (let i = 0; i < 900; i++) { const y = r() * h, v = r(); g.strokeStyle = v < 0.5 ? `rgba(40,16,8,${0.1 + r() * 0.2})` : `rgba(130,64,34,${0.08 + r() * 0.15})`; g.lineWidth = 0.6 + r() * 1.4; g.beginPath(); g.moveTo(r() * w, y); g.bezierCurveTo(r() * w, y + (r() - 0.5) * 6, r() * w, y + (r() - 0.5) * 6, r() * w, y + (r() - 0.5) * 4); g.stroke(); }
+    g.fillStyle = 'rgba(30,12,6,0.55)'; for (const u of RMAT.coachSeams) g.fillRect(u * w - 3, 0, 6, h);
+    g.fillRect(0, 10, w, 3); g.fillRect(0, h - 13, w, 3);
+    g.fillStyle = 'rgba(160,90,50,0.25)'; for (const u of RMAT.coachSeams) g.fillRect(u * w + 3, 0, 2, h);
+  }) });
+  RMAT.mahogPlain = M2(0x5a2a17, 0.05, 0.42);
+  RMAT.plush = M2(0x34503a, 0.0, 0.95);
+  RMAT.holPlush = M2(0x7c1622, 0.0, 0.92);
+  RMAT.linen = M2(0xece4d0, 0.0, 0.9);
+  RMAT.carpet = M2(0x3a3330, 0.0, 1.0);
+  RMAT.runner = M2(0x6a1f1c, 0.0, 0.95);
+  RMAT.ceil = M2(0xdcd2b6, 0.0, 0.8, { emissive: 0xffd9a0, emissiveIntensity: 0 }); RMAT.ceil.userData = { litAt: 0.15, litI: 0.35 };
+  RMAT.globe = M2(0xf4ead2, 0.0, 0.4, { emissive: 0xffd49a, emissiveIntensity: 0 }); RMAT.globe.userData = { litAt: 0.15, litI: 1.6, minI: 0.05 };
+  RMAT.coachGlass = M2(0x1a2228, 0.5, 0.05, { transparent: true, opacity: 0.32, depthWrite: false, emissive: 0xffc77a, emissiveIntensity: 0 });
+  RMAT.coachGlass.userData = { litAt: 0.15, litI: 0.45 };
+  RMAT.holGlass = RMAT.coachGlass.clone(); RMAT.holGlass.userData = { litAt: 0.15, litI: 0.6, minI: 0.06 };
+  RMAT.holCeil = RMAT.ceil.clone(); RMAT.holCeil.userData = { litAt: 0.15, litI: 0.45, minI: 0.12 };
+  SCN.winMats.push(RMAT.ceil, RMAT.globe, RMAT.coachGlass, RMAT.holGlass, RMAT.holCeil);
+}
+
+/* The saloon of a heavyweight coach, built into its own bin (no shadows cast inside): carpet, mahogany wainscot and
+   window stools, cream upper walls and ceiling, a lamp globe down the centre every 3 m, brass parcel racks over the
+   windows, steam heat pipes along the floor, and a pair of walkover seats at every window facing the direction of
+   travel. The observation car's last three window pairs are a lounge of armchairs facing the aisle. The end bulkheads carry a door. */
+function coachInterior(ib, o) {
+  const hw = CH.hw, yF = CH.yT + 0.02, [w0, w1] = CH.win, yE = CH.eave, xb = CH.xb, zi = hw - 0.04, zw = hw - 0.06;
+  const plush = o.trim ? 'holPlush' : 'plush', ceil = o.trim ? 'holCeil' : 'ceil';
+  const x0 = o.observation ? -xb : -(xb - 0.04), x1 = xb - 0.04, Lx = x1 - x0, xm = (x0 + x1) / 2;
+  ib.box('carpet', Lx, 0.02, 2 * zi, xm, CH.yT + 0.01, 0);
+  ib.box('runner', Lx, 0.006, 0.54, xm, CH.yT + 0.023, 0);                                           // the aisle runner
+  for (const s of [-1, 1]) {
+    ib.box('mahog', Lx, w0 - CH.yT, 0.02, xm, (w0 + CH.yT) / 2, s * (zi - 0.01));                     // wainscot
+    ib.box('mahogPlain', Lx, 0.03, 0.1, xm, w0 + 0.015, s * (zw - 0.04));                                // window stool
+    ib.box('mahogPlain', Lx, 0.05, 0.03, xm, CH.belt - 0.1, s * (zw - 0.012));                          // chair rail
+    ib.box(ceil, Lx, yE - w1, 0.02, xm, (yE + w1) / 2, s * (zi - 0.01));                                // upper wall
+    ib.box('mahogPlain', Lx, 0.04, 0.04, xm, w1 + 0.02, s * (zw - 0.02));                               // window head moulding
+    // a mahogany pier between each pair of windows and between the two of a pair, over the glass
+    const op = []; for (let i = 0; i < 13; i++) for (const d of [-0.33, 0.33]) op.push([-9.5 + i * 1.58 + d - 0.28, -9.5 + i * 1.58 + d + 0.28]);
+    let xa = x0; for (const [a, b] of op) { if (a > xa + 0.01) ib.box('mahogPlain', a - xa, w1 - w0, 0.02, (a + xa) / 2, (w0 + w1) / 2, s * (zw - 0.01)); xa = b; }
+    if (x1 > xa + 0.01) ib.box('mahogPlain', x1 - xa, w1 - w0, 0.02, (x1 + xa) / 2, (w0 + w1) / 2, s * (zw - 0.01));
+    ib.add('dark', barGeo(0.03, [x0 + 0.1, yF + 0.07, s * (zw - 0.03)], [x1 - 0.1, yF + 0.07, s * (zw - 0.03)], 8));   // steam heat pipe
+    for (let x = x0 + 0.6; x < x1 - 0.4; x += 2.4) ib.box('dark', 0.05, 0.07, 0.06, x, yF + 0.035, s * (zw - 0.03));   // its hangers
+    // parcel rack: brackets out of the upper wall, three brass rods along them
+    const yr = w1 + 0.14;
+    for (const z of [zw - 0.14, zw - 0.24, zw - 0.34]) ib.add('brass', barGeo(0.011, [x0 + 0.3, yr, s * z], [x1 - 0.3, yr, s * z], 6));
+    for (let x = x0 + 0.3; x <= x1 - 0.29; x += (Lx - 0.6) / 12) {
+      ib.add('brass', barGeo(0.014, [x, yr, s * zw], [x, yr, s * (zw - 0.36)], 6));
+      ib.add('brass', barGeo(0.01, [x, yr, s * (zw - 0.3)], [x, yr + 0.2, s * zw], 5));
+    }
+  }
+  ib.box(ceil, Lx, 0.02, 2 * zi, xm, yE - 0.01, 0);                                                    // ceiling
+  ib.box('mahogPlain', Lx, 0.03, 0.12, xm, yE - 0.035, 0);                                             // the lamp batten
+  for (let x = -9; x <= 9.01; x += 3) {
+    ib.cyl('brass', 0.07, 0.09, 0.04, 14, x, yE - 0.07, 0);
+    ib.cyl('brass', 0.012, 0.012, 0.12, 6, x, yE - 0.15, 0);
+    ib.cyl('brass', 0.06, 0.04, 0.04, 14, x, yE - 0.22, 0);
+    ib.add('globe', new THREE.SphereGeometry(0.1, 14, 10).translate(x, yE - 0.31, 0));
+  }
+  // walkover seats: a seat box on the floor, the cushion, a back leaning 11 degrees, a linen cover for each head,
+  // and the aisle armrest
+  const seat = (xc, s) => {
+    const za = 0.3, wz = zw - za, zc = s * (za + wz / 2), tilt = 0.19;
+    ib.box('mahogPlain', 0.42, 0.34, wz - 0.06, xc, yF + 0.17, s * (za + 0.03 + (wz - 0.06) / 2));
+    ib.box('dark', 0.36, 0.02, wz - 0.12, xc, yF + 0.01, zc);
+    ib.box(plush, 0.5, 0.14, wz, xc + 0.02, yF + 0.41, zc);
+    const back = M(xc - 0.21, yF + 0.76, zc, 0, 0, tilt);
+    ib.add(plush, new THREE.BoxGeometry(0.12, 0.64, wz).applyMatrix4(back));
+    ib.add(plush, new THREE.CylinderGeometry(0.07, 0.07, wz, 10).rotateX(Math.PI / 2).translate(0, 0.32, 0).applyMatrix4(back));   // the head roll
+    for (const d of [-1, 1]) ib.add('linen', new THREE.BoxGeometry(0.012, 0.17, wz * 0.3).translate(0.066, 0.17, d * wz / 4).applyMatrix4(back));
+    ib.box('mahogPlain', 0.5, 0.05, 0.07, xc, yF + 0.63, s * (za + 0.035));
+    ib.box('mahogPlain', 0.06, 0.15, 0.05, xc + 0.12, yF + 0.53, s * (za + 0.035));
+    ib.add('brass', barGeo(0.012, [xc - 0.275, yF + 1.08, s * (za + 0.05)], [xc - 0.29, yF + 1.21, s * (za + 0.05)], 5));   // grab handle atop the back
+    ib.add('brass', new THREE.SphereGeometry(0.022, 8, 6).translate(xc - 0.29, yF + 1.21, s * (za + 0.05)));
+  };
+  // a lounge armchair against the wall, facing the aisle
+  const chair = (xc, s) => {
+    const zc = s * (zw - 0.36);
+    ib.box('mahogPlain', 0.56, 0.3, 0.56, xc, yF + 0.15, zc);
+    ib.box(plush, 0.62, 0.16, 0.6, xc, yF + 0.38, zc);
+    const back = M(xc, yF + 0.72, s * (zw - 0.08), s * 0.15, 0, 0);
+    ib.add(plush, new THREE.BoxGeometry(0.62, 0.6, 0.14).applyMatrix4(back));
+    for (const d of [-1, 1]) ib.box(plush, 0.12, 0.26, 0.6, xc + d * 0.3, yF + 0.57, zc);
+    ib.add('linen', new THREE.BoxGeometry(0.34, 0.22, 0.012).translate(0, 0.14, -s * 0.076).applyMatrix4(back));
+  };
+  const pairs = []; for (let i = 0; i < 13; i++) pairs.push(-9.5 + i * 1.58);
+  for (const s of [-1, 1]) for (const xp of pairs) {
+    if (o.observation && xp < -5.6) { chair(xp - 0.33, s); chair(xp + 0.33, s); }
+    else { seat(xp - 0.4, s); seat(xp + 0.4, s); }
+  }
+  if (o.observation) {   // the lounge's rear wall lined in mahogany below and above its windows and over the door
+    const x = -xb + 0.01;
+    for (const sd of [-1, 1]) {
+      ib.box('mahog', 0.02, w0 - CH.yT, zi - 0.4, x, (w0 + CH.yT) / 2, sd * (zi + 0.4) / 2);
+      ib.box('mahog', 0.02, yE - w1, zi - 0.4, x, (yE + w1) / 2, sd * (zi + 0.4) / 2);
+      ib.box('mahogPlain', 0.08, 0.03, zi - 0.45, x + 0.04, w0 + 0.015, sd * (zi + 0.45) / 2);
+    }
+    ib.box('mahog', 0.02, yE - 3.1, 0.8, x, (yE + 3.1) / 2, 0);
+  }
+  // end bulkheads: mahogany either side of a panelled door with a brass knob and kick plate
+  for (const e of o.observation ? [1] : [-1, 1]) {
+    const x = e * (xb - 0.02);
+    for (const s of [-1, 1]) ib.box('mahog', 0.04, yE - CH.yT, zi - 0.42, x, (yE + CH.yT) / 2, s * (zi + 0.42) / 2);
+    ib.box('mahog', 0.04, yE - 3.08, 0.84, x, (yE + 3.08) / 2, 0);
+    ib.box('mahogPlain', 0.03, 3.08 - CH.yT, 0.8, x + e * 0.005, (3.08 + CH.yT) / 2, 0);
+    for (const y of [1.9, 2.65]) ib.box('mahogPlain', 0.02, 0.5, 0.56, x - e * 0.018, y, 0);
+    ib.box('brass', 0.015, 0.2, 0.7, x - e * 0.018, CH.yT + 0.14, 0);
+    ib.add('brass', new THREE.SphereGeometry(0.03, 8, 6).translate(x - e * 0.04, 2.15, -0.3));
+    ib.box('brass', 0.02, 0.06, 0.06, x - e * 0.02, 2.15, -0.3);
+  }
 }
 
 /* ---- small parts the cars share ---- */
@@ -1535,7 +1677,7 @@ function coachModel(spec, num, observation, trim = '') {
   carMaterials();
   const root = new THREE.Group(); const gb = new GeoBin();
   const L = CH.L, hw = CH.hw, he = L / 2 - 0.55, xb0 = CH.xb, yE = CH.eave, G = 'dark';
-  const T = TRIM[trim], body = T ? 'holBody' : 'green', low = T ? 'holLow' : 'greenLow', sillK = T ? 'holSill' : 'greenSill', win = T ? 'holWin' : 'win', gold = T ? T.gold : '#d9c27a';
+  const T = TRIM[trim], body = T ? 'holBody' : 'green', low = T ? 'holLow' : 'greenLow', sillK = T ? 'holSill' : 'greenSill', win = T ? 'holWin' : 'win', glass = T ? 'holGlass' : 'coachGlass', gold = T ? T.gold : '#d9c27a';
   carFrame(gb, { L, he, hw: hw - 0.04, yT: CH.yT, xb: L / 2 - 3.5, belly: 0.72, tp: TPY6, sb: SBY6, xr: 2.6 });
   // underbody: battery boxes, water tanks, the axle-driven generator, the steam heat line
   for (const [x, z] of [[-1.8, 0.85], [1.0, 0.85]]) { gb.box(G, 1.6, 0.6, 0.62, x, CH.yT - 0.06 - 0.3, z); for (const d of [-0.6, 0.6]) gb.box(G, 0.06, 0.08, 0.7, x + d, CH.yT - 0.08, z); }
@@ -1554,7 +1696,7 @@ function coachModel(spec, num, observation, trim = '') {
     gb.box(body, 2 * xb0, 0.07, 0.06, 0, CH.belt + 0.035, s * (hw - 0.01));                            // belt rail
     let x = -xb0; for (const [a, b] of opens) { gb.box(body, a - x + 0.002, w1 - w0, 0.04, (a + x) / 2, (w0 + w1) / 2, z); x = b; }
     gb.box(body, xb0 - x + 0.002, w1 - w0, 0.04, (xb0 + x) / 2, (w0 + w1) / 2, z);
-    gb.box(win, 2 * xb0 - 0.4, w1 - w0, 0.02, 0, (w0 + w1) / 2, s * (hw - 0.05));                      // glazing behind the posts
+    gb.box(glass, 2 * xb0 - 0.4, w1 - w0, 0.02, 0, (w0 + w1) / 2, s * (hw - 0.05));                    // clear glazing behind the posts
     for (const [a, b] of opens) {
       gb.box(G, b - a, 0.035, 0.03, (a + b) / 2, w0 + (w1 - w0) * 0.62, s * (hw - 0.035));             // meeting rail of the sash
       gb.box(body, b - a + 0.03, 0.04, 0.07, (a + b) / 2, w0 - 0.01, s * (hw - 0.0));                  // window sill
@@ -1631,7 +1773,7 @@ function coachModel(spec, num, observation, trim = '') {
     for (const s of [-1, 1]) {
       gb.box(body, 0.06, w0 - CH.yT, hw - 0.4, xw - 0.03, (w0 + CH.yT) / 2, s * (hw + 0.4) / 2);
       gb.box(body, 0.06, yE - w1, hw - 0.4, xw - 0.03, (yE + w1) / 2, s * (hw + 0.4) / 2);
-      gb.box(win, 0.02, w1 - w0, hw - 0.5, xw - 0.03, (w0 + w1) / 2, s * (hw + 0.45) / 2);
+      gb.box(glass, 0.02, w1 - w0, hw - 0.5, xw - 0.03, (w0 + w1) / 2, s * (hw + 0.45) / 2);
       gb.box(body, 0.06, w1 - w0, 0.08, xw - 0.03, (w0 + w1) / 2, s * (hw - 0.04));
       gb.box(body, 0.06, w1 - w0, 0.08, xw - 0.03, (w0 + w1) / 2, s * 0.44);
     }
@@ -1721,6 +1863,8 @@ function coachModel(spec, num, observation, trim = '') {
   const couplers = carCouplers(gb, root, L, -0.55, 0.955, 1.08);
   root.add(gb.build(RMAT));
   root.traverse(o => { if (o.isMesh && !o.userData.cpl) { o.castShadow = true; o.receiveShadow = true; } });
+  const ib = new GeoBin(); coachInterior(ib, { observation, trim: T });
+  const inner = ib.build(RMAT, { cast: false }); inner.traverse(o => { if (o.isMesh) o.receiveShadow = true; }); root.add(inner);
   return { root, len: L, trucks: [{ a: 3.5, type: 'six', R: 0.457 }, { a: 21.2, type: 'six', R: 0.457 }], frame: [3.5, 21.2], weight: 82 * STON, kind: 'coach', axles: 6, area: 120, couplers };
 }
 

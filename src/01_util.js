@@ -115,7 +115,7 @@ function wearSoot(seed = 1225, amt = 1) {
   const k = 'soot' + seed + '_' + amt;
   return WEAR[k] || (WEAR[k] = canvasTex(256, 256, (g, w, h) => {
     const r = rng(seed); g.fillStyle = '#ffffff'; g.fillRect(0, 0, w, h);
-    for (let i = 0; i < 180; i++) { const x = r() * w, y = r() * h, rr = 8 + r() * 40, br = r() < 0.6, a = (0.05 + r() * 0.12) * amt, c = br ? `110,92,72` : `40,36,32`, gr = g.createRadialGradient(x, y, 0, x, y, rr); gr.addColorStop(0, `rgba(${c},${a})`); gr.addColorStop(1, `rgba(${c},0)`); for (const dx of [-w, 0, w]) for (const dy of [-h, 0, h]) { g.save(); g.translate(dx, dy); g.fillStyle = gr; g.fillRect(x - rr, y - rr, 2 * rr, 2 * rr); g.restore(); } }
+    for (let i = 0; i < 520; i++) { const x = r() * w, y = r() * h, rr = 3 + r() * 13, br = r() < 0.6, a = (0.04 + r() * 0.09) * amt, c = br ? `110,92,72` : `40,36,32`, gr = g.createRadialGradient(x, y, 0, x, y, rr); gr.addColorStop(0, `rgba(${c},${a})`); gr.addColorStop(1, `rgba(${c},0)`); for (const dx of [-w, 0, w]) for (const dy of [-h, 0, h]) { g.save(); g.translate(dx, dy); g.fillStyle = gr; g.fillRect(x - rr, y - rr, 2 * rr, 2 * rr); g.restore(); } }
   }, { repeat: true }));
 }
 /* give a material worn paint: the roughness mottle, and optionally a soot map (only where it has no map of its own) */
