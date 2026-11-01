@@ -728,7 +728,7 @@ CAB.point = function (x, y) {
   CAB.mouse = true;
   const c = x === null ? null : CAB.pick(x, y);
   if (CAB.hover !== c) { CAB.highlight(CAB.hover, false); if (c && c.kind !== 'info') CAB.highlight(c, true); CAB.hover = c; }
-  $('gl').style.cursor = c ? (c.kind === 'info' ? 'help' : (c.kind === 'toggle' ? 'pointer' : 'grab')) : '';
+  $('gl').style.cursor = c ? (c.kind === 'info' ? 'help' : (c.kind === 'toggle' ? 'var(--cur-hot, pointer)' : 'grab')) : '';
   if (c) CAB.tip(c, x, y); else if (CAB.tipAt) { CAB.tip(null); CAB.tipAt = null; }
   return !!c;
 };

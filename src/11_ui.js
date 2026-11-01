@@ -49,6 +49,9 @@ function setupViewInput(canvas, camera) {
   const zoom = d => { CAM.dist = clamp(d, 7, 140); };
   canvas.addEventListener('pointerdown', e => {
     if (PLACE.on) return;
+    // the right mouse button only swings the view round, side to side: no cab controls, no taps
+    const rmb = e.pointerType === 'mouse' && e.button === 2;
+    if (rmb) { if (ptrs.size || CAB.grab) return; e.preventDefault(); canvas.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY, rmb: true }); CAM.fling = 0; flick = 0; tapStart = null; canvas.classList.add('dragging'); return; }
     // in the cab, a control under the pointer takes the drag instead of the view
     if (!ptrs.size && !CAB.grab && CAB.down(e.clientX, e.clientY, e.pointerId)) { canvas.setPointerCapture(e.pointerId); e.preventDefault(); return; }
     canvas.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY }); CAM.fling = 0; flick = 0; if (ptrs.size === 1) tapStart = { x: e.clientX, y: e.clientY, t: performance.now() }; if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinch0 = Math.hypot(a.x - b.x, a.y - b.y); ang0 = Math.atan2(b.y - a.y, b.x - a.x); dist0 = CAM.dist; tapStart = null; } });
@@ -59,6 +62,7 @@ function setupViewInput(canvas, camera) {
     if (!ptrs.has(e.pointerId)) return;
     const p = ptrs.get(e.pointerId), dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
     if (tapStart && Math.hypot(e.clientX - tapStart.x, e.clientY - tapStart.y) > 8) tapStart = null;
+    if (!tapStart && e.pointerType === 'mouse') canvas.classList.add('dragging');
     if (ptrs.size === 2) {
       const [a, b] = [...ptrs.values()], d = Math.hypot(a.x - b.x, a.y - b.y), ang = Math.atan2(b.y - a.y, b.x - a.x);
       if (pinch0 > 0) zoom(dist0 * pinch0 / d);
@@ -68,7 +72,12 @@ function setupViewInput(canvas, camera) {
       return;
     }
     const k = 0.006, now = performance.now();
-    if (CAM.mode === 'chase') { CAM.yaw -= dx * k; CAM.pitch = clamp(CAM.pitch + dy * k * 0.8, -0.16, 1.35); }
+    if (p.rmb) {
+      if (CAM.mode === 'chase') CAM.yaw -= dx * k;
+      else if (CAM.mode === 'cab') { CAB.lookTo = null; CAM.cabYaw = clamp(CAM.cabYaw - dx * k * 0.7, -2.2, 2.2); }
+      else if (CAM.mode === 'drone') CAM.droneYaw -= dx * k;
+    }
+    else if (CAM.mode === 'chase') { CAM.yaw -= dx * k; CAM.pitch = clamp(CAM.pitch + dy * k * 0.8, -0.16, 1.35); }
     else if (CAM.mode === 'cab') { CAB.lookTo = null; CAM.cabYaw = clamp(CAM.cabYaw - dx * k * 0.7, -2.2, 2.2); CAM.cabPitch = clamp(CAM.cabPitch - dy * k * 0.7, -0.8, 0.6); }
     else if (CAM.mode === 'drone') { CAM.droneYaw -= dx * k; CAM.dronePitch = clamp(CAM.dronePitch + dy * k * 0.6, 0.35, 1.5); }
     // how fast the drag is going, so letting go mid-swing keeps the view turning and easing to a stop
@@ -80,8 +89,11 @@ function setupViewInput(canvas, camera) {
     if (tapStart && ptrs.size === 1 && performance.now() - tapStart.t < 400) handleTap(e.clientX, e.clientY, camera);
     else if (ptrs.size === 1 && performance.now() - flickT < 70 && (CAM.mode === 'chase' || CAM.mode === 'drone')) CAM.fling = clamp(flick, -4, 4);
     ptrs.delete(e.pointerId); if (ptrs.size < 2) pinch0 = 0; tapStart = null;
+    if (!ptrs.size) canvas.classList.remove('dragging');
   };
-  canvas.addEventListener('pointerup', up); canvas.addEventListener('pointerleave', () => { if (PLACE.on) return; CPL.point(null); if (!CAB.grab) CAB.point(null); }); canvas.addEventListener('pointercancel', e => { if (CAB.grab && e.pointerId === CAB.grab.pid) CAB.up(); ptrs.delete(e.pointerId); tapStart = null; });
+  canvas.addEventListener('pointerup', up); canvas.addEventListener('pointerleave', () => { if (PLACE.on) return; CPL.point(null); if (!CAB.grab) CAB.point(null); }); canvas.addEventListener('pointercancel', e => { if (CAB.grab && e.pointerId === CAB.grab.pid) CAB.up(); ptrs.delete(e.pointerId); tapStart = null; if (!ptrs.size) canvas.classList.remove('dragging'); });
+  // no browser menu on a right click anywhere in the game; text boxes keep theirs for paste
+  document.addEventListener('contextmenu', e => { const t = e.target; if (t && t.closest && t.closest('input,textarea,[contenteditable="true"]')) return; e.preventDefault(); });
   canvas.addEventListener('wheel', e => { if (PLACE.on) return; e.preventDefault(); zoom(CAM.dist * (1 + clamp(e.deltaY * (e.deltaMode ? 33 : 1), -120, 120) * 0.0012)); }, { passive: false });
   document.addEventListener('gesturestart', e => e.preventDefault());
 }
@@ -206,47 +218,47 @@ function drawGauges() {
   const dial = (x, y, r, max, label, hands, red, ticksStep, minor) => {
     const a0 = Math.PI * 0.75, a1 = Math.PI * 2.25;
     const gr = g.createRadialGradient(x - r * 0.3, y - r * 0.3, r * 0.1, x, y, r * 1.05);
-    gr.addColorStop(0, '#f6e7b8'); gr.addColorStop(0.7, '#c9a24f'); gr.addColorStop(1, '#6d531f');
+    gr.addColorStop(0, HT.g.bezel[0]); gr.addColorStop(0.7, HT.g.bezel[1]); gr.addColorStop(1, HT.g.bezel[2]);
     g.fillStyle = gr; g.beginPath(); g.arc(x, y, r + 6, 0, TAU); g.fill();
-    g.fillStyle = '#efe9d6'; g.beginPath(); g.arc(x, y, r, 0, TAU); g.fill();
+    g.fillStyle = HT.g.face; g.beginPath(); g.arc(x, y, r, 0, TAU); g.fill();
     if (red) { g.strokeStyle = 'rgba(205,40,30,0.85)'; g.lineWidth = r * 0.09; g.beginPath(); g.arc(x, y, r * 0.86, a0 + (a1 - a0) * red[0] / max, a0 + (a1 - a0) * red[1] / max); g.stroke(); }
-    g.strokeStyle = '#1c1c1c'; g.fillStyle = '#1c1c1c';
+    g.strokeStyle = HT.g.tick; g.fillStyle = HT.g.tick;
     for (let v = 0; v <= max + 1e-6; v += minor) { const a = a0 + (a1 - a0) * v / max; const major = Math.abs(v / ticksStep - Math.round(v / ticksStep)) < 1e-6; g.lineWidth = major ? 2.2 : 1; g.beginPath(); g.moveTo(x + Math.cos(a) * r * (major ? 0.74 : 0.82), y + Math.sin(a) * r * (major ? 0.74 : 0.82)); g.lineTo(x + Math.cos(a) * r * 0.92, y + Math.sin(a) * r * 0.92); g.stroke();
       if (major) { g.font = `600 ${Math.round(r * 0.17)}px "IBM Plex Mono", monospace`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(String(v), x + Math.cos(a) * r * 0.57, y + Math.sin(a) * r * 0.57); } }
-    g.font = `600 ${Math.round(r * 0.15)}px "IBM Plex Sans Condensed", sans-serif`; g.fillStyle = '#3a3a3a'; g.fillText(label, x, y + r * 0.42);
+    g.font = `600 ${Math.round(r * 0.15)}px "IBM Plex Sans Condensed", sans-serif`; g.fillStyle = HT.g.label; g.fillText(label, x, y + r * 0.42);
     for (const [v, col] of hands) { const a = a0 + (a1 - a0) * clamp(v, 0, max) / max; g.strokeStyle = col; g.lineWidth = r * 0.055; g.lineCap = 'round'; g.beginPath(); g.moveTo(x - Math.cos(a) * r * 0.15, y - Math.sin(a) * r * 0.15); g.lineTo(x + Math.cos(a) * r * 0.82, y + Math.sin(a) * r * 0.82); g.stroke(); }
-    g.fillStyle = '#222'; g.beginPath(); g.arc(x, y, r * 0.07, 0, TAU); g.fill();
+    g.fillStyle = HT.g.hub; g.beginPath(); g.arc(x, y, r * 0.07, 0, TAU); g.fill();
   };
   const T = GAME.train, b = T ? T.vehicles : null;
   // the end car farthest from the engine, which may be ahead of it when shoving
   const lastBP = b ? (T.li > b.length - 1 - T.li ? b[0] : b[b.length - 1]).brake.BP : 90;
   if (T && T.elec) { drawElectricGauges(g, dial, b, lastBP); return; }
   if (GAME.isDiesel()) { drawDieselGauges(g, dial, b, lastBP); return; }
-  dial(108, 112, 96, 300, 'BOILER PSI', [[S.P, '#151515']], [245, 300], 50, 10);
-  g.font = '600 18px "IBM Plex Mono", monospace'; g.fillStyle = S.safety ? '#ee4b3d' : '#cfa651'; g.textAlign = 'center'; g.fillText(S.safety ? 'POPPING' : 'CHEST ' + Math.round(S.Psc), 108, 224);
-  dial(296, 86, 70, 160, 'MR · EQ', [[S.MR, '#c0281e'], [S.ER, '#151515']], null, 40, 10);
-  dial(458, 86, 70, 160, 'BP · BC', [[b ? GAME.train.lead.brake.BP : 90, '#151515'], [S.BCloco || 0, '#c0281e']], null, 40, 10);
-  g.font = '600 17px "IBM Plex Mono", monospace'; g.fillStyle = '#8d9aa2'; g.textAlign = 'center';
+  dial(108, 112, 96, 300, 'BOILER PSI', [[S.P, HT.g.needle]], [245, 300], 50, 10);
+  g.font = '600 18px "IBM Plex Mono", monospace'; g.fillStyle = S.safety ? '#ee4b3d' : HT.g.acc; g.textAlign = 'center'; g.fillText(S.safety ? 'POPPING' : 'CHEST ' + Math.round(S.Psc), 108, 224);
+  dial(296, 86, 70, 160, 'MR · EQ', [[S.MR, HT.g.needle2], [S.ER, HT.g.needle]], null, 40, 10);
+  dial(458, 86, 70, 160, 'BP · BC', [[b ? GAME.train.lead.brake.BP : 90, HT.g.needle], [S.BCloco || 0, HT.g.needle2]], null, 40, 10);
+  g.font = '600 17px "IBM Plex Mono", monospace'; g.fillStyle = HT.g.dim; g.textAlign = 'center';
   g.fillText('CUT ' + Math.round(S.cut * 100) + '%', 296, 186); g.fillText('REAR ' + Math.round(lastBP), 458, 186);
-  g.fillStyle = S.slip ? '#ee4b3d' : '#8d9aa2'; g.fillText(S.slip ? 'SLIPPING' : 'TE ' + Math.round(Math.abs(S.TE) / LBF / 1000) + 'k lb', 296, 212);
-  g.fillStyle = '#8d9aa2'; g.fillText('FIRE ' + Math.round(S.fire * 100) + '%', 458, 212);
+  g.fillStyle = S.slip ? '#ee4b3d' : HT.g.dim; g.fillText(S.slip ? 'SLIPPING' : 'TE ' + Math.round(Math.abs(S.TE) / LBF / 1000) + 'k lb', 296, 212);
+  g.fillStyle = HT.g.dim; g.fillText('FIRE ' + Math.round(S.fire * 100) + '%', 458, 212);
   // water glass
   const gx = 560, gy0 = 26, gy1 = 200, gw = 26;
-  g.fillStyle = '#6d531f'; g.fillRect(gx - 6, gy0 - 14, gw + 12, 12); g.fillRect(gx - 6, gy1 + 2, gw + 12, 12);
-  g.fillStyle = '#0d1418'; g.fillRect(gx, gy0, gw, gy1 - gy0);
+  g.fillStyle = HT.g.cap; g.fillRect(gx - 6, gy0 - 14, gw + 12, 12); g.fillRect(gx - 6, gy1 + 2, gw + 12, 12);
+  g.fillStyle = HT.g.glass; g.fillRect(gx, gy0, gw, gy1 - gy0);
   const lvl = glassLevel(S.W), wy = gy1 - lvl * (gy1 - gy0);
   const wg = g.createLinearGradient(gx, 0, gx + gw, 0); wg.addColorStop(0, '#2e5c74'); wg.addColorStop(0.5, '#7fb6cf'); wg.addColorStop(1, '#2e5c74');
   g.fillStyle = wg; g.fillRect(gx, wy, gw, gy1 - wy);
   g.strokeStyle = 'rgba(255,255,255,0.25)'; g.lineWidth = 1; for (let i = 0; i < 8; i++) { g.beginPath(); g.moveTo(gx, wy + i * 4); g.lineTo(gx + gw, wy + i * 4 + 3); g.stroke(); }
-  g.strokeStyle = S.lowWater ? '#ee4b3d' : '#cfa651'; g.lineWidth = 2; g.strokeRect(gx, gy0, gw, gy1 - gy0);
-  g.font = '600 15px "IBM Plex Sans Condensed", sans-serif'; g.fillStyle = '#8d9aa2'; g.textAlign = 'center'; g.fillText('WATER', gx + gw / 2, 226);
+  g.strokeStyle = S.lowWater ? '#ee4b3d' : HT.g.acc; g.lineWidth = 2; g.strokeRect(gx, gy0, gw, gy1 - gy0);
+  g.font = '600 15px "IBM Plex Sans Condensed", sans-serif'; g.fillStyle = HT.g.dim; g.textAlign = 'center'; g.fillText('WATER', gx + gw / 2, 226);
   // tender
   g.textAlign = 'left'; g.font = '600 16px "IBM Plex Mono", monospace';
-  g.fillStyle = '#8d9aa2'; g.fillText('TENDER', 604, 40);
-  g.fillStyle = '#dfe4e6'; g.fillText(Math.round(S.water / 3.785 / 100) / 10 + 'k', 604, 66); g.fillStyle = '#8d9aa2'; g.fillText('gal', 604, 86);
-  g.fillStyle = '#dfe4e6'; g.fillText((S.coal / 907.2).toFixed(1), 604, 118); g.fillStyle = '#8d9aa2'; g.fillText('tons', 604, 138);
-  g.fillStyle = S.autoFire ? '#52d483' : '#cfa651'; g.fillText(S.autoFire ? 'AUTO' : 'HAND', 604, 176); g.fillStyle = '#8d9aa2'; g.fillText('fire', 604, 196);
-  g.fillStyle = '#8d9aa2'; g.fillText('STK ' + Math.round(S.stoker * 100), 604, 222);
+  g.fillStyle = HT.g.dim; g.fillText('TENDER', 604, 40);
+  g.fillStyle = HT.g.txt; g.fillText(Math.round(S.water / 3.785 / 100) / 10 + 'k', 604, 66); g.fillStyle = HT.g.dim; g.fillText('gal', 604, 86);
+  g.fillStyle = HT.g.txt; g.fillText((S.coal / 907.2).toFixed(1), 604, 118); g.fillStyle = HT.g.dim; g.fillText('tons', 604, 138);
+  g.fillStyle = S.autoFire ? '#52d483' : HT.g.acc; g.fillText(S.autoFire ? 'AUTO' : 'HAND', 604, 176); g.fillStyle = HT.g.dim; g.fillText('fire', 604, 196);
+  g.fillStyle = HT.g.dim; g.fillText('STK ' + Math.round(S.stoker * 100), 604, 222);
 }
 
 /* ---------------- minimap & full map ---------------- */
@@ -399,57 +411,57 @@ function toast(msg, kind = '', ms = 3600, key) {
 function drawDieselGauges(g, dial, b, lastBP) {
   const nU = (GAME.train && GAME.train.nUnits) || 1, mx = 200 * nU;
   const te = Math.abs(S.TE) / LBF / 1000, db = S.DBF * nU / LBF / 1000;
-  dial(108, 112, 96, mx, nU > 1 ? `TE · DB  klbf ×${nU}` : 'TE · DB  klbf', [[te, '#151515'], [db, '#c0281e']], [170 * nU, mx], 50 * nU, 10 * nU);
+  dial(108, 112, 96, mx, nU > 1 ? `TE · DB  klbf ×${nU}` : 'TE · DB  klbf', [[te, HT.g.needle], [db, HT.g.needle2]], [170 * nU, mx], 50 * nU, 10 * nU);
   g.font = '600 18px "IBM Plex Mono", monospace'; g.textAlign = 'center';
-  g.fillStyle = S.slipCtl ? '#ee4b3d' : '#cfa651'; g.fillText(S.slipCtl ? 'WHEEL SLIP' : (S.notch ? 'N' + S.notch : (S.dyn > 0.06 ? 'DYN BRAKE' : 'IDLE')) + ' · ' + Math.round(S.rpm) + ' rpm', 108, 224);
-  dial(296, 86, 70, 160, 'MR · EQ', [[S.MR, '#c0281e'], [S.ER, '#151515']], null, 40, 10);
-  dial(458, 86, 70, 160, 'BP · BC', [[b ? GAME.train.lead.brake.BP : 90, '#151515'], [S.BCloco || 0, '#c0281e']], null, 40, 10);
-  g.font = '600 17px "IBM Plex Mono", monospace'; g.fillStyle = '#8d9aa2';
+  g.fillStyle = S.slipCtl ? '#ee4b3d' : HT.g.acc; g.fillText(S.slipCtl ? 'WHEEL SLIP' : (S.notch ? 'N' + S.notch : (S.dyn > 0.06 ? 'DYN BRAKE' : 'IDLE')) + ' · ' + Math.round(S.rpm) + ' rpm', 108, 224);
+  dial(296, 86, 70, 160, 'MR · EQ', [[S.MR, HT.g.needle2], [S.ER, HT.g.needle]], null, 40, 10);
+  dial(458, 86, 70, 160, 'BP · BC', [[b ? GAME.train.lead.brake.BP : 90, HT.g.needle], [S.BCloco || 0, HT.g.needle2]], null, 40, 10);
+  g.font = '600 17px "IBM Plex Mono", monospace'; g.fillStyle = HT.g.dim;
   g.fillText('LOAD ' + Math.round(S.amps) + ' A', 296, 186); g.fillText('REAR ' + Math.round(lastBP), 458, 186);
   g.fillText('TURBO ' + Math.round(S.turbo * 100) + '%', 296, 212);
   g.fillStyle = S.engineRun ? '#52d483' : (S.crank > 0 ? '#f2b33d' : '#ee4b3d'); g.fillText(S.engineRun ? 'ENGINE RUN' : (S.crank > 0 ? 'CRANKING' : 'ENGINE OFF'), 458, 212);
   // fuel gauge (vertical bar like the steam water glass)
   const gx = 560, gy0 = 26, gy1 = 200, gw = 26;
-  g.fillStyle = '#6d531f'; g.fillRect(gx - 6, gy0 - 14, gw + 12, 12); g.fillRect(gx - 6, gy1 + 2, gw + 12, 12);
-  g.fillStyle = '#0d1418'; g.fillRect(gx, gy0, gw, gy1 - gy0);
+  g.fillStyle = HT.g.cap; g.fillRect(gx - 6, gy0 - 14, gw + 12, 12); g.fillRect(gx - 6, gy1 + 2, gw + 12, 12);
+  g.fillStyle = HT.g.glass; g.fillRect(gx, gy0, gw, gy1 - gy0);
   const lvl = clamp(S.fuel / 18927, 0, 1), fy = gy1 - lvl * (gy1 - gy0);
   const fg = g.createLinearGradient(gx, 0, gx + gw, 0); fg.addColorStop(0, '#6b4e16'); fg.addColorStop(0.5, '#d8a646'); fg.addColorStop(1, '#6b4e16');
   g.fillStyle = fg; g.fillRect(gx, fy, gw, gy1 - fy);
-  g.strokeStyle = lvl < 0.1 ? '#ee4b3d' : '#cfa651'; g.lineWidth = 2; g.strokeRect(gx, gy0, gw, gy1 - gy0);
-  g.font = '600 15px "IBM Plex Sans Condensed", sans-serif'; g.fillStyle = '#8d9aa2'; g.textAlign = 'center'; g.fillText('FUEL', gx + gw / 2, 226);
+  g.strokeStyle = lvl < 0.1 ? '#ee4b3d' : HT.g.acc; g.lineWidth = 2; g.strokeRect(gx, gy0, gw, gy1 - gy0);
+  g.font = '600 15px "IBM Plex Sans Condensed", sans-serif'; g.fillStyle = HT.g.dim; g.textAlign = 'center'; g.fillText('FUEL', gx + gw / 2, 226);
   g.textAlign = 'left'; g.font = '600 16px "IBM Plex Mono", monospace';
-  g.fillStyle = '#8d9aa2'; g.fillText('FUEL', 604, 40);
-  g.fillStyle = '#dfe4e6'; g.fillText(Math.round(S.fuel / 3.785).toLocaleString(), 604, 66); g.fillStyle = '#8d9aa2'; g.fillText('gal', 604, 86);
-  g.fillStyle = '#dfe4e6'; g.fillText(S.notch ? 'N' + S.notch : 'IDLE', 604, 118); g.fillStyle = '#8d9aa2'; g.fillText('notch', 604, 138);
-  g.fillStyle = S.dyn > 0.06 ? '#f2b33d' : '#dfe4e6'; g.fillText(S.dyn > 0.06 ? Math.round(S.dbLoad * 100) + '%' : 'OFF', 604, 176); g.fillStyle = '#8d9aa2'; g.fillText('dyn brk', 604, 196);
-  g.fillStyle = S.sander ? '#cfa651' : '#8d9aa2'; g.fillText(S.sander ? 'SAND ON' : 'SAND', 604, 222);
+  g.fillStyle = HT.g.dim; g.fillText('FUEL', 604, 40);
+  g.fillStyle = HT.g.txt; g.fillText(Math.round(S.fuel / 3.785).toLocaleString(), 604, 66); g.fillStyle = HT.g.dim; g.fillText('gal', 604, 86);
+  g.fillStyle = HT.g.txt; g.fillText(S.notch ? 'N' + S.notch : 'IDLE', 604, 118); g.fillStyle = HT.g.dim; g.fillText('notch', 604, 138);
+  g.fillStyle = S.dyn > 0.06 ? '#f2b33d' : HT.g.txt; g.fillText(S.dyn > 0.06 ? Math.round(S.dbLoad * 100) + '%' : 'OFF', 604, 176); g.fillStyle = HT.g.dim; g.fillText('dyn brk', 604, 196);
+  g.fillStyle = S.sander ? HT.g.acc : HT.g.dim; g.fillText(S.sander ? 'SAND ON' : 'SAND', 604, 222);
 }
 
 /* electric set: tractive and regenerative effort, air, line and power from the wire */
 function drawElectricGauges(g, dial, b, lastBP) {
   const sp = LOCO_SPEC[GAME.train.locoKey], mx = Math.ceil(sp.TEmax / 1000 / 100) * 100 + 100;
   const te = Math.abs(S.TE) / 1000, rb = (S.DBF + S.blend) / 1000;
-  dial(108, 112, 96, mx, 'TE · REGEN  kN', [[te, '#151515'], [rb, '#2a7fd0']], null, 100, 20);
+  dial(108, 112, 96, mx, 'TE · REGEN  kN', [[te, HT.g.needle], [rb, '#2a7fd0']], null, 100, 20);
   g.font = '600 18px "IBM Plex Mono", monospace'; g.textAlign = 'center';
-  g.fillStyle = S.slipCtl ? '#ee4b3d' : '#cfa651'; g.fillText(S.slipCtl ? 'WHEEL SLIP' : (S.notch ? 'P' + S.notch : (S.dyn > 0.06 ? 'REGEN' : 'OFF')) + ' · ' + Math.round(Math.abs(S.v) * 3.6) + ' km/h', 108, 224);
-  dial(296, 86, 70, 160, 'MR · EQ', [[S.MR, '#c0281e'], [S.ER, '#151515']], null, 40, 10);
-  dial(458, 86, 70, 160, 'BP · BC', [[b ? GAME.train.lead.brake.BP : 90, '#151515'], [S.BCloco || 0, '#c0281e']], null, 40, 10);
-  g.font = '600 17px "IBM Plex Mono", monospace'; g.fillStyle = '#8d9aa2';
+  g.fillStyle = S.slipCtl ? '#ee4b3d' : HT.g.acc; g.fillText(S.slipCtl ? 'WHEEL SLIP' : (S.notch ? 'P' + S.notch : (S.dyn > 0.06 ? 'REGEN' : 'OFF')) + ' · ' + Math.round(Math.abs(S.v) * 3.6) + ' km/h', 108, 224);
+  dial(296, 86, 70, 160, 'MR · EQ', [[S.MR, HT.g.needle2], [S.ER, HT.g.needle]], null, 40, 10);
+  dial(458, 86, 70, 160, 'BP · BC', [[b ? GAME.train.lead.brake.BP : 90, HT.g.needle], [S.BCloco || 0, HT.g.needle2]], null, 40, 10);
+  g.font = '600 17px "IBM Plex Mono", monospace'; g.fillStyle = HT.g.dim;
   g.fillText((S.kW < 0 ? 'RETURN ' : 'DRAW ') + Math.abs(Math.round(S.kW)).toLocaleString() + ' kW', 296, 186); g.fillText('REAR ' + Math.round(lastBP), 458, 186);
   g.fillText('LINE ' + (S.vcb ? '25.0 kV' : '—'), 296, 212);
   g.fillStyle = S.vcb ? '#52d483' : (S.panUp ? '#f2b33d' : '#ee4b3d'); g.fillText(S.vcb ? 'BREAKER IN' : (S.panUp ? 'PAN RISING' : 'PAN DOWN'), 458, 212);
   // pantograph height, where the diesel has its fuel gauge
   const gx = 560, gy0 = 26, gy1 = 200, gw = 26;
-  g.fillStyle = '#6d531f'; g.fillRect(gx - 6, gy0 - 14, gw + 12, 12); g.fillRect(gx - 6, gy1 + 2, gw + 12, 12);
-  g.fillStyle = '#0d1418'; g.fillRect(gx, gy0, gw, gy1 - gy0);
+  g.fillStyle = HT.g.cap; g.fillRect(gx - 6, gy0 - 14, gw + 12, 12); g.fillRect(gx - 6, gy1 + 2, gw + 12, 12);
+  g.fillStyle = HT.g.glass; g.fillRect(gx, gy0, gw, gy1 - gy0);
   const py = gy1 - S.pan * (gy1 - gy0);
   g.fillStyle = '#9ea3a8'; g.fillRect(gx, py, gw, 4); g.fillStyle = 'rgba(158,163,168,0.25)'; g.fillRect(gx, py + 4, gw, gy1 - py - 4);
-  g.strokeStyle = '#cfa651'; g.lineWidth = 2; g.strokeRect(gx, gy0, gw, gy1 - gy0);
-  g.font = '600 15px "IBM Plex Sans Condensed", sans-serif'; g.fillStyle = '#8d9aa2'; g.textAlign = 'center'; g.fillText('PAN', gx + gw / 2, 226);
+  g.strokeStyle = HT.g.acc; g.lineWidth = 2; g.strokeRect(gx, gy0, gw, gy1 - gy0);
+  g.font = '600 15px "IBM Plex Sans Condensed", sans-serif'; g.fillStyle = HT.g.dim; g.textAlign = 'center'; g.fillText('PAN', gx + gw / 2, 226);
   g.textAlign = 'left'; g.font = '600 16px "IBM Plex Mono", monospace';
-  g.fillStyle = '#8d9aa2'; g.fillText('ENERGY', 604, 40);
-  g.fillStyle = '#dfe4e6'; g.fillText(Math.round(S.kWh).toLocaleString(), 604, 66); g.fillStyle = '#8d9aa2'; g.fillText('kWh', 604, 86);
-  g.fillStyle = '#dfe4e6'; g.fillText(S.notch ? 'P' + S.notch : 'OFF', 604, 118); g.fillStyle = '#8d9aa2'; g.fillText('power', 604, 138);
-  g.fillStyle = S.dyn > 0.06 ? '#2a7fd0' : '#dfe4e6'; g.fillText(S.dyn > 0.06 ? Math.round(S.dbLoad * 100) + '%' : 'OFF', 604, 176); g.fillStyle = '#8d9aa2'; g.fillText('regen', 604, 196);
-  g.fillStyle = S.sander ? '#cfa651' : '#8d9aa2'; g.fillText(S.sander ? 'SAND ON' : 'SAND', 604, 222);
+  g.fillStyle = HT.g.dim; g.fillText('ENERGY', 604, 40);
+  g.fillStyle = HT.g.txt; g.fillText(Math.round(S.kWh).toLocaleString(), 604, 66); g.fillStyle = HT.g.dim; g.fillText('kWh', 604, 86);
+  g.fillStyle = HT.g.txt; g.fillText(S.notch ? 'P' + S.notch : 'OFF', 604, 118); g.fillStyle = HT.g.dim; g.fillText('power', 604, 138);
+  g.fillStyle = S.dyn > 0.06 ? '#2a7fd0' : HT.g.txt; g.fillText(S.dyn > 0.06 ? Math.round(S.dbLoad * 100) + '%' : 'OFF', 604, 176); g.fillStyle = HT.g.dim; g.fillText('regen', 604, 196);
+  g.fillStyle = S.sander ? HT.g.acc : HT.g.dim; g.fillText(S.sander ? 'SAND ON' : 'SAND', 604, 222);
 }
