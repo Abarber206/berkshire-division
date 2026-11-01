@@ -194,6 +194,7 @@ h1{font-family:var(--f-display);font-weight:800;font-size:clamp(44px,8vw,84px);l
 .specs b{font-family:var(--f-num);font-weight:600;font-size:15px;font-variant-numeric:tabular-nums}
 .specs span{font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:var(--ink-dim)}
 .form{background:rgba(14,19,23,.9);border:1px solid var(--rule);border-radius:8px;padding:14px;display:flex;flex-direction:column;gap:12px;min-width:0}
+@media (min-width:601px) and (min-height:501px){ .form{max-height:calc(100vh - 32px)} .mpanes{overflow-y:auto;overscroll-behavior:contain;margin-right:-6px;padding-right:6px} }
 .fgroup{display:flex;flex-direction:column;gap:6px}
 .fgroup>.lbl{font-size:10px}
 .seg{display:grid;gap:4px;grid-template-columns:repeat(auto-fit,minmax(88px,1fr))}
@@ -224,6 +225,44 @@ details.keys{font-size:12px;color:var(--ink-dim)}
 details.keys summary{cursor:var(--cur-hot,pointer);color:var(--ink);font-weight:600;font-size:12px}
 details.keys div{display:grid;grid-template-columns:auto 1fr;gap:3px 10px;margin-top:6px;font-family:var(--f-num);font-size:11px}
 details.keys kbd{color:var(--brass)}
+/* menu: one tab of settings at a time, a footer that keeps the start button in reach, and a minimize */
+.mtop{display:flex;align-items:center;gap:6px;margin:-4px -4px 0}
+.mtabs{flex:1;min-width:0;display:flex;gap:2px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.mtabs::-webkit-scrollbar{display:none}
+.mtabs button{flex:1 0 auto;border:1px solid transparent;background:none;border-radius:5px;padding:7px 9px;font-size:11px;font-weight:700;letter-spacing:1.1px;text-transform:uppercase;color:var(--ink-dim);white-space:nowrap}
+.mtabs button:hover{color:var(--ink)}
+.mtabs button[aria-selected="true"]{color:#f6e2ad;border-color:var(--brass);background:linear-gradient(#2a2416,#1c180f)}
+.mmin{flex:none;display:flex;align-items:center;gap:5px;border:1px solid var(--rule);background:var(--steel-2);border-radius:5px;padding:6px 8px;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--ink-dim)}
+.mmin b{display:none;font-weight:700}
+.mmin:hover{color:var(--ink)}
+.mpanes{display:flex;flex-direction:column;min-height:0}
+.mpane{display:flex;flex-direction:column;gap:12px}
+.mpane[hidden]{display:none}
+.mpane .help{margin:0}
+.mfoot{display:flex;flex-direction:column;gap:8px;border-top:1px solid var(--rule);padding-top:10px}
+#menu.ingame .lede{display:none}
+#menu.ingame h1{font-size:clamp(34px,5vw,52px)}
+/* minimized: the scene shows through, and only a small bar with the start button stays */
+#menu.mini{background:none;pointer-events:none;align-items:flex-end;justify-content:flex-end;overflow:hidden}
+#menu.mini .sheet{display:block;width:auto}
+#menu.mini .brandmark,#menu.mini .mtabs,#menu.mini .mpanes,#menu.mini #loadBar,#menu.mini #loadText{display:none}
+#menu.mini .form{pointer-events:auto;flex-direction:row;align-items:center;gap:8px;padding:8px}
+#menu.mini .mtop{margin:0}
+#menu.mini .mmin b{display:inline}
+#menu.mini .mmin span{transform:rotate(180deg)}
+#menu.mini .mfoot{border:0;padding:0}
+#menu.mini #btnStart{position:static;width:auto;padding:8px 16px;font-size:18px;box-shadow:none}
+#menu.mini .form{padding-bottom:8px}
+@media (max-width:600px){
+  .mtabs button{padding:7px 6px;letter-spacing:.6px;font-size:10.5px}
+  .mmin{padding:6px 7px}
+  .specs{grid-template-columns:repeat(3,minmax(0,1fr))!important}
+  .specs div{padding:6px 7px}
+  .specs b{font-size:13px}
+  .specs span{font-size:8.5px;letter-spacing:.8px}
+  #menu.ingame .specs{display:none}
+  #menu.ingame h1{font-size:34px}
+}
 
 #mapView{position:fixed;inset:0;z-index:15;background:rgba(6,9,11,.94)}
 #mapView canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:none}
@@ -778,60 +817,87 @@ details.keys kbd{color:var(--brass)}
       <h1>Berkshire<br>Division</h1>
       <p class="lede">Run a Lima-built Berkshire or a modern AC diesel over 13 miles of jointed rail: two long tangents across Ohio farm country, a grade over Kenton Hill, a through-truss river bridge, a working yard and a quarry branch. Every switch on the railroad can be thrown, and cars standing in the yard and on the spurs can be picked up and set out.</p>
       <div class="specs" id="specGrid"></div>
-      <p class="help" id="helpText">Fire up, set the <b>reverser</b> forward, release the <b>train brake</b> to RUN, then ease the <b>throttle</b> open. Heavy throttle on a wet rail will slip the drivers. Check the switch card before every turnout: diverging routes are 30 mph.</p>
     </div>
-    <div class="form">
-      <div class="fgroup" id="grpSave" hidden><span class="lbl">Saved runs</span><div class="saves" id="saveList"></div></div>
-      <div class="fgroup" id="grpRail"><span class="lbl">Railroad</span><div class="seg" id="optRail"></div>
-        <div class="row2"><button class="btn" id="btnEditor" type="button">Build your own layout</button></div>
-      </div>
-      <div class="fgroup" id="grpJob"><span class="lbl">Work</span><div class="seg jobs" id="optJob"></div><div id="jobBrief" hidden></div></div>
-      <div class="fgroup" id="grpMP"><span class="lbl">Multiplayer</span>
-        <div class="mp">
-          <div class="mpRow"><input id="mpName" class="mpIn" maxlength="16" placeholder="Your name" autocomplete="off" spellcheck="false" aria-label="Your name"></div>
-          <div class="mpRow" id="mpSolo"><button class="btn prim" id="mpCreate" type="button" disabled>Create room</button><input id="mpCode" class="mpIn code" maxlength="6" placeholder="CODE" autocomplete="off" spellcheck="false" autocapitalize="characters" aria-label="Room code"><button class="btn" id="mpJoin" type="button" disabled>Join</button></div>
-          <div class="mpRow" id="mpInRoom" hidden><span class="mpCode" id="mpCodeBig"></span><button class="btn" id="mpShare" type="button">Share link</button><button class="btn" id="mpLeave" type="button">Leave</button></div>
-          <div class="mpStatus" id="mpStatus">Loading the railroad…</div>
+    <div class="form" id="menuForm">
+      <div class="mtop">
+        <div class="mtabs" id="menuTabs" role="tablist" aria-label="Menu sections">
+          <button type="button" role="tab" data-tab="run">Run</button>
+          <button type="button" role="tab" data-tab="train">Train</button>
+          <button type="button" role="tab" data-tab="paint">Paint</button>
+          <button type="button" role="tab" data-tab="drive">Driving</button>
+          <button type="button" role="tab" data-tab="world">World</button>
+          <button type="button" role="tab" data-tab="online">Online</button>
         </div>
+        <button type="button" class="mmin" id="menuMin" aria-label="Minimize menu" title="Minimize the menu to see the railroad"><span>▾</span><b>Menu</b></button>
       </div>
-      <div class="fgroup"><span class="lbl">Locomotive</span><div class="seg" id="optLoco"></div></div>
-      <div class="fgroup" id="grpUnits" hidden><span class="lbl">Locomotives in the lashup</span><div class="seg" id="optUnits"></div></div>
-      <div class="fgroup" id="grpLivery" hidden><span class="lbl">Paint</span><div class="seg paint" id="optLivery"></div>
-        <div class="custom" id="customPaint" hidden>
-          <label>Body<input type="color" id="cBody"></label>
-          <label>Stripe<input type="color" id="cAccent"></label>
-          <label>Letters<input type="color" id="cLetter"></label>
-          <label>Number<input type="number" id="cNum" min="1" max="9999" inputmode="numeric"></label>
+      <div class="mpanes" id="menuPanes">
+      <section class="mpane" data-pane="run" role="tabpanel">
+        <div class="fgroup" id="grpSave" hidden><span class="lbl">Saved runs</span><div class="saves" id="saveList"></div></div>
+        <div class="fgroup" id="grpRail"><span class="lbl">Railroad</span><div class="seg" id="optRail"></div>
+          <div class="row2"><button class="btn" id="btnEditor" type="button">Build your own layout</button></div>
         </div>
+        <div class="fgroup" id="grpJob"><span class="lbl">Work</span><div class="seg jobs" id="optJob"></div><div id="jobBrief" hidden></div></div>
+      </section>
+      <section class="mpane" data-pane="train" role="tabpanel">
+        <div class="fgroup"><span class="lbl">Locomotive</span><div class="seg" id="optLoco"></div></div>
+        <div class="fgroup" id="grpUnits" hidden><span class="lbl">Locomotives in the lashup</span><div class="seg" id="optUnits"></div></div>
+        <div class="fgroup"><span class="lbl">Train</span><div class="seg" id="optTrain"></div></div>
+      </section>
+      <section class="mpane" data-pane="paint" role="tabpanel">
+        <div class="fgroup" id="grpLivery" hidden><span class="lbl">Paint</span><div class="seg paint" id="optLivery"></div>
+          <div class="custom" id="customPaint" hidden>
+            <label>Body<input type="color" id="cBody"></label>
+            <label>Stripe<input type="color" id="cAccent"></label>
+            <label>Letters<input type="color" id="cLetter"></label>
+            <label>Number<input type="number" id="cNum" min="1" max="9999" inputmode="numeric"></label>
+          </div>
+        </div>
+        <div class="fgroup" id="grpMix" hidden><span class="lbl">Trailing units</span><div class="seg" id="optMix"></div></div>
+        <div class="fgroup" id="grpFinish"><span class="lbl">Finish</span><div class="seg" id="optFinish"></div></div>
+        <div class="fgroup" id="grpCoach"><span class="lbl">Passenger cars</span><div class="seg paint" id="optCoach"></div>
+          <div class="custom" id="coachPaint" hidden><label>Car body<input type="color" id="cCoach"></label></div>
+        </div>
+      </section>
+      <section class="mpane" data-pane="drive" role="tabpanel">
+        <div class="fgroup"><span class="lbl">Firing</span><div class="seg" id="optFire"></div></div>
+        <p class="help" id="helpText">Fire up, set the <b>reverser</b> forward, release the <b>train brake</b> to RUN, then ease the <b>throttle</b> open. Heavy throttle on a wet rail will slip the drivers. Check the switch card before every turnout: diverging routes are 30 mph.</p>
+        <details class="keys"><summary>Keyboard controls</summary><div>
+          <kbd>W / S</kbd><span>Throttle open / close</span>
+          <kbd>↑ / ↓</kbd><span>Reverser forward / back</span>
+          <kbd>Q / E</kbd><span>Train brake release / apply</span>
+          <kbd>Z / C</kbd><span>Engine brake release / apply</span>
+          <kbd>Space</kbd><span>Whistle (hold)</span>
+          <kbd>T</kbd><span>Throw next switch ahead</span>
+          <kbd>U</kbd><span>Couplers: cut cars off</span>
+          <kbd>G</kbd><span>Place engines and cars on the track</span>
+          <kbd>B X K H</kbd><span>Bell · Sand · Cocks · Headlight</span>
+          <kbd>I F L</kbd><span>Injector · Stoker · Blower</span>
+          <kbd>1–6 · V</kbd><span>Cameras (6 is cinematic) · <kbd>M</kbd> map · <kbd>P</kbd> pause</span>
+          <kbd>← / → · − / =</kbd><span>Turn and zoom the camera; drag, scroll or pinch too. Press a camera's number again to reset it</span>
+        </div></details>
+      </section>
+      <section class="mpane" data-pane="world" role="tabpanel">
+        <div class="fgroup"><span class="lbl">Time of day</span><div class="seg" id="optTime"></div></div>
+        <div class="fgroup"><span class="lbl">Day &amp; night</span><div class="seg" id="optCycle"></div></div>
+        <div class="fgroup"><span class="lbl">Weather</span><div class="seg" id="optWeather"></div></div>
+        <div class="fgroup"><span class="lbl">Other trains</span><div class="seg" id="optTraffic"></div></div>
+      </section>
+      <section class="mpane" data-pane="online" role="tabpanel">
+        <div class="fgroup" id="grpMP"><span class="lbl">Multiplayer</span>
+          <div class="mp">
+            <div class="mpRow"><input id="mpName" class="mpIn" maxlength="16" placeholder="Your name" autocomplete="off" spellcheck="false" aria-label="Your name"></div>
+            <div class="mpRow" id="mpSolo"><button class="btn prim" id="mpCreate" type="button" disabled>Create room</button><input id="mpCode" class="mpIn code" maxlength="6" placeholder="CODE" autocomplete="off" spellcheck="false" autocapitalize="characters" aria-label="Room code"><button class="btn" id="mpJoin" type="button" disabled>Join</button></div>
+            <div class="mpRow" id="mpInRoom" hidden><span class="mpCode" id="mpCodeBig"></span><button class="btn" id="mpShare" type="button">Share link</button><button class="btn" id="mpLeave" type="button">Leave</button></div>
+            <div class="mpStatus" id="mpStatus">Loading the railroad…</div>
+          </div>
+        </div>
+      </section>
       </div>
-      <div class="fgroup" id="grpMix" hidden><span class="lbl">Trailing units</span><div class="seg" id="optMix"></div></div>
-      <div class="fgroup" id="grpFinish"><span class="lbl">Finish</span><div class="seg" id="optFinish"></div></div>
-      <div class="fgroup"><span class="lbl">Train</span><div class="seg" id="optTrain"></div></div>
-      <div class="fgroup" id="grpCoach"><span class="lbl">Passenger cars</span><div class="seg paint" id="optCoach"></div>
-        <div class="custom" id="coachPaint" hidden><label>Car body<input type="color" id="cCoach"></label></div>
+      <div class="mfoot">
+        <div id="loadBar"><i></i></div>
+        <div id="loadText">Surveying the line…</div>
+        <button id="btnStart" disabled>Highball</button>
       </div>
-      <div class="fgroup"><span class="lbl">Time of day</span><div class="seg" id="optTime"></div></div>
-      <div class="fgroup"><span class="lbl">Day &amp; night</span><div class="seg" id="optCycle"></div></div>
-      <div class="fgroup"><span class="lbl">Weather</span><div class="seg" id="optWeather"></div></div>
-      <div class="fgroup"><span class="lbl">Firing</span><div class="seg" id="optFire"></div></div>
-      <div class="fgroup"><span class="lbl">Other trains</span><div class="seg" id="optTraffic"></div></div>
-      <div id="loadBar"><i></i></div>
-      <div id="loadText">Surveying the line…</div>
-      <button id="btnStart" disabled>Highball</button>
-      <details class="keys"><summary>Keyboard controls</summary><div>
-        <kbd>W / S</kbd><span>Throttle open / close</span>
-        <kbd>↑ / ↓</kbd><span>Reverser forward / back</span>
-        <kbd>Q / E</kbd><span>Train brake release / apply</span>
-        <kbd>Z / C</kbd><span>Engine brake release / apply</span>
-        <kbd>Space</kbd><span>Whistle (hold)</span>
-        <kbd>T</kbd><span>Throw next switch ahead</span>
-        <kbd>U</kbd><span>Couplers: cut cars off</span>
-        <kbd>G</kbd><span>Place engines and cars on the track</span>
-        <kbd>B X K H</kbd><span>Bell · Sand · Cocks · Headlight</span>
-        <kbd>I F L</kbd><span>Injector · Stoker · Blower</span>
-        <kbd>1–6 · V</kbd><span>Cameras (6 is cinematic) · <kbd>M</kbd> map · <kbd>P</kbd> pause</span>
-        <kbd>← / → · − / =</kbd><span>Turn and zoom the camera; drag, scroll or pinch too. Press a camera's number again to reset it</span>
-      </div></details>
     </div>
   </div>
 </div>
@@ -10385,6 +10451,7 @@ function hsIntMaterials() {
   RMAT.hsSeatCab = lit(0x30353b, 0.0, 0.8);
   RMAT.hsScrOff = new THREE.MeshStandardMaterial({ color: 0x07090a, metalness: 0.3, roughness: 0.2 });
   RMAT.hsBtn = mk(0x2c7a3c, 0.2, 0.4);
+  for (const [k, c] of Object.entries({ G: 0x34d058, A: 0xffb02e, R: 0xe8402c, W: 0xf2f2e8 })) RMAT['hsLamp' + k] = new THREE.MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: 0.55, roughness: 0.3 });
 }
 
 /* ---------------- the lining: the inside face of the wall ----------------
@@ -10768,6 +10835,72 @@ function hsCab(gb, body, ib, o) {
         tap: d.tap, label: () => d.name + ' · ' + d.txt() });
       K.hit(pt, c, 0.07, 0.07, 0.08, 0, 0.02, 0);
     });
+  }
+  /* ---- the rest of a working cab: a glare hood over the screens, standby gauges either side of them, banks of
+     lit push buttons on the panel beyond, an indicator strip along the top of the dash, a padded front edge, a
+     footrest and pedals under the desk, a ceiling panel with its lights and vents, a breaker panel and jump seat on
+     the back wall, a coat hook, the fire extinguisher, and a ribbed mat under the driver's feet ---- */
+  const slA = t => lerp(P[i1][0], P[i0][0], t), slY = t => lerp(P[i1][1], P[i0][1], t);
+  const room = (t, z, pad) => Math.abs(z) + pad < inner(slA(t), slY(t)) - 0.04;
+  {
+    const hood = panelFrame(1.0, o.drv, 0), hw = Math.min(0.62, inner(P[i0][0], P[i0][1] + 0.06) - Math.abs(o.drv) - 0.12);
+    if (hw > 0.6) {   // only where the dash is wide enough for a hood over all three screens
+      ib.add('hsDeskTop', new THREE.BoxGeometry(2 * hw, 0.012, 0.13).translate(0, 0.0, 0.065), hood);
+      for (const e of [-1, 1]) ib.add('hsDeskTop', new THREE.BoxGeometry(0.012, sLen * 0.95, 0.1).translate(e * hw, -sLen * 0.47, 0.05), hood);
+    }
+  }
+  [-1, 1].forEach((e, i) => {
+    const z = o.drv + e * 0.74;
+    if (!room(0.5, z, 0.09)) return;
+    const p = s0.clone().addScaledVector(up, 0.5 * sLen).setZ(z);
+    K.dial(i ? { kind: 'bpbc', p, n: sn, r: 0.062, depth: 0.03, hands: [[() => GAME.train ? GAME.train.lead.brake.BP : 90], [() => S.BCloco || 0, true]], read: () => CAB_READ.bpbc(GAME.train) }
+             : { kind: 'mreq', p, n: sn, r: 0.062, depth: 0.03, hands: [[() => S.MR, true], [() => S.ER]], read: CAB_READ.mreq });
+  });
+  const lamps = ['hsLampG', 'hsLampA', 'hsLampW', 'hsLampR', 'hsLampG', 'hsLampW'], btn = new THREE.CylinderGeometry(0.013, 0.013, 0.012, 10).rotateX(Math.PI / 2);
+  for (const e of [-1, 1]) for (let c = 0; c < 6; c++) {
+    const z = o.drv + e * (0.88 + c * 0.075);
+    for (let r = 0; r < 3; r++) {
+      const t = 0.25 + r * 0.25;
+      if (!room(t, z, 0.04)) continue;
+      const m = panelFrame(t, z, 0);
+      ib.add('hsDeskTop', new THREE.BoxGeometry(0.066, 0.07, 0.006).translate(0, 0, 0.003), m);
+      ib.add(lamps[(c + r * 2 + (e > 0 ? 3 : 0)) % lamps.length], btn.clone().translate(0, 0, 0.012), m);
+    }
+  }
+  {   // the indicator strip along the top edge of the dash, beyond the screens
+    const a = P[i0][0] - 0.03, y = P[i0][1] + 0.012, n = 14, w = 1.1;
+    ib.box('hsDeskTop', 0.05, 0.02, w + 0.04, dx(a), y, o.drv);
+    for (let i = 0; i < n; i++) ib.box(['hsLampG', 'hsLampA', 'hsLampR', 'hsLampW'][i % 4], 0.03, 0.012, w / n - 0.02, dx(a), y + 0.016, o.drv - w / 2 + (i + 0.5) * w / n);
+  }
+  {   // padded front edge of the desk, the footrest and pedals
+    const hw = Math.min(1.45, inner(dA1, dTop) - 0.06);
+    ib.add('hsSeatCab', new THREE.CylinderGeometry(0.035, 0.035, 2 * hw, 12).rotateX(Math.PI / 2).translate(dx(dA1), dTop - 0.03, 0));
+    const aR = P[P.length - 1][0] + 0.14, zf = 0.32;
+    ib.add('dSteel', barGeo(0.018, [dx(aR), o.yF + 0.14, o.drv - zf], [dx(aR), o.yF + 0.14, o.drv + zf], 8));
+    for (const e of [-1, 1]) ib.box('dSteel', 0.15, 0.03, 0.03, dx(aR - 0.075), o.yF + 0.14, o.drv + e * zf);
+    for (const [dz, k] of [[-0.14, 'hsDeskTop'], [0.14, 'hsDeskTop']]) {
+      ib.box('hsDesk', 0.22, 0.03, 0.14, dx(aR + 0.25), o.yF + 0.015, o.drv + dz);
+      ib.add(k, new THREE.BoxGeometry(0.2, 0.02, 0.11).applyMatrix4(M(dx(aR + 0.25), o.yF + 0.06, o.drv + dz, 0, 0, -0.3)));
+    }
+    ib.box('hsCabFloor', 0.9, 0.006, 0.8, dx(o.seatA - 0.25), o.yF + 0.003, o.drv);
+    for (let i = 0; i < 9; i++) ib.box('dMat', 0.03, 0.006, 0.74, dx(o.seatA - 0.65 + i * 0.1), o.yF + 0.009, o.drv);
+  }
+  {   // ceiling: a panel over the driver with two lamps and an air vent
+    const a = Math.min(o.seatA + 0.7, o.st[o.st.length - 1].a - 0.6), zc = o.drv * 0.5;
+    const yc = Math.min(o.sect(a - 0.47).yt, o.sect(a + 0.47).yt) - HS_TH - 0.12;   // under the roof's crown, clear of its curve
+    ib.box('hsCabLine', 0.9, 0.02, 0.5, dx(a), yc, zc);
+    for (const d of [-0.25, 0.25]) ib.box('hsLight', 0.24, 0.012, 0.16, dx(a + d), yc - 0.016, zc);
+    ib.box('grille', 0.3, 0.012, 0.1, dx(a), yc - 0.016, zc + 0.17);
+  }
+  {   // back wall: a breaker panel with rows of switches, a fold-down jump seat, a coat hook, the extinguisher
+    const l = o.st[o.st.length - 1], xw = o.ref - l.a + 0.02, zp = o.door > 0 ? o.door - 0.78 : o.door + 0.78, sd = zp > o.door ? 1 : -1;
+    ib.box('hsDesk', 0.06, 0.5, 0.42, xw + 0.03, o.yF + 0.98, zp);
+    for (let r = 0; r < 4; r++) for (let c = 0; c < 6; c++) ib.box(r === 0 ? 'hsLampW' : 'knob', 0.02, 0.035, 0.018, xw + 0.07, o.yF + 0.8 + r * 0.11, zp - 0.15 + c * 0.06);
+    ib.box('hsSeatCab', 0.08, 0.36, 0.4, xw + 0.04, o.yF + 0.47, zp);
+    for (const e of [-1, 1]) ib.box('dSteel', 0.06, 0.04, 0.03, xw + 0.03, o.yF + 0.31, zp + e * 0.18);
+    ib.add('dSteel', barGeo(0.008, [xw + 0.0, o.yF + 1.5, o.door + sd * 0.42], [xw + 0.09, o.yF + 1.55, o.door + sd * 0.42], 5));
+    ib.cyl('redKnob', 0.06, 0.06, 0.4, 12, xw + 0.09, o.yF + 0.25, o.door - sd * 0.45);
+    ib.box('dSteel', 0.04, 0.12, 0.08, xw + 0.02, o.yF + 0.3, o.door - sd * 0.45);
   }
   // seats on pedestals: the driver's, and for the Acela the second man's across the cab
   const seatTop = o.eye.y - 0.78, sa = o.seatA;
@@ -14465,12 +14598,18 @@ function cycleCamera(to) {
 }
 
 /* ---------------- pointer input on the 3D view ---------------- */
-// how far the right-drag side-scroll may slide the view off the engine, metres
-const CAM_PAN_MAX = 150;
-/* metres of sideways slide per pixel of drag, so the ground near the engine keeps pace with the pointer */
-function camPanScale(camera) {
-  const d = CAM.dAct || CAM.dist || 24, fov = (camera && camera.fov) || 52;
-  return 2 * d * Math.tan(fov * Math.PI / 360) / Math.max(1, innerHeight);
+/* right-drag slides the pivot along the train (CAM.pan, metres from the engine, + toward the back): the part of
+   the drag that runs along the train's own line on screen moves it, so the train keeps pace with the pointer.
+   When the train runs into the screen, a pixel would be many metres, so the rate is capped. */
+const _pa = new THREE.Vector3(), _pb = new THREE.Vector3();
+function camPanAlong(camera, dx, dy) {
+  if (!CAM.pivot || !CAM.pivotDir || !camera) return 0;
+  _pa.copy(CAM.pivot).project(camera); _pb.copy(CAM.pivot).add(CAM.pivotDir).project(camera);
+  // pixels the screen moves for one metre along the train
+  const sx = (_pb.x - _pa.x) * innerWidth / 2, sy = -(_pb.y - _pa.y) * innerHeight / 2, per = Math.hypot(sx, sy);
+  if (!(per > 1e-6) || _pa.z > 1 || _pb.z > 1) return 0;
+  const along = (dx * sx + dy * sy) / per;   // pixels of drag along the train's line on screen
+  return -along / Math.max(per, 3);          // grab the train and pull it: at most 1/3 m per pixel
 }
 function setupViewInput(canvas, camera) {
   const ptrs = new Map(); let pinch0 = 0, dist0 = 0, ang0 = 0, tapStart = null, flick = 0, flickT = 0;
@@ -14503,7 +14642,7 @@ function setupViewInput(canvas, camera) {
     const k = 0.006, now = performance.now();
     if (p.rmb) {
       // side-scroll: the view slides sideways and the ground follows the pointer; the cab, fixed to the seat, looks round instead
-      if (CAM.mode === 'chase' || CAM.mode === 'drone') { const m = camPanScale(camera); CAM.pan = clamp(CAM.pan - dx * m, -CAM_PAN_MAX, CAM_PAN_MAX); }
+      if (CAM.mode === 'chase' || CAM.mode === 'drone') CAM.pan = (CAM.pan || 0) + camPanAlong(camera, dx, dy);
       else if (CAM.mode === 'cab') { CAB.lookTo = null; CAM.cabYaw = clamp(CAM.cabYaw - dx * k * 0.7, -2.2, 2.2); }
       return;
     }
@@ -15029,6 +15168,33 @@ const camGap = (p, skip) => trackGap(p.x, -p.z, skip);
 const camSpotFree = (p, gap) => camGap(p) >= gap && !inFoot(p.x, -p.z, 1.5) && !treesNear(p.x, p.z).some(t => Math.hypot(p.x - t[0], p.z - t[1]) < t[2] + 7);
 
 /* ---------------- views that follow the train ---------------- */
+/* the right-drag slide runs along the train itself: u metres from the lead engine's middle, + toward the
+   back of the consist. Walks the vehicles' centres, so the pivot stays on the train round a curve.
+   Writes the point into out and the train's direction there (toward the back, level) into dirOut. */
+function trainSpan(train) {
+  const V = train.vehicles, li = train.li, d = (a, b) => Math.hypot(a.pos.x - b.pos.x, a.pos.z - b.pos.z);
+  let back = V[V.length - 1].len / 2, front = V[0].len / 2;
+  for (let i = li; i < V.length - 1; i++) back += d(V[i], V[i + 1]);
+  for (let i = li; i > 0; i--) front += d(V[i], V[i - 1]);
+  return [-front, back];
+}
+function trainPointAt(train, u, out, dirOut) {
+  const V = train.vehicles, li = train.li, st = u >= 0 ? 1 : -1;
+  let i = li, left = Math.abs(u);
+  while (V[i + st]) {
+    const a = V[i].pos, b = V[i + st].pos, seg = Math.hypot(b.x - a.x, b.z - a.z);
+    if (left <= seg && seg > 1e-6) { const t = left / seg; out.set(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, a.z + (b.z - a.z) * t); dirOut.set((b.x - a.x) * st, 0, (b.z - a.z) * st).normalize(); return out; }
+    left -= seg; i += st;
+  }
+  // past the last centre: carry on along the end vehicle, up to its end
+  const v = V[i], p = V[i - st];
+  if (p) dirOut.set(v.pos.x - p.pos.x, 0, v.pos.z - p.pos.z); else dirOut.set(-v.fwd.x * st, 0, -v.fwd.z * st);
+  dirOut.normalize();
+  out.set(v.pos.x + dirOut.x * left, v.pos.y, v.pos.z + dirOut.z * left);
+  dirOut.multiplyScalar(st);   // report it toward the back, as the in-between case does
+  return out;
+}
+const _cpv = new THREE.Vector3();
 function orbitView(cam, train, dt, drone) {
   const fwd = train.lead.fwd, pos = train.lead.pos, hdg = Math.atan2(fwd.x, fwd.z);
   if (!CAM.sm) CAM.sm = { yaw: CAM.yaw, pitch: CAM.pitch, dist: CAM.dist, hdg, dyaw: CAM.droneYaw, dpitch: CAM.dronePitch, pan: CAM.pan || 0 };
@@ -15041,11 +15207,14 @@ function orbitView(cam, train, dt, drone) {
   s.hdg += angWrap(hdg - s.hdg) * camK(drone ? 2 : 3.5, dt);
   const portrait = cam.aspect < 1 ? clamp(1.25 / cam.aspect, 1, 2.2) : 1;
   const lead = clamp(CAM.vs * 0.3, -9, 9);
-  const tgt = _cc.copy(pos).addScaledVector(fwd, drone ? lead - 10 : lead); tgt.y += drone ? 1 : 2.6;
+  // the pivot: on the train, where the right-drag slide has put it (clamped, as the train can shorten under it)
+  const span = trainSpan(train); CAM.pan = clamp(CAM.pan || 0, span[0], span[1]); s.pan = clamp(s.pan, span[0], span[1]);
+  const piv = s.pan ? trainPointAt(train, s.pan, _cc, _cpv) : _cc.copy(pos);
+  if (!s.pan) _cpv.set(-fwd.x, 0, -fwd.z).normalize();
+  CAM.pivot = piv; CAM.pivotDir = _cpv;
+  const tgt = piv.addScaledVector(fwd, drone ? lead - 10 : lead); tgt.y += drone ? 1 : 2.6;
   const yaw = s.hdg + (drone ? s.dyaw : s.yaw), pitch = drone ? s.dpitch : s.pitch, dist = (drone ? s.dist * 3.2 + 40 : s.dist) * portrait;
   const dir = _cb.set(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch));
-  // right-drag side-scroll: slide the aim point along the screen's own left-right
-  if (s.pan) { tgt.x += Math.cos(yaw) * s.pan; tgt.z -= Math.sin(yaw) * s.pan; }
   // pull in at once when something gets between the camera and the engine, ease back out after
   const allowed = camClear(tgt, dir, dist, 4);
   if (!CAM.init || allowed < CAM.dAct) CAM.dAct = allowed; else CAM.dAct += (allowed - CAM.dAct) * camK(1.6, dt);
@@ -19650,6 +19819,7 @@ function buildMenu() {
   segButtons('optTraffic', { on: { name: 'Timetable', sub: ROUTE_KEY === 'laurel' ? 'No. 21, No. 22 and coal trains on the mountain' : 'No. 5, No. 12 and freights on the road' }, off: { name: 'Clear road', sub: 'Just you and the signals' } }, 'traffic', () => { if (GAME.ready && GAME.train) AI.setup(); saveSettings(); });
   specGrid();
   jobSetup();
+  menuTabs();
   $('btnStart').addEventListener('click', () => GAME.start());
   $('bigRetry').addEventListener('click', () => GAME.rerail());
   $('bigMenu').addEventListener('click', () => { $('bigMsg').hidden = true; GAME.pause(true); });
@@ -19667,8 +19837,44 @@ function specGrid() {
   if (ht) { if (!ht.dataset.steam) ht.dataset.steam = ht.innerHTML; ht.innerHTML = s.elec ? 'Release the <b>brake</b>, set the <b>reverser</b> forward and notch the <b>power</b> controller. The pantograph is up and the main breaker is in; <b>Pantograph</b> (I) drops it. Slow with the <b>regenerative brake</b>, which also blends in under the train brake. Out on the main a high-speed set runs at its own top speed, and each curve has its own posted limit: watch for it ahead.' : s.diesel ? 'Set the <b>reverser</b> forward, release the <b>engine brake</b>, then notch out the <b>throttle</b>. Every unit in the lashup answers the lead cab. Hold speed down the grades with the <b>dynamic brake</b>, and check the switch card before every turnout: diverging routes are 30 mph.' : ht.dataset.steam; }
   const ey = document.querySelector('.brandmark .eyebrow'); if (ey) ey.textContent = s.elec ? (s.set === 'e5' ? 'JR East · Shinkansen E5 series' : 'Amtrak · Acela Express') : s.diesel ? (GAME.settings.livery === 'custom' ? 'Custom paint' : LIVERIES[GAME.settings.livery].name) + ' · C-C diesel' : 'Lima Super Power · 2-8-4';
 }
+/* The menu shows one tab of settings at a time. A tab whose groups are all hidden for the chosen engine
+   (no paint to pick on a trainset) drops out of the row. Any group added to the form outside a tab
+   lands in the tab its data-tab names, or World. */
+const MENU_TABS = { cur: 'train' };
+function menuTabs() {
+  const form = $('menuForm'), panes = $('menuPanes'), row = $('menuTabs');
+  if (!form || !panes || !row) return;
+  const pane = k => panes.querySelector(`.mpane[data-pane="${k}"]`);
+  const adopt = () => { for (const g of [...form.children].filter(c => c.classList.contains('fgroup'))) (pane(g.dataset.tab) || pane('world')).appendChild(g); };
+  const shows = p => [...p.children].some(c => !c.hidden && getComputedStyle(c).display !== 'none');
+  const sync = () => {
+    let cur = MENU_TABS.cur;
+    const set = (el, h) => { if (el.hidden !== h) el.hidden = h; };   // only real changes, so the observer below settles
+    for (const b of row.children) set(b, !shows(pane(b.dataset.tab)));
+    const live = [...row.children].filter(b => !b.hidden);
+    if (!live.some(b => b.dataset.tab === cur)) cur = (live.find(b => b.dataset.tab === 'train') || live[0] || row.children[0]).dataset.tab;
+    for (const b of row.children) b.setAttribute('aria-selected', String(b.dataset.tab === cur));
+    for (const p of panes.children) set(p, p.dataset.pane !== cur);
+  };
+  MENU_TABS.show = k => { if (!pane(k)) return; MENU_TABS.cur = k; try { localStorage.setItem('bd.menuTab', k); } catch (e) {} sync(); };
+  for (const b of row.children) b.addEventListener('click', () => { MENU_TABS.show(b.dataset.tab); panes.scrollTop = 0; });
+  let saved = null; try { saved = localStorage.getItem('bd.menuTab'); } catch (e) {}
+  const q = new URLSearchParams(location.search);
+  MENU_TABS.cur = q.get('room') ? 'online' : pane(saved) ? saved : 'train';
+  adopt(); sync();
+  // the engine picked decides which groups (and so which tabs) show; watch rather than chase every caller
+  let queued = false;
+  new MutationObserver(() => { if (queued) return; queued = true; requestAnimationFrame(() => { queued = false; adopt(); sync(); }); })
+    .observe(form, { subtree: true, childList: true, attributes: true, attributeFilter: ['hidden'] });
+  $('menuMin').addEventListener('click', () => menuMini(!$('menu').classList.contains('mini')));
+}
+function menuMini(on) {
+  const m = $('menu'); m.classList.toggle('mini', on);
+  const b = $('menuMin'); b.setAttribute('aria-label', on ? 'Open the menu' : 'Minimize menu'); b.title = on ? 'Open the menu' : 'Minimize the menu to see the railroad';
+}
 function startLabel() {
   const b = $('btnStart');
+  $('menu').classList.toggle('ingame', !!GAME.running);
   if (!GAME.running) { b.textContent = 'Highball'; return; }
   b.textContent = GAME.needNewTrain() ? 'New train' : 'Resume';
 }
@@ -19695,7 +19901,7 @@ GAME.start = function () {
     GAME.intro();
   }
   GAME.running = true; S.paused = false; applyFireSetting(GAME.settings.fire);
-  $('menu').hidden = true; $('hud').hidden = false;
+  $('menu').hidden = true; $('hud').hidden = false; menuMini(false);
   FX.snow.visible = SKY.snow;
   if (SKY.snow) { const a = FX.snow.geometry.attributes.position.array; for (let i = 0; i < a.length; i += 3) { a[i] += camera.position.x; a[i + 1] += camera.position.y - 20; a[i + 2] += camera.position.z; } }
   GAME.refreshKeys();

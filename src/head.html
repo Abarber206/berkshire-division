@@ -186,6 +186,7 @@ h1{font-family:var(--f-display);font-weight:800;font-size:clamp(44px,8vw,84px);l
 .specs b{font-family:var(--f-num);font-weight:600;font-size:15px;font-variant-numeric:tabular-nums}
 .specs span{font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:var(--ink-dim)}
 .form{background:rgba(14,19,23,.9);border:1px solid var(--rule);border-radius:8px;padding:14px;display:flex;flex-direction:column;gap:12px;min-width:0}
+@media (min-width:601px) and (min-height:501px){ .form{max-height:calc(100vh - 32px)} .mpanes{overflow-y:auto;overscroll-behavior:contain;margin-right:-6px;padding-right:6px} }
 .fgroup{display:flex;flex-direction:column;gap:6px}
 .fgroup>.lbl{font-size:10px}
 .seg{display:grid;gap:4px;grid-template-columns:repeat(auto-fit,minmax(88px,1fr))}
@@ -216,6 +217,44 @@ details.keys{font-size:12px;color:var(--ink-dim)}
 details.keys summary{cursor:var(--cur-hot,pointer);color:var(--ink);font-weight:600;font-size:12px}
 details.keys div{display:grid;grid-template-columns:auto 1fr;gap:3px 10px;margin-top:6px;font-family:var(--f-num);font-size:11px}
 details.keys kbd{color:var(--brass)}
+/* menu: one tab of settings at a time, a footer that keeps the start button in reach, and a minimize */
+.mtop{display:flex;align-items:center;gap:6px;margin:-4px -4px 0}
+.mtabs{flex:1;min-width:0;display:flex;gap:2px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.mtabs::-webkit-scrollbar{display:none}
+.mtabs button{flex:1 0 auto;border:1px solid transparent;background:none;border-radius:5px;padding:7px 9px;font-size:11px;font-weight:700;letter-spacing:1.1px;text-transform:uppercase;color:var(--ink-dim);white-space:nowrap}
+.mtabs button:hover{color:var(--ink)}
+.mtabs button[aria-selected="true"]{color:#f6e2ad;border-color:var(--brass);background:linear-gradient(#2a2416,#1c180f)}
+.mmin{flex:none;display:flex;align-items:center;gap:5px;border:1px solid var(--rule);background:var(--steel-2);border-radius:5px;padding:6px 8px;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--ink-dim)}
+.mmin b{display:none;font-weight:700}
+.mmin:hover{color:var(--ink)}
+.mpanes{display:flex;flex-direction:column;min-height:0}
+.mpane{display:flex;flex-direction:column;gap:12px}
+.mpane[hidden]{display:none}
+.mpane .help{margin:0}
+.mfoot{display:flex;flex-direction:column;gap:8px;border-top:1px solid var(--rule);padding-top:10px}
+#menu.ingame .lede{display:none}
+#menu.ingame h1{font-size:clamp(34px,5vw,52px)}
+/* minimized: the scene shows through, and only a small bar with the start button stays */
+#menu.mini{background:none;pointer-events:none;align-items:flex-end;justify-content:flex-end;overflow:hidden}
+#menu.mini .sheet{display:block;width:auto}
+#menu.mini .brandmark,#menu.mini .mtabs,#menu.mini .mpanes,#menu.mini #loadBar,#menu.mini #loadText{display:none}
+#menu.mini .form{pointer-events:auto;flex-direction:row;align-items:center;gap:8px;padding:8px}
+#menu.mini .mtop{margin:0}
+#menu.mini .mmin b{display:inline}
+#menu.mini .mmin span{transform:rotate(180deg)}
+#menu.mini .mfoot{border:0;padding:0}
+#menu.mini #btnStart{position:static;width:auto;padding:8px 16px;font-size:18px;box-shadow:none}
+#menu.mini .form{padding-bottom:8px}
+@media (max-width:600px){
+  .mtabs button{padding:7px 6px;letter-spacing:.6px;font-size:10.5px}
+  .mmin{padding:6px 7px}
+  .specs{grid-template-columns:repeat(3,minmax(0,1fr))!important}
+  .specs div{padding:6px 7px}
+  .specs b{font-size:13px}
+  .specs span{font-size:8.5px;letter-spacing:.8px}
+  #menu.ingame .specs{display:none}
+  #menu.ingame h1{font-size:34px}
+}
 
 #mapView{position:fixed;inset:0;z-index:15;background:rgba(6,9,11,.94)}
 #mapView canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:none}
@@ -767,60 +806,87 @@ details.keys kbd{color:var(--brass)}
       <h1>Berkshire<br>Division</h1>
       <p class="lede">Run a Lima-built Berkshire or a modern AC diesel over 13 miles of jointed rail: two long tangents across Ohio farm country, a grade over Kenton Hill, a through-truss river bridge, a working yard and a quarry branch. Every switch on the railroad can be thrown, and cars standing in the yard and on the spurs can be picked up and set out.</p>
       <div class="specs" id="specGrid"></div>
-      <p class="help" id="helpText">Fire up, set the <b>reverser</b> forward, release the <b>train brake</b> to RUN, then ease the <b>throttle</b> open. Heavy throttle on a wet rail will slip the drivers. Check the switch card before every turnout: diverging routes are 30 mph.</p>
     </div>
-    <div class="form">
-      <div class="fgroup" id="grpSave" hidden><span class="lbl">Saved runs</span><div class="saves" id="saveList"></div></div>
-      <div class="fgroup" id="grpRail"><span class="lbl">Railroad</span><div class="seg" id="optRail"></div>
-        <div class="row2"><button class="btn" id="btnEditor" type="button">Build your own layout</button></div>
-      </div>
-      <div class="fgroup" id="grpJob"><span class="lbl">Work</span><div class="seg jobs" id="optJob"></div><div id="jobBrief" hidden></div></div>
-      <div class="fgroup" id="grpMP"><span class="lbl">Multiplayer</span>
-        <div class="mp">
-          <div class="mpRow"><input id="mpName" class="mpIn" maxlength="16" placeholder="Your name" autocomplete="off" spellcheck="false" aria-label="Your name"></div>
-          <div class="mpRow" id="mpSolo"><button class="btn prim" id="mpCreate" type="button" disabled>Create room</button><input id="mpCode" class="mpIn code" maxlength="6" placeholder="CODE" autocomplete="off" spellcheck="false" autocapitalize="characters" aria-label="Room code"><button class="btn" id="mpJoin" type="button" disabled>Join</button></div>
-          <div class="mpRow" id="mpInRoom" hidden><span class="mpCode" id="mpCodeBig"></span><button class="btn" id="mpShare" type="button">Share link</button><button class="btn" id="mpLeave" type="button">Leave</button></div>
-          <div class="mpStatus" id="mpStatus">Loading the railroad…</div>
+    <div class="form" id="menuForm">
+      <div class="mtop">
+        <div class="mtabs" id="menuTabs" role="tablist" aria-label="Menu sections">
+          <button type="button" role="tab" data-tab="run">Run</button>
+          <button type="button" role="tab" data-tab="train">Train</button>
+          <button type="button" role="tab" data-tab="paint">Paint</button>
+          <button type="button" role="tab" data-tab="drive">Driving</button>
+          <button type="button" role="tab" data-tab="world">World</button>
+          <button type="button" role="tab" data-tab="online">Online</button>
         </div>
+        <button type="button" class="mmin" id="menuMin" aria-label="Minimize menu" title="Minimize the menu to see the railroad"><span>▾</span><b>Menu</b></button>
       </div>
-      <div class="fgroup"><span class="lbl">Locomotive</span><div class="seg" id="optLoco"></div></div>
-      <div class="fgroup" id="grpUnits" hidden><span class="lbl">Locomotives in the lashup</span><div class="seg" id="optUnits"></div></div>
-      <div class="fgroup" id="grpLivery" hidden><span class="lbl">Paint</span><div class="seg paint" id="optLivery"></div>
-        <div class="custom" id="customPaint" hidden>
-          <label>Body<input type="color" id="cBody"></label>
-          <label>Stripe<input type="color" id="cAccent"></label>
-          <label>Letters<input type="color" id="cLetter"></label>
-          <label>Number<input type="number" id="cNum" min="1" max="9999" inputmode="numeric"></label>
+      <div class="mpanes" id="menuPanes">
+      <section class="mpane" data-pane="run" role="tabpanel">
+        <div class="fgroup" id="grpSave" hidden><span class="lbl">Saved runs</span><div class="saves" id="saveList"></div></div>
+        <div class="fgroup" id="grpRail"><span class="lbl">Railroad</span><div class="seg" id="optRail"></div>
+          <div class="row2"><button class="btn" id="btnEditor" type="button">Build your own layout</button></div>
         </div>
+        <div class="fgroup" id="grpJob"><span class="lbl">Work</span><div class="seg jobs" id="optJob"></div><div id="jobBrief" hidden></div></div>
+      </section>
+      <section class="mpane" data-pane="train" role="tabpanel">
+        <div class="fgroup"><span class="lbl">Locomotive</span><div class="seg" id="optLoco"></div></div>
+        <div class="fgroup" id="grpUnits" hidden><span class="lbl">Locomotives in the lashup</span><div class="seg" id="optUnits"></div></div>
+        <div class="fgroup"><span class="lbl">Train</span><div class="seg" id="optTrain"></div></div>
+      </section>
+      <section class="mpane" data-pane="paint" role="tabpanel">
+        <div class="fgroup" id="grpLivery" hidden><span class="lbl">Paint</span><div class="seg paint" id="optLivery"></div>
+          <div class="custom" id="customPaint" hidden>
+            <label>Body<input type="color" id="cBody"></label>
+            <label>Stripe<input type="color" id="cAccent"></label>
+            <label>Letters<input type="color" id="cLetter"></label>
+            <label>Number<input type="number" id="cNum" min="1" max="9999" inputmode="numeric"></label>
+          </div>
+        </div>
+        <div class="fgroup" id="grpMix" hidden><span class="lbl">Trailing units</span><div class="seg" id="optMix"></div></div>
+        <div class="fgroup" id="grpFinish"><span class="lbl">Finish</span><div class="seg" id="optFinish"></div></div>
+        <div class="fgroup" id="grpCoach"><span class="lbl">Passenger cars</span><div class="seg paint" id="optCoach"></div>
+          <div class="custom" id="coachPaint" hidden><label>Car body<input type="color" id="cCoach"></label></div>
+        </div>
+      </section>
+      <section class="mpane" data-pane="drive" role="tabpanel">
+        <div class="fgroup"><span class="lbl">Firing</span><div class="seg" id="optFire"></div></div>
+        <p class="help" id="helpText">Fire up, set the <b>reverser</b> forward, release the <b>train brake</b> to RUN, then ease the <b>throttle</b> open. Heavy throttle on a wet rail will slip the drivers. Check the switch card before every turnout: diverging routes are 30 mph.</p>
+        <details class="keys"><summary>Keyboard controls</summary><div>
+          <kbd>W / S</kbd><span>Throttle open / close</span>
+          <kbd>↑ / ↓</kbd><span>Reverser forward / back</span>
+          <kbd>Q / E</kbd><span>Train brake release / apply</span>
+          <kbd>Z / C</kbd><span>Engine brake release / apply</span>
+          <kbd>Space</kbd><span>Whistle (hold)</span>
+          <kbd>T</kbd><span>Throw next switch ahead</span>
+          <kbd>U</kbd><span>Couplers: cut cars off</span>
+          <kbd>G</kbd><span>Place engines and cars on the track</span>
+          <kbd>B X K H</kbd><span>Bell · Sand · Cocks · Headlight</span>
+          <kbd>I F L</kbd><span>Injector · Stoker · Blower</span>
+          <kbd>1–6 · V</kbd><span>Cameras (6 is cinematic) · <kbd>M</kbd> map · <kbd>P</kbd> pause</span>
+          <kbd>← / → · − / =</kbd><span>Turn and zoom the camera; drag, scroll or pinch too. Press a camera's number again to reset it</span>
+        </div></details>
+      </section>
+      <section class="mpane" data-pane="world" role="tabpanel">
+        <div class="fgroup"><span class="lbl">Time of day</span><div class="seg" id="optTime"></div></div>
+        <div class="fgroup"><span class="lbl">Day &amp; night</span><div class="seg" id="optCycle"></div></div>
+        <div class="fgroup"><span class="lbl">Weather</span><div class="seg" id="optWeather"></div></div>
+        <div class="fgroup"><span class="lbl">Other trains</span><div class="seg" id="optTraffic"></div></div>
+      </section>
+      <section class="mpane" data-pane="online" role="tabpanel">
+        <div class="fgroup" id="grpMP"><span class="lbl">Multiplayer</span>
+          <div class="mp">
+            <div class="mpRow"><input id="mpName" class="mpIn" maxlength="16" placeholder="Your name" autocomplete="off" spellcheck="false" aria-label="Your name"></div>
+            <div class="mpRow" id="mpSolo"><button class="btn prim" id="mpCreate" type="button" disabled>Create room</button><input id="mpCode" class="mpIn code" maxlength="6" placeholder="CODE" autocomplete="off" spellcheck="false" autocapitalize="characters" aria-label="Room code"><button class="btn" id="mpJoin" type="button" disabled>Join</button></div>
+            <div class="mpRow" id="mpInRoom" hidden><span class="mpCode" id="mpCodeBig"></span><button class="btn" id="mpShare" type="button">Share link</button><button class="btn" id="mpLeave" type="button">Leave</button></div>
+            <div class="mpStatus" id="mpStatus">Loading the railroad…</div>
+          </div>
+        </div>
+      </section>
       </div>
-      <div class="fgroup" id="grpMix" hidden><span class="lbl">Trailing units</span><div class="seg" id="optMix"></div></div>
-      <div class="fgroup" id="grpFinish"><span class="lbl">Finish</span><div class="seg" id="optFinish"></div></div>
-      <div class="fgroup"><span class="lbl">Train</span><div class="seg" id="optTrain"></div></div>
-      <div class="fgroup" id="grpCoach"><span class="lbl">Passenger cars</span><div class="seg paint" id="optCoach"></div>
-        <div class="custom" id="coachPaint" hidden><label>Car body<input type="color" id="cCoach"></label></div>
+      <div class="mfoot">
+        <div id="loadBar"><i></i></div>
+        <div id="loadText">Surveying the line…</div>
+        <button id="btnStart" disabled>Highball</button>
       </div>
-      <div class="fgroup"><span class="lbl">Time of day</span><div class="seg" id="optTime"></div></div>
-      <div class="fgroup"><span class="lbl">Day &amp; night</span><div class="seg" id="optCycle"></div></div>
-      <div class="fgroup"><span class="lbl">Weather</span><div class="seg" id="optWeather"></div></div>
-      <div class="fgroup"><span class="lbl">Firing</span><div class="seg" id="optFire"></div></div>
-      <div class="fgroup"><span class="lbl">Other trains</span><div class="seg" id="optTraffic"></div></div>
-      <div id="loadBar"><i></i></div>
-      <div id="loadText">Surveying the line…</div>
-      <button id="btnStart" disabled>Highball</button>
-      <details class="keys"><summary>Keyboard controls</summary><div>
-        <kbd>W / S</kbd><span>Throttle open / close</span>
-        <kbd>↑ / ↓</kbd><span>Reverser forward / back</span>
-        <kbd>Q / E</kbd><span>Train brake release / apply</span>
-        <kbd>Z / C</kbd><span>Engine brake release / apply</span>
-        <kbd>Space</kbd><span>Whistle (hold)</span>
-        <kbd>T</kbd><span>Throw next switch ahead</span>
-        <kbd>U</kbd><span>Couplers: cut cars off</span>
-        <kbd>G</kbd><span>Place engines and cars on the track</span>
-        <kbd>B X K H</kbd><span>Bell · Sand · Cocks · Headlight</span>
-        <kbd>I F L</kbd><span>Injector · Stoker · Blower</span>
-        <kbd>1–6 · V</kbd><span>Cameras (6 is cinematic) · <kbd>M</kbd> map · <kbd>P</kbd> pause</span>
-        <kbd>← / → · − / =</kbd><span>Turn and zoom the camera; drag, scroll or pinch too. Press a camera's number again to reset it</span>
-      </div></details>
     </div>
   </div>
 </div>
