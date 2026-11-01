@@ -150,7 +150,7 @@ const powerOf = T => T.vehicles.filter(v => !v.helper && (isPower(v) || (T.elec 
 function fleetOut(c) {
   return Object.assign(consistOut(c, powerOf(c)), { loco: c.locoKey, ck: c.consistKey, units: c.nUnits || 1, opts: JSON.parse(JSON.stringify(c.opts || {})), cfg: c.cfg || null,
     ps: c.parkS, cv: rnd(c.v || 0), rolling: !!c.rolling, stopT: rnd(c.stopT || 0), fid: c.fid || 0,
-    crew: c.crew ? { mph: c.crew.mph, dir: c.crew.dir } : null, crewMph: c.crewMph || 0 });
+    crew: c.crew ? { mph: c.crew.mph, dir: c.crew.dir, keep: c.crew.keep ? 1 : 0 } : null, crewMph: c.crewMph || 0 });
 }
 /* a helper engine's vehicle from its record { g, loco, opts, i }: the engine is built once per helper (g) and
    its vehicles handed out one by one */
@@ -323,7 +323,7 @@ SAVE.apply = function (d) {
     Object.assign(c, { parkS: Object.assign({}, o.ps), cfg: o.cfg || null, v: o.cv || 0, rolling: !!o.rolling, stopT: o.stopT || 0, fid: o.fid || 0 });
     if (c.parkS.dist0 === undefined) c.parkS.dist0 = c.dist;
     if (o.crewMph) c.crewMph = o.crewMph;
-    if (o.crew) c.crew = crewNew(c, o.crew.mph, o.crew.dir);   // its engineer carries on
+    if (o.crew) c.crew = crewNew(c, o.crew.mph, o.crew.dir, !!o.crew.keep);   // its engineer carries on
     c.update(0); FLEET.dim(c);
     CARS.cuts.push(c);
   }

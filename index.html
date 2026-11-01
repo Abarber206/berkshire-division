@@ -782,7 +782,7 @@ details.keys kbd{color:var(--brass)}
       <div class="pbRow"><span class="lbl">Train</span><div class="pbChips" id="fleetTrains"></div></div>
       <button class="btn prim" id="fleetAdd" type="button">Make it up</button>
     </div>
-    <div class="mpStatus">A train you leave running keeps going with its engineer, who stops for red signals, trains ahead and the end of the track; one you leave standing stands with its brakes set. Click any of your trains in the world or on the map to give it orders or take it over; <kbd>[</kbd> <kbd>]</kbd> step through them.</div>
+    <div class="mpStatus">A train you leave keeps its throttle and brakes as you had them; its engineer only steps in to stop for red signals, trains ahead and the end of the track. Run gives him a speed to hold, Hold has him stop and tie it down. Click any of your trains in the world or on the map to give it orders or take it over; <kbd>[</kbd> <kbd>]</kbd> step through them.</div>
   </div>
   <div id="fleetCard" class="hud-box" hidden role="dialog" aria-label="Train">
     <div class="fcTop"><b id="fcName"></b><small id="fcWhat"></small><button class="btn" id="fcClose" type="button" aria-label="Close">✕</button></div>
@@ -22141,7 +22141,7 @@ const powerOf = T => T.vehicles.filter(v => !v.helper && (isPower(v) || (T.elec 
 function fleetOut(c) {
   return Object.assign(consistOut(c, powerOf(c)), { loco: c.locoKey, ck: c.consistKey, units: c.nUnits || 1, opts: JSON.parse(JSON.stringify(c.opts || {})), cfg: c.cfg || null,
     ps: c.parkS, cv: rnd(c.v || 0), rolling: !!c.rolling, stopT: rnd(c.stopT || 0), fid: c.fid || 0,
-    crew: c.crew ? { mph: c.crew.mph, dir: c.crew.dir } : null, crewMph: c.crewMph || 0 });
+    crew: c.crew ? { mph: c.crew.mph, dir: c.crew.dir, keep: c.crew.keep ? 1 : 0 } : null, crewMph: c.crewMph || 0 });
 }
 /* a helper engine's vehicle from its record { g, loco, opts, i }: the engine is built once per helper (g) and
    its vehicles handed out one by one */
@@ -22314,7 +22314,7 @@ SAVE.apply = function (d) {
     Object.assign(c, { parkS: Object.assign({}, o.ps), cfg: o.cfg || null, v: o.cv || 0, rolling: !!o.rolling, stopT: o.stopT || 0, fid: o.fid || 0 });
     if (c.parkS.dist0 === undefined) c.parkS.dist0 = c.dist;
     if (o.crewMph) c.crewMph = o.crewMph;
-    if (o.crew) c.crew = crewNew(c, o.crew.mph, o.crew.dir);   // its engineer carries on
+    if (o.crew) c.crew = crewNew(c, o.crew.mph, o.crew.dir, !!o.crew.keep);   // its engineer carries on
     c.update(0); FLEET.dim(c);
     CARS.cuts.push(c);
   }
@@ -23903,20 +23903,14 @@ function fleetPark(T) {
   const st = {};
   for (const k in S) { const x = S[k]; if (typeof x === 'number' ? isFinite(x) : typeof x === 'boolean' || typeof x === 'string') st[k] = x; }
   for (const k of FLEET_WORLD) delete st[k];
-  const mph = Math.abs(S.v) / MPH, run = mph > 1.5 && !S.derailed;
+  const mph = Math.abs(S.v) / MPH;
   Object.assign(st, { whistle: 0, bell: false, dist0: T.dist });
   T.parkS = st;
   T.cfg = fleetCfgOut() || T.cfg || null;
   T.v = S.v; T.rolling = Math.abs(S.v) > 0.005; T.stopT = 0; T.vented = false;
-  if (run) {
-    T.crew = crewNew(T, clamp(Math.round(mph / 5) * 5, 5, crewMax(T)), Math.sign(S.v));
-    for (const v of T.vehicles) v.hb = false;
-  } else {
-    T.crew = null;
-    crewShut(T);
-    // still moving, it brakes to a stand on its own (CARS.step) and is tied down there
-    for (const v of T.vehicles) { v.hb = !T.rolling; if (v.brake) v.brake.BC = Math.max(v.brake.BC || 0, 50); }
-  }
+  // the controls stay as you left them: its engineer only steps in to stop short of trouble
+  T.crew = crewNew(T, clamp(Math.round(mph / 5) * 5, 0, crewMax(T)), Math.sign(S.v) || Math.sign(S.reverser) || 1, true);
+  for (const v of T.vehicles) v.hb = false;
   if (!CARS.cuts.includes(T)) CARS.cuts.push(T);
   CARS.gen++; if (typeof IX !== 'undefined') IX.idx = null;
   return st;
@@ -23951,8 +23945,8 @@ const CREW_LOOK = 0.25;    // s between looks up the line
 FLEET.crews = () => CARS.cuts.filter(c => c.parkS && c.crew);
 FLEET.holds = () => FLEET.crews().map(c => c.crew.ix);
 const crewMax = T => { const sp = LOCO_SPEC[T.locoKey] || {}; return Math.max(10, Math.floor((sp.vmax || 80) / 5) * 5); };
-function crewNew(T, mph, dir) {
-  return { mph, dir: dir || 1, why: '', brk: true, plan: [], lookAt: -1e9, trav: 0, lim: 99, trim: 0, standT: 0, stopD: Infinity,
+function crewNew(T, mph, dir, keep) {
+  return { keep: !!keep, mph, dir: dir || 1, why: '', brk: true, plan: [], lookAt: -1e9, trav: 0, lim: 99, trim: 0, standT: 0, stopD: Infinity,
     ix: { name: FLEET.name(T), signalsAhead: [], pieces: [], locks: [], last: null, passed: null } };
 }
 /* which way the train would run: its engineer's way, else the way its reverser is set (+1 front first) */
@@ -23962,7 +23956,7 @@ FLEET.run = function (T, mph) {
   if (!T || !T.parkS) return false;
   if (mph > 0) {
     mph = clamp(Math.round(mph / 5) * 5, 5, crewMax(T));
-    if (T.crew) { T.crew.mph = mph; T.crew.standT = 0; }
+    if (T.crew) { T.crew.mph = mph; T.crew.standT = 0; T.crew.keep = false; }
     else {
       T.crew = crewNew(T, mph, FLEET.dirOf(T));
       // the handbrakes come off; the air holds it until he releases, and a car set up while standing releases with it
@@ -23970,7 +23964,7 @@ FLEET.run = function (T, mph) {
       T.vented = false;
     }
     T.crewMph = mph;
-  } else if (T.crew) T.crew.mph = 0;
+  } else if (T.crew) { T.crew.mph = 0; T.crew.keep = false; }
   FLEET.dim(T);
   FLEET.ui(true); FLEET.cardFill();
   return true;
@@ -24001,7 +23995,9 @@ FLEET.crewOff = crewOff;
 /* what lies ahead, as places to be down to a speed by: { d (m from the leading coupler), v (m/s), len (held
    that far past d, for the length of the train), why } */
 function crewLook(T) {
-  const cr = T.crew, dir = cr.dir, plan = [];
+  const cr = T.crew;
+  if (cr.keep) { const v = T.v || 0, rv = T.parkS ? T.parkS.reverser : 0; cr.dir = Math.abs(v) > 0.05 ? Math.sign(v) : Math.sign(rv) || cr.dir; }
+  const dir = cr.dir, plan = [];
   cr.lookAt = S.time; cr.trav = 0;
   const sc = scanAhead(T, dir, 3000);
   if (sc.signal) {
@@ -24060,6 +24056,15 @@ function crewDrive(T, cr, h) {
     else continue;
     if (k.v === 0) stopD = Math.min(stopD, D);
     if (v < vA) { vA = v; why = k.why; }
+  }
+  if (cr.keep) {
+    // left as you had it: hands off the controls, unless it is running up on a stop it can't make
+    cr.why = ''; cr.stopD = stopD;
+    const stopV = stopD < Infinity ? Math.sqrt(2 * CREW_DECEL * Math.max(0, stopD)) : Infinity;
+    if (sv > 0.3 && sv > stopV - 0.5) {
+      cr.keep = false; cr.mph = Math.max(5, Math.min(crewMax(T), Math.round(sv / MPH / 5) * 5));
+      FLEET.ui(true);
+    } else return;
   }
   if (cr.mph === 0) { vA = 0; why = 'stopping to tie down'; }
   cr.why = vA < cr.mph * MPH - 0.4 || cr.mph === 0 ? why : ''; cr.stopD = stopD;
@@ -24172,6 +24177,7 @@ FLEET.status = function (T) {
   const v = T === GAME.train ? S.v : T.v || 0, mph = Math.round(Math.abs(v) / MPH);
   if (T === GAME.train) return `Driving · ${mph} mph · ${FLEET.where(T)}`;
   const cr = T.crew;
+  if (cr && cr.keep) return `${mph >= 1 ? `Running as you left it, ${mph} mph` : 'Standing as you left it'} · ${FLEET.where(T)}`;
   if (cr && cr.mph === 0) return `Engineer stopping · ${mph} mph · ${FLEET.where(T)}`;
   if (cr) return `${mph >= 1 ? `Engineer running, ${mph} of ${cr.mph} mph` : 'Engineer waiting'}${cr.why ? ` · ${cr.why}` : ''} · ${FLEET.where(T)}`;
   return `${mph >= 1 ? `Rolling, ${mph} mph` : 'Standing, brakes set'} · ${FLEET.where(T)}`;
@@ -24221,7 +24227,7 @@ FLEET.select = function (T, how = {}) {
   fleetCfgIn(T.cfg);
   FLEET.after(T);
   old.update(0);
-  if (!how.quiet) toast(`Now driving ${FLEET.name(T)}. ${FLEET.name(old)} ${old.crew ? `keeps going at ${old.crew.mph} mph with its engineer` : `stands ${FLEET.where(old)} with its brakes set`}.`, 'good', 4600, 'fleet');
+  if (!how.quiet) toast(`Now driving ${FLEET.name(T)}. ${FLEET.name(old)} carries on with the controls as you left them.`, 'good', 4600, 'fleet');
   return true;
 };
 /* the next (d = 1) or previous (-1) train, in the order they were made up */
@@ -24269,7 +24275,7 @@ FLEET.add = function (loco, ck) {
   resetState();   // a fresh engine: fire up, full tender, brakes released
   CARS.gen++; IX.idx = null;
   FLEET.after(t);
-  toast(`${FLEET.name(t)} made up on ${slot.name}. ${FLEET.name(old)} ${old.crew ? `keeps going at ${old.crew.mph} mph with its engineer` : 'stands with its brakes set'}: click it, or press O, to go back to it.`, 'good', 5600, 'fleet');
+  toast(`${FLEET.name(t)} made up on ${slot.name}. ${FLEET.name(old)} carries on with the controls as you left them: click it, or press O, to go back to it.`, 'good', 5600, 'fleet');
   return true;
 };
 /* take train T off the railroad (fromPlace: picked up in Place mode, which already holds everything still) */
@@ -24355,8 +24361,8 @@ FLEET.cardFill = function () {
   // the engineer's orders: hold or run, how fast, which way
   const crew = $('fcCrew'); crew.hidden = mine;
   if (!mine) {
-    const run = !!(c.crew && c.crew.mph);
-    $('fcHold').setAttribute('aria-pressed', String(!run)); $('fcRun').setAttribute('aria-pressed', String(run));
+    const run = !!(c.crew && c.crew.mph && !c.crew.keep);
+    $('fcHold').setAttribute('aria-pressed', String(!run && !(c.crew && c.crew.keep))); $('fcRun').setAttribute('aria-pressed', String(run));
     const mph = FLEET.mphOf(c); set('fcMph', String(mph));
     $('fcSlow').disabled = mph <= 5; $('fcFast').disabled = mph >= crewMax(c);
     const rev = $('fcRev'); set('fcRev', FLEET.dirOf(c) > 0 ? '▶ Forward' : '◀ Reverse'); rev.disabled = Math.abs(c.v || 0) > 0.1;
@@ -24368,10 +24374,10 @@ FLEET.cardFill = function () {
 };
 
 /* the speed its engineer runs at, or would if told to run */
-FLEET.mphOf = c => (c.crew && c.crew.mph) || c.crewMph || Math.min(25, crewMax(c));
+FLEET.mphOf = c => (c.crew && !c.crew.keep && c.crew.mph) || c.crewMph || Math.min(25, crewMax(c));
 FLEET.faster = function (c, d) {
   const mph = clamp(FLEET.mphOf(c) + 5 * d, 5, crewMax(c));
-  if (c.crew && c.crew.mph) FLEET.run(c, mph); else { c.crewMph = mph; FLEET.cardFill(); }
+  if (c.crew && c.crew.mph && !c.crew.keep) FLEET.run(c, mph); else { c.crewMph = mph; FLEET.cardFill(); }
 };
 
 /* ---------------- the Trains panel ---------------- */
@@ -24415,7 +24421,7 @@ FLEET.ui = function (force) {
   const n = FLEET.all().length, cnt = $('fleetCount'); if (cnt) { const t = n > 1 ? String(n) : ''; if (cnt.textContent !== t) cnt.textContent = t; }
   const p = $('fleetPanel'); if (!p || p.hidden) return;
   const list = $('fleetList'), rows = fleetOrder();
-  const key = rows.map(c => c.fid + (c === GAME.train ? '*' : '') + (FLEET.armed === c ? '!' : '') + (c.crew && c.crew.mph ? '>' : '')).join();
+  const key = rows.map(c => c.fid + (c === GAME.train ? '*' : '') + (FLEET.armed === c ? '!' : '') + (c.crew ? (c.crew.keep ? 'k' : c.crew.mph ? '>' : '-') : '')).join();
   if (force || list.dataset.k !== key) {
     list.dataset.k = key; list.innerHTML = '';
     for (const c of rows) {
@@ -24426,7 +24432,7 @@ FLEET.ui = function (force) {
       const bx = row.querySelector('.flBtns');
       if (mine) { const t = document.createElement('em'); t.textContent = 'Driving'; bx.appendChild(t); }
       else {
-        const run = !!(c.crew && c.crew.mph), r = document.createElement('button');
+        const run = !!(c.crew && (c.crew.mph || c.crew.keep)), r = document.createElement('button');
         r.type = 'button'; r.className = 'btn flRun'; r.textContent = run ? 'Hold' : 'Run'; r.setAttribute('aria-pressed', String(run));
         r.title = run ? 'Have its engineer stop and tie it down' : `Have its engineer run it at ${FLEET.mphOf(c)} mph`;
         r.addEventListener('click', () => FLEET.run(c, run ? 0 : FLEET.mphOf(c))); bx.appendChild(r);
