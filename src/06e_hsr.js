@@ -745,7 +745,7 @@ function setVehicle(m, i) {
 }
 /* every frame: pantographs up to the wire or folded down, and the tilting coaches leaning into the curves */
 function animateTrainset(T, dt) {
-  const panK = T.remote ? 1 : S.pan, v = T.remote ? 0 : S.v;
+  const ps = T.parkS, panK = T.remote ? 1 : ps ? ps.pan : S.pan, v = T.remote ? 0 : ps ? (T.v || 0) : S.v;
   // the lamps inside: the surfaces glow a little by day, more at night, as the cars' own lighting would show them
   if (RMAT.hsLit) { const d = smooth(0.2, 0.6, SKY.dark || 0); for (const m of RMAT.hsLit) m.emissiveIntensity = lerp(0.12, 0.42, d); RMAT.hsLight.emissiveIntensity = lerp(0.7, 1.1, d); }
   for (const veh of T.vehicles) {

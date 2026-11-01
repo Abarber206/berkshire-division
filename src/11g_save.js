@@ -143,10 +143,38 @@ const CAM_KEEP = ['yaw', 'pitch', 'dist', 'cabYaw', 'cabPitch', 'droneYaw', 'dro
 /* primitive values of the train state (controls, boiler, air, fuel, the clock) */
 function stateOut() { const o = {}; for (const k in S) { const x = S[k]; if (typeof x === 'number' ? isFinite(x) : typeof x === 'boolean' || typeof x === 'string') o[k] = x; } delete o.paused; return o; }
 
+/* the vehicles a train was built with: its engine (and tender or trailing units), or every car of a trainset */
+const powerOf = T => T.vehicles.filter(v => isPower(v) || (T.elec && T.units.some(m => m.vehicle === v)));
+/* one of your other trains standing about (11l_fleet.js): how it was built, where every car is, and its engine as it was left */
+function fleetOut(c) {
+  return Object.assign(consistOut(c, powerOf(c)), { loco: c.locoKey, ck: c.consistKey, units: c.nUnits || 1, opts: JSON.parse(JSON.stringify(c.opts || {})), cfg: c.cfg || null,
+    ps: c.parkS, cv: rnd(c.v || 0), rolling: !!c.rolling, stopT: rnd(c.stopT || 0), fid: c.fid || 0 });
+}
+/* Build train t's consist again from its record o: the engine as the Train made it, and its cars as they were.
+   t was made up as a light engine, so everything it built is the engine (or the whole trainset). */
+function trainIn(t, o, E) {
+  const power = t.vehicles.slice(), V = [];
+  for (const x of o.v) {
+    const v = x.p !== undefined ? power[x.p] : carIn(x);
+    if (!v) throw new Error('the engine has changed since this save');
+    vehicleIn(v, x);
+    if (!v.ptsAll) t.track(v);
+    t.markerLamps(v);
+    V.push(v);
+  }
+  if (power.some(v => !V.includes(v))) throw new Error('the engine has changed since this save');
+  t.vehicles = V; t.consistKey = o.ck || 'light';
+  t.layout(); t.buildInstances();
+  if (!seatConsist(t, o, E)) throw new Error('the train is not on this railroad');
+  t.update(0);
+  prepareTrain(t, true);
+  return V;
+}
+
 /* the whole run, ready for JSON */
 SAVE.snapshot = function () {
   const T = GAME.train, g = GAME.settings;
-  const power = T.vehicles.filter(v => isPower(v) || (T.elec && T.units.some(m => m.vehicle === v)));   // a trainset's cars are all its own
+  const power = powerOf(T);
   const uid = new Map(); let n = 0;
   for (const c of [T, ...CARS.cuts]) for (const v of c.vehicles) uid.set(v, n++);
   const job = jobOut(uid), settings = {};
@@ -158,8 +186,9 @@ SAVE.snapshot = function () {
   return {
     ver: SAVE.VER, at: Date.now(), route: SAVE.routeId(), print: SAVE.print(), settings,
     S: st, sw: NET.switches.map(s => [s.name, s.state]),
-    train: Object.assign(consistOut(T, power), { loco: T.locoKey, ck: T.consistKey, units: T.nUnits || 1 }),
-    cuts: CARS.cuts.map(c => Object.assign(consistOut(c), { cv: rnd(c.v), rolling: !!c.rolling, stopT: rnd(c.stopT || 0), vented: !!c.vented, home: c.home || null })),
+    train: Object.assign(consistOut(T, power), { loco: T.locoKey, ck: T.consistKey, units: T.nUnits || 1, fid: T.fid || 0 }),
+    fleet: CARS.cuts.filter(c => c.parkS).map(fleetOut),
+    cuts: CARS.cuts.filter(c => !c.parkS).map(c => Object.assign(consistOut(c), { cv: rnd(c.v), rolling: !!c.rolling, stopT: rnd(c.stopT || 0), vented: !!c.vented, home: c.home || null })),
     job, ai: aiOut(), sky: { hour: rnd(SKY.hour, 1e5), weather: SKY.weather, wx: wxOut() }, cam, wreck,
     ind: IND.out(),
     misc: { placed: PLACE.made || 0, lastStation: GAME.lastStation || null, spawnName: GAME.spawnName || '' },
@@ -173,9 +202,9 @@ SAVE.summary = function (T, job) {
   const cars = T.vehicles.filter(v => !isPower(v)).length;
   let near = null, best = 3000;
   for (const st of ROUTE.stations) { const d = st.p ? st.p.distanceTo(T.lead.pos) : Infinity; if (d < best) { best = d; near = st.name; } }
-  const jd = job && JOB.def(job.id);
+  const jd = job && JOB.def(job.id), more = CARS.cuts.filter(c => c.parkS).length;
   return {
-    title: jd ? jd.name : `${loco}${sp.set ? '' : cars ? ` · ${cars} car${cars > 1 ? 's' : ''}` : ' · light'}`,
+    title: jd ? jd.name : `${loco}${sp.set ? '' : cars ? ` · ${cars} car${cars > 1 ? 's' : ''}` : ' · light'}${more ? ` · +${more} train${more > 1 ? 's' : ''}` : ''}`,
     where: `${S.derailed ? 'Wrecked' : near ? (best < 400 ? 'At ' : 'Near ') + near : 'Out on the line'} · ${SAVE.routeName(SAVE.routeId())}`,
     clock: jd ? fmtClock(JOB.clock()) : dnFmt(SKY.hour),
   };
@@ -258,21 +287,8 @@ SAVE.apply = function (d) {
   // the train: its engine as built, and its cars as they were
   const t = new Train(scene, g.loco, 'light', dieselOpts());
   GAME.train = t;
-  const power = t.vehicles.slice(), V = [];   // a light engine: everything built is the engine (or the whole trainset)
-  for (const o of d.train.v) {
-    const v = o.p !== undefined ? power[o.p] : carIn(o);
-    if (!v) throw new Error('the engine has changed since this save');
-    vehicleIn(v, o);
-    if (!v.ptsAll) t.track(v);
-    t.markerLamps(v);
-    V.push(v);
-  }
-  if (power.some(v => !V.includes(v))) throw new Error('the engine has changed since this save');
-  t.vehicles = V; t.consistKey = d.train.ck || 'light';
-  t.layout(); t.buildInstances();
-  if (!seatConsist(t, d.train, E)) throw new Error('the train is not on this railroad');
-  t.update(0);
-  prepareTrain(t, true);
+  const V = trainIn(t, d.train, E);
+  t.fid = d.train.fid || 0;
   // the cars standing about
   if (!CARS.geo) CARS.geo = carGeos();
   const all = [...V];
@@ -284,6 +300,19 @@ SAVE.apply = function (d) {
     c.update(0);
     CARS.cuts.push(c); all.push(...cv);
   }
+  // your other trains, standing as they were left; an engine that can no longer be built is left out
+  for (const o of d.fleet || []) {
+    if (!LOCO_SPEC[o.loco]) continue;
+    const c = new Train(scene, o.loco, 'light', Object.assign({}, o.opts, { dark: true }));
+    try { all.push(...trainIn(c, o, E)); }
+    catch (e) { console.warn('fleet train', e); c.disposeDeep(); continue; }
+    Object.assign(c, { parkS: Object.assign({}, o.ps), cfg: o.cfg || null, v: o.cv || 0, rolling: !!o.rolling, stopT: o.stopT || 0, fid: o.fid || 0 });
+    if (c.parkS.dist0 === undefined) c.parkS.dist0 = c.dist;
+    c.update(0); FLEET.dim(c);
+    CARS.cuts.push(c);
+  }
+  ROAD_SHORT = LOCO_SPEC[g.loco].short;
+  FLEET.n = Math.max(FLEET.n, t.fid || 0, ...FLEET.parked().map(c => c.fid || 0));
   CARS.gen++;
   IND.in(d.ind);
   PLACE.made = Math.max(PLACE.made || 0, (d.misc && d.misc.placed) || 0);

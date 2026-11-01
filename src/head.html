@@ -409,6 +409,37 @@ details.keys kbd{color:var(--brass)}
   #mpWatch{top:calc(env(safe-area-inset-top,0px) + 44px)}
   #btnPlayers{padding:0 6px}
 }
+/* ---------- your trains ---------- */
+#btnTrains{position:relative}
+#btnTrains.on{border-color:var(--brass)}#btnTrains.on svg{stroke:var(--brass)}
+#fleetCount{position:absolute;right:2px;top:1px;font-family:var(--f-num);font-size:10px;font-weight:700;color:var(--brass)}
+#fleetPanel{position:absolute;z-index:7;right:calc(env(safe-area-inset-right,0px) + 10px);top:calc(env(safe-area-inset-top,0px) + 54px);
+  width:min(380px,calc(100vw - 20px));max-height:calc(100vh - 70px);overflow:auto;padding:10px;display:flex;flex-direction:column;gap:8px;box-sizing:border-box}
+#fleetList{display:flex;flex-direction:column;gap:4px}
+.flRow{display:flex;gap:8px;align-items:center;padding:6px;border-radius:5px;background:rgba(255,255,255,.03);border:1px solid transparent}
+.flRow>i{width:10px;height:10px;border-radius:50%;flex:none;background:#d9b45a}
+.flRow.mine{border-color:rgba(207,166,81,.45);background:rgba(207,166,81,.08)}
+.flRow.mine>i{background:#ffe08a;box-shadow:0 0 6px #ffe08a}
+.flBtns{display:flex;gap:4px;align-items:center;flex:none}
+.flBtns em{font-style:normal;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--brass);font-weight:700;padding:0 4px}
+.flBtns .btn,.fcBtns .btn{padding:6px 9px;font-size:10px}
+.btn.warn{border-color:rgba(238,75,61,.6);color:#f3c4be}
+.flBtns .btn:disabled{opacity:.38}
+.flNew{display:flex;flex-direction:column;gap:6px;border-top:1px solid rgba(255,255,255,.08);padding-top:8px}
+.flNew>.lbl{font-size:11px}
+.flNew>.btn{align-self:flex-start;padding:8px 14px;font-size:11px}
+.flNew .pchip:disabled{opacity:.4}
+#fleetPanel kbd{font-family:var(--f-num);font-size:10px;padding:0 4px;border:1px solid var(--rule);border-radius:3px}
+#fleetCard{position:absolute;z-index:8;left:0;top:0;width:min(300px,calc(100vw - 16px));padding:10px;display:flex;flex-direction:column;gap:6px;box-sizing:border-box}
+.fcTop{display:flex;gap:8px;align-items:baseline}
+.fcTop b{font-size:15px;font-weight:600}
+.fcTop small{flex:1;font-size:11px;color:var(--ink-dim)}
+.fcTop .btn{padding:4px 8px;font-size:11px}
+.fcBtns{display:flex;gap:6px;margin-top:2px}
+.fcBtns .btn:disabled{opacity:.5}
+@media (max-height:500px) and (orientation:landscape){
+  #fleetPanel{top:calc(env(safe-area-inset-top,0px) + 42px);right:calc(env(safe-area-inset-right,0px) + 206px);width:min(380px,calc(100vw - 236px));gap:6px;padding:8px;max-height:calc(100vh - 50px)}
+}
 /* ---------- couplers ---------- */
 #carPanel{position:absolute;z-index:7;right:calc(env(safe-area-inset-right,0px) + 10px);top:calc(env(safe-area-inset-top,0px) + 54px);
   width:min(420px,calc(100vw - 20px));padding:10px;display:flex;flex-direction:column;gap:8px;box-sizing:border-box}
@@ -666,6 +697,7 @@ details.keys kbd{color:var(--brass)}
       <button class="icon-btn" id="btnPlayers" hidden aria-label="Players in the room"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"/><path d="M3 19c0-3.3 2.7-6 6-6s6 2.7 6 6"/><circle cx="17" cy="9" r="2.5"/><path d="M15.6 13.3c2.9.3 5.4 2.6 5.4 5.7"/></svg><span id="mpCount">1</span></button>
       <button class="icon-btn" id="btnCars" aria-label="Couplers: cut cars off the train"><svg viewBox="0 0 24 24"><rect x="2" y="7" width="7" height="8" rx="1"/><rect x="15" y="7" width="7" height="8" rx="1"/><path d="M9 11h2.2M12.8 11H15"/><circle cx="6" cy="17.5" r="1.3"/><circle cx="18" cy="17.5" r="1.3"/></svg></button>
       <button class="icon-btn" id="btnPlace" aria-label="Place engines and cars on the track"><svg viewBox="0 0 24 24"><path d="M12 2.5v9M8.5 8l3.5 3.5L15.5 8"/><path d="M2.5 16.5h19M2.5 20h19"/><path d="M6 16.5V20M10 16.5V20M14 16.5V20M18 16.5V20"/></svg></button>
+      <button class="icon-btn" id="btnTrains" aria-label="Your trains: make up another, switch between them (O)"><svg viewBox="0 0 24 24"><path d="M2.5 9.5h8V15h-8zM4.5 9.5V7h3v2.5"/><path d="M13.5 6.5h8V15h-8zM15.5 6.5V4h3v2.5"/><circle cx="4.5" cy="17.3" r="1.3"/><circle cx="8.5" cy="17.3" r="1.3"/><circle cx="15.5" cy="17.3" r="1.3"/><circle cx="19.5" cy="17.3" r="1.3"/></svg><span id="fleetCount"></span></button>
       <button class="icon-btn" id="btnWalk" aria-label="Climb down and walk"><svg viewBox="0 0 24 24"><circle cx="12" cy="4.5" r="2"/><path d="M12 7.5v6M12 13.5l-3 7M12 13.5l3 7M8 10.5l4-2 4 2"/></svg></button>
       <button class="icon-btn" id="btnCam" aria-label="Change camera"><svg viewBox="0 0 24 24"><path d="M3 8h4l2-3h6l2 3h4v11H3z"/><circle cx="12" cy="13" r="3.5"/></svg></button>
       <button class="icon-btn" id="btnMap" aria-label="Open track map"><svg viewBox="0 0 24 24"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/></svg></button>
@@ -715,6 +747,23 @@ details.keys kbd{color:var(--brass)}
     <div id="carStrip"></div>
     <div id="carHint" class="mpStatus"></div>
     <details id="carList"><summary>Switch list</summary><div id="carListBody"></div></details>
+  </div>
+  <div id="fleetPanel" class="hud-box" hidden>
+    <div class="mpHead"><span>Your trains</span><button class="btn" id="fleetClose" aria-label="Close">Close</button></div>
+    <div id="fleetList"></div>
+    <div class="flNew">
+      <div class="lbl">Make up another train</div>
+      <div class="pbRow"><span class="lbl">Engine</span><div class="pbChips" id="fleetEngines"></div></div>
+      <div class="pbRow"><span class="lbl">Train</span><div class="pbChips" id="fleetTrains"></div></div>
+      <button class="btn prim" id="fleetAdd" type="button">Make it up</button>
+    </div>
+    <div class="mpStatus">The train you leave stands with its brakes set. Click any of your trains in the world or on the map to take it over; <kbd>[</kbd> <kbd>]</kbd> step through them.</div>
+  </div>
+  <div id="fleetCard" class="hud-box" hidden role="dialog" aria-label="Train">
+    <div class="fcTop"><b id="fcName"></b><small id="fcWhat"></small><button class="btn" id="fcClose" type="button" aria-label="Close">✕</button></div>
+    <div id="fcStatus" class="mpStatus"></div>
+    <div id="fcSup" class="mpStatus"></div>
+    <div class="fcBtns"><button class="btn prim" id="fcDrive" type="button">Take it over</button><button class="btn" id="fcDelete" type="button">Take off railroad</button></div>
   </div>
   <div id="jobPanel" class="hud-box" hidden>
     <div class="mpHead"><span id="jpTitle">Job</span><button class="btn" id="jpAbandon" type="button">Abandon job</button><button class="btn" id="jpClose" type="button" aria-label="Close">Close</button></div>

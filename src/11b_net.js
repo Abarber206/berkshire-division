@@ -613,7 +613,8 @@ MP.spawnSlot = function (T) {
   for (const p of MP.peers.values()) if (p.rt && p.rt.tp && !p.rt.placed) p.rt.frame(0, p.st, camera.position, true);
   const rts = [...MP.peers.values()].map(p => p.rt).filter(rt => rt && rt.placed && rt.polyN);
   // the cars standing about are shared too, so a new train is not made up on top of them
-  const polys = [...rts.map(rt => rt.poly.slice(0, rt.polyN)), ...CARS.cuts.map(c => c.pts.map(p => p.F.p))];
+  // (and, in single player, nor on top of your other trains or the timetable trains)
+  const polys = [...rts.map(rt => rt.poly.slice(0, rt.polyN)), ...CARS.cuts.map(c => c.pts.map(p => p.F.p)), ...AI.trains.map(a => a.train.pts.map(p => p.F.p))];
   // clear when no other train or car comes within 3.4 m of the track centre anywhere along our length, plus 30 m each end
   const clear = (line, sF) => {
     for (let s = sF + 30; s >= sF - T.length - 30; s -= 3) {

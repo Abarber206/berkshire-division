@@ -72,7 +72,7 @@ function setupViewInput(canvas, camera) {
   canvas.addEventListener('pointermove', e => {
     if (PLACE.on) return;
     if (CAB.grab) { if (e.pointerId === CAB.grab.pid) CAB.move(e.clientX, e.clientY); return; }
-    if (!ptrs.size && e.pointerType === 'mouse') { if (WALK.on) return; LTAP.point(null); if (CAB.point(e.clientX, e.clientY)) CPL.point(null); else { CPL.point(e.clientX, e.clientY); if (!CPL.hover) LTAP.point(e.clientX, e.clientY); } return; }
+    if (!ptrs.size && e.pointerType === 'mouse') { if (WALK.on) return; LTAP.point(null); if (CAB.point(e.clientX, e.clientY)) { CPL.point(null); FLEET.point(null); } else { CPL.point(e.clientX, e.clientY); if (!CPL.hover) LTAP.point(e.clientX, e.clientY); if (!CPL.hover && !LTAP.hover && CAM.mode !== 'cab') FLEET.point(e.clientX, e.clientY); else FLEET.point(null); } return; }
     if (!ptrs.has(e.pointerId)) return;
     const p = ptrs.get(e.pointerId), dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
     if (tapStart && Math.hypot(e.clientX - tapStart.x, e.clientY - tapStart.y) > 8) tapStart = null;
@@ -107,7 +107,7 @@ function setupViewInput(canvas, camera) {
     ptrs.delete(e.pointerId); if (ptrs.size < 2) pinch0 = 0; tapStart = null;
     if (!ptrs.size) canvas.classList.remove('dragging');
   };
-  canvas.addEventListener('pointerup', up); canvas.addEventListener('pointerleave', () => { if (PLACE.on) return; CPL.point(null); LTAP.point(null); if (!CAB.grab) CAB.point(null); }); canvas.addEventListener('pointercancel', e => { if (CAB.grab && e.pointerId === CAB.grab.pid) CAB.up(); ptrs.delete(e.pointerId); tapStart = null; if (!ptrs.size) canvas.classList.remove('dragging'); });
+  canvas.addEventListener('pointerup', up); canvas.addEventListener('pointerleave', () => { if (PLACE.on) return; CPL.point(null); LTAP.point(null); FLEET.point(null); if (!CAB.grab) CAB.point(null); }); canvas.addEventListener('pointercancel', e => { if (CAB.grab && e.pointerId === CAB.grab.pid) CAB.up(); ptrs.delete(e.pointerId); tapStart = null; if (!ptrs.size) canvas.classList.remove('dragging'); });
   // no browser menu on a right click anywhere in the game; text boxes keep theirs for paste
   document.addEventListener('contextmenu', e => { const t = e.target; if (t && t.closest && t.closest('input,textarea,[contenteditable="true"]')) return; e.preventDefault(); });
   canvas.addEventListener('wheel', e => { if (PLACE.on) return; e.preventDefault(); if (WALK.on) { WALK.zoom(1 + clamp(e.deltaY * (e.deltaMode ? 33 : 1), -120, 120) * 0.0015); return; } zoom(CAM.dist * (1 + clamp(e.deltaY * (e.deltaMode ? 33 : 1), -120, 120) * 0.0012)); }, { passive: false });
@@ -122,6 +122,9 @@ function handleTap(x, y, camera) {
   _ray.setFromCamera(v, camera);
   const hits = _ray.intersectObjects(NET.switches.map(s => s.vis.hit), false);
   if (hits.length) { GAME.throwSwitch(hits[0].object.userData.sw); return; }
+  // one of your other trains: its card, to take it over
+  if (CAM.mode !== 'cab' && FLEET.tap(x, y)) return;
+  if (FLEET.card) FLEET.closeCard();
   // tapping the scene in cinematic mode cuts to the next shot
   if (CAM.mode === 'cine') CAM.nextShot();
 }
@@ -220,6 +223,9 @@ function setupButtons() {
       case 'KeyN': CAB.nextLook(); break;
       case 'KeyU': carPanelToggle(); break;
       case 'KeyG': PLACE.enter(); break;
+      case 'KeyO': FLEET.toggle(); break;
+      case 'BracketLeft': FLEET.cycle(-1); break;
+      case 'BracketRight': FLEET.cycle(1); break;
       case 'KeyM': MAP.visible ? MAP.close() : MAP.open(); break;
       case 'KeyP': GAME.pause(!S.paused); break;
       case 'Digit1': cycleCamera('chase'); break; case 'Digit2': cycleCamera('cab'); break; case 'Digit3': cycleCamera('side'); break; case 'Digit4': cycleCamera('drone'); break; case 'Digit5': cycleCamera('rear'); break; case 'Digit6': cycleCamera('cine'); break;
@@ -315,6 +321,7 @@ function drawNet(g, W, H, cx, cn, sc, opt) {
   // cuts of cars standing or rolling
   g.strokeStyle = '#b5895a'; g.lineWidth = 3.4 * opt.w;
   for (const c of CARS.cuts) { if (!c.vehicles[0].pos) continue; g.beginPath(); c.vehicles.forEach((v, i) => { const x = tx(v.pos.x), y = ty(-v.pos.z); i ? g.lineTo(x, y) : g.moveTo(x, y); }); g.stroke(); }
+  FLEET.drawMap(g, tx, ty, opt);
   // train
   const T = GAME.train;
   if (T) {
@@ -369,7 +376,9 @@ function setupMap() {
     else { MAP.cx -= dx / MAP.scale; MAP.cn += dy / MAP.scale; }
     MAP.draw(); });
   c.addEventListener('pointerup', e => {
-    if (tap && ptrs.size === 1) {
+    const fc = tap && ptrs.size === 1 ? FLEET.mapPick(e.clientX, e.clientY) : null;
+    if (fc) { FLEET.select(fc); MAP.draw(); }
+    else if (tap && ptrs.size === 1) {
       let best = null, bd = 26;
       for (const sw of NET.switches) { const d = Math.hypot(MAP.t.tx(sw.node.X) - e.clientX, MAP.t.ty(sw.node.N) - e.clientY); if (d < bd) { bd = d; best = sw; } }
       if (best) { GAME.throwSwitch(best); MAP.draw(); }
@@ -386,7 +395,7 @@ function carPanelToggle(open) {
   const p = $('carPanel'); open = open === undefined ? p.hidden : open;
   p.hidden = !open;
   $('btnCars').classList.toggle('on', open);
-  if (open) { $('mpPanel').hidden = true; carPanelState.key = ''; carPanel(); }
+  if (open) { $('mpPanel').hidden = true; if (typeof FLEET !== 'undefined' && !$('fleetPanel').hidden) FLEET.toggle(false); carPanelState.key = ''; carPanel(); }
 }
 function carName(T, v) {
   if (v.kind === 'loco') return T.diesel ? 'Lead' : T.locoKey;

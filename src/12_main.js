@@ -70,7 +70,7 @@ async function loadWorld() {
   for (const st of ROUTE.stations) { st.edge.pose(st.s, FR); st.p = FR.p.clone(); }
   for (const w of ROUTE.water) { w.edge.pose(w.s, FR); w.p = FR.p.clone(); }
   if (ROUTE.coal) { const c = ROUTE.coal; c.edge.pose(c.s, FR); c.p = FR.p.clone(); }
-  setupViewInput($('gl'), camera); PLACE.setup($('gl')); setupLevers(); setupButtons(); setupMap(); WALK.setup();
+  setupViewInput($('gl'), camera); PLACE.setup($('gl')); setupLevers(); setupButtons(); setupMap(); WALK.setup(); FLEET.setup();
   linearizeObject(scene);
   makeTrain();
   applyLook(GAME.settings.time, GAME.settings.weather, renderer, scene);
@@ -97,7 +97,10 @@ function resetState() {
   else { const k = steamK(LOCO_SPEC[GAME.settings.loco]); Object.assign(S, { P: k.PL - 7, water: k.water, coal: k.coal }); }   // a bigger engine comes with its own pressure and tender
 }
 function makeTrain() {
-  CARS.clear(GAME.train);
+  // your other trains stay where they stand when you make up a new one; a job or a room starts with just the one
+  const others = FLEET.parked().length, keep = others > 0 && !MP.on && !JOB.wanted();
+  CARS.clear(GAME.train, false, keep);
+  if (others && !keep && !MP.on) toast(`Your other ${others > 1 ? others + ' trains were' : 'train was'} put away: a job is worked with one train.`, 'warn', 5200, 'fleet');
   if (GAME.train) GAME.train.dispose();
   const t = new Train(scene, GAME.settings.loco, JOB.consist(), dieselOpts());
   GAME.train = t;
@@ -112,10 +115,12 @@ function makeTrain() {
     MP.spawned = true; MP.needSpawn = false; MP.dirty = true;
   } else {
     const sw = name => NET.switches.find(s => s.name === name);
-    for (const s of NET.switches) { s.state = 0; s.anim = 0; }
+    // points under one of your standing trains stay as they are
+    for (const s of NET.switches) if (!keep || !CARS.occupied(s)) { s.state = 0; s.anim = 0; }
     // a job says where its train is made up and how the switches are lined
     for (const n of sp ? sp.lined : WORLD.mtn ? ['Riverton ladder E2', 'Riverton East'] : ['Yard ladder E2', 'Bellevue East']) sw(n).state = sw(n).anim = 1;
     if (sp) { line = sp.line; sFront = sp.s; o = sp.o; GAME.spawnName = sp.name; }
+    else if (keep) { const slot = MP.spawnSlot(t); if (slot) { line = slot.line; sFront = slot.s; GAME.spawnName = slot.name; } }
   }
   const loc = line.locate(sFront);
   t.place(new TrackPos(loc.edge, loc.s, o));
@@ -124,7 +129,8 @@ function makeTrain() {
 }
 /* custom layout: the start marker, slid forward until the whole train is on the rails */
 function placeOnLayout(t, light) {
-  if (!MP.on) for (const s of NET.switches) { s.state = 0; s.anim = 0; }
+  const others = FLEET.parked().length > 0;
+  if (!MP.on) for (const s of NET.switches) if (!others || !CARS.occupied(s)) { s.state = 0; s.anim = 0; }
   const st = layoutStart(PLAY_LAYOUT), need = t.length + 4;
   let tp = layoutFit(new TrackPos(st.edge, st.s, st.o), need);
   GAME.spawnName = PLAY_LAYOUT.name || 'your layout';
@@ -133,10 +139,10 @@ function placeOnLayout(t, light) {
     toast('That train is longer than the track, so you have a light engine.', 'warn', 5200);
     const t2 = new Train(scene, GAME.settings.loco, 'light', dieselOpts()); GAME.train = t2; placeOnLayout(t2, true); return;
   }
-  if (MP.on) {
-    // in a room, find a stretch of track no other train is on
+  if (MP.on || others) {
+    // in a room, or with your other trains about, find a stretch of track no other train is on
     const slot = MP.layoutSlot(need); if (slot) tp = slot;
-    MP.spawned = true; MP.needSpawn = false; MP.dirty = true;
+    if (MP.on) { MP.spawned = true; MP.needSpawn = false; MP.dirty = true; }
   }
   t.place(tp || new TrackPos(st.edge, st.s, st.o));
   finishTrain(t);
@@ -222,7 +228,7 @@ GAME.swapLive = function () {
   t.layout(); t.buildInstances();
   t.place(front);
   prepareTrain(t, true);
-  GAME.train = t;
+  GAME.train = t; t.fid = old.fid;   // the same train in the Trains list
   if (old.diesel !== t.diesel) carryOver();
   else if (old.locoKey !== t.locoKey) {
     S.throttle = 0; S.notch = 0; S.dyn = 0;
@@ -433,7 +439,7 @@ GAME.start = function () {
     if (JOB.run) JOB.end();
     makeTrain();
     if (job) JOB.begin(job);
-    else if (GAME.running) toast(`New train made up on ${WORLD.custom || WORLD.mtn ? GAME.spawnName : 'Yard 2'}.`, 'good');
+    else if (GAME.running) toast(`New train made up on ${WORLD.custom || WORLD.mtn || FLEET.parked().length ? GAME.spawnName : 'Yard 2'}.`, 'good');
     GAME.intro();
   }
   GAME.running = true; S.paused = false; applyFireSetting(GAME.settings.fire);
@@ -641,6 +647,7 @@ function updateHUD(dt) {
   const cars = CARS.ahead(GAME.train, dir, 500);
   if (cars) $('swMiniTxt').textContent += ` · cars ${fmtFt(cars.d)}`;
   if (act) stl.innerHTML = `<b>${act.label}</b> <button class="btn" id="btnService" style="padding:5px 8px;font-size:10px">${act.btn}</button>`;
+  else if (cars && cars.c.parkS) stl.innerHTML = `<span style="color:var(--approach)">${FLEET.name(cars.c)} standing ${cars.facing ? '' : 'foul '}in <b>${fmtFt(cars.d)}</b>${cars.d < 60 ? ` · ${Math.round(Math.abs(S.v) / MPH * 10) / 10} mph` : ''}</span>`;
   else if (cars && cars.c.ai) stl.innerHTML = `<span style="color:var(--approach)">${cars.c.ai.name} ahead in <b>${fmtFt(cars.d)}</b></span>`;
   else if (cars) stl.innerHTML = cars.facing ? `Coupling in <b>${fmtFt(cars.d)}</b>${cars.d < 60 ? ` · ${Math.round(Math.abs(S.v) / MPH * 10) / 10} mph` : ''}` : `<span style="color:var(--stop)">Cars foul of the route in <b style="color:var(--stop)">${fmtFt(cars.d)}</b></span>`;
   else if (sc.end && sc.end.d < 400) stl.innerHTML = `<span style="color:var(--stop)">End of track in <b style="color:var(--stop)">${fmtMi(sc.end.d)}</b></span>`;
@@ -776,7 +783,7 @@ function renderStep(dt, T) {
   MP.post(dt);
   updateFX(dt, camera); precipFrame(camera, dt); rainGlassFrame(dt);
   updateSparks(dt, T, camera);
-  if (GAME.running) updateHUD(dt);
+  if (GAME.running) { updateHUD(dt); FLEET.frame(dt); }
   cloudRender(renderer, camera, dt);
   renderer.render(scene, camera);
 }
