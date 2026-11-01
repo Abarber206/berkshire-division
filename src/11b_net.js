@@ -153,7 +153,7 @@ function mpClean(r) {
     o.vh = Number.isInteger(r.vh) && r.vh > 0 ? r.vh >>> 0 : 0;
     o.vs = o.vh && typeof r.vs === 'string' && r.vs.length < 12000 && mpHash(r.vs) === o.vh ? r.vs : null;
     o.s = n(r.s, 0, 1e5); o.o = r.o < 0 ? -1 : 1; o.v = n(r.v, -60, 60); o.rv = n(r.rv, -1, 1);
-    o.wh = n(r.wh, 0, 1); o.bl = r.bl ? 1 : 0; o.hl = Math.round(n(r.hl, 0, 2, 1)); o.dl = r.dl ? 1 : 0;
+    o.wh = n(r.wh, 0, 1); o.bl = r.bl ? 1 : 0; o.cl = r.cl ? 1 : 0; o.hl = Math.round(n(r.hl, 0, 2, 1)); o.dl = r.dl ? 1 : 0;
     o.ex = n(r.ex, 0, 1.5); o.rpm = n(r.rpm, 0, 1200); o.dr = r.dr ? 1 : 0;
     o.wk = o.dr && Array.isArray(r.wk) && r.wk.length >= 4 ? [n(r.wk[0], 0, 5000), r.wk[1] < 0 ? -1 : 1, Math.round(n(r.wk[2], 1, 2e9, 1)), n(r.wk[3], 0, 1), n(r.wk[4], 0, 150), n(r.wk[5], -150, 150), r.wk[6] ? 1 : 0] : null;
   }
@@ -279,8 +279,13 @@ class RemoteTrain {
     this.placed = true;
   }
   fx(dt, st, cam) {
+    // the bell's strokes: the sound rings on them and the bell swings to them
+    const bellP = this.train.diesel ? 1.05 : 0.86; let struck = false;
+    if (st.bl) { this.bellT += dt; if (this.bellT > bellP) { this.bellT = 0; struck = this.bellHit = true; } } else { this.bellT = 0.8; this.bellHit = false; }
     if (!this.placed || !this.visible) return;
     const T = this.train, L = T.loco, night = SKY.dark;
+    bellSwing(T, !!st.bl, this.bellT, bellP, struck, dt);
+    if (!T.diesel) clsLampsShow(L.cls, !!st.cl);
     const head = T.lead.pos, d = head.distanceTo(cam);
     this.tv.copy(T.lead.fwd).multiplyScalar(this.v);
     // lamps
@@ -527,7 +532,7 @@ MP.state = function () {
     const f = held ? held[0] : T.pts[0].tp;
     Object.assign(st, {
       lk: T.locoKey, ck: T.consistKey, u: T.nUnits || 1, lv: g.livery, mx: g.mix ? 1 : 0, cu: g.livery === 'custom' ? [g.custom.body, g.custom.accent, g.custom.letter] : 0, no: g.livery === 'custom' ? (+g.number || 0) : 0, tm: T.trim || '',
-      e: f.e.id, s: +f.s.toFixed(2), o: f.o, v: PLACE.on ? 0 : +S.v.toFixed(2), rv: +S.reverser.toFixed(2), wh: +S.whistle.toFixed(2), bl: S.bell ? 1 : 0, hl: S.light, dl: S.ditch ? 1 : 0,
+      e: f.e.id, s: +f.s.toFixed(2), o: f.o, v: PLACE.on ? 0 : +S.v.toFixed(2), rv: +S.reverser.toFixed(2), wh: +S.whistle.toFixed(2), bl: S.bell ? 1 : 0, cl: S.classLamps ? 1 : 0, hl: S.light, dl: S.ditch ? 1 : 0,
       ex: T.diesel ? +S.load.toFixed(2) : (S.Psc > 6 && S.cut > 0 && S.throttle > 0.02 ? +clamp((S.Psc / 245) * (0.35 + S.cut * 1.25), 0, 1.3).toFixed(2) : 0),
       rpm: T.diesel && !T.elec && S.engineRun ? Math.round(S.rpm) : 0, dr: S.derailed ? 1 : 0,
     });

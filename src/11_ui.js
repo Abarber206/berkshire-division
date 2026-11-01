@@ -65,7 +65,7 @@ function setupViewInput(canvas, camera) {
   canvas.addEventListener('pointermove', e => {
     if (PLACE.on) return;
     if (CAB.grab) { if (e.pointerId === CAB.grab.pid) CAB.move(e.clientX, e.clientY); return; }
-    if (!ptrs.size && e.pointerType === 'mouse') { if (CAB.point(e.clientX, e.clientY)) CPL.point(null); else CPL.point(e.clientX, e.clientY); return; }
+    if (!ptrs.size && e.pointerType === 'mouse') { LTAP.point(null); if (CAB.point(e.clientX, e.clientY)) CPL.point(null); else { CPL.point(e.clientX, e.clientY); if (!CPL.hover) LTAP.point(e.clientX, e.clientY); } return; }
     if (!ptrs.has(e.pointerId)) return;
     const p = ptrs.get(e.pointerId), dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
     if (tapStart && Math.hypot(e.clientX - tapStart.x, e.clientY - tapStart.y) > 8) tapStart = null;
@@ -99,7 +99,7 @@ function setupViewInput(canvas, camera) {
     ptrs.delete(e.pointerId); if (ptrs.size < 2) pinch0 = 0; tapStart = null;
     if (!ptrs.size) canvas.classList.remove('dragging');
   };
-  canvas.addEventListener('pointerup', up); canvas.addEventListener('pointerleave', () => { if (PLACE.on) return; CPL.point(null); if (!CAB.grab) CAB.point(null); }); canvas.addEventListener('pointercancel', e => { if (CAB.grab && e.pointerId === CAB.grab.pid) CAB.up(); ptrs.delete(e.pointerId); tapStart = null; if (!ptrs.size) canvas.classList.remove('dragging'); });
+  canvas.addEventListener('pointerup', up); canvas.addEventListener('pointerleave', () => { if (PLACE.on) return; CPL.point(null); LTAP.point(null); if (!CAB.grab) CAB.point(null); }); canvas.addEventListener('pointercancel', e => { if (CAB.grab && e.pointerId === CAB.grab.pid) CAB.up(); ptrs.delete(e.pointerId); tapStart = null; if (!ptrs.size) canvas.classList.remove('dragging'); });
   // no browser menu on a right click anywhere in the game; text boxes keep theirs for paste
   document.addEventListener('contextmenu', e => { const t = e.target; if (t && t.closest && t.closest('input,textarea,[contenteditable="true"]')) return; e.preventDefault(); });
   canvas.addEventListener('wheel', e => { if (PLACE.on) return; e.preventDefault(); zoom(CAM.dist * (1 + clamp(e.deltaY * (e.deltaMode ? 33 : 1), -120, 120) * 0.0012)); }, { passive: false });
@@ -110,6 +110,7 @@ function handleTap(x, y, camera) {
   const v = new THREE.Vector2(x / innerWidth * 2 - 1, -(y / innerHeight) * 2 + 1);
   if (CAB.tapInfo(x, y)) return;
   if (CAM.mode !== 'cab' && CPL.tap(x, y)) return;
+  if (CAM.mode !== 'cab' && LTAP.tap(x, y)) return;
   _ray.setFromCamera(v, camera);
   const hits = _ray.intersectObjects(NET.switches.map(s => s.vis.hit), false);
   if (hits.length) { GAME.throwSwitch(hits[0].object.userData.sw); return; }
@@ -157,6 +158,7 @@ function setupButtons() {
   wb.addEventListener('pointerup', wEnd); wb.addEventListener('pointercancel', wEnd);
   const tog = (id, fn) => $(id).addEventListener('click', () => { fn(); GAME.refreshKeys(); });
   tog('btnBell', () => { S.bell = !S.bell; });
+  tog('btnClass', () => { S.classLamps = !S.classLamps; });
   tog('btnSand', () => { S.sander = !S.sander; });
   tog('btnCocks', () => { if (GAME.isDiesel()) S.ditch = !S.ditch; else S.cocks = !S.cocks; });
   tog('btnLight', () => { S.light = (S.light + 1) % 3; });
@@ -196,6 +198,7 @@ function setupButtons() {
       case 'KeyC': S.indH = clamp(S.indH + 0.05, 0, 1); break;
       case 'Space': S.whistle = e.shiftKey ? 1 : 0.7; e.preventDefault(); break;
       case 'KeyB': S.bell = !S.bell; break;
+      case 'KeyJ': if (!GAME.isDiesel() && !(GAME.train && GAME.train.elec)) S.classLamps = !S.classLamps; break;
       case 'KeyX': S.sander = !S.sander; break;
       case 'KeyK': if (GAME.isDiesel()) S.ditch = !S.ditch; else S.cocks = !S.cocks; break;
       case 'KeyH': S.light = (S.light + 1) % 3; break;

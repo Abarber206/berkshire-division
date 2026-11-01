@@ -195,6 +195,12 @@ function buildDiesel(opts) {
     box('dUnder', N0 - 0.06, N0 + 0.02, D, D + 0.1, -NF, NF);             // anticlimber lip along the nose foot
     box('dUnder', 1.85, 2.25, 1.95, 2.35, W - 0.004, W + 0.008);         // access panel, engineer's side
   }
+  // the bell on a stand on the nose top, ahead of the windshield; it swings while it rings (bellRig)
+  const bellA = 2.0, bellY = 3.48 + 0.12 * (bellA - 1.42) / (CAB0 - 1.42), bs = 0.6, bp = bellY + 0.25;
+  box('dUnder', bellA - 0.16, bellA + 0.16, bellY - 0.03, bellY + 0.025, -0.22, 0.22);                  // base plate on the roof
+  for (const s of [-1, 1]) box('dUnder', bellA - 0.035, bellA + 0.035, bellY, bp + 0.05, s * 0.17, s * 0.2);   // stand posts
+  gb.cylZ('dSteel', 0.016, 0.4, 8, dx(bellA), bp, 0);                                                  // trunnion shaft
+  const bellRigD = bellRig(body, dx(bellA), bp, bs, 0.35);
   const lenses = [];
   for (const y of [3.04, 2.78]) {
     const ln = new THREE.Mesh(new THREE.CircleGeometry(0.105, 20), lead ? RMAT.lens : RMAT.headOff); ln.position.set(dx(N0 - 0.035), y, 0); ln.rotation.y = Math.PI / 2; body.add(ln); lenses.push(ln);
@@ -382,7 +388,7 @@ function buildDiesel(opts) {
   return {
     root, body, trucks, wheels, couplers, lens: lenses[0], lenses, beam, halo, ditch, spec, skin, livery: L, number: num, diesel: true, lead, len: DG.len, frame: DG.trucks.slice(),
     stackPos: new THREE.Vector3(dx(11.5), HOOD + 0.3, 0), hornPos: new THREE.Vector3(dx(6.0), DBH + 0.35, 0), enginePos: new THREE.Vector3(dx(12.5), 2.9, 0),
-    cabEye: cab.eye, cab, headlightPos: new THREE.Vector3(dx(N0 - 0.05), hlY, 0), cabLightPos: new THREE.Vector3(dx(4.1), 4.25, 0),
+    cabEye: cab.eye, cab, headlightPos: new THREE.Vector3(dx(N0 - 0.05), hlY, 0), cabLightPos: new THREE.Vector3(dx(4.1), 4.25, 0), bellRig: bellRigD,
   };
 }
 let _louverTex = null;

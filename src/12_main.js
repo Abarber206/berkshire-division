@@ -467,11 +467,11 @@ GAME.isDiesel = () => !!(GAME.train && GAME.train.diesel);
 GAME.refreshKeys = function () {
   const on = (id, v) => $(id).classList.toggle('on', !!v);
   const D = GAME.isDiesel();
-  on('btnBell', S.bell); on('btnSand', S.sander); on('btnLight', S.light > 0);
+  on('btnBell', S.bell); on('btnSand', S.sander); on('btnLight', S.light > 0); on('btnClass', S.classLamps);
   $('btnLight').firstChild.textContent = ['Light off', 'Light dim', 'Light bright'][S.light];
   $('btnWhistle').firstChild.textContent = D ? 'Horn' : 'Whistle';
   const sp = GAME.train ? LOCO_SPEC[GAME.train.locoKey] : null, E = !!(GAME.train && GAME.train.elec);
-  $('btnCocks').hidden = E && !sp.ditch; $('btnBell').hidden = E && !sp.bell;
+  $('btnCocks').hidden = E && !sp.ditch; $('btnBell').hidden = E && !sp.bell; $('btnClass').hidden = D || E;
   if (E) {
     on('btnCocks', S.ditch); $('btnCocks').firstChild.textContent = 'Ditch lights';
     on('btnInj', S.panUp); $('btnInj').firstChild.textContent = S.panUp ? (S.vcb ? 'Pantograph' : 'Raising') : 'Pan down';
@@ -792,7 +792,10 @@ function effectsAndSound(dt, T) {
   const DSL = T.diesel;
   const tv = new THREE.Vector3().copy(T.lead.fwd).multiplyScalar(S.v);
   const fx = T.elec ? electricFX(dt, T, tv) : DSL ? dieselFX(dt, T, tv) : steamFX(dt, T, tv);
-  if (S.bell) { bellT += dt; if (bellT > (DSL ? 1.05 : 0.86)) { bellT = 0; sndBell(DSL); } } else bellT = 0.8;
+  const bellP = DSL ? 1.05 : 0.86; let struck = false;
+  if (S.bell) { bellT += dt; if (bellT > bellP) { bellT = 0; struck = true; sndBell(DSL); } } else bellT = 0.8;
+  bellSwing(T, S.bell, bellT, bellP, struck, dt);
+  if (!DSL && T.loco) clsLampsShow(T.loco.cls, S.classLamps);
   if (!AU.on) return;
   soundMix(dt, T, fx, tv);
 }
