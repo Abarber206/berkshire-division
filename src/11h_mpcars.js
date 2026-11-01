@@ -270,7 +270,7 @@ MPC.apply = function (r, lag = 0) {
     let V;
     try { V = r.cars.map(k => MPC.makeCar(k)); } catch (e) { console.warn('room car', e); MPC.recs.set(r.k, rec || { n: -1, o: '', q: 0, g: 1 }); return false; }
     V.forEach((v, i) => { v.flip = r.cars[i].flip; v.yard = true; v.brake = { AR: 0, BC: 0, BP: 0, emerg: false, released: true }; });
-    if (!CARS.geo) CARS.geo = { tg: truckGeos(), a6: plainAxle(0.457), a4: plainAxle(0.419) };
+    if (!CARS.geo) CARS.geo = carGeos();
     c = new Cut(scene, V); c.mid = r.k;
     CARS.cuts.push(c);
   }

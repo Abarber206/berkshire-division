@@ -43,12 +43,6 @@ function castSide(pts, r, w, z0, bev = 0.008) {
   return g;
 }
 /* a round bar or pipe from a to b */
-function barGeo(r, a, b, seg = 8) {
-  const A = new THREE.Vector3(...a), B = new THREE.Vector3(...b), g = new THREE.CylinderGeometry(r, r, A.distanceTo(B), seg);
-  g.applyMatrix4(new THREE.Matrix4().makeRotationFromQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), B.clone().sub(A).normalize())));
-  g.translate((A.x + B.x) / 2, (A.y + B.y) / 2, (A.z + B.z) / 2);
-  return g;
-}
 const tubeGeo = (pts, r, seg = 24, rs = 8) => new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts.map(p => new THREE.Vector3(...p))), seg, r, rs, false);
 
 function couplerMaterials() {

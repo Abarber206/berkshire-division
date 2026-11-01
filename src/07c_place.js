@@ -150,7 +150,7 @@ PLACE.changed = function () {
    again. The rest of c stays where it stands: the part with the engine stays the player's train, and the
    cars on the far side of v become a cut. The knuckles either side of the gap are left open. */
 PLACE.split = function (c, v) {
-  if (!CARS.geo) CARS.geo = { tg: truckGeos(), a6: plainAxle(0.457), a4: plainAxle(0.419) };
+  if (!CARS.geo) CARS.geo = carGeos();
   const V = c.vehicles, i = V.indexOf(v), T = GAME.train;
   if (i < 0) return null;
   if (c !== T && V.length === 1) { CARS.cuts = CARS.cuts.filter(x => x !== c); PLACE.changed(); return c; }

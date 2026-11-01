@@ -68,7 +68,7 @@ CARS.setup = function () {
 /* the cuts spotted around the yard, as every new run (and every room) starts with them. In a room each car is
    lettered alike for everyone (road), and each cut is known by its place in YARD_CUTS ('y0', 'y1', ...). */
 CARS.yard = function (road) {
-  if (!CARS.geo) { CARS.geo = { tg: truckGeos(), a6: plainAxle(0.457), a4: plainAxle(0.419) }; }
+  if (!CARS.geo) { CARS.geo = carGeos(); }
   const r = rng(1959), was = ROAD_SHORT;
   if (road) ROAD_SHORT = road;
   let num = 21000;
@@ -320,7 +320,7 @@ CARS.canCut = function (T, j) {
 CARS.uncouple = function (j, c0) {
   const T = c0 || GAME.train;
   if (!T || !CARS.canCut(T, j)) return;
-  if (!CARS.geo) CARS.geo = { tg: truckGeos(), a6: plainAxle(0.457), a4: plainAxle(0.419) };
+  if (!CARS.geo) CARS.geo = carGeos();
   const ours = T === GAME.train, vT = velOf(T);
   const V = T.vehicles, behind = ours ? j > T.li : true;
   const off = behind ? V.slice(j) : V.slice(0, j);

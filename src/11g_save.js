@@ -271,7 +271,7 @@ SAVE.apply = function (d) {
   t.update(0);
   prepareTrain(t, true);
   // the cars standing about
-  if (!CARS.geo) CARS.geo = { tg: truckGeos(), a6: plainAxle(0.457), a4: plainAxle(0.419) };
+  if (!CARS.geo) CARS.geo = carGeos();
   const all = [...V];
   for (const o of d.cuts || []) {
     const cv = o.v.map(x => { const v = carIn(x); vehicleIn(v, x); linearizeObject(v.root); return v; });

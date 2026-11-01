@@ -862,6 +862,13 @@ class GeoBin {
     return g;
   }
 }
+/* a round bar from point a to point b ([x, y, z] arrays) */
+function barGeo(r, a, b, seg = 8) {
+  const A = new THREE.Vector3(...a), B = new THREE.Vector3(...b), g = new THREE.CylinderGeometry(r, r, A.distanceTo(B), seg);
+  g.applyMatrix4(new THREE.Matrix4().makeRotationFromQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(b[0] - a[0], b[1] - a[1], b[2] - a[2]).normalize())));
+  g.translate((A.x + B.x) / 2, (A.y + B.y) / 2, (A.z + B.z) / 2);
+  return g;
+}
 /* Canvas texture helper */
 function canvasTex(w, h, draw, opts = {}) {
   const c = document.createElement('canvas'); c.width = w; c.height = h;
@@ -5976,7 +5983,7 @@ function flipWinding(g) {
   else { const p = g.attributes.position, n = g.attributes.normal; for (let i = 0; i < p.count; i += 3) { for (const att of [p, n, g.attributes.uv].filter(Boolean)) { const sz = att.itemSize; for (let c = 0; c < sz; c++) { const t = att.array[(i + 1) * sz + c]; att.array[(i + 1) * sz + c] = att.array[(i + 2) * sz + c]; att.array[(i + 2) * sz + c] = t; } } } }
   if (g.attributes.normal) { const n = g.attributes.normal; for (let i = 0; i < n.count; i++) n.setZ(i, -n.getZ(i)); }
 }
-function plainAxle(R, disc = true, tread = RAIL_OFF) {
+function plainAxle(R, disc = true, tread = RAIL_OFF, jz = 0) {
   const parts = { black: [], tire: [] };
   for (const s of [-1, 1]) {
     const lathe = new THREE.LatheGeometry([new THREE.Vector2(0.12, 0.06), new THREE.Vector2(R - 0.05, 0.05), new THREE.Vector2(R, 0.065), new THREE.Vector2(R, -0.065), new THREE.Vector2(R + 0.028, -0.07), new THREE.Vector2(R + 0.026, -0.09), new THREE.Vector2(R - 0.07, -0.09), new THREE.Vector2(R * 0.55, -0.04), new THREE.Vector2(0.14, -0.08)], 16);
@@ -5987,6 +5994,8 @@ function plainAxle(R, disc = true, tread = RAIL_OFF) {
     for (let i = 0; i < 3; i++) parts.black.push(new THREE.CylinderGeometry(0.05, 0.05, 0.03, 8).rotateX(Math.PI / 2).translate(Math.cos(i * 2.1) * R * 0.5, Math.sin(i * 2.1) * R * 0.5, s * (tread + 0.065)));
   }
   parts.black.push(new THREE.CylinderGeometry(0.075, 0.075, 1.5, 8).rotateX(Math.PI / 2));
+  // journals out through the hubs into the journal boxes
+  if (jz) for (const s of [-1, 1]) parts.black.push(new THREE.CylinderGeometry(0.068, 0.068, jz - tread, 10).rotateX(Math.PI / 2).translate(0, 0, s * (jz + tread) / 2));
   return { black: mergeGeos(parts.black), tire: mergeGeos(parts.tire) };
 }
 
@@ -6833,61 +6842,609 @@ function buildTender(key, trim = '') {
 }
 
 /* =================== CARS =================== */
+/* Freight cars and heavyweight coaches, drawn to the published dimensions of the cars they stand for:
+   an AAR 1937 40 ft boxcar, an AAR twin offset-side hopper, an AAR type 103 10,000 gal tank car, a 46 ft steel
+   gondola, a steel cupola caboose and a Pullman-built heavyweight coach and observation car. Every car sits on a
+   cast steel underframe (centre sill, bolsters, crossbearers, end sills) with AB brake gear and a train line,
+   and rides on trucks whose journals run out into their journal boxes. x along the car (front +), y up from the
+   rail top, z across; the car's centre is at x = 0. */
 function textDecal(lines, w = 1024, h = 128, color = '#e9e3c9', font = 'serif', size = 80) {
   return decalMat(w, h, (g, W, H) => {
     if (font === 'serif') romanText(g, lines, W / 2, H / 2 + 6, size, color, 0.12);
     else { g.font = `bold ${size}px "Arial Narrow", Arial`; g.fillStyle = color; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(lines, W / 2, H / 2 + 4); }
   });
 }
-function coachModel(spec, num, observation, trim = '') {
+const AXJ = 1.1;                 // axle journals reach out to here, inside the journal boxes centred 1.0 m out
+const TPY = 0.845, SBY = 0.83;   // freight truck: top of the centre plate bowl and of the side bearings
+const TPY6 = 1.09, SBY6 = 1.075; // six-wheel passenger truck (its bolster rides over the middle wheels)
+/* the trucks and wheelsets every car shares (instanced by the train) */
+function carGeos() { return { tg: truckGeos(), a6: plainAxle(0.457, true, RAIL_OFF, AXJ), a4: plainAxle(0.419, true, RAIL_OFF, AXJ) }; }
+
+/* weathered paints: the colour, streaked by rain from the roof, sooty along the bottom, a little rust */
+function grimeTex(seed, o = {}) {
+  return canvasTex(512, 256, (g, w, h) => {
+    const r = rng(seed);
+    g.fillStyle = '#ffffff'; g.fillRect(0, 0, w, h);
+    for (let i = 0; i < 120; i++) { g.fillStyle = `rgba(${r() < 0.5 ? '90,80,70' : '255,250,240'},${0.02 + r() * 0.03})`; g.beginPath(); g.ellipse(r() * w, r() * h, 6 + r() * 40, 4 + r() * 20, 0, 0, TAU); g.fill(); }
+    for (let i = 0; i < (o.streaks || 26); i++) {
+      const x = r() * w, L = h * (0.15 + r() * 0.6), wd = 3 + r() * 14, gr = g.createLinearGradient(0, 0, 0, L);
+      gr.addColorStop(0, `rgba(60,48,38,${0.05 + r() * 0.08})`); gr.addColorStop(1, 'rgba(60,48,38,0)');
+      g.fillStyle = gr; g.fillRect(x, 0, wd, L);
+    }
+    const b = g.createLinearGradient(0, h * 0.62, 0, h); b.addColorStop(0, 'rgba(52,42,34,0)'); b.addColorStop(1, `rgba(52,42,34,${o.soot || 0.5})`);
+    g.fillStyle = b; g.fillRect(0, 0, w, h);
+    if (o.rust) for (let i = 0; i < o.rust; i++) { g.fillStyle = `rgba(${120 + r() * 40 | 0},${60 + r() * 20 | 0},30,${0.08 + r() * 0.16})`; g.beginPath(); g.ellipse(r() * w, h * (0.3 + r() * 0.7), 1 + r() * 4, 1 + r() * 3, r() * 3, 0, TAU); g.fill(); }
+    if (o.rivets) o.rivets(g, w, h, r);
+  });
+}
+/* rivet heads: a lit top and a shadow under each */
+function rivetRow(g, x0, y0, x1, y1, n, rad = 2.2) {
+  for (let i = 0; i <= n; i++) {
+    const x = lerp(x0, x1, i / n), y = lerp(y0, y1, i / n);
+    g.fillStyle = 'rgba(40,32,26,0.55)'; g.beginPath(); g.arc(x + 0.6, y + 0.9, rad, 0, TAU); g.fill();
+    g.fillStyle = 'rgba(255,248,236,0.55)'; g.beginPath(); g.arc(x - 0.5, y - 0.6, rad * 0.75, 0, TAU); g.fill();
+  }
+}
+function carMaterials() {
+  if (RMAT.boxPanel) return;
+  const S = (base, map) => { const m = base.clone(); m.map = map; m.side = THREE.DoubleSide; return m; };
+  // a boxcar side panel between two rivet seams (each panel is its own face, so its rivets land on its edges)
+  RMAT.boxPanel = S(RMAT.oxide, grimeTex(11, { rust: 10, rivets: (g, w, h) => { for (const x of [5, w - 5]) rivetRow(g, x, 4, x, h - 4, 26); rivetRow(g, 5, h - 6, w - 5, h - 6, 12); } }));
+  RMAT.oxideW = S(RMAT.oxide, grimeTex(12, { rust: 14 }));
+  RMAT.oxide2W = S(RMAT.oxide2, grimeTex(13, { rust: 20, soot: 0.6 }));
+  RMAT.hopW = S(RMAT.black, grimeTex(14, { rust: 30, soot: 0.35, streaks: 40, rivets: (g, w, h) => { for (const x of [5, w - 5]) rivetRow(g, x, 4, x, h - 4, 22); } }));
+  RMAT.hopW.color.setHex(0x1d1e1f);
+  RMAT.cabooseW = S(RMAT.caboose, grimeTex(15, { rust: 6, soot: 0.12, rivets: (g, w, h) => { rivetRow(g, 5, 6, w - 5, 6, 14); rivetRow(g, 5, h - 6, w - 5, h - 6, 14); } }));
+  RMAT.tankW = S(RMAT.tank, grimeTex(16, { streaks: 12, soot: 0.25 }));
+  RMAT.deckPlate = S(RMAT.dark, grimeTex(17, { soot: 0.7, rust: 40 }));
+  // heavyweight coach sides: rivet rows along the belt rail and the side sill, a seam under every window post
+  const coachRivets = (seams) => (g, w, h) => { rivetRow(g, 4, 5, w - 4, 5, 300, 1.6); rivetRow(g, 4, h - 5, w - 4, h - 5, 300, 1.6); for (const u of seams) rivetRow(g, u * w, 8, u * w, h - 8, 10, 1.6); };
+  RMAT.coachSeams = [];
+  for (let i = 0; i < 14; i++) RMAT.coachSeams.push((-9.5 - 0.79 + i * 1.58 + 11.0) / 22.0);
+  const lower = canvasTex(2048, 128, (g, w, h) => { g.fillStyle = '#ffffff'; g.fillRect(0, 0, w, h); const b = g.createLinearGradient(0, 0, 0, h); b.addColorStop(0, 'rgba(60,50,40,0)'); b.addColorStop(1, 'rgba(60,50,40,0.28)'); g.fillStyle = b; g.fillRect(0, 0, w, h); coachRivets(RMAT.coachSeams)(g, w, h); });
+  const sill = canvasTex(2048, 64, (g, w, h) => { g.fillStyle = '#ffffff'; g.fillRect(0, 0, w, h); const b = g.createLinearGradient(0, 0, 0, h); b.addColorStop(0, 'rgba(50,40,32,0.1)'); b.addColorStop(1, 'rgba(50,40,32,0.45)'); g.fillStyle = b; g.fillRect(0, 0, w, h); rivetRow(g, 4, 8, w - 4, 8, 320, 1.6); rivetRow(g, 4, h - 8, w - 4, h - 8, 320, 1.6); });
+  RMAT.greenLow = S(RMAT.green, lower); RMAT.greenSill = S(RMAT.green, sill);
+  RMAT.holLow = S(RMAT.holBody, lower); RMAT.holSill = S(RMAT.holBody, sill);
+}
+
+/* ---- small parts the cars share ---- */
+const v3a = (p, q, s = 1) => [p[0] + q[0] * s, p[1] + q[1] * s, p[2] + q[2] * s];
+/* a closed solid from eight corners: P[0..3] one end ring, P[4..7] the other in the same order */
+function hexa(gb, k, P) {
+  const F = [[0, 1, 2, 3], [7, 6, 5, 4], [0, 4, 5, 1], [1, 5, 6, 2], [2, 6, 7, 3], [3, 7, 4, 0]];
+  const c = [0, 1, 2].map(i => P.reduce((s, p) => s + p[i], 0) / 8), pos = [], uv = [];
+  const U = [[0, 0], [1, 0], [1, 1], [0, 1]];
+  for (const f of F) {
+    const q = f.map(i => P[i]), fc = [0, 1, 2].map(i => (q[0][i] + q[1][i] + q[2][i] + q[3][i]) / 4);
+    const a = [q[1][0] - q[0][0], q[1][1] - q[0][1], q[1][2] - q[0][2]], b = [q[3][0] - q[0][0], q[3][1] - q[0][1], q[3][2] - q[0][2]];
+    const n = [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+    const out = n[0] * (fc[0] - c[0]) + n[1] * (fc[1] - c[1]) + n[2] * (fc[2] - c[2]) >= 0;
+    const ord = out ? [0, 1, 2, 0, 2, 3] : [0, 2, 1, 0, 3, 2];
+    for (const j of ord) { pos.push(...q[j]); uv.push(...U[j]); }
+  }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.computeVertexNormals();
+  return gb.add(k, g);
+}
+/* a plate in the x-y plane between two edges, thickness t across z: from (x0,y0) to (x1,y1), z from z0 to z1 at both */
+function slab(gb, k, x0, y0, x1, y1, z0, z1, t) {
+  const L = Math.hypot(x1 - x0, y1 - y0), nx = -(y1 - y0) / L * t / 2, ny = (x1 - x0) / L * t / 2;
+  return hexa(gb, k, [[x0 - nx, y0 - ny, z0], [x0 - nx, y0 - ny, z1], [x0 + nx, y0 + ny, z1], [x0 + nx, y0 + ny, z0], [x1 - nx, y1 - ny, z0], [x1 - nx, y1 - ny, z1], [x1 + nx, y1 + ny, z1], [x1 + nx, y1 + ny, z0]]);
+}
+/* a grab iron: a bar from a to b standing off the surface by o, with its two legs back into the surface */
+function grabIron(gb, k, a, b, o, r = 0.012) {
+  const A = v3a(a, o), B = v3a(b, o);
+  gb.add(k, barGeo(r, v3a(a, o, -0.25), A, 6)); gb.add(k, barGeo(r, v3a(b, o, -0.25), B, 6)); gb.add(k, barGeo(r, A, B, 6));
+}
+/* a ladder up a car side (face at z = s*zf) between stiles at x0 and x1, from y0 to y1 */
+function sideLadder(gb, k, x0, x1, y0, y1, s, zf, rungs = 0.42) {
+  const z = s * (zf + 0.07);
+  for (const x of [x0, x1]) {
+    gb.box(k, 0.05, y1 - y0, 0.014, x, (y0 + y1) / 2, z);
+    for (const y of [y0 + 0.08, y1 - 0.08]) gb.box(k, 0.04, 0.04, 0.09, x, y, s * (zf + 0.035));
+  }
+  for (let y = y0 + 0.2; y < y1 - 0.05; y += rungs) gb.add(k, barGeo(0.012, [x0, y, z], [x1, y, z], 6));
+}
+/* a ladder up a car end (face at x = e*xf) between stiles at z0 and z1 */
+function endLadder(gb, k, z0, z1, y0, y1, e, xf, rungs = 0.42) {
+  const x = e * (xf + 0.07);
+  for (const z of [z0, z1]) {
+    gb.box(k, 0.014, y1 - y0, 0.05, x, (y0 + y1) / 2, z);
+    for (const y of [y0 + 0.08, y1 - 0.08]) gb.box(k, 0.09, 0.04, 0.04, e * (xf + 0.035), y, z);
+  }
+  for (let y = y0 + 0.2; y < y1 - 0.05; y += rungs) gb.add(k, barGeo(0.012, [x, y, z0], [x, y, z1], 6));
+}
+/* a sill step: two legs down from the side sill (bottom at yTop) and a tread across them */
+function stirrup(gb, k, x, s, z, yTop, yBot = 0.42) {
+  for (const d of [-0.17, 0.17]) gb.add(k, barGeo(0.014, [x + d, yTop + 0.04, s * z], [x + d, yBot, s * (z + 0.04)], 6));
+  gb.box(k, 0.4, 0.025, 0.07, x, yBot, s * (z + 0.04));
+}
+/* a hand brake wheel facing along x at (x, y, z), its gear housing back to the end face at xf */
+function brakeWheel(gb, k, x, y, z, xf) {
+  const e = Math.sign(x - xf) || 1;
+  gb.add(k, new THREE.TorusGeometry(0.27, 0.016, 6, 24).rotateY(Math.PI / 2).translate(x, y, z));
+  for (let i = 0; i < 3; i++) { const a = i * TAU / 3 + 0.3; gb.add(k, barGeo(0.012, [x, y, z], [x, y + Math.sin(a) * 0.27, z + Math.cos(a) * 0.27], 5)); }
+  gb.add(k, new THREE.CylinderGeometry(0.035, 0.035, Math.abs(x - xf) + 0.02, 8).rotateZ(Math.PI / 2).translate((x + xf) / 2, y, z));
+  gb.box(k, Math.abs(x - xf) * 0.6, 0.36, 0.26, xf + e * Math.abs(x - xf) * 0.3, y - 0.08, z);           // gear housing
+  gb.add(k, barGeo(0.012, [xf + e * 0.04, y - 0.26, z], [xf + e * 0.04, 1.0, z], 5));                     // chain down to the brake rigging
+}
+/* a horizontal brake wheel on a vertical staff at (x, z), from the deck at y0 up to y1 */
+function staffWheel(gb, k, x, z, y0, y1) {
+  gb.add(k, barGeo(0.02, [x, y0 - 0.02, z], [x, y1, z], 6));
+  gb.add(k, new THREE.TorusGeometry(0.26, 0.016, 6, 24).rotateX(Math.PI / 2).translate(x, y1, z));
+  for (let i = 0; i < 3; i++) { const a = i * TAU / 3; gb.add(k, barGeo(0.012, [x, y1, z], [x + Math.cos(a) * 0.26, y1, z + Math.sin(a) * 0.26], 5)); }
+  gb.cyl(k, 0.05, 0.06, 0.18, 8, x, y0 + 0.09, z);   // ratchet at the deck
+}
+/* cast steel underframe: deck plate (unless noFloor), end sills, centre sill (fish-bellied between the bolsters to
+   yBelly), body bolsters with centre plates and side bearings, crossbearers, the train line and the AB brake set.
+   he = half length to the end sill faces, hw = half width, yT = top of the frame, xb = truck centres */
+function carFrame(gb, o) {
+  const k = o.k || 'dark', he = o.he, hw = o.hw, yT = o.yT, xb = o.xb, yU = yT - 0.06, ySb = 0.93;
+  const tp = o.tp || TPY, sb = o.sb || SBY;
+  if (!o.noFloor) gb.box(o.deck || k, 2 * he - 0.02, 0.06, 2 * hw - 0.04, 0, yT - 0.03, 0);
+  for (const e of [-1, 1]) gb.box(k, 0.14, yT - ySb, 2 * hw, e * (he - 0.07), (yT + ySb) / 2, 0);
+  gb.box(k, 2 * he - 0.1, yU - ySb + 0.01, 0.42, 0, (yU + ySb) / 2, 0);
+  if (o.belly) for (const e of [-1, 1]) {
+    const xm = xb * 0.45, xt = xb - 0.35, zz = 0.19, yb = o.belly;
+    hexa(gb, k, [[e * xt, yU, -zz], [e * xt, yU, zz], [e * xt, ySb + 0.02, zz], [e * xt, ySb + 0.02, -zz], [e * xm, yU, -zz], [e * xm, yU, zz], [e * xm, yb, zz], [e * xm, yb, -zz]]);
+    hexa(gb, k, [[e * xm, yU, -zz], [e * xm, yU, zz], [e * xm, yb, zz], [e * xm, yb, -zz], [0, yU, -zz], [0, yU, zz], [0, yb, zz], [0, yb, -zz]]);
+    gb.box(k, 2 * (xb * 0.45), 0.03, 0.5, 0, yb + 0.015, 0);    // bottom cover plate
+  }
+  // bolsters: deep at the centre sill, tapering out to the side sills; a crossbearer between each bolster and the centre
+  const xing = (x, w, dIn, dOut) => { for (const s of [-1, 1]) hexa(gb, k, [[x - w / 2, yU, 0], [x + w / 2, yU, 0], [x + w / 2, yU - dIn, 0], [x - w / 2, yU - dIn, 0], [x - w / 2, yU, s * (hw - 0.05)], [x + w / 2, yU, s * (hw - 0.05)], [x + w / 2, yU - dOut, s * (hw - 0.05)], [x - w / 2, yU - dOut, s * (hw - 0.05)]]); };
+  const yBol = Math.max(yT - 0.32, tp + 0.03);
+  for (const e of [-1, 1]) {
+    xing(e * xb, 0.4, yU - yBol, 0.12);
+    gb.cyl(k, 0.2, 0.2, yBol + 0.02 - (tp - 0.01), 16, e * xb, (yBol + 0.02 + tp - 0.01) / 2, 0);                         // centre plate
+    for (const s of [-1, 1]) gb.box(k, 0.22, yBol + 0.06 - (sb - 0.005), 0.16, e * xb, (yBol + 0.06 + sb - 0.005) / 2, s * 0.64);  // side bearings
+    if (!o.noCross) xing(e * xb * 0.42, 0.24, 0.2, 0.08);
+  }
+  // train line along the car, hung on straps; it meets the angle cocks' pipes at each end
+  const yp = 0.926, zp = 0.32, xp = o.L / 2 - 0.86;
+  gb.add(k, barGeo(0.021, [-xp, yp, zp], [xp, yp, zp], 6));
+  for (let x = -xp + 1.0; x < xp - 0.5; x += 2.2) gb.box(k, 0.05, yU - yp + 0.01, 0.05, x, (yU + yp) / 2, zp);
+  if (o.noBrake) return;
+  // AB brake: reservoir and valve on brackets off the centre sill, brake cylinder on the other side, levers and rods
+  const xr = o.xr !== undefined ? o.xr : 0.9, yr = Math.min(yU - 0.24, 0.9);
+  gb.add(k, new THREE.CylinderGeometry(0.19, 0.19, 1.0, 14).rotateZ(Math.PI / 2).translate(xr, yr, 0.5));
+  for (const d of [-0.3, 0.3]) gb.box(k, 0.06, 0.06, 0.34, xr + d, yr, 0.36);
+  gb.box(k, 0.3, 0.3, 0.24, xr + 0.72, yr, 0.42); gb.box(k, 0.24, 0.06, 0.24, xr + 0.72, yr, 0.27);
+  gb.add(k, barGeo(0.012, [xr + 0.72, yr + 0.15, 0.42], [xr + 0.72, yp, zp], 5));                                    // branch pipe to the train line
+  const xc = -xr - 0.3;
+  gb.add(k, new THREE.CylinderGeometry(0.18, 0.18, 0.42, 14).rotateZ(Math.PI / 2).translate(xc, yr, -0.46));
+  gb.box(k, 0.42, 0.06, 0.3, xc, yr, -0.3);
+  gb.box(k, 0.05, 0.5, 0.06, xc - 0.5, yr - 0.02, -0.46);                                                             // cylinder lever
+  gb.add(k, barGeo(0.018, [xc - 0.21, yr, -0.46], [xc - 0.5, yr, -0.46], 5));                                         // push rod
+  for (const e of [-1, 1]) gb.add(k, barGeo(0.016, [xc - 0.5, yr + (e > 0 ? 0.18 : -0.18), -0.46], [e * (xb - 0.2), yr + (e > 0 ? 0.18 : -0.18), -0.46], 5));
+}
+
+/* ======== freight cars ======== */
+function freightModel(type, num, r) {
+  carMaterials();
   const root = new THREE.Group(); const gb = new GeoBin();
-  const L = 24.7, ref = L / 2, tx = a => ref - a, hw = 1.52;
-  const T = TRIM[trim], body = T ? 'holBody' : 'green', win = T ? 'holWin' : 'win', gold = T ? T.gold : '#d9c27a';
-  // body
-  gb.box(body, 23.4, 2.55, 2 * hw, 0, 2.45, 0);
-  gb.box('dark', 23.6, 0.25, 2 * hw - 0.1, 0, 1.08, 0);
-  // underbody gear: battery boxes, AC generator, truss
-  gb.box('dark', 2.0, 0.6, 1.2, 3.5, 0.75, 0); gb.box('dark', 1.6, 0.5, 1.0, -3, 0.75, 0.3); gb.box('dark', 2.6, 0.45, 0.5, 0, 0.75, -0.6);
-  for (const s of [-1, 1]) {   // truss rods: up to the underframe at each end, down over two queen posts
-    gb.tube('dark', [[-6.6, 0.98, s * 1.1], [-3.0, 0.62, s * 1.1], [3.0, 0.62, s * 1.1], [6.6, 0.98, s * 1.1]], 0.03, 40, 6);
-    for (const x of [-3.0, 3.0]) gb.box('dark', 0.08, 0.38, 0.08, x, 0.79, s * 1.1);
+  let L, hw = 1.5, weight, ta = 1.95;
+  const G = 'dark';
+  // reporting marks, a little proud of the side at face distance zf; on a tank they wrap around the barrel (radius tr, centre ty)
+  const marks = (txt, sub, mat, y, color, zf = hw + 0.005, tr = 0, ty = 0, w = 2.6, mx = L / 2 - 2.2) => {
+    const k = 'fm_' + type + '_' + num; RMAT[k] = decalMat(512, 128, (g, w, h) => { g.fillStyle = color || '#ece9df'; g.font = 'bold 48px "Arial Narrow", Arial'; g.textAlign = 'left'; g.textBaseline = 'middle'; g.fillText(txt, 12, 42); g.font = '28px "Arial Narrow", Arial'; g.fillText(sub, 12, 96); });
+    for (const s of [-1, 1]) {
+      const g = new THREE.PlaneGeometry(w, w / 4, 1, tr ? 8 : 1);
+      if (tr) { const p = g.attributes.position, r = tr + 0.008, a0 = Math.asin((y - ty) / r); for (let i = 0; i < p.count; i++) { const a = a0 + p.getY(i) / r; p.setY(i, ty + r * Math.sin(a) - y); p.setZ(i, r * Math.cos(a)); } g.computeVertexNormals(); g.translate(0, 0, -zf); }
+      gb.add(k, g, M(s > 0 ? -mx : mx, y, s * zf, 0, s > 0 ? 0 : Math.PI, 0));
+    }
+  };
+  // the data stencilled at the other end of the side: built date, light weight, the last brake test
+  const data = (y, zf, x, color = '#e6e2d6') => {
+    const k = 'fd_' + type; if (!RMAT[k]) RMAT[k] = decalMat(256, 128, (g, w, h) => { g.fillStyle = color; g.font = '22px "Arial Narrow", Arial'; g.textAlign = 'left'; g.textBaseline = 'top'; ['LT WT 44200', 'BLT 4-41', 'IL 40 6  IH 10 0', 'CU FT 3712'].forEach((t, i) => g.fillText(t, 10, 10 + i * 28)); });
+    for (const s of [-1, 1]) gb.add(k, new THREE.PlaneGeometry(0.9, 0.45), M(s > 0 ? x : -x, y, s * zf, 0, s > 0 ? 0 : Math.PI, 0));
+  };
+  const corner = (he, top, zf, yS) => {   // sill steps at the four corners, under the side sills
+    for (const e of [-1, 1]) for (const s of [-1, 1]) stirrup(gb, G, e * (he - 0.32), s, zf - 0.04, yS);
+  };
+  if (type === 'box') {
+    /* AAR 1937 40 ft boxcar: 40 ft 6 in inside, 10 ft inside height, ten riveted panels, a 6 ft Youngstown door,
+       Dreadnaught ends, a raised-panel roof with a wooden running board. */
+    L = 13.0; weight = (r() < 0.6 ? 62 : 25) * STON; hw = 1.55;
+    const he = L / 2 - 0.51, yT = 1.17, yE = 4.22, xe = he - 0.02, xb = L / 2 - ta;
+    carFrame(gb, { L, he, hw, yT, xb, belly: 0.66 });
+    // side sill angle, and the riveted side panels: five each side of the door opening
+    for (const s of [-1, 1]) {
+      gb.box(G, 2 * xe, 0.13, 0.03, 0, 1.08, s * (hw + 0.012));
+      const D = 0.94, n = 5;
+      for (const e of [-1, 1]) for (let i = 0; i < n; i++) {
+        const x0 = D + (xe - D) * i / n, x1 = D + (xe - D) * (i + 1) / n;
+        gb.box('boxPanel', x1 - x0 + 0.004, yE - 1.04, 0.04, e * (x0 + x1) / 2, (yE + 1.04) / 2, s * (hw - 0.02));
+      }
+      // Youngstown door: a corrugated steel door hung from its top track, with door guides along the bottom
+      gb.box('oxideW', 1.98, yE - 1.18, 0.05, 0, (yE + 1.18) / 2 - 0.04, s * (hw + 0.02));
+      for (let y = 1.42; y < yE - 0.3; y += 0.36) gb.box('oxide', 1.9, 0.12, 0.03, 0, y, s * (hw + 0.058));
+      for (const x of [-0.97, 0.97]) gb.box('oxide', 0.06, yE - 1.25, 0.05, x, (yE + 1.18) / 2 - 0.04, s * (hw + 0.055));
+      gb.box(G, 4.1, 0.1, 0.1, 1.0, yE - 0.06, s * (hw + 0.07));                                     // top door track
+      for (let x = -0.9; x <= 2.9; x += 0.95) gb.box(G, 0.08, 0.16, 0.08, x, yE - 0.13, s * (hw + 0.03));
+      gb.box(G, 4.1, 0.05, 0.05, 1.0, 1.14, s * (hw + 0.055));                                       // bottom guide rail
+      for (const x of [-1.05, 3.0]) gb.box(G, 0.08, 0.2, 0.12, x, 1.25, s * (hw + 0.05));             // door stops
+      gb.box(G, 0.05, 0.6, 0.04, 0.9, 1.85, s * (hw + 0.07)); gb.box(G, 0.12, 0.08, 0.06, 0.9, 1.55, s * (hw + 0.07));   // latch bar
+      gb.box('wood', 0.55, 0.35, 0.02, -0.5, 2.1, s * (hw + 0.075));                                  // route card board
+      gb.box(G, 0.04, yE - 1.1, 0.06, -0.97, (yE + 1.1) / 2, s * (hw + 0.005));                       // door posts
+      gb.box(G, 0.04, yE - 1.1, 0.06, 0.97, (yE + 1.1) / 2, s * (hw + 0.005));
+    }
+    // Dreadnaught ends: the end sheet with its gable, and tapering horizontal ribs
+    for (const e of [-1, 1]) {
+      const sh = new THREE.Shape(); sh.moveTo(-hw, 1.04); sh.lineTo(hw, 1.04); sh.lineTo(hw, yE + 0.02); sh.lineTo(0, yE + 0.15); sh.lineTo(-hw, yE + 0.02); sh.closePath();
+      gb.add('oxideW', new THREE.ExtrudeGeometry(sh, { depth: 0.05, bevelEnabled: false }).rotateY(Math.PI / 2).translate(e * xe - 0.025, 0, 0));
+      for (let y = 1.6; y < yE - 0.2; y += 0.52) for (const s of [-1, 1]) {
+        const x0 = e * (xe + 0.02), x1 = e * (xe + 0.08);
+        hexa(gb, 'oxide', [[x0, y - 0.13, 0], [x1, y - 0.06, 0], [x1, y + 0.06, 0], [x0, y + 0.13, 0], [x0, y - 0.06, s * (hw - 0.1)], [e * (xe + 0.03), y - 0.03, s * (hw - 0.1)], [e * (xe + 0.03), y + 0.03, s * (hw - 0.1)], [x0, y + 0.06, s * (hw - 0.1)]]);
+      }
+      for (const s of [-1, 1]) gb.box(G, 0.1, yE - 1.04, 0.1, e * (xe - 0.01), (yE + 1.04) / 2, s * (hw - 0.03));   // corner posts
+    }
+    // roof: a closed slab from the eaves up to the ridge, overhanging the sides and ends, with a raised seam over each panel
+    const rp = (y0, t, o = 0) => { const p = new THREE.Shape(); p.moveTo(-hw - 0.07 - o, y0 - 0.03); p.lineTo(-hw - 0.07 - o, y0 + 0.04 + t); p.lineTo(0, y0 + 0.2 + t); p.lineTo(hw + 0.07 + o, y0 + 0.04 + t); p.lineTo(hw + 0.07 + o, y0 - 0.03); p.lineTo(0, y0 + 0.12); p.closePath(); return p; };
+    gb.add('oxide2W', new THREE.ExtrudeGeometry(rp(yE, 0), { depth: 2 * xe + 0.12, bevelEnabled: false }).rotateY(Math.PI / 2).translate(-xe - 0.06, 0, 0));
+    for (let i = 0; i <= 12; i++) {
+      const x = -xe + 0.12 + i * (2 * xe - 0.24) / 12, sh = new THREE.Shape();
+      sh.moveTo(-hw - 0.05, yE + 0.035); sh.lineTo(0, yE + 0.195); sh.lineTo(hw + 0.05, yE + 0.035); sh.lineTo(hw + 0.05, yE + 0.065); sh.lineTo(0, yE + 0.225); sh.lineTo(-hw - 0.05, yE + 0.065); sh.closePath();
+      gb.add('oxide2', new THREE.ExtrudeGeometry(sh, { depth: 0.07, bevelEnabled: false }).rotateY(Math.PI / 2).translate(x - 0.035, 0, 0));
+      gb.box('wood', 0.07, 0.12, 0.5, x, yE + 0.27, 0);                                              // running board saddle
+    }
+    gb.box('wood', 2 * xe + 0.14, 0.04, 0.52, 0, yE + 0.35, 0);                                        // running board
+    for (const e of [-1, 1]) { const s = e; gb.box('wood', 0.5, 0.04, hw - 0.2, e * (xe - 0.35), yE + 0.35, s * (hw / 2 + 0.06)); gb.box(G, 0.05, 0.25, 0.05, e * (xe - 0.35), yE + 0.22, s * (hw - 0.05)); }   // laterals at the ladder corners
+    // ladders on the side and end at two corners, grab irons at the other two, sill steps at all four
+    for (const e of [-1, 1]) {
+      const s = e;
+      sideLadder(gb, G, e * (xe - 0.08), e * (xe - 0.52), 1.15, yE - 0.02, s, hw);
+      endLadder(gb, G, s * (hw - 0.12), s * (hw - 0.56), 1.15, yE - 0.02, e, xe + 0.025);
+      for (let y = 1.6; y < yE - 0.4; y += 0.85) { grabIron(gb, G, [e * (xe - 0.12), y, -s * hw], [e * (xe - 0.55), y, -s * hw], [0, 0, -s * 0.06]); grabIron(gb, G, [e * (xe + 0.025), y, -s * (hw - 0.12)], [e * (xe + 0.025), y, -s * (hw - 0.55)], [e * 0.08, 0, 0]); }
+      grabIron(gb, G, [e * (xe - 0.4), yE + 0.12, s * (hw - 0.1)], [e * (xe - 0.4), yE + 0.12, s * (hw - 0.5)], [0, 0.07, 0]);
+    }
+    corner(xe, yE, hw, 1.04);
+    // hand brake on the B end, high on the end with the brake step below it
+    brakeWheel(gb, G, -(xe + 0.36), yE - 0.42, 0.62, -(xe + 0.06));
+    gb.box('wood', 0.32, 0.04, 0.8, -(xe + 0.24), 2.6, 0.62); for (const z of [0.3, 0.94]) slab(gb, G, -(xe + 0.08), 2.35, -(xe + 0.38), 2.58, z - 0.02, z + 0.02, 0.03);
+    marks(ROAD_SHORT + ' ' + num, 'CAPY 100000  LD LMT 110700', 'oxide', 3.1, null, hw + 0.006, 0, 0, 2.6, 3.6);
+    data(1.75, hw + 0.006, 4.1);
+  } else if (type === 'hopper') {
+    /* AAR twin offset-side hopper, 55 t: 10 ft 8 in high, 10 ft 4 in wide, two bays with bottom doors */
+    L = 11.2; weight = 92 * STON; hw = 1.52;
+    const he = L / 2 - 0.51, yT = 1.17, xe = he - 0.04, top = 3.25, xb = L / 2 - ta;
+    carFrame(gb, { L, he, hw, yT, xb, noFloor: true, noCross: true, xr: -0.15 });
+    for (const s of [-1, 1]) {
+      gb.box(G, 2 * xe, 0.2, 0.06, 0, 1.15, s * (hw - 0.01));                                         // side sill
+      const n = 8;
+      for (let i = 0; i < n; i++) { const x0 = -xe + 2 * xe * i / n, x1 = -xe + 2 * xe * (i + 1) / n; gb.box('hopW', x1 - x0 + 0.004, top - 0.08 - 1.2, 0.04, (x0 + x1) / 2, (top - 0.08 + 1.2) / 2, s * (hw - 0.03)); }
+      for (let i = 0; i <= n; i++) {                                                                   // exterior posts, wider at the foot
+        const x = -xe + 2 * xe * i / n, w = i === 0 || i === n ? 0.1 : 0.12;
+        hexa(gb, 'hopW', [[x - w / 2, 1.1, s * (hw - 0.01)], [x + w / 2, 1.1, s * (hw - 0.01)], [x + w / 2, 1.1, s * (hw + 0.07)], [x - w / 2, 1.1, s * (hw + 0.07)], [x - w / 2.6, top - 0.09, s * (hw - 0.01)], [x + w / 2.6, top - 0.09, s * (hw - 0.01)], [x + w / 2.6, top - 0.09, s * (hw + 0.045)], [x - w / 2.6, top - 0.09, s * (hw + 0.045)]]);
+      }
+      gb.box('black', 2 * xe + 0.04, 0.1, 0.12, 0, top - 0.05, s * (hw + 0.02));                      // top chord
+    }
+    // end slope sheets, running from the top of each end down into the bays; the bays narrow to their doors
+    const yBay = 1.3, xBay = 3.05;
+    for (const e of [-1, 1]) {
+      slab(gb, 'hopW', e * (xe - 0.02), top - 0.06, e * xBay, yBay, -(hw - 0.03), hw - 0.03, 0.04);
+      gb.box('black', 0.12, 0.12, 2 * hw, e * (xe - 0.02), top - 0.08, 0);                             // end top angle
+      for (const s of [-1, 1]) gb.box('black', 0.1, top - 1.1, 0.1, e * (xe - 0.02), (top + 1.1) / 2, s * (hw - 0.02));   // corner posts
+      for (const z of [-0.5, 0.5]) { const yo = lerp(top - 0.06, yBay, 0.04); gb.box('black', 0.08, yo - 1.12, 0.1, e * (xe - 0.04), (yo + 1.12) / 2, z); }   // end posts up to the slope sheet
+      hexa(gb, 'hopW', [[e * xBay, yBay, -(hw - 0.03)], [e * xBay, yBay, hw - 0.03], [e * 0.02, 1.95, hw - 0.03], [e * 0.02, 1.95, -(hw - 0.03)], [e * 1.95, 0.58, -0.62], [e * 1.95, 0.58, 0.62], [e * 1.25, 0.58, 0.62], [e * 1.25, 0.58, -0.62]]);
+      gb.box(G, 0.74, 0.08, 1.3, e * 1.6, 0.54, 0);                                                    // bottom doors
+      for (const z of [-0.45, 0, 0.45]) gb.box(G, 0.7, 0.03, 0.05, e * 1.6, 0.495, z);                  // door stiffeners
+      gb.add(G, barGeo(0.025, [e * 1.23, 0.6, -0.72], [e * 1.23, 0.6, 0.72], 8));                       // hinge rod
+      gb.box(G, 0.06, 0.25, 0.06, e * 1.97, 0.68, 0.66); gb.add(G, barGeo(0.015, [e * 1.97, 0.8, 0.66], [e * 1.97, 0.8, 1.2], 5));   // door lock and its lever
+      // end platform over the end sill, with the brake staff on the B end
+      gb.box('deckPlate', 0.42, 0.04, 2 * hw - 0.3, e * (he - 0.22), yT + 0.02, 0);
+      endLadder(gb, G, e * (hw - 0.02), e * 0.5, 1.2, top - 0.1, e, xe + 0.03);
+      for (let y = 1.5; y < top - 0.3; y += 0.8) grabIron(gb, G, [e * (xe - 0.08), y, -e * hw], [e * (xe - 0.5), y, -e * hw], [0, 0, -e * 0.06]);
+    }
+    staffWheel(gb, G, -(he - 0.2), -0.7, yT + 0.04, 2.55);
+    corner(xe, top, hw, 1.05);
+    // the heaped coal, inside the sides and ends
+    const g = new THREE.PlaneGeometry(2 * xe - 0.1, 2 * hw - 0.08, 22, 8); g.rotateX(-Math.PI / 2); const p = g.attributes.position;
+    for (let i = 0; i < p.count; i++) { const x = p.getX(i), z = p.getZ(i), u = 1 - (z / (hw - 0.04)) ** 2, v = 1 - (x / (xe - 0.05)) ** 8; p.setY(i, top - 0.08 + 0.42 * Math.max(0, u * v) * (0.75 + 0.25 * Math.cos(x * 1.3 + 0.4)) + Math.sin(x * 9.1 + z * 7.3) * 0.02 * u * v); }
+    g.computeVertexNormals(); gb.add('coal', g);
+    marks(ROAD_SHORT + ' ' + num, 'CAPY 110000', 'black', 2.6, null, hw + 0.006, 0, 0, 1.15, 3.05);
+  } else if (type === 'tank') {
+    /* AAR type 103 10,000 gal tank car: an 88 in barrel on a full underframe, banded to the bolster saddles,
+       a dome with its safety valve and a platform, running boards, handrails and a dome ladder */
+    L = 12.4; weight = 70 * STON; hw = 1.45;
+    const he = L / 2 - 0.51, yT = 1.17, R = 1.12, yc = 2.45, BL = 4.8, xb = L / 2 - ta;
+    carFrame(gb, { L, he, hw: 1.3, yT, xb, noFloor: true, noCross: true });
+    gb.add('tankW', new THREE.CylinderGeometry(R, R, 2 * BL, 32, 1, true).rotateZ(Math.PI / 2).translate(0, yc, 0));
+    for (const s of [-1, 1]) gb.add('tank', new THREE.SphereGeometry(R, 24, 10, 0, TAU, 0, Math.PI / 2).scale(1, 0.42, 1).rotateZ(-s * Math.PI / 2).translate(s * BL, yc, 0));
+    for (const x of [-4.4, -1.5, 1.5, 4.4]) gb.add(G, new THREE.TorusGeometry(R + 0.008, 0.022, 4, 36).rotateY(Math.PI / 2).translate(x, yc, 0));   // tank bands
+    // bolster saddles shaped to the barrel, and the anchor at the centre
+    for (const e of [-1, 1]) {
+      const sh = new THREE.Shape(), zw = 0.85; sh.moveTo(-zw, yT - 0.08); sh.lineTo(zw, yT - 0.08);
+      for (let i = 0; i <= 12; i++) { const z = zw - 2 * zw * i / 12; sh.lineTo(z, yc - Math.sqrt(R * R - z * z) + 0.01); }
+      sh.closePath(); gb.add(G, new THREE.ExtrudeGeometry(sh, { depth: 0.36, bevelEnabled: false }).rotateY(Math.PI / 2).translate(e * xb - 0.18, 0, 0));
+    }
+    gb.box(G, 0.8, yc - R + 0.06 - (yT - 0.08), 0.5, 0, (yc - R + 0.06 + yT - 0.08) / 2, 0);
+    // running boards on brackets along both sides, across both ends
+    for (let x = -he + 0.3; x <= he - 0.29; x += (2 * he - 0.6) / 6) gb.box(G, 0.08, 0.06, 2 * hw - 0.04, x, yT - 0.03, 0);
+    for (const s of [-1, 1]) gb.box('wood', 2 * he - 0.1, 0.05, 0.4, 0, yT + 0.025, s * (hw - 0.2));
+    for (const e of [-1, 1]) gb.box('wood', 0.42, 0.05, 2 * hw - 0.8, e * (he - 0.28), yT + 0.025, 0);
+    // handrail along each side of the tank on stanchions from the running boards, and across the ends
+    const yH = 2.15, zH = 1.36;
+    for (const s of [-1, 1]) {
+      gb.add(G, barGeo(0.017, [-(he - 0.15), yH, s * zH], [he - 0.15, yH, s * zH], 6));
+      for (let x = -(he - 0.15); x <= he - 0.14; x += (2 * he - 0.3) / 6) { gb.add(G, barGeo(0.016, [x, yT + 0.03, s * zH], [x, yH, s * zH], 5)); }
+      for (const x of [-3.0, 0, 3.0]) gb.add(G, barGeo(0.014, [x, yH, s * zH], [x, yH, s * (Math.sqrt(R * R - (yH - yc) ** 2) - 0.03)], 5));   // stays back to the barrel
+    }
+    for (const e of [-1, 1]) gb.add(G, barGeo(0.017, [e * (he - 0.15), yH, -zH], [e * (he - 0.15), yH, zH], 6));
+    // dome, its cover, safety valve and platform with a railing, and the ladder up to it
+    const yTop = yc + R;
+    gb.cyl('tankW', 0.56, 0.56, 0.7, 24, 0, yTop + 0.25, 0);
+    gb.cyl('tank', 0.6, 0.6, 0.06, 24, 0, yTop + 0.62, 0); gb.cyl('tank', 0.36, 0.42, 0.1, 18, 0, yTop + 0.7, 0);
+    gb.cyl(G, 0.07, 0.09, 0.22, 10, 0.32, yTop + 0.75, -0.25); gb.cyl('brass', 0.05, 0.05, 0.06, 10, 0.32, yTop + 0.89, -0.25);
+    const yP = yTop + 0.04;
+    for (const s of [-1, 1]) {
+      gb.box('wood', 1.9, 0.04, 0.46, 0, yP, s * 0.5);
+      for (const x of [-0.85, 0.85]) gb.box(G, 0.06, yP - (yc + Math.sqrt(R * R - 0.6 * 0.6)) + 0.04, 0.06, x, (yP + yc + Math.sqrt(R * R - 0.6 * 0.6)) / 2 - 0.02, s * 0.6);
+      for (const x of [-0.92, 0.92]) gb.add(G, barGeo(0.014, [x, yP, s * 0.7], [x, yP + 0.9, s * 0.7], 5));
+      gb.add(G, barGeo(0.015, [-0.92, yP + 0.9, s * 0.7], [0.92, yP + 0.9, s * 0.7], 5));
+    }
+    for (const x of [-0.92, 0.92]) gb.add(G, barGeo(0.015, [x, yP + 0.9, -0.7], [x, yP + 0.9, 0.7], 5));
+    { const zL = 1.26, zS = Math.sqrt(R * R - 0.5 * 0.5);
+      for (const x of [0.9, 1.3]) {
+        gb.add(G, barGeo(0.016, [x, yT + 0.04, zL], [x, yP, zL], 5)); gb.add(G, barGeo(0.016, [x, yP, zL], [x, yP, 0.68], 5));
+        gb.add(G, barGeo(0.014, [x, yc, zL], [x, yc, R - 0.03], 5));
+        gb.add(G, barGeo(0.014, [x, yc + 0.5, zL], [x, yc + 0.5, zS - 0.03], 5));
+      }
+      for (let y = yT + 0.3; y < yP - 0.1; y += 0.36) gb.add(G, barGeo(0.012, [0.9, y, zL], [1.3, y, zL], 5));
+    }
+    // bottom outlet valve and its operating rod; the hand brake staff on the B end platform
+    gb.cyl(G, 0.11, 0.11, yc - R + 0.06 - 0.72, 12, 1.0, (yc - R + 0.06 + 0.72) / 2, 0.36); gb.cyl(G, 0.15, 0.15, 0.08, 12, 1.0, 0.72, 0.36);
+    gb.add(G, barGeo(0.012, [1.0, 0.9, 0.36], [1.0, 0.9, 1.3], 5));
+    staffWheel(gb, G, -(he - 0.2), 0.75, yT + 0.05, 2.3);
+    corner(he - 0.05, 0, hw - 0.1, 1.17);
+    for (const e of [-1, 1]) endLadder(gb, G, -0.5, -0.9, 0.6, yT + 0.03, e, he - 0.03, 0.3);
+    marks('UTLX ' + num, 'NON-ACCIDENT  CAPY 10000 GAL', 'tank', 2.0, null, R, R, yc);
+  } else if (type === 'gon') {
+    /* 46 ft steel gondola with pressed exterior posts, fixed corrugated ends and a heaped stone load */
+    L = 14.6; weight = 88 * STON; hw = 1.52;
+    const he = L / 2 - 0.51, yT = 1.17, xe = he - 0.02, top = 2.62, xb = L / 2 - ta;
+    carFrame(gb, { L, he, hw, yT, xb, belly: 0.7, deck: 'deckPlate' });
+    for (const s of [-1, 1]) {
+      gb.box('oxideW', 2 * xe, top - 0.08 - 1.04, 0.04, 0, (top - 0.08 + 1.04) / 2, s * (hw - 0.02));
+      gb.box(G, 2 * xe, 0.12, 0.04, 0, 1.08, s * (hw + 0.01));
+      for (let i = 0; i <= 14; i++) {
+        const x = -xe + 0.05 + (2 * xe - 0.1) * i / 14;
+        hexa(gb, 'oxideW', [[x - 0.07, 1.06, s * (hw - 0.01)], [x + 0.07, 1.06, s * (hw - 0.01)], [x + 0.07, 1.06, s * (hw + 0.08)], [x - 0.07, 1.06, s * (hw + 0.08)], [x - 0.05, top - 0.09, s * (hw - 0.01)], [x + 0.05, top - 0.09, s * (hw - 0.01)], [x + 0.05, top - 0.09, s * (hw + 0.05)], [x - 0.05, top - 0.09, s * (hw + 0.05)]]);
+      }
+      gb.box('oxide', 2 * xe + 0.04, 0.1, 0.14, 0, top - 0.05, s * (hw + 0.03));
+    }
+    for (const e of [-1, 1]) {
+      gb.box('oxideW', 0.05, top - 1.04, 2 * hw, e * xe, (top + 1.04) / 2, 0);
+      for (let y = 1.4; y < top - 0.2; y += 0.34) gb.box('oxide2', 0.05, 0.12, 2 * hw - 0.3, e * (xe + 0.04), y, 0);
+      gb.box('oxide2', 0.14, 0.1, 2 * hw + 0.06, e * xe, top - 0.05, 0);
+      endLadder(gb, G, e * (hw - 0.12), e * (hw - 0.52), 1.15, top - 0.1, e, xe + 0.02);
+      for (const s of [-1, 1]) for (let y = 1.5; y < top - 0.2; y += 0.5) grabIron(gb, G, [e * (xe - 0.12), y, s * (hw + 0.05)], [e * (xe - 0.52), y, s * (hw + 0.05)], [0, 0, s * 0.05]);
+    }
+    brakeWheel(gb, G, -(xe + 0.34), 2.15, -0.62, -(xe + 0.06));
+    gb.box('wood', 0.32, 0.04, 0.8, -(xe + 0.22), 1.55, -0.62);
+    corner(xe, top, hw, 1.04);
+    const g = new THREE.PlaneGeometry(2 * xe - 0.12, 2 * hw - 0.09, 30, 8); g.rotateX(-Math.PI / 2); const p = g.attributes.position; const rr = rng(num);
+    for (let i = 0; i < p.count; i++) { const z = p.getZ(i), x = p.getX(i), edge = Math.min(1, (xe - 0.06 - Math.abs(x)) * 3) * Math.min(1, (hw - 0.05 - Math.abs(z)) * 3); p.setY(i, 1.95 + 0.42 * Math.max(0, 1 - (z / 1.45) ** 2) * edge + (rr() - 0.5) * 0.1 * edge); }
+    g.computeVertexNormals(); gb.add('stoneLoad', g);
+    marks(ROAD_SHORT + ' ' + num, 'CAPY 140000', 'oxide2', 1.85, null, hw + 0.06, 0, 0, 1.15, 4.6);
+  } else if (type === 'caboose') {
+    /* steel cupola caboose: a 30 ft body on a 36 ft frame, open end platforms with railings and steps, a centre
+       cupola, a stove and its smokejack, roof walks, and red markers on the rear corners */
+    L = 11.0; weight = 22 * STON; ta = 2.4; hw = 1.45;
+    const he = L / 2 - 0.51, yT = 1.25, xw = 4.3, yE = 3.5, xb = L / 2 - ta, hp = 1.42;
+    carFrame(gb, { L, he, hw: hp, yT, xb, deck: 'deckPlate', xr: 0.4 });
+    // body walls in panels around the windows; windows glazed a little inside with sash frames
+    const wins = [[-3.0, 0.62], [3.0, 0.62], [-1.1, 0.62]], wy0 = 2.2, wy1 = 2.98;
+    for (const s of [-1, 1]) {
+      const z = s * (hw - 0.025);
+      gb.box('cabooseW', 2 * xw, wy0 - yT + 0.04, 0.05, 0, (wy0 + yT - 0.04) / 2, z);
+      gb.box('cabooseW', 2 * xw, yE - wy1, 0.05, 0, (yE + wy1) / 2, z);
+      const xs = [-xw]; for (const [x, w] of wins.slice().sort((a, b) => a[0] - b[0])) { xs.push(x - w / 2, x + w / 2); } xs.push(xw);
+      for (let i = 0; i < xs.length; i += 2) gb.box('cabooseW', xs[i + 1] - xs[i] + 0.002, wy1 - wy0, 0.05, (xs[i] + xs[i + 1]) / 2, (wy0 + wy1) / 2, z);
+      for (const [x, w] of wins) {
+        gb.box('win', w, wy1 - wy0, 0.02, x, (wy0 + wy1) / 2, s * (hw - 0.04));
+        gb.box('caboose', w + 0.1, 0.06, 0.08, x, wy0 - 0.02, s * (hw + 0.01));                          // sill
+        gb.box('caboose', w + 0.06, 0.04, 0.06, x, wy1 + 0.02, s * (hw + 0.005));                        // drip cap
+        gb.box('caboose', 0.03, wy1 - wy0, 0.03, x, (wy0 + wy1) / 2, s * (hw - 0.035));                  // sash bars
+        gb.box('caboose', w, 0.03, 0.03, x, (wy0 + wy1) / 2 + 0.06, s * (hw - 0.035));
+      }
+      gb.box(G, 2 * xw, 0.1, 0.03, 0, yT - 0.02, s * (hw + 0.005));                                      // side sill
+      for (const e of [-1, 1]) gb.add(G, barGeo(0.014, [e * (xw - 0.0), 1.45, s * (hw + 0.07)], [e * xw, 3.0, s * (hw + 0.07)], 5)), gb.box(G, 0.04, 0.04, 0.09, e * xw, 1.5, s * (hw + 0.03)), gb.box(G, 0.04, 0.04, 0.09, e * xw, 2.95, s * (hw + 0.03));
+    }
+    // end walls with a door in the middle, the door's window, and the gable under the arched roof
+    const rise = 0.24, arc = z => yE + rise * (1 - (z / (hw + 0.08)) ** 2);
+    for (const e of [-1, 1]) {
+      const x = e * (xw - 0.025);
+      for (const s of [-1, 1]) gb.box('cabooseW', 0.05, yE - yT, hw - 0.4, x, (yE + yT) / 2, s * (hw + 0.4) / 2);
+      gb.box('cabooseW', 0.05, yE - 3.2, 0.8, x, (yE + 3.2) / 2, 0);
+      const gs = new THREE.Shape(); gs.moveTo(-hw, yE - 0.01); for (let i = 0; i <= 16; i++) { const z = -hw + 2 * hw * i / 16; gs.lineTo(z, arc(z) - 0.02); } gs.lineTo(hw, yE - 0.01); gs.closePath();
+      gb.add('cabooseW', new THREE.ExtrudeGeometry(gs, { depth: 0.05, bevelEnabled: false }).rotateY(Math.PI / 2).translate(x - 0.025, 0, 0));
+      gb.box('caboose', 0.04, 3.2 - yT, 0.8, e * (xw - 0.035), (3.2 + yT) / 2, 0);                       // door
+      gb.box('win', 0.02, 0.62, 0.5, e * (xw + 0.0), 2.65, 0);
+      gb.box('caboose', 0.06, 0.06, 0.06, e * (xw + 0.02), 2.0, 0.3);                                      // knob
+      for (const s of [-1, 1]) { gb.box('win', 0.02, 0.5, 0.32, e * (xw + 0.0), 2.7, s * 0.95); gb.box('caboose', 0.07, 0.05, 0.4, e * (xw + 0.02), 2.43, s * 0.95); }
+      endLadder(gb, G, 0.5, 0.85, 2.2, yE + 0.05, e, xw, 0.3);
+    }
+    // arched roof overhanging the walls and a little over the platforms
+    const rs = new THREE.Shape(); rs.moveTo(-hw - 0.08, yE - 0.03);
+    for (let i = 0; i <= 20; i++) { const z = -hw - 0.08 + 2 * (hw + 0.08) * i / 20; rs.lineTo(z, arc(z) + 0.03); }
+    rs.lineTo(hw + 0.08, yE - 0.03); for (let i = 20; i >= 0; i--) { const z = -hw - 0.08 + 2 * (hw + 0.08) * i / 20; rs.lineTo(z, arc(z) - 0.03); }
+    rs.closePath();
+    gb.add('roof', new THREE.ExtrudeGeometry(rs, { depth: 2 * xw + 0.3, bevelEnabled: false, curveSegments: 4 }).rotateY(Math.PI / 2).translate(-xw - 0.15, 0, 0));
+    // cupola: walls with two windows a side and one an end, its own arched roof, grab irons at its corners
+    const c0 = -1.85, c1 = 0.45, cw = 1.0, cy0 = arc(cw) - 0.05, cy1 = 4.45, cx = (c0 + c1) / 2;
+    for (const s of [-1, 1]) {
+      gb.box('cabooseW', c1 - c0, 4.0 - cy0, 0.05, cx, (4.0 + cy0) / 2, s * cw);
+      gb.box('cabooseW', c1 - c0, cy1 - 4.42, 0.05, cx, (cy1 + 4.42) / 2, s * cw);
+      for (const [x0, x1] of [[c0, -1.55], [-1.05, -0.65], [-0.15, c1]]) gb.box('cabooseW', x1 - x0, 0.42, 0.05, (x0 + x1) / 2, 4.21, s * cw);
+      for (const x of [-1.3, -0.4]) { gb.box('win', 0.5, 0.42, 0.02, x, 4.21, s * (cw - 0.015)); gb.box('caboose', 0.56, 0.04, 0.07, x, 3.98, s * (cw + 0.01)); }
+      for (const x of [c0 - 0.04, c1 + 0.04]) gb.add(G, barGeo(0.012, [x, 3.95, s * (cw + 0.05)], [x, 4.4, s * (cw + 0.05)], 5));
+      for (const x of [c0, c1]) for (const y of [3.98, 4.37]) gb.box(G, 0.05, 0.04, 0.06, x - Math.sign(x - cx) * 0.0 + (x > cx ? 0.03 : -0.03), y, s * (cw + 0.025));
+    }
+    for (const e of [-1, 1]) {
+      const x = e > 0 ? c1 : c0;
+      for (const s of [-1, 1]) gb.box('cabooseW', 0.05, 4.42 - cy0, cw - 0.32, x, (4.42 + cy0) / 2, s * (cw + 0.32) / 2);
+      gb.box('cabooseW', 0.05, 4.0 - cy0 + 0.05, 0.64, x, (4.0 + cy0) / 2, 0); gb.box('cabooseW', 0.05, cy1 - 4.42, 0.64, x, (cy1 + 4.42) / 2, 0);
+      gb.box('win', 0.02, 0.42, 0.62, x, 4.21, 0);
+    }
+    { const cr = new THREE.Shape(), W2 = cw + 0.1; cr.moveTo(-W2, cy1 - 0.03); for (let i = 0; i <= 12; i++) { const z = -W2 + 2 * W2 * i / 12; cr.lineTo(z, cy1 + 0.13 * (1 - (z / W2) ** 2) + 0.03); } cr.lineTo(W2, cy1 - 0.03); cr.closePath();
+      gb.add('roof', new THREE.ExtrudeGeometry(cr, { depth: c1 - c0 + 0.2, bevelEnabled: false }).rotateY(Math.PI / 2).translate(c0 - 0.1, 0, 0)); }
+    // roof walks from the cupola to each end on saddles, and the stove's smokejack
+    for (const [x0, x1] of [[-xw - 0.12, c0], [c1, xw + 0.12]]) {
+      gb.box('wood', x1 - x0, 0.04, 0.46, (x0 + x1) / 2, yE + rise + 0.09, 0);
+      for (let x = x0 + 0.2; x < x1 - 0.1; x += 0.7) gb.box('wood', 0.06, 0.08, 0.4, x, yE + rise + 0.04, 0);
+    }
+    gb.cyl(G, 0.075, 0.075, 0.75, 12, 1.7, arc(0.6) + 0.33, 0.6); gb.add(G, new THREE.ConeGeometry(0.16, 0.14, 12).translate(1.7, arc(0.6) + 0.76, 0.6)); gb.cyl(G, 0.13, 0.13, 0.05, 12, 1.7, arc(0.6) + 0.04, 0.6);
+    // end platforms: deck, railings, steps at the corners, a hand brake staff on each
+    for (const e of [-1, 1]) {
+      const xr = e * (he - 0.06);
+      gb.box('deckPlate', he - xw + 0.02, 0.05, 2 * hp - 0.04, e * (xw + he) / 2, yT + 0.025, 0);
+      for (const z of [-1.38, -0.42, 0.42, 1.38]) gb.add(G, barGeo(0.02, [xr, yT + 0.03, z], [xr, 2.3, z], 6));
+      for (const y of [1.8, 2.3]) gb.add(G, barGeo(0.02, [xr, y, -1.38], [xr, y, 1.38], 6));
+      for (const s of [-1, 1]) {
+        gb.add(G, barGeo(0.018, [xr, 2.3, s * 1.38], [e * (xw + 0.05), 2.3, s * 1.38], 6)); gb.box(G, 0.05, 0.05, 0.08, e * (xw + 0.03), 2.3, s * 1.4);   // top rail back to the body corner
+        for (const d of [-0.32, 0.32]) gb.box(G, 0.05, yT - 0.42, 0.05, e * (xw + 0.55) + d, (yT + 0.42) / 2, s * 1.35);
+        for (const y of [0.45, 0.85]) gb.box('deckPlate', 0.7, 0.04, 0.26, e * (xw + 0.55), y, s * 1.3);
+      }
+      staffWheel(gb, G, e * (he - 0.25), -0.9, yT + 0.05, 2.1);
+    }
+    // underbody: battery and tool boxes
+    gb.box(G, 1.0, 0.45, 0.6, 1.3, yT - 0.06 - 0.225, 0.75); gb.box(G, 1.4, 0.4, 0.5, -1.3, yT - 0.06 - 0.2, -0.8);
+    // marker lamps on brackets at the rear corners
+    for (const s of [-1, 1]) { gb.box(G, 0.2, 0.3, 0.2, -(xw + 0.1), 3.2, s * (hw + 0.06)); gb.cyl(G, 0.05, 0.07, 0.08, 8, -(xw + 0.1), 3.39, s * (hw + 0.06)); gb.box(G, 0.12, 0.04, 0.12, -(xw + 0.06), 3.03, s * (hw - 0.02)); }
+    marks(ROAD_SHORT + ' ' + num, '', 'caboose', 1.75, null, hw + 0.006, 0, 0, 2.2, 0.3);
+    root.userData.markers = [new THREE.Vector3(-(xw + 0.203), 3.2, -(hw + 0.06)), new THREE.Vector3(-(xw + 0.203), 3.2, hw + 0.06)];
   }
-  for (const x of [-8.85, 8.85]) gb.box('dark', 0.6, 0.1, 2.0, x, 0.98, 0);   // body bolsters on the trucks
-  // windows (paired) and window posts
-  const wy = 2.62;
-  for (let i = 0; i < 13; i++) {
-    const x = -9.5 + i * 1.58;
-    for (const s of [-1, 1]) for (const dx of [-0.33, 0.33]) gb.box(win, 0.56, 0.78, 0.04, x + dx, wy, s * (hw + 0.005));
+  const couplers = carCouplers(gb, root, L, -0.51, 0.95, 1.12);
+  root.add(gb.build(RMAT));
+  root.traverse(o => { if (o.isMesh && !o.userData.cpl) { o.castShadow = true; o.receiveShadow = true; } });
+  const trucks = [{ a: ta, type: 'four', R: 0.419 }, { a: L - ta, type: 'four', R: 0.419 }];
+  return { root, len: L, trucks, frame: [ta, L - ta], weight, kind: type, axles: 4, area: 105, couplers };
+}
+
+/* ======== heavyweight coach and observation car ========
+   Pullman-built all-steel heavyweight, 80 ft over the end sills: riveted side sheets with a belt rail, paired
+   windows with sash, letterboard, a clerestory roof hooded down at the ends, vestibules with steps, trap and
+   diaphragm, a fish-belly centre sill with the battery boxes, water tanks and axle generator underneath, on
+   six-wheel trucks. The observation car ends in an open brass-railed platform with the drumhead. */
+const CH = { L: 24.7, hw: 1.52, yT: 1.30, sill: [1.05, 1.47], belt: 2.13, win: [2.2, 3.0], lint: 3.1, eave: 3.43, xb: 11.0, xv: 11.76 };
+function coachModel(spec, num, observation, trim = '') {
+  carMaterials();
+  const root = new THREE.Group(); const gb = new GeoBin();
+  const L = CH.L, hw = CH.hw, he = L / 2 - 0.55, xb0 = CH.xb, yE = CH.eave, G = 'dark';
+  const T = TRIM[trim], body = T ? 'holBody' : 'green', low = T ? 'holLow' : 'greenLow', sillK = T ? 'holSill' : 'greenSill', win = T ? 'holWin' : 'win', gold = T ? T.gold : '#d9c27a';
+  carFrame(gb, { L, he, hw: hw - 0.04, yT: CH.yT, xb: L / 2 - 3.5, belly: 0.72, tp: TPY6, sb: SBY6, xr: 2.6 });
+  // underbody: battery boxes, water tanks, the axle-driven generator, the steam heat line
+  for (const [x, z] of [[-1.8, 0.85], [1.0, 0.85]]) { gb.box(G, 1.6, 0.6, 0.62, x, CH.yT - 0.06 - 0.3, z); for (const d of [-0.6, 0.6]) gb.box(G, 0.06, 0.08, 0.7, x + d, CH.yT - 0.08, z); }
+  for (const x of [-4.6, 4.6]) { gb.add(G, new THREE.CylinderGeometry(0.34, 0.34, 1.8, 16).rotateZ(Math.PI / 2).translate(x, CH.yT - 0.06 - 0.36, -0.85)); for (const d of [-0.6, 0.6]) gb.box(G, 0.08, 0.06, 0.5, x + d, CH.yT - 0.08, -0.85); }
+  gb.add(G, new THREE.CylinderGeometry(0.22, 0.22, 0.7, 14).rotateZ(Math.PI / 2).translate(5.7, CH.yT - 0.3, 0.75)); gb.box(G, 0.6, 0.26, 0.3, 5.7, CH.yT - 0.15, 0.75);
+  gb.add(G, barGeo(0.03, [-(he - 0.3), 0.98, -0.34], [he - 0.3, 0.98, -0.34], 6));
+  for (let x = -(he - 0.8); x < he - 0.5; x += 3.0) gb.box(G, 0.05, CH.yT - 0.06 - 0.98, 0.05, x, (CH.yT - 0.06 + 0.98) / 2, -0.34);
+  // the sides: riveted side sill, lower sheets, belt rail, window band with its posts, lintel and letterboard
+  const pairs = []; for (let i = 0; i < 13; i++) pairs.push(-9.5 + i * 1.58);
+  const opens = []; for (const x of pairs) for (const d of [-0.33, 0.33]) opens.push([x + d - 0.28, x + d + 0.28]);
+  const [w0, w1] = CH.win;
+  for (const s of [-1, 1]) {
+    const z = s * (hw - 0.02);
+    gb.box(sillK, 2 * xb0, CH.sill[1] - CH.sill[0], 0.05, 0, (CH.sill[0] + CH.sill[1]) / 2, s * (hw - 0.01));
+    gb.box(low, 2 * xb0, CH.belt - CH.sill[1] + 0.01, 0.04, 0, (CH.belt + CH.sill[1]) / 2, z);
+    gb.box(body, 2 * xb0, 0.07, 0.06, 0, CH.belt + 0.035, s * (hw - 0.01));                            // belt rail
+    let x = -xb0; for (const [a, b] of opens) { gb.box(body, a - x + 0.002, w1 - w0, 0.04, (a + x) / 2, (w0 + w1) / 2, z); x = b; }
+    gb.box(body, xb0 - x + 0.002, w1 - w0, 0.04, (xb0 + x) / 2, (w0 + w1) / 2, z);
+    gb.box(win, 2 * xb0 - 0.4, w1 - w0, 0.02, 0, (w0 + w1) / 2, s * (hw - 0.05));                      // glazing behind the posts
+    for (const [a, b] of opens) {
+      gb.box(G, b - a, 0.035, 0.03, (a + b) / 2, w0 + (w1 - w0) * 0.62, s * (hw - 0.035));             // meeting rail of the sash
+      gb.box(body, b - a + 0.03, 0.04, 0.07, (a + b) / 2, w0 - 0.01, s * (hw - 0.0));                  // window sill
+    }
+    gb.box(body, 2 * xb0, CH.lint - w1 + 0.01, 0.06, 0, (CH.lint + w1) / 2, s * (hw - 0.01));          // lintel band
+    gb.box(body, 2 * xb0, yE - CH.lint + 0.01, 0.04, 0, (yE + CH.lint) / 2, z);                        // letterboard
+    gb.box(body, 2 * xb0 + 0.02, 0.05, 0.09, 0, yE - 0.02, s * (hw + 0.01));                           // cornice
   }
-  // letterboard
+  // letterboard and car number
   const lk = 'lb' + (T ? trim : spec.short);
   RMAT[lk] = textDecal(T ? T.road : spec.road, 1024, 128, gold, 'serif', 72);
-  for (const s of [-1, 1]) gb.add(lk, new THREE.PlaneGeometry(11, 0.42), M(0, 3.38, s * (hw + 0.005), 0, s > 0 ? 0 : Math.PI, 0));
-  const nmat = textDecal(String(num), 256, 96, gold, 'serif', 64); const nk = 'cn' + num + trim; RMAT[nk] = nmat;
-  for (const s of [-1, 1]) gb.add(nk, new THREE.PlaneGeometry(1.0, 0.36), M(-7.5, 1.65, s * (hw + 0.005), 0, s > 0 ? 0 : Math.PI, 0));
-  // clerestory roof
-  const rs = new THREE.Shape(); rs.moveTo(-hw - 0.06, 0); rs.quadraticCurveTo(-hw * 0.9, 0.42, -0.82, 0.5); rs.lineTo(-0.82, 0.88); rs.quadraticCurveTo(0, 1.02, 0.82, 0.88); rs.lineTo(0.82, 0.5); rs.quadraticCurveTo(hw * 0.9, 0.42, hw + 0.06, 0); rs.lineTo(-hw - 0.06, 0);
-  const rL = observation ? 24.5 : 23.8, rg = new THREE.ExtrudeGeometry(rs, { depth: rL, bevelEnabled: false, curveSegments: 10 }); rg.rotateY(Math.PI / 2); rg.translate(11.9 - rL, 3.72, 0); gb.add('roof', rg);   // the observation roof overhangs the platform
-  for (let i = 0; i < 12; i++) for (const s of [-1, 1]) gb.box(win, 0.5, 0.2, 0.02, -9.5 + i * 1.7, 4.42, s * 0.825);
-  for (let i = 0; i < 5; i++) gb.cyl('roof', 0.12, 0.14, 0.22, 10, -8 + i * 4, 4.72, 0);
-  // vestibules: doors, steps, diaphragms
-  for (const e of [-1, 1]) {
-    const xe = e * (L / 2 - 0.62);
-    gb.box(body, 0.08, 2.5, 2 * hw, e * 11.72, 2.45, 0);
+  for (const s of [-1, 1]) gb.add(lk, new THREE.PlaneGeometry(11, 0.32), M(0, (yE + CH.lint) / 2, s * (hw + 0.002), 0, s > 0 ? 0 : Math.PI, 0));
+  const nk = 'cn' + num + trim; RMAT[nk] = textDecal(String(num), 256, 96, gold, 'serif', 64);
+  for (const s of [-1, 1]) gb.add(nk, new THREE.PlaneGeometry(0.9, 0.32), M(-7.5, 1.8, s * (hw + 0.002), 0, s > 0 ? 0 : Math.PI, 0));
+  // vestibules: side walls with the Dutch door, steps under it, grab irons beside it, the end wall and the diaphragm
+  const xd = (CH.xb + CH.xv) / 2, dw = 0.62;
+  const vest = e => {
+    const xv = e * CH.xv, zz = hw - 0.02;
     for (const s of [-1, 1]) {
-      gb.box(body, 0.85, 0.3, 0.05, e * 11.3, 1.2, s * (hw)); gb.box(win, 0.4, 0.7, 0.04, e * 11.2, 2.7, s * (hw + 0.005));
-      if (T) addWreath(gb, 0.15, 0.035, M(e * 11.2, 2.74, s * (hw + 0.025), 0, s > 0 ? 0 : Math.PI, 0));   // a wreath on each vestibule door
-      gb.box('dark', 0.5, 0.05, 0.35, e * 11.25, 0.75, s * (hw - 0.05)); gb.box('dark', 0.5, 0.05, 0.35, e * 11.25, 0.45, s * (hw - 0.05));
-      for (const d of [-0.27, 0.27]) gb.box('dark', 0.04, 0.82, 0.35, e * 11.25 + d, 0.82, s * (hw - 0.05));   // step stringers up to the sill
+      const z = s * zz;
+      gb.box(body, 0.08, yE - CH.yT, 0.05, e * (CH.xb + 0.03), (yE + CH.yT) / 2, z);                     // door posts
+      gb.box(body, 0.06, yE - CH.yT, 0.05, e * (CH.xv - 0.03), (yE + CH.yT) / 2, z);
+      gb.box(body, CH.xv - CH.xb, yE - 3.08, 0.05, e * xd, (yE + 3.08) / 2, z);                          // over the door
+      gb.box(body, dw, 3.08 - CH.yT, 0.04, e * xd, (3.08 + CH.yT) / 2, s * (zz - 0.04));                 // the door
+      gb.box(win, dw - 0.16, 0.66, 0.02, e * xd, 2.6, s * (zz - 0.015));
+      gb.box(G, dw, 0.04, 0.03, e * xd, 2.2, s * (zz - 0.01));                                             // the Dutch door's split
+      gb.box('brass', 0.03, 0.12, 0.05, e * (xd - 0.24), 2.05, s * (zz + 0.0));
+      for (const x of [e * (CH.xb - 0.0), e * (CH.xv + 0.0)]) gb.add('brass', barGeo(0.013, [x, 1.5, s * (hw + 0.06)], [x, 2.9, s * (hw + 0.06)], 5)), gb.box('brass', 0.04, 0.04, 0.09, x, 1.55, s * (hw + 0.03)), gb.box('brass', 0.04, 0.04, 0.09, x, 2.85, s * (hw + 0.03));
+      // steps: three treads on stringers hung from the floor, and the trap plate at floor level
+      for (const d of [-1, 1]) gb.box(G, 0.04, CH.yT - 0.36, 0.34, e * xd + d * (dw / 2 - 0.02), (CH.yT + 0.36) / 2, s * (zz - 0.18));
+      for (const y of [0.4, 0.72, 1.02]) gb.box(G, dw - 0.06, 0.04, 0.32 - (y - 0.4) * 0.2, e * xd, y, s * (zz - 0.18 + (y - 0.4) * 0.1 * 0));
+      gb.box(G, dw - 0.06, 0.04, 0.36, e * xd, CH.yT - 0.02, s * (zz - 0.18));
+      if (T) addWreath(gb, 0.15, 0.035, M(e * xd, 2.62, s * (zz + 0.0), 0, s > 0 ? 0 : Math.PI, 0));
     }
-    if (!(observation && e < 0)) { gb.box('diaphragm', 0.58, 2.55, 1.52, e * 12.03, 2.45, 0); gb.box('dark', 0.06, 2.6, 1.6, e * (L / 2 - 0.02), 2.45, 0); }
+    // end wall with the end door
+    for (const s of [-1, 1]) gb.box(body, 0.06, yE - CH.yT, hw - 0.42, xv, (yE + CH.yT) / 2, s * (hw + 0.42) / 2);
+    gb.box(body, 0.06, yE - 3.1, 0.84, xv, (yE + 3.1) / 2, 0);
+    gb.box(G, 0.04, 3.1 - CH.yT, 0.84, xv - e * 0.01, (3.1 + CH.yT) / 2, 0);
+    // diaphragm: bellows out to a face plate at the coupler line, with its buffer and the hood's curtain rods
+    const x0 = CH.xv, x1 = L / 2 - 0.03;
+    for (let i = 0; i < 6; i++) { const xa = x0 + (x1 - 0.06 - x0) * i / 6, xb = x0 + (x1 - 0.06 - x0) * (i + 1) / 6, k = i % 2 ? 0.04 : 0; gb.box('diaphragm', xb - xa + 0.003, 2.5 - k, 1.5 - k, e * (xa + xb) / 2, 2.35, 0); }
+    gb.box(G, 0.07, 2.52, 1.56, e * (x1 - 0.035), 2.35, 0);
+    gb.box('diaphragm', 0.03, 2.2, 1.0, e * (x1 + 0.01), 2.35, 0);
+    gb.box(G, 0.12, 0.2, 1.2, e * (CH.xv + 0.06), CH.yT - 0.1 + 0.2, 0);                                  // buffer beam over the end sill
+  };
+  vest(1); if (!observation) vest(-1);
+  // roof: the lower deck curving up from the eaves, the clerestory with its deck sash, and its arched top,
+  // hooded down over each end
+  const rE = hw + 0.06, rD = 0.86, hD = 0.35, hC = 0.59, cr = 1.03;
+  const deck = new THREE.Shape(); deck.moveTo(-rE, 0); deck.quadraticCurveTo(-hw * 0.9, 0.3, -rD, hD); deck.lineTo(rD, hD); deck.quadraticCurveTo(hw * 0.9, 0.3, rE, 0); deck.closePath();
+  const rL0 = observation ? -(L / 2 - 0.1) : -(CH.xv + 0.06), rL1 = CH.xv + 0.06;
+  gb.add('roof', new THREE.ExtrudeGeometry(deck, { depth: rL1 - rL0, bevelEnabled: false, curveSegments: 10 }).rotateY(Math.PI / 2).translate(rL0, yE, 0));
+  const clr = []; clr.push([-rD, hD - 0.02], [rD, hD - 0.02], [rD, hC]); for (let i = 1; i < 12; i++) { const t = i / 12, z = lerp(rD, -rD, t); clr.push([z, (1 - t) * (1 - t) * hC + 2 * (1 - t) * t * cr + t * t * hC]); } clr.push([-rD, hC]);
+  const cs = new THREE.Shape(); cs.moveTo(...clr[0]); for (const p of clr.slice(1)) cs.lineTo(...p); cs.closePath();
+  const xc0 = rL0 + (observation ? 0.6 : 0.62), xc1 = rL1 - 0.62;
+  gb.add('roof', new THREE.ExtrudeGeometry(cs, { depth: xc1 - xc0, bevelEnabled: false }).rotateY(Math.PI / 2).translate(xc0, yE, 0));
+  for (const [xa, xb] of [[xc1, rL1 - 0.02], [xc0, rL0 + 0.02]]) {      // the hoods: the clerestory section lofted down to the deck
+    const pos = [], q = clr.map(([z, y]) => [z, y]), n = q.length, lo = ([z, y]) => [z, hD - 0.02 + (y - hD + 0.02) * 0.04];
+    for (let i = 0; i < n; i++) {
+      const a = q[i], b = q[(i + 1) % n], A = [xa, yE + a[1], a[0]], B = [xa, yE + b[1], b[0]], la = lo(a), lb = lo(b), C = [xb, yE + lb[1], lb[0]], D = [xb, yE + la[1], la[0]];
+      pos.push(...A, ...B, ...C, ...A, ...C, ...D);
+    }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.computeVertexNormals(); gb.add('roof', g);
+  }
+  for (let i = 0; i < 12; i++) for (const s of [-1, 1]) gb.box(win, 0.5, 0.15, 0.02, -9.4 + i * 1.71, yE + (hD + hC) / 2, s * (rD + 0.005));   // deck sash
+  for (let i = 0; i < 7; i++) for (const s of [-1, 1]) {        // Garland ventilators on the clerestory roof
+    const z = s * 0.42, t = (rD - z) / (2 * rD), yv = yE + (1 - t) * (1 - t) * hC + 2 * (1 - t) * t * cr + t * t * hC;
+    gb.box('roof', 0.36, 0.2, 0.24, -9.0 + i * 3.0, yv + 0.06, z); gb.box('roof', 0.42, 0.04, 0.3, -9.0 + i * 3.0, yv + 0.17, z);
   }
   if (observation) {
-    // open rear platform with brass railing and drumhead
-    gb.box('dark', 1.6, 0.08, 2.9, -11.8, 1.15, 0);
-    for (const z of [-1.4, -0.7, 0, 0.7, 1.4]) gb.cyl('brass', 0.02, 0.02, 1.05, 6, -12.55, 1.7, z);
-    gb.add('brass', new THREE.CylinderGeometry(0.03, 0.03, 2.9, 8).rotateX(Math.PI / 2).translate(-12.55, 2.2, 0));
-    gb.cyl('roof', 0.12, 0.12, 0.3, 8, -12.3, 3.62, 0);
+    // open rear platform: the lounge end wall with its door and wide windows, the deck, brass railing and gates,
+    // steps either side, the drumhead, and marker lamps under the roof's overhang
+    const xw = -CH.xb, xP = -(L / 2 - 0.15);
+    for (const s of [-1, 1]) {
+      gb.box(body, 0.06, w0 - CH.yT, hw - 0.4, xw - 0.03, (w0 + CH.yT) / 2, s * (hw + 0.4) / 2);
+      gb.box(body, 0.06, yE - w1, hw - 0.4, xw - 0.03, (yE + w1) / 2, s * (hw + 0.4) / 2);
+      gb.box(win, 0.02, w1 - w0, hw - 0.5, xw - 0.03, (w0 + w1) / 2, s * (hw + 0.45) / 2);
+      gb.box(body, 0.06, w1 - w0, 0.08, xw - 0.03, (w0 + w1) / 2, s * (hw - 0.04));
+      gb.box(body, 0.06, w1 - w0, 0.08, xw - 0.03, (w0 + w1) / 2, s * 0.44);
+    }
+    gb.box(body, 0.06, yE - 3.1, 0.8, xw - 0.03, (yE + 3.1) / 2, 0);
+    gb.box(G, 0.04, 3.1 - CH.yT, 0.8, xw - 0.06, (3.1 + CH.yT) / 2, 0); gb.box(win, 0.02, 0.8, 0.5, xw - 0.08, 2.55, 0);
+    gb.box('wood', xw - xP, 0.05, 2 * hw - 0.04, (xw + xP) / 2, CH.yT - 0.025, 0);
+    gb.box(G, 0.12, 0.26, 2 * hw - 0.04, xP + 0.06, CH.yT - 0.15, 0);
+    for (const s of [-1, 1]) gb.box(G, xw - xP, 0.2, 0.08, (xw + xP) / 2, CH.yT - 0.12, s * (hw - 0.06));
+    const xr = xP + 0.04, posts = [-1.42, -0.95, -0.48, 0, 0.48, 0.95, 1.42];
+    for (const z of posts) gb.cyl('brass', 0.02, 0.02, 1.05, 6, xr, CH.yT + 0.5, z);
+    for (const y of [1.78, 2.3]) gb.add('brass', new THREE.CylinderGeometry(0.025, 0.025, 2.88, 8).rotateX(Math.PI / 2).translate(xr, y, 0));
+    for (const s of [-1, 1]) {
+      for (const y of [1.78, 2.3]) gb.add('brass', barGeo(0.022, [xr, y, s * 1.42], [xr + 0.55, y, s * 1.42], 6));
+      gb.cyl('brass', 0.02, 0.02, 1.05, 6, xr + 0.55, CH.yT + 0.5, s * 1.42);
+      gb.add('brass', barGeo(0.02, [xw - 0.06, 2.3, s * (hw - 0.04)], [xw - 0.32, 2.3, s * (hw - 0.04)], 6)); gb.cyl('brass', 0.02, 0.02, 1.05, 6, xw - 0.32, CH.yT + 0.5, s * (hw - 0.04));
+      for (const d of [-0.28, 0.28]) gb.box(G, 0.04, CH.yT - 0.4, 0.3, xr + 0.95 + d, (CH.yT + 0.4) / 2, s * (hw - 0.2));
+      for (const y of [0.42, 0.85]) gb.box(G, 0.56, 0.04, 0.3, xr + 0.95, y, s * (hw - 0.2));
+    }
     const ink = T ? '#8a1219' : '#6b1f1a';
     const dh = decalMat(256, 256, (g, w, h) => {
       g.fillStyle = '#e9dfc2'; g.beginPath(); g.arc(128, 128, 122, 0, TAU); g.fill(); g.strokeStyle = ink; g.lineWidth = 10; g.stroke(); g.fillStyle = ink; g.font = '600 30px "Times New Roman", serif'; g.textAlign = 'center';
@@ -6900,22 +7457,24 @@ function coachModel(spec, num, observation, trim = '') {
       }
     });
     const dk = 'drumhead' + trim; RMAT[dk] = dh; dh.emissive = new THREE.Color(0xffd9a0); dh.emissiveMap = dh.map; dh.emissiveIntensity = 0; SCN.winMats.push(dh);
-    gb.add(dk, new THREE.CircleGeometry(0.42, 28), M(-12.575, 1.85, 0, 0, -Math.PI / 2, 0));
-    if (T) addWreath(gb, 0.5, 0.06, M(-12.56, 1.85, 0, 0, -Math.PI / 2, 0));   // the drumhead ringed with fir
-    gb.add('brass', new THREE.TorusGeometry(0.43, 0.025, 6, 28).rotateY(Math.PI / 2).translate(-12.56, 1.85, 0));
-    // marker lamps hung under the corners of the platform roof
-    for (const z of [-1.22, 1.22]) { gb.box('dark', 0.18, 0.3, 0.18, -12.4, 3.5, z); gb.box('dark', 0.05, 0.08, 0.05, -12.4, 3.68, z); }
-    root.userData.markers = [new THREE.Vector3(-12.492, 3.5, -1.22), new THREE.Vector3(-12.492, 3.5, 1.22)];
+    const xd2 = xr - 0.035;
+    gb.cyl('brass', 0.44, 0.44, 0.05, 28, xd2 + 0.0, 1.95, 0, 0, 0, Math.PI / 2);
+    gb.add(dk, new THREE.CircleGeometry(0.42, 28), M(xd2 - 0.027, 1.95, 0, 0, -Math.PI / 2, 0));
+    gb.add('brass', barGeo(0.015, [xd2, 2.39, 0], [xr, 2.3, 0], 5));
+    if (T) addWreath(gb, 0.5, 0.06, M(xd2 - 0.03, 1.95, 0, 0, -Math.PI / 2, 0));   // the drumhead ringed with fir
+    gb.add('brass', new THREE.TorusGeometry(0.43, 0.025, 6, 28).rotateY(Math.PI / 2).translate(xd2 - 0.025, 1.95, 0));
+    for (const z of [-1.22, 1.22]) { gb.box(G, 0.18, 0.3, 0.18, xP + 0.1, yE - 0.12, z); gb.box(G, 0.05, 0.08, 0.05, xP + 0.1, yE + 0.04, z); }
+    root.userData.markers = [new THREE.Vector3(xP + 0.008, yE - 0.12, -1.22), new THREE.Vector3(xP + 0.008, yE - 0.12, 1.22)];
   }
   if (T) {
-    // gold lining under the windows and along the sill, garland swagged between the window pairs, snow on the roof
-    for (const s of [-1, 1]) for (const y of [2.13, 1.32]) gb.box('gold', 21.8, 0.035, 0.012, 0, y, s * (hw + 0.006));
+    // gold lining along the belt rail and the sill, garland swagged between the window pairs, snow on the roof
+    for (const s of [-1, 1]) for (const y of [CH.belt - 0.06, CH.sill[1] + 0.05]) gb.box('gold', 21.8, 0.035, 0.012, 0, y, s * (hw + 0.006));
     const xs = []; for (let i = 0; i <= 13; i++) xs.push(-9.5 - 0.79 + i * 1.58);
-    for (const s of [-1, 1]) addSwags(gb, xs, 3.13, 0.09, s * (hw + 0.035), 0.04);
-    const yR = 3.72, Ls = rL - 0.5, x0 = 11.9 - rL + 0.25;
-    gb.add('snow', snowCap(quadPts([-0.82, 0.88], [0, 1.02], [0.82, 0.88], 16).map(([z, y]) => [z, y + yR]), 0.045, Ls, 0.3).translate(x0, 0, 0));
-    for (const s of [-1, 1]) {   // the lower roof, from the eaves' shoulder in to the clerestory wall
-      const pts = quadPts([s * (hw + 0.06), 0], [s * hw * 0.9, 0.42], [s * 0.82, 0.5], 12, 0.5, 1).map(([z, y]) => [z, y + yR]);
+    for (const s of [-1, 1]) addSwags(gb, xs, CH.lint - 0.02, 0.07, s * (hw + 0.035), 0.04);
+    const Ls = xc1 - xc0 - 0.2, x0 = xc0 + 0.1;
+    gb.add('snow', snowCap(quadPts([-rD, hC], [0, cr], [rD, hC], 16).map(([z, y]) => [z, y + yE]), 0.045, Ls, 0.3).translate(x0, 0, 0));
+    for (const s of [-1, 1]) {   // the lower deck, from the eaves' shoulder in to the clerestory wall
+      const pts = quadPts([s * rE, 0], [s * hw * 0.9, 0.3], [s * rD, hD], 12, 0.5, 1).map(([z, y]) => [z, y + yE]);
       if (s > 0) pts.reverse();
       gb.add('snow', snowCap(pts, 0.04, Ls, 0.22).translate(x0, 0, 0));
     }
@@ -6925,111 +7484,110 @@ function coachModel(spec, num, observation, trim = '') {
   root.traverse(o => { if (o.isMesh && !o.userData.cpl) { o.castShadow = true; o.receiveShadow = true; } });
   return { root, len: L, trucks: [{ a: 3.5, type: 'six', R: 0.457 }, { a: 21.2, type: 'six', R: 0.457 }], frame: [3.5, 21.2], weight: 82 * STON, kind: 'coach', axles: 6, area: 120, couplers };
 }
-function freightModel(type, num, r) {
-  const root = new THREE.Group(); const gb = new GeoBin();
-  let L, hw = 1.5, weight, trucks;
-  // reporting marks, a little proud of the side at face distance zf; on a tank they wrap around the barrel (radius tr, centre ty)
-  const marks = (txt, sub, mat, y, color, zf = hw + 0.005, tr = 0, ty = 0, w = 2.6, mx = L / 2 - 2.2) => {
-    const k = 'fm_' + type + '_' + num; RMAT[k] = decalMat(512, 128, (g, w, h) => { g.fillStyle = color || '#ece9df'; g.font = 'bold 48px "Arial Narrow", Arial'; g.textAlign = 'left'; g.textBaseline = 'middle'; g.fillText(txt, 12, 42); g.font = '28px "Arial Narrow", Arial'; g.fillText(sub, 12, 96); });
+
+/* ======== trucks ========
+   Freight: a 70 t cast steel truck in the ASF A-3 Ride Control style, 5 ft 8 in wheelbase, 33 in wheels:
+   side frames with pedestal jaws round friction journal boxes, a spring nest under each bolster end, the bolster
+   with its centre plate bowl and side bearings, and the brake beams with their shoes on the wheel treads.
+   Passenger: a Commonwealth cast six-wheel truck, 11 ft wheelbase, 36 in wheels, with equalizers under the
+   journal boxes, coil springs, a bolster riding over the middle wheels and clasp brakes on every wheel.
+   Tender: one-piece side frames with 60 in axle spacing (TD.sp). */
+function coilGeo(r, h, turns = 3, wire = 0.013) {
+  const pts = []; for (let i = 0; i <= turns * 8; i++) { const a = i / 8 * TAU; pts.push(new THREE.Vector3(Math.cos(a) * r, h * i / (turns * 8), Math.sin(a) * r)); }
+  return new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), turns * 8, wire, 3, false);
+}
+function journalBox(bin, x, y, z, w, h, d) {
+  bin.box('dark', w, h, d, x, y, z);
+  bin.box('dark', w * 0.82, h * 0.78, 0.03, x, y + h * 0.02, z + Math.sign(z) * (d / 2 + 0.012));        // the lid
+  bin.add('dark', new THREE.CylinderGeometry(0.025, 0.025, w * 0.5, 8).rotateZ(Math.PI / 2).translate(x, y + h * 0.42, z + Math.sign(z) * (d / 2 + 0.02)));   // lid hinge
+}
+/* brake shoes on the treads of the wheels at xs, on the side of each wheel toward dir(x) (+1/-1), on beams across */
+function brakeShoes(bin, R, list, yHang, zHang) {
+  for (const [xa, d] of list) {
+    const th = 0.2, cx = xa + d * (R + 0.022) * Math.cos(th), cy = R - (R + 0.022) * Math.sin(th);
     for (const s of [-1, 1]) {
-      const g = new THREE.PlaneGeometry(w, w / 4, 1, tr ? 8 : 1);
-      if (tr) { const p = g.attributes.position, r = tr + 0.008, a0 = Math.asin((y - ty) / r); for (let i = 0; i < p.count; i++) { const a = a0 + p.getY(i) / r; p.setY(i, ty + r * Math.sin(a) - y); p.setZ(i, r * Math.cos(a)); } g.computeVertexNormals(); g.translate(0, 0, -zf); }
-      gb.add(k, g, M(s > 0 ? -mx : mx, y, s * zf, 0, s > 0 ? 0 : Math.PI, 0));
+      bin.add('dark', new THREE.BoxGeometry(0.05, 0.34, 0.09).rotateZ(d * th), M(cx, cy, s * RAIL_OFF));
+      bin.box('dark', 0.07, 0.16, 0.12, cx + d * 0.05, cy, s * (RAIL_OFF - 0.01));                          // brake head
+      bin.add('dark', barGeo(0.016, [cx + d * 0.06, cy, s * (RAIL_OFF + 0.04)], [cx + d * 0.08, yHang, s * zHang], 5));   // hanger to the frame
+    }
+    bin.add('dark', barGeo(0.03, [cx + d * 0.07, cy, -RAIL_OFF], [cx + d * 0.07, cy, RAIL_OFF], 6));         // brake beam
+    bin.add('dark', barGeo(0.014, [cx + d * 0.07, cy, -RAIL_OFF + 0.05], [cx + d * 0.2, cy - 0.06, 0], 5));   // its truss rod
+    bin.add('dark', barGeo(0.014, [cx + d * 0.07, cy, RAIL_OFF - 0.05], [cx + d * 0.2, cy - 0.06, 0], 5));
+    bin.box('dark', 0.05, 0.3, 0.05, cx + d * 0.2, cy + 0.06, 0);                                           // brake lever
+  }
+}
+function truckBins() {
+  const zf = 1.0;
+  /* --- 70 t freight truck --- */
+  const four = new GeoBin(), a4 = 0.865;
+  for (const s of [-1, 1]) {
+    const z = s * zf, fr = new THREE.Shape();
+    fr.moveTo(-1.13, 0.74); fr.lineTo(-0.95, 0.8); fr.lineTo(0.95, 0.8); fr.lineTo(1.13, 0.74);
+    fr.lineTo(1.13, 0.4); fr.lineTo(1.06, 0.4); fr.lineTo(1.06, 0.6); fr.lineTo(0.67, 0.6); fr.lineTo(0.67, 0.4); fr.lineTo(0.6, 0.4);
+    fr.lineTo(0.56, 0.47); fr.lineTo(0.36, 0.28); fr.lineTo(-0.36, 0.28); fr.lineTo(-0.56, 0.47);
+    fr.lineTo(-0.6, 0.4); fr.lineTo(-0.67, 0.4); fr.lineTo(-0.67, 0.6); fr.lineTo(-1.06, 0.6); fr.lineTo(-1.06, 0.4); fr.lineTo(-1.13, 0.4); fr.closePath();
+    const win = new THREE.Path(); win.moveTo(-0.3, 0.34); win.lineTo(0.3, 0.34); win.lineTo(0.3, 0.71); win.lineTo(-0.3, 0.71); win.closePath(); fr.holes.push(win);
+    for (const d of [-1, 1]) { const h = new THREE.Path(); h.moveTo(d * 0.36, 0.73); h.lineTo(d * 0.585, 0.73); h.lineTo(d * 0.4, 0.47); h.closePath(); fr.holes.push(h); }
+    four.add('dark', new THREE.ExtrudeGeometry(fr, { depth: 0.13, bevelEnabled: true, bevelThickness: 0.012, bevelSize: 0.012, bevelSegments: 1 }).translate(0, 0, z - 0.065));
+    for (const x of [-a4, a4]) journalBox(four, x, 0.425, z, 0.39, 0.34, 0.3);
+    for (const x of [-0.19, 0, 0.19]) for (const dz of [-0.04, 0.04]) four.add('dark', coilGeo(0.05, 0.2, 3).translate(x, 0.335, z + dz));   // spring nest
+    four.box('dark', 0.62, 0.03, 0.18, 0, 0.335, z);                                                         // spring seat
+    four.box('dark', 0.05, 0.12, 0.06, 0.26, 0.6, z + s * 0.07);                                             // Ride Control friction wedge
+  }
+  hexa(four, 'dark', [[-0.18, 0.53, -zf], [0.18, 0.53, -zf], [0.18, 0.76, -zf], [-0.18, 0.76, -zf], [-0.18, 0.53, 0], [0.18, 0.53, 0], [0.18, 0.79, 0], [-0.18, 0.79, 0]].map(([x, y, z]) => [x, y, z]));
+  hexa(four, 'dark', [[-0.18, 0.53, zf], [0.18, 0.53, zf], [0.18, 0.76, zf], [-0.18, 0.76, zf], [-0.18, 0.53, 0], [0.18, 0.53, 0], [0.18, 0.79, 0], [-0.18, 0.79, 0]]);
+  four.box('dark', 0.36, 0.06, 0.02, 0, 0.555, 0);   // ties the two bolster halves
+  four.cyl('dark', 0.21, 0.21, TPY - 0.78, 16, 0, (TPY + 0.78) / 2, 0);
+  for (const s of [-1, 1]) four.box('dark', 0.2, SBY - 0.77, 0.16, 0, (SBY + 0.77) / 2, s * 0.64);
+  brakeShoes(four, 0.419, [[-a4, 1], [a4, -1]], 0.66, zf - 0.06);
+  /* --- Commonwealth six-wheel passenger truck --- */
+  const six = new GeoBin(), sp = 1.676, R6 = 0.457, b = 0.2;
+  const sixFrame = (bin, sp, xEnd, R) => {
+    for (const s of [-1, 1]) {
+      const z = s * zf, fr = new THREE.Shape(), top = 1.0, Jt = R + 0.19, Jb = R - 0.06;
+      fr.moveTo(-xEnd, 0.74); fr.lineTo(-xEnd, top - 0.08); fr.lineTo(-xEnd + 0.15, top); fr.lineTo(xEnd - 0.15, top); fr.lineTo(xEnd, top - 0.08); fr.lineTo(xEnd, 0.74);
+      const cs = [sp, 0, -sp];
+      for (let i = 0; i < 3; i++) {
+        const c = cs[i];
+        fr.lineTo(c + b + 0.07, 0.74); fr.lineTo(c + b + 0.07, Jb); fr.lineTo(c + b, Jb); fr.lineTo(c + b, Jt); fr.lineTo(c - b, Jt); fr.lineTo(c - b, Jb); fr.lineTo(c - b - 0.07, Jb); fr.lineTo(c - b - 0.07, 0.74);
+        if (i < 2) { const m = (c + cs[i + 1]) / 2; fr.quadraticCurveTo(m, 0.6, cs[i + 1] + b + 0.07, 0.74); }
+      }
+      fr.closePath();
+      for (const c of [-sp / 2, sp / 2]) { const h = new THREE.Path(); h.moveTo(c - 0.26, 0.78); h.lineTo(c + 0.26, 0.78); h.quadraticCurveTo(c + 0.32, 0.84, c + 0.26, 0.9); h.lineTo(c - 0.26, 0.9); h.quadraticCurveTo(c - 0.32, 0.84, c - 0.26, 0.78); fr.holes.push(h); }
+      bin.add('dark', new THREE.ExtrudeGeometry(fr, { depth: 0.14, bevelEnabled: true, bevelThickness: 0.012, bevelSize: 0.012, bevelSegments: 1 }).translate(0, 0, z - 0.07));
+      for (const c of cs) journalBox(bin, c, R - 0.01, z, 2 * b, Jt - (R - 0.01) + (R - 0.01 - 0.25), 0.32);
+      // equalizers under the boxes, with their springs up to the frame
+      for (const d of [-1, 1]) {
+        const x0 = d * 0.02, x1 = d * sp;
+        hexa(bin, 'dark', [[x0, 0.19, z - 0.05], [x0, 0.19, z + 0.05], [x0, 0.25, z + 0.05], [x0, 0.25, z - 0.05], [x1, 0.19, z - 0.05], [x1, 0.19, z + 0.05], [x1, 0.25, z + 0.05], [x1, 0.25, z - 0.05]]);
+        for (const xs of [d * (sp / 2 - 0.17), d * (sp / 2 + 0.17)]) { bin.add('dark', coilGeo(0.06, 0.6 - 0.24, 4, 0.015).translate(xs, 0.245, z)); bin.box('dark', 0.16, 0.03, 0.14, xs, 0.25, z); }
+      }
     }
   };
-  // end ladder: two stiles on standoffs and rungs, up the car end at half length he, to height top
-  const ladder = (he, top, bot = 1.3) => { for (const e of [-1, 1]) { const x = e * (he + 0.07); for (const z of [0.95, 1.4]) { gb.box('dark', 0.03, top - bot, 0.04, x, (top + bot) / 2, z); for (const y of [bot + 0.15, top - 0.15]) gb.box('dark', 0.09, 0.04, 0.04, e * (he + 0.035), y, z); } for (let y = bot + 0.2; y < top - 0.1; y += 0.42) gb.box('dark', 0.03, 0.03, 0.45, x, y, 1.175); } };
-  if (type === 'box') {
-    L = 13.0; weight = (r() < 0.6 ? 62 : 25) * STON;
-    gb.box('oxide', 12.2, 2.75, 2 * hw, 0, 2.55, 0);
-    for (let x = -5.6; x <= 5.6; x += 0.8) for (const s of [-1, 1]) gb.box('oxide2', 0.06, 2.75, 0.016, x, 2.55, s * (hw + 0.008));
-    for (const s of [-1, 1]) { gb.box('oxide2', 1.8, 2.5, 0.06, 0.4, 2.45, s * (hw + 0.04)); gb.box('dark', 2.2, 0.08, 0.08, 0.4, 3.75, s * (hw + 0.06)); }
-    gb.box('oxide2', 12.3, 0.1, 2 * hw + 0.08, 0, 3.97, 0);
-    gb.box('wood', 12.2, 0.05, 0.52, 0, 4.044, 0);   // running board on the roof
-    ladder(6.1, 3.92);
-    gb.add('dark', new THREE.TorusGeometry(0.22, 0.02, 4, 14).translate(-6.15, 3.6, 0));
-    marks(ROAD_SHORT + ' ' + num, 'CAPY 100000  LD LMT 110700', 'oxide', 3.1, null, hw + 0.019);   // painted across the posts
-  } else if (type === 'hopper') {
-    L = 11.2; weight = 92 * STON;
-    gb.box('black', 10.4, 2.3, 2 * hw, 0, 2.45, 0);   // sides come down to the side sill
-    for (let x = -4.8; x <= 4.8; x += 1.2) for (const s of [-1, 1]) gb.box('black', 0.12, 2.35, 0.08, x, 2.45, s * (hw + 0.03));
-    for (const x of [-1.25, 1.25]) gb.add('black', new THREE.ConeGeometry(1.27, 1.1, 4).rotateY(Math.PI / 4).rotateX(Math.PI).translate(x, 1.1, 0));   // bays, clear of the wheels
-    ladder(5.2, 3.6);
-    const g = new THREE.PlaneGeometry(10.1, 2.8, 20, 6); g.rotateX(-Math.PI / 2); const p = g.attributes.position; for (let i = 0; i < p.count; i++) { const x = p.getX(i), z = p.getZ(i); p.setY(i, 3.5 + 0.35 * Math.max(0, (1 - (z / 1.4) ** 2)) * (0.7 + 0.3 * Math.cos(x * 1.2))); } g.computeVertexNormals(); gb.add('coal', g);
-    marks(ROAD_SHORT + ' ' + num, 'CAPY 140000', 'black', 2.9, null, hw + 0.005, 0, 0, 1.0, 3.0);   // in the panel between two stakes
-  } else if (type === 'tank') {
-    L = 12.4; weight = 70 * STON; hw = 1.45;
-    gb.add('tank', new THREE.CylinderGeometry(1.4, 1.4, 11.4, 28).rotateZ(Math.PI / 2).translate(0, 2.65, 0));
-    for (const s of [-1, 1]) gb.add('tank', new THREE.SphereGeometry(1.4, 20, 10, 0, TAU, 0, Math.PI / 2).scale(1, 0.25, 1).rotateZ(-s * Math.PI / 2).translate(s * 5.7, 2.65, 0));
-    gb.cyl('tank', 0.65, 0.65, 0.6, 18, 0, 4.2, 0); gb.cyl('tank', 0.7, 0.7, 0.08, 18, 0, 4.52, 0);
-    gb.box('dark', 11, 0.2, 2.9, 0, 1.3, 0);
-    for (const s of [-1, 1]) gb.box('wood', 11, 0.05, 0.4, 0, 1.424, s * 1.45);   // running boards on the platform
-    for (const x of [-4, 0, 4]) gb.add('dark', new THREE.TorusGeometry(1.42, 0.03, 4, 28).rotateY(Math.PI / 2).translate(x, 2.65, 0));
-    marks('UTLX ' + num, 'NON-ACCIDENT  CAPY 10000 GAL', 'tank', 2.15, null, 1.4, 1.4, 2.65);
-  } else if (type === 'gon') {
-    L = 14.6; weight = 88 * STON;
-    gb.box('oxide2', 13.8, 1.3, 2 * hw, 0, 1.95, 0);
-    for (let x = -6.4; x <= 6.4; x += 0.9) for (const s of [-1, 1]) gb.box('oxide2', 0.1, 1.32, 0.08, x, 1.95, s * (hw + 0.03));
-    const g = new THREE.PlaneGeometry(13.4, 2.8, 26, 6); g.rotateX(-Math.PI / 2); const p = g.attributes.position; const rr = rng(num); for (let i = 0; i < p.count; i++) { const z = p.getZ(i); p.setY(i, 2.45 + 0.35 * Math.max(0, 1 - (z / 1.4) ** 2) + (rr() - 0.5) * 0.12); } g.computeVertexNormals(); gb.add('stoneLoad', g);
-    marks(ROAD_SHORT + ' ' + num, 'CAPY 140000', 'oxide2', 1.95);
-    ladder(6.9, 2.6);
-  } else if (type === 'caboose') {
-    L = 11.0; weight = 22 * STON;
-    gb.box('caboose', 8.4, 2.5, 2 * hw - 0.1, 0, 2.45, 0);
-    gb.box('caboose', 2.6, 1.05, 2.4, -0.6, 4.25, 0);
-    gb.box('roof', 8.7, 0.08, 2 * hw + 0.1, 0, 3.74, 0); gb.box('roof', 2.8, 0.08, 2.6, -0.6, 4.82, 0);
-    for (const s of [-1, 1]) { for (const x of [-2.8, 1.2, 2.8]) gb.box('win', 0.6, 0.7, 0.04, x, 2.7, s * (hw - 0.04)); for (const x of [-1.3, 0.1]) gb.box('win', 0.55, 0.5, 0.04, x, 4.35, s * 1.21); }
-    for (const e of [-1, 1]) { gb.box('dark', 1.2, 0.08, 2.8, e * 4.9, 1.25, 0); for (const z of [-1.3, 1.3]) gb.cyl('dark', 0.02, 0.02, 1.0, 6, e * 5.45, 1.75, z); gb.box('dark', 0.04, 0.04, 2.6, e * 5.45, 2.25, 0); gb.box('win', 0.04, 0.9, 0.55, e * 4.21, 2.6, 0); }
-    gb.cyl('dark', 0.08, 0.1, 0.5, 8, 1.8, 4.0, 0.6);
-    // marker lamps
-    for (const z of [-1.2, 1.2]) { gb.box('dark', 0.2, 0.3, 0.2, -4.25, 3.25, z); }   // marker lamps on the rear end
-    marks(ROAD_SHORT + ' ' + num, '', 'caboose', 2.0, null, hw - 0.045);
-    root.userData.markers = [new THREE.Vector3(-4.353, 3.25, -1.2), new THREE.Vector3(-4.353, 3.25, 1.2)];
+  sixFrame(six, sp, 2.12, R6);
+  hexa(six, 'dark', [[-0.26, 0.95, -zf], [0.26, 0.95, -zf], [0.26, 1.0, -zf], [-0.26, 1.0, -zf], [-0.26, 0.95, 0], [0.26, 0.95, 0], [0.26, TPY6 - 0.03, 0], [-0.26, TPY6 - 0.03, 0]]);
+  hexa(six, 'dark', [[-0.26, 0.95, zf], [0.26, 0.95, zf], [0.26, 1.0, zf], [-0.26, 1.0, zf], [-0.26, 0.95, 0], [0.26, 0.95, 0], [0.26, TPY6 - 0.03, 0], [-0.26, TPY6 - 0.03, 0]]);
+  six.cyl('dark', 0.22, 0.22, 0.05, 16, 0, TPY6 - 0.025, 0);
+  for (const s of [-1, 1]) six.box('dark', 0.2, 0.08, 0.16, 0, SBY6 - 0.04, s * 0.7);
+  for (const x of [-0.75, 0.75]) six.box('dark', 0.16, 0.12, 2 * zf, x, 0.93, 0);                   // transoms
+  brakeShoes(six, R6, [[-sp, -1], [-sp, 1], [0, -1], [0, 1], [sp, -1], [sp, 1]], 0.8, zf - 0.07);
+  /* --- the Berkshire tender's six-wheel truck --- */
+  const buck = new GeoBin(), tsp = TD.sp;
+  for (const s of [-1, 1]) {
+    const z = s * zf, fr = new THREE.Shape(), top = 0.8, bot = 0.5;
+    fr.moveTo(-tsp - 0.32, 0.56); fr.lineTo(-tsp - 0.32, top); fr.lineTo(tsp + 0.32, top); fr.lineTo(tsp + 0.32, 0.56); fr.lineTo(tsp - 0.25, 0.56);
+    fr.lineTo(tsp - 0.42, bot); fr.lineTo(0.42, bot); fr.lineTo(0.25, 0.56); fr.lineTo(-0.25, 0.56); fr.lineTo(-0.42, bot); fr.lineTo(-tsp + 0.42, bot); fr.lineTo(-tsp + 0.25, 0.56); fr.closePath();
+    buck.add('dark', new THREE.ExtrudeGeometry(fr, { depth: 0.16, bevelEnabled: true, bevelThickness: 0.01, bevelSize: 0.01, bevelSegments: 1 }).translate(0, 0, z - 0.08));
+    for (const x of [-tsp, 0, tsp]) journalBox(buck, x, 0.457, z, 0.36, 0.34, 0.28);
+    for (const x of [-tsp / 2, tsp / 2]) { for (let k = 0; k < 3; k++) buck.add('dark', coilGeo(0.06, 0.22, 3).translate(x, 0.55, z + (k - 1) * 0.07)); buck.box('dark', 0.36, 0.05, 0.3, x, 0.79, z); buck.box('dark', 0.36, 0.04, 0.3, x, 0.55, z); }
   }
-  // underframe common
-  gb.box('dark', L - 1.4, 0.35, 2.6, 0, 1.15, 0);
-  const ta = type === 'caboose' ? 2.4 : 1.95;
-  for (const e of [-1, 1]) { gb.box('dark', 0.3, 0.4, 2.9, e * (L / 2 - 0.66), 1.15, 0); gb.box('dark', 0.5, 0.2, 2.4, e * (L / 2 - ta), 0.9, 0); }
-  gb.add('dark', new THREE.CylinderGeometry(0.17, 0.17, 0.5, 10).rotateZ(Math.PI / 2).translate(1.6, 0.9, 0.5));
-  const couplers = carCouplers(gb, root, L, -0.51, 0.95, 1.12);
-  root.add(gb.build(RMAT));
-  root.traverse(o => { if (o.isMesh && !o.userData.cpl) { o.castShadow = true; o.receiveShadow = true; } });
-  trucks = [{ a: ta, type: 'four', R: 0.419 }, { a: L - ta, type: 'four', R: 0.419 }];
-  return { root, len: L, trucks, frame: [ta, L - ta], weight, kind: type, axles: 4, area: 105, couplers };
+  for (const x of [-tsp / 2, tsp / 2]) buck.box('dark', 0.34, 0.24, 2.18, x, 0.9, 0);   // bolsters
+  buck.box('dark', tsp + 0.34, 0.12, 0.5, 0, 0.94, 0);                                  // span bolster with the centre plate
+  brakeShoes(buck, 0.457, [[-tsp, -1], [0, -1], [0, 1], [tsp, 1]], 0.6, zf - 0.08);
+  return { six, four, buck };
 }
 /* truck frame geometries for instancing */
-function truckGeos() {
-  const six = new GeoBin();
-  for (const s of [-1, 1]) {
-    six.box('dark', 4.3, 0.32, 0.2, 0, 0.62, s * 1.0);
-    for (const x of [-1.676, 0, 1.676]) six.box('dark', 0.36, 0.42, 0.28, x, 0.46, s * 1.0);
-    six.box('dark', 3.6, 0.1, 0.12, 0, 0.88, s * 0.95);
-    for (const x of [-0.85, 0.85]) for (let k = 0; k < 4; k++) six.cyl('dark', 0.09, 0.09, 0.3, 8, x, 0.6, s * (0.9 - k * 0.0));
-  }
-  six.box('dark', 0.5, 0.25, 2.1, 0, 0.88, 0);
-  const four = new GeoBin();
-  for (const s of [-1, 1]) {
-    four.box('dark', 2.6, 0.26, 0.18, 0, 0.58, s * 0.98);
-    four.box('dark', 1.0, 0.2, 0.2, 0, 0.42, s * 0.98);
-    for (const x of [-0.865, 0.865]) four.box('dark', 0.3, 0.36, 0.26, x, 0.42, s * 0.98);
-    for (let k = 0; k < 3; k++) four.cyl('dark', 0.075, 0.075, 0.26, 8, -0.15 + k * 0.15, 0.62, s * 0.98);
-  }
-  four.box('dark', 0.4, 0.25, 2.0, 0, 0.7, 0);
-  // the Berkshire tender's six-wheel trucks: 60 in axle spacing, one-piece side frames with a pedestal over
-  // each journal, spring nests either side of the bolster, and the bolster carrying the centre plate
-  const buck = new GeoBin(), sp = TD.sp;
-  for (const s of [-1, 1]) {
-    const z = s * 1.0, fr = new THREE.Shape(), top = 0.8, bot = 0.5;
-    fr.moveTo(-sp - 0.32, 0.56); fr.lineTo(-sp - 0.32, top); fr.lineTo(sp + 0.32, top); fr.lineTo(sp + 0.32, 0.56); fr.lineTo(sp - 0.25, 0.56);
-    fr.lineTo(sp - 0.42, bot); fr.lineTo(0.42, bot); fr.lineTo(0.25, 0.56); fr.lineTo(-0.25, 0.56); fr.lineTo(-0.42, bot); fr.lineTo(-sp + 0.42, bot); fr.lineTo(-sp + 0.25, 0.56); fr.closePath();
-    buck.add('dark', new THREE.ExtrudeGeometry(fr, { depth: 0.16, bevelEnabled: true, bevelThickness: 0.01, bevelSize: 0.01, bevelSegments: 1 }).translate(0, 0, z - 0.08));
-    for (const x of [-sp, 0, sp]) buck.box('dark', 0.36, 0.34, 0.28, x, 0.457, z);
-    for (const x of [-sp / 2, sp / 2]) { for (let k = 0; k < 3; k++) buck.cyl('dark', 0.07, 0.07, 0.26, 8, x, 0.66, z + (k - 1) * 0.07); buck.box('dark', 0.36, 0.05, 0.3, x, 0.79, z); }
-  }
-  for (const x of [-sp / 2, sp / 2]) buck.box('dark', 0.34, 0.24, 2.18, x, 0.9, 0);   // bolsters
-  buck.box('dark', sp + 0.34, 0.12, 0.5, 0, 0.94, 0);                                  // span bolster with the centre plate
-  return { six: mergeGeos(six.bins.dark), four: mergeGeos(four.bins.dark), buck: mergeGeos(buck.bins.dark) };
-}
+function truckGeos() { const b = truckBins(); return { six: mergeGeos(b.six.bins.dark), four: mergeGeos(b.four.bins.dark), buck: mergeGeos(b.buck.bins.dark) }; }
 
 /* ============================================================================
    Modern six-axle AC freight diesel in the GE wide-cab style:
@@ -7367,7 +7925,7 @@ function buildDiesel(opts) {
   halo.position.set(dx(N0 - 0.08), hlY, 0); halo.scale.set(2.0, 2.6, 1); body.add(halo);
   /* ---- Hi-Ad style trucks (swivel; placed by the train) ---- */
   const trucks = [], wheels = [];
-  const ax = plainAxle(DG.rW);
+  const ax = plainAxle(DG.rW, true, RAIL_OFF, 1.16);
   for (let t = 0; t < 2; t++) {
     const grp = new THREE.Group(), tg = new GeoBin();
     for (const s of [-1, 1]) {
@@ -7465,12 +8023,6 @@ function castSide(pts, r, w, z0, bev = 0.008) {
   return g;
 }
 /* a round bar or pipe from a to b */
-function barGeo(r, a, b, seg = 8) {
-  const A = new THREE.Vector3(...a), B = new THREE.Vector3(...b), g = new THREE.CylinderGeometry(r, r, A.distanceTo(B), seg);
-  g.applyMatrix4(new THREE.Matrix4().makeRotationFromQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), B.clone().sub(A).normalize())));
-  g.translate((A.x + B.x) / 2, (A.y + B.y) / 2, (A.z + B.z) / 2);
-  return g;
-}
 const tubeGeo = (pts, r, seg = 24, rs = 8) => new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts.map(p => new THREE.Vector3(...p))), seg, r, rs, false);
 
 function couplerMaterials() {
@@ -9924,7 +10476,7 @@ class Train extends Consist {
     this.tenderEmpty = 92000;
     for (const v of this.vehicles) { v.brake = v.brake || { AR: 90, BC: 0, BP: 90, emerg: false, released: true }; v.kn = v.kn || [0, 0]; this.track(v); }
     this.layout();
-    this.buildInstances({ tg: truckGeos(), a6: plainAxle(0.457), a4: plainAxle(0.419) });
+    this.buildInstances(carGeos());
     // headlight. Another player's train (opts.remote) gets no real lights: adding lights
     // to the scene would recompile every shader, and its lamp glow is drawn without them.
     this.remote = !!opts.remote;
@@ -10062,7 +10614,7 @@ CARS.setup = function () {
 /* the cuts spotted around the yard, as every new run (and every room) starts with them. In a room each car is
    lettered alike for everyone (road), and each cut is known by its place in YARD_CUTS ('y0', 'y1', ...). */
 CARS.yard = function (road) {
-  if (!CARS.geo) { CARS.geo = { tg: truckGeos(), a6: plainAxle(0.457), a4: plainAxle(0.419) }; }
+  if (!CARS.geo) { CARS.geo = carGeos(); }
   const r = rng(1959), was = ROAD_SHORT;
   if (road) ROAD_SHORT = road;
   let num = 21000;
@@ -10314,7 +10866,7 @@ CARS.canCut = function (T, j) {
 CARS.uncouple = function (j, c0) {
   const T = c0 || GAME.train;
   if (!T || !CARS.canCut(T, j)) return;
-  if (!CARS.geo) CARS.geo = { tg: truckGeos(), a6: plainAxle(0.457), a4: plainAxle(0.419) };
+  if (!CARS.geo) CARS.geo = carGeos();
   const ours = T === GAME.train, vT = velOf(T);
   const V = T.vehicles, behind = ours ? j > T.li : true;
   const off = behind ? V.slice(j) : V.slice(0, j);
@@ -10591,7 +11143,7 @@ PLACE.changed = function () {
    again. The rest of c stays where it stands: the part with the engine stays the player's train, and the
    cars on the far side of v become a cut. The knuckles either side of the gap are left open. */
 PLACE.split = function (c, v) {
-  if (!CARS.geo) CARS.geo = { tg: truckGeos(), a6: plainAxle(0.457), a4: plainAxle(0.419) };
+  if (!CARS.geo) CARS.geo = carGeos();
   const V = c.vehicles, i = V.indexOf(v), T = GAME.train;
   if (i < 0) return null;
   if (c !== T && V.length === 1) { CARS.cuts = CARS.cuts.filter(x => x !== c); PLACE.changed(); return c; }
@@ -15858,7 +16410,7 @@ PLACE.exit = function () {
 /* ---------------- what is held ---------------- */
 PLACE.newCar = function (type, quiet) {
   PLACE.cancel();
-  if (!CARS.geo) CARS.geo = { tg: truckGeos(), a6: plainAxle(0.457), a4: plainAxle(0.419) };
+  if (!CARS.geo) CARS.geo = carGeos();
   const n = ++PLACE.made, num = type === 'coach' ? 3300 + n * 7 : 40000 + n * 11;
   const tr = type === 'coach' && GAME.train.trim || '';
   const m = type === 'coach' ? coachModel(LOCO_SPEC[GAME.train.locoKey], num, false, tr) : freightModel(type, num, rng(num));
@@ -16513,7 +17065,7 @@ SAVE.apply = function (d) {
   t.update(0);
   prepareTrain(t, true);
   // the cars standing about
-  if (!CARS.geo) CARS.geo = { tg: truckGeos(), a6: plainAxle(0.457), a4: plainAxle(0.419) };
+  if (!CARS.geo) CARS.geo = carGeos();
   const all = [...V];
   for (const o of d.cuts || []) {
     const cv = o.v.map(x => { const v = carIn(x); vehicleIn(v, x); linearizeObject(v.root); return v; });
@@ -16901,7 +17453,7 @@ MPC.apply = function (r, lag = 0) {
     let V;
     try { V = r.cars.map(k => MPC.makeCar(k)); } catch (e) { console.warn('room car', e); MPC.recs.set(r.k, rec || { n: -1, o: '', q: 0, g: 1 }); return false; }
     V.forEach((v, i) => { v.flip = r.cars[i].flip; v.yard = true; v.brake = { AR: 0, BC: 0, BP: 0, emerg: false, released: true }; });
-    if (!CARS.geo) CARS.geo = { tg: truckGeos(), a6: plainAxle(0.457), a4: plainAxle(0.419) };
+    if (!CARS.geo) CARS.geo = carGeos();
     c = new Cut(scene, V); c.mid = r.k;
     CARS.cuts.push(c);
   }
