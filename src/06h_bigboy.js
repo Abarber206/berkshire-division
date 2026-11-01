@@ -128,6 +128,16 @@ function buildBigBoy(key, trim = '') {
     for (const s of [-1, 1]) { const sp = new THREE.Shape(); sp.moveTo(top[0], 0.84); sp.lineTo(bot[0], 0.09); sp.lineTo(bxF(pil.beam + 0.2), 0.09); sp.lineTo(bxF(pil.beam + 0.2), 0.84); sp.closePath(); gf.add('dark', new THREE.ExtrudeGeometry(sp, { depth: 0.06, bevelEnabled: false }).translate(0, 0, s * 1.36 - 0.03)); }
   }
   const coupler = addCoupler(gf, front, { x: bxF(0), out: 1, sx: -pil.beam, sb: 0.84, ly: 1.03, zh: 1.3, yp: 0.8, housing: true, hl: 0.3 });
+  // a pair of small lamps on the pilot beam either side of the coupler, lit with the headlight (flashing for crossings)
+  const ditchAt = [];
+  for (const s of [-1, 1]) {
+    const z = s * 1.0, y = 1.385, a = 0.5;
+    gf.box('black', 0.14, 0.04, 0.14, bxF(a), 1.29, z);                                // foot on the beam top
+    gf.cylX('black', 0.09, 0.09, 0.16, 18, bxF(a), y, z);                              // can
+    gf.cylX('black', 0.1, 0.1, 0.025, 18, bxF(a - 0.07), y, z);                         // bezel
+    gf.box('black', 0.1, 0.04, 0.2, bxF(a - 0.04), y + 0.1, z);                         // visor
+    ditchAt.push([bxF(a - 0.0835) + 0.002, y, z]);
+  }
   // steps up from the pilot to the deck at each corner, with a grab rail
   for (const s of [-1, 1]) {
     const z = s * 1.40;
@@ -374,6 +384,12 @@ function buildBigBoy(key, trim = '') {
 
   body.add(gb.build({ ...RMAT }));
   front.add(gf.build({ ...RMAT }));
+  const ditch = ditchAt.map(([x, y, z]) => {
+    const lens = new THREE.Mesh(new THREE.CircleGeometry(0.072, 16), new THREE.MeshBasicMaterial({ color: 0xfff3d6 })); lens.position.set(x, y, z); lens.rotation.y = Math.PI / 2; front.add(lens);
+    const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: haloTex(), color: 0xffffff, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0 }));
+    halo.position.set(x + 0.03, y, z); halo.scale.set(1.2, 1.2, 1); front.add(halo);
+    return { lens, halo };
+  });
 
   /* ---- glows & lights ---- */
   const lens = new THREE.Mesh(new THREE.CircleGeometry(hl.r, 36), RMAT.hlLens || RMAT.lens); lens.position.set(ax(hl.lensA) + 0.004, hl.y, 0); lens.rotation.y = Math.PI / 2; body.add(lens);
@@ -442,7 +458,7 @@ function buildBigBoy(key, trim = '') {
   for (const g of [root, front, leadTruck]) g.traverse(o => { if (o.isMesh) { o.castShadow = o.castShadow !== false && o.material !== RMAT.hit; o.receiveShadow = true; } });
   lens.castShadow = false; fire.castShadow = false; ash.castShadow = false;
 
-  const L = { root, body, front, parts, leadTruck, lens, couplers: [coupler, null], fire, ash, beam, halo, spec, rL: BB.rL, art: true,
+  const L = { root, body, front, parts, leadTruck, lens, couplers: [coupler, null], fire, ash, beam, halo, ditch, spec, rL: BB.rL, art: true,
     len: BB.len, frame: [BB.aDr[0], BB.aDr[3]], leadA: BB.leadA, rD: BB.rD,
     stackPos: new THREE.Vector3(ax(stk.a), 5.0, 0), cockPos: [new THREE.Vector3(bxR((BBW.f.cyl[0] + BBW.f.cyl[1]) / 2), 0.4, 1.2), new THREE.Vector3(bxR((BBW.r.cyl[0] + BBW.r.cyl[1]) / 2), 0.4, -1.2)],
     safetyPos: new THREE.Vector3(ax(17.1), fbTop + 0.35, 0), whistlePos: new THREE.Vector3(ax(wh[0]), wh[1] + 0.55, wh[2]),

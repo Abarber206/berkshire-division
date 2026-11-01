@@ -376,7 +376,7 @@ function lampPulse(ph) {
 const _dv = new THREE.Vector3(), _dq = new THREE.Vector3();
 function ditchLamps() {
   if (!LAMPS.ditch) LAMPS.ditch = [0, 1].map(() => { const l = { kind: 'ditch', p: new THREE.Vector3(), dyn: true, lv: 0, dir: new THREE.Vector3(), cos: 0.82, r: LAMP_KINDS.ditch.r }; LAMPS.lights.push(l); return l; });
-  const T = GAME.train, L = T && T.loco, on = T && T.diesel && L && L.ditch && L.ditch.length && S.ditch && S.light > 0;
+  const T = GAME.train, L = T && T.loco, on = T && L && L.ditch && L.ditch.length && (T.diesel ? S.ditch : true) && S.light > 0;
   LAMPS.ditch.forEach((l, k) => {
     if (!on || !L.ditch[k]) { l.lv = 0; return; }
     const lens = L.ditch[k].lens; lens.updateMatrixWorld();
