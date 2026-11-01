@@ -69,16 +69,34 @@ test('a train left standing keeps its controls, boiler and supplies, with the th
   assert.ok(!('dist0' in S));
 });
 
-test('two trains meeting buff and are shoved along, but never couple, even with a knuckle open', () => {
+test('two trains with both knuckles closed buff and are shoved along', () => {
   const sim = h.load(), y = railroad(sim), { A, B } = twoTrains(sim, y);
   sim.S.v = 1.2;   // easing ahead into B's rear
-  sim.endCoupler(B, 'rear').v.kn[1] = sim.KN_OPEN;
   sim.CARS.contact(A, 1, { c: B, end: 'rear', facing: true });
   assert.equal(A.vehicles.length, 4); assert.equal(B.vehicles.length, 2);
   assert.ok(sim.CARS.cuts.includes(B));
   assert.ok(B.v > 0 && B.rolling, 'B is shoved ahead');
   assert.ok(sim.S.v < 1.2);
-  assert.ok(sim.log.toasts.some(t => /do not couple/.test(t.msg)));
+});
+
+test('with a knuckle open two trains couple: the other engine is a helper, MU\'d to your throttle', () => {
+  const sim = h.load(), y = railroad(sim), { A, B } = twoTrains(sim, y);
+  const k0 = sim.helperK(A);
+  sim.S.v = 1.2;
+  sim.endCoupler(B, 'rear').v.kn[1] = sim.KN_OPEN;
+  sim.CARS.contact(A, 1, { c: B, end: 'rear', facing: true });
+  assert.equal(k0, 1);
+  assert.deepEqual(A.vehicles.map(v => v.kind), ['loco', 'tender', 'loco', 'tender', 'box', 'box']);
+  assert.ok(!sim.CARS.cuts.includes(B), 'B is part of your train now');
+  assert.equal(B.parkS, null);
+  assert.equal(A.lead, A.vehicles[2], 'you still drive your own engine');
+  assert.ok(A.vehicles[0].helper && A.vehicles[1].helper && !A.vehicles[2].helper);
+  assert.equal(sim.helperK(A), 2, 'two engines pulling');
+  assert.ok(sim.log.toasts.some(t => /MU/.test(t.msg)));
+  // cut it off again: back to one engine
+  sim.CARS.uncouple(2, A);
+  assert.deepEqual(A.vehicles.map(v => v.kind), ['loco', 'tender', 'box', 'box']);
+  assert.equal(sim.helperK(A), 1);
 });
 
 test('a rolling cut couples onto a standing train, and the train keeps its engine at the head', () => {

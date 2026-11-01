@@ -13437,7 +13437,7 @@ class Consist {
     this.vehicles.forEach((v, i) => {
       v.a0 = a;
       for (const p of v.ptsAll) { p.a = a + (v.flip ? v.len - p.loc : p.loc); this.pts.push(p); }
-      if (v.kind === 'loco') this.li = i;
+      if (v.kind === 'loco' && !v.helper) this.li = i;   // the engine you drive, not a helper coupled in (07b_cars.js)
       a += v.len;
     });
     this.length = a;
@@ -13540,7 +13540,8 @@ class Consist {
         if (D && v.rb.s0) tg.matrix.multiplyMatrices(D, v.rb.s0); tg.matrixWorldNeedsUpdate = true;
       }
       if (v.model && v.model.spin) v.model.spin(roll);
-      if ((v.kind === 'loco' || v.kind === 'loco2') && this.diesel) {
+      if (v.helper) helperAnimate(v, roll, theta, rev, D, this.dist);
+      else if ((v.kind === 'loco' || v.kind === 'loco2') && this.diesel) {
         const U = v.model;
         U.trucks.forEach((tg, k) => { tg.matrixAutoUpdate = false; frameMatrix(v.fp[k].F, tg.matrix); if (v.reversed) tg.matrix.multiply(_m4.makeRotationY(Math.PI)); if (D && v.rb.u0) tg.matrix.multiplyMatrices(D, v.rb.u0[k]); tg.matrixWorldNeedsUpdate = true; });
         const wa = (v.reversed ? 1 : -1) * this.dist / (U.rW || DG.rW); for (const w of U.wheels) w.rotation.z = wa;
@@ -13561,6 +13562,7 @@ class Consist {
     }
     for (const im of this.inst) im.instanceMatrix.needsUpdate = true;
   }
+  /* (helpers: see helperAnimate below) */
   /* Take the train off the rails around a point of impact (see WreckSim): spec = { a: metres back from
      the front coupler, side: ±1, seed, k: 0..1 how hard, v0: m/s, hit }. null puts every car back on. */
   wreck(spec) {
@@ -13583,6 +13585,25 @@ function carVehicle(m) {
     brake: { AR: 90, BC: 0, BP: 90, emerg: false, released: true }, kn: [0, 0] };
 }
 
+/* a helper engine coupled into another train: its trucks, wheels and rods turn with the train's own */
+function helperAnimate(v, roll, theta, rev, D, dist) {
+  const M = v.model; if (!M) return;
+  if (M.trucks && M.wheels) {
+    M.trucks.forEach((tg, k) => { if (!v.fp[k]) return; tg.matrixAutoUpdate = false; frameMatrix(v.fp[k].F, tg.matrix); if (v.reversed) tg.matrix.multiply(_m4.makeRotationY(Math.PI)); if (D && v.rb.u0) tg.matrix.multiplyMatrices(D, v.rb.u0[k]); tg.matrixWorldNeedsUpdate = true; });
+    const wa = (v.reversed ? 1 : -1) * dist / (M.rW || DG.rW); for (const w of M.wheels) w.rotation.z = wa;
+    v.root.updateMatrixWorld(true);
+    return;
+  }
+  if (v.kind !== 'loco' || !M.leadTruck || !v.leadPt) return;
+  const lt = M.leadTruck; lt.matrixAutoUpdate = false; frameMatrix(v.leadPt.F, lt.matrix); if (D && v.rb.l0) lt.matrix.multiplyMatrices(D, v.rb.l0); lt.matrixWorldNeedsUpdate = true;
+  if (M.art) { artFront(v, M, D); M.animate(roll, theta, rev, dist); return; }
+  if (M.parts) {
+    M.parts.lead.rotation.z = -roll / (M.rL || LG.rL);
+    M.parts.trail[0].rotation.z = -roll / LG.rT1;
+    M.parts.trail[1].rotation.z = -roll / LG.rT2;
+  }
+  animateBerkshire(M, theta, rev);
+}
 class Train extends Consist {
   constructor(scene, locoKey, consistKey, opts = {}) {
     super(scene);
@@ -13886,7 +13907,7 @@ function carTokenIn(t) {
   return { flip, type: p[0], num, rs: p[2], flag: p[3][0] === '1', tr: p[3][1] === 'p' ? 'polar' : '', rk: LOCO_SPEC[p[4]] ? p[4] : '', tons };
 }
 /* the engine's own vehicles in a train: everything a light engine of the same kind is built with */
-const trainPower = T => T.vehicles.filter(v => isPower(v) || (T.elec && T.units && T.units.some(m => m.vehicle === v)));
+const trainPower = T => T.vehicles.filter(v => !v.helper && (isPower(v) || (T.elec && T.units && T.units.some(m => m.vehicle === v))));
 /* the whole train front to back as tokens joined by commas */
 function trainCode(T) {
   const power = trainPower(T);
@@ -13972,6 +13993,28 @@ CARS.ahead = function (T, dir, range) {
 };
 
 /* ---------------- coupling ---------------- */
+/* Train X is being coupled into another: its engine (and tender or units) go in as a helper, MU'd to the
+   train's controls. Each helper vehicle keeps what it needs to be built again for a save. Returns X's name. */
+let HELPER_N = 0;
+function helperOf(X) {
+  const name = typeof FLEET !== 'undefined' && X.parkS ? FLEET.name(X) : 'the other engine';
+  const own = X.vehicles.filter(v => isPower(v) && !v.helper), g = ++HELPER_N + '.' + Math.round(performance.now());
+  const opts = JSON.parse(JSON.stringify(Object.assign({}, X.opts || {}, { remote: undefined })));
+  own.forEach((v, i) => { v.helper = { g, loco: X.locoKey, opts, i }; });
+  if (X.crew && typeof IX !== 'undefined') IX.release(X.crew.ix);
+  X.crew = null; X.parkS = null;
+  if (typeof FLEET !== 'undefined' && FLEET.card === X) FLEET.closeCard();
+  return name;
+}
+/* how much more pulling the helpers in train T add to its own engine, by weight on the rails */
+function helperK(T) {
+  if (T._hk && T._hk[0] === CARS.gen) return T._hk[1];
+  let own = 0, all = 0;
+  for (const v of T.vehicles) if (v.kind === 'loco' || v.kind === 'loco2') { all += v.mass; if (!v.helper) own += v.mass; }
+  const k = own > 0 ? all / own : 1;
+  T._hk = [CARS.gen, k];
+  return k;
+}
 /* K keeps going with X's cars added at its kEnd; X's coupler xEnd is the one that met it */
 function absorb(K, kEnd, X, xEnd) {
   const flip = kEnd === xEnd;
@@ -14035,9 +14078,9 @@ CARS.contact = function (A, dir, hit) {
   const ka = endCoupler(A, aEnd), kb = endCoupler(B, hit.end);
   // a high-speed trainset's nose coupler is under a fairing and only mates with another set: it buffs freight cars
   const sealed = ka.v.noCouple || kb.v.noCouple;
-  // two trains, each with its own engine, only buff: there is one set of controls per train
+  // two trains couple like anything else: the other one's engine becomes a helper, worked from this train's controls
   const twoTrains = isTrainC(A) && isTrainC(B);
-  const couple = !sealed && !twoTrains && (knOf(ka) === KN_OPEN || knOf(kb) === KN_OPEN);
+  const couple = !sealed && (knOf(ka) === KN_OPEN || knOf(kb) === KN_OPEN);
   if (!couple) {
     // both knuckles closed (or a lock still lifted against the other car): the cars buff and get shoved along
     const [uA, uB] = buff(consistMass(A), dir * velOf(A), consistMass(B), dir * vB, buffE(closing));
@@ -14049,7 +14092,6 @@ CARS.contact = function (A, dir, hit) {
     if (closing > COUPLE_DAMAGE) toast(`Slammed the cars at ${mph} mph. Nothing derailed, but that wrecks lading and draft gear.`, 'bad', 4200, 'slam');
     else if (closing > COUPLE_HARD) toast(`Hit the cars hard at ${mph} mph and shoved them along. Ease in at 4 mph or less.`, 'bad', 3800, 'hardshove');
     else if (CARS.cutFrom === X && performance.now() - CARS.cutAt < 6000) toast('Pin pulled, still shoving: the cars part as soon as you ease off or brake.', '', 3600, 'stillshove');
-    else if (twoTrains && closing > 0.3) toast('Two trains do not couple up: each keeps its own engine. Cut the cars off the other train first, then couple to them.', 'warn', 5200, 'twoTrains');
     else if (sealed && closing > 0.15) toast('A trainset\'s coupler sits behind its nose cover and only mates with another trainset, so it can push cars but not pick them up.', 'warn', 4800, 'sealed');
     else if (closing > 0.3) toast('Both knuckles are closed, so the cars are only shoved. Tap a coupler to open its knuckle, then ease in to couple.', 'warn', 4800, 'shove');
     return;
@@ -14058,7 +14100,13 @@ CARS.contact = function (A, dir, hit) {
   // the train keeps going with the cars added: yours, or another train's engine standing there; else the moving cut
   const K = B === T ? B : A === T ? A : isTrainC(B) ? B : A, X = K === A ? B : A;
   const kEnd = K === A ? aEnd : hit.end, xEnd = K === A ? hit.end : aEnd;
+  const helper = twoTrains ? helperOf(X) : null;
   const n = absorb(K, kEnd, X, xEnd);
+  if (helper) {
+    if (ours) toast(`Coupled to ${helper}. Its engine is MU'd to yours and works off your throttle and brakes.`, closing > COUPLE_HARD ? 'warn' : 'good', 5200, 'coupled');
+    if (CARS.onChange) CARS.onChange();
+    return;
+  }
   if (closing > COUPLE_OK) JOB.note('couple', { mph: closing / MPH });
   if (!ours) { toast(`A rolling cut coupled into the cars on ${K.home || 'the track'}${closing > COUPLE_HARD ? `, hard, at ${mph} mph` : ''}.`, closing > COUPLE_HARD ? 'warn' : '', 2600, 'cc'); return; }
   const what = `${n} car${n > 1 ? 's' : ''}`;
@@ -14100,7 +14148,9 @@ CARS.knuckle = function (c, end) {
 /* joint j sits between vehicles j-1 and j of a consist (the player's train unless c is given) */
 CARS.canCut = function (T, j) {
   const V = T.vehicles; if (j <= 0 || j >= V.length) return false;
-  return !(isPower(V[j - 1]) && isPower(V[j]));
+  // an engine and its tender (or units) stay together; a helper comes off its train's own engine
+  const grp = v => v.helper ? v.helper.g : '';
+  return !(isPower(V[j - 1]) && isPower(V[j]) && grp(V[j - 1]) === grp(V[j]));
 };
 CARS.uncouple = function (j, c0) {
   const T = c0 || GAME.train;
@@ -14779,6 +14829,9 @@ function physicsStep(dt, train) {
   S.W = clamp(S.W, -0.3, 1.15);
   }
 
+  // helper engines coupled in (07b_cars.js) work off the same throttle and reverser
+  const hk = helperK(train); TEcmd *= hk;
+
   /* ----------------- air brakes ----------------- */
   const z = brakeZone(S.brakeH);
   let erT = S.ER, erRate = 0;
@@ -14832,7 +14885,7 @@ function physicsStep(dt, train) {
   S.BCloco = Math.max(ind, autoLoco);
 
   /* ----------------- adhesion & tractive effort ----------------- */
-  const Wd = spec.adhesive * 0.4536 * 9.81 * nU;
+  const Wd = spec.adhesive * 0.4536 * 9.81 * nU * hk;
   S.railP = railPatch(S.odo);
   let mu = ENV.mu * (1 - 0.24 * S.railP) + (S.sander && S.sand > 0 ? 0.075 : 0);
   if (S.sander) S.sand = Math.max(0, S.sand - 0.9 * dt);
@@ -21971,6 +22024,7 @@ function vehicleOut(v, power) {
   const o = { f: !!v.flip, kn: v.kn ? v.kn.slice() : [0, 0], b: brakeOut(v.brake), r: rnd(v.roll || 0), pts: v.ptsAll.map(p => tpOut(p.tp)) };
   const p = power.indexOf(v);
   if (p >= 0) o.p = p;
+  else if (v.helper) o.hp = v.helper;   // a helper engine: built again from its own engine
   else { o.m = v.made || { type: v.kind, num: 0 }; o.w = Math.round(v.mass); }
   if (v.hb) o.hb = true;
   if (v.yard) o.y = true;
@@ -22082,19 +22136,30 @@ const CAM_KEEP = ['yaw', 'pitch', 'dist', 'cabYaw', 'cabPitch', 'droneYaw', 'dro
 function stateOut() { const o = {}; for (const k in S) { const x = S[k]; if (typeof x === 'number' ? isFinite(x) : typeof x === 'boolean' || typeof x === 'string') o[k] = x; } delete o.paused; return o; }
 
 /* the vehicles a train was built with: its engine (and tender or trailing units), or every car of a trainset */
-const powerOf = T => T.vehicles.filter(v => isPower(v) || (T.elec && T.units.some(m => m.vehicle === v)));
+const powerOf = T => T.vehicles.filter(v => !v.helper && (isPower(v) || (T.elec && T.units.some(m => m.vehicle === v))));
 /* one of your other trains standing about (11l_fleet.js): how it was built, where every car is, and its engine as it was left */
 function fleetOut(c) {
   return Object.assign(consistOut(c, powerOf(c)), { loco: c.locoKey, ck: c.consistKey, units: c.nUnits || 1, opts: JSON.parse(JSON.stringify(c.opts || {})), cfg: c.cfg || null,
     ps: c.parkS, cv: rnd(c.v || 0), rolling: !!c.rolling, stopT: rnd(c.stopT || 0), fid: c.fid || 0,
     crew: c.crew ? { mph: c.crew.mph, dir: c.crew.dir } : null, crewMph: c.crewMph || 0 });
 }
+/* a helper engine's vehicle from its record { g, loco, opts, i }: the engine is built once per helper (g) and
+   its vehicles handed out one by one */
+const HELPER_IN = new Map();
+function helperIn(h) {
+  if (!h || !LOCO_SPEC[h.loco]) throw new Error('a helper engine that can no longer be built');
+  let X = HELPER_IN.get(h.g);
+  if (!X) { X = new Train(scene, h.loco, 'light', Object.assign({}, h.opts, { dark: true })); for (const im of X.inst) scene.remove(im); HELPER_IN.set(h.g, X); }
+  const v = X.vehicles[h.i]; if (!v) throw new Error('a helper engine has changed since this save');
+  X.release(v); v.helper = h;
+  return v;
+}
 /* Build train t's consist again from its record o: the engine as the Train made it, and its cars as they were.
    t was made up as a light engine, so everything it built is the engine (or the whole trainset). */
 function trainIn(t, o, E) {
   const power = t.vehicles.slice(), V = [];
   for (const x of o.v) {
-    const v = x.p !== undefined ? power[x.p] : carIn(x);
+    const v = x.p !== undefined ? power[x.p] : x.hp ? helperIn(x.hp) : carIn(x);
     if (!v) throw new Error('the engine has changed since this save');
     vehicleIn(v, x);
     if (!v.ptsAll) t.track(v);
@@ -22226,13 +22291,14 @@ SAVE.apply = function (d) {
   // the train: its engine as built, and its cars as they were
   const t = new Train(scene, g.loco, 'light', dieselOpts());
   GAME.train = t;
+  HELPER_IN.clear();
   const V = trainIn(t, d.train, E);
   t.fid = d.train.fid || 0;
   // the cars standing about
   if (!CARS.geo) CARS.geo = carGeos();
   const all = [...V];
   for (const o of d.cuts || []) {
-    const cv = o.v.map(x => { const v = carIn(x); vehicleIn(v, x); linearizeObject(v.root); return v; });
+    const cv = o.v.map(x => { const v = x.hp ? helperIn(x.hp) : carIn(x); vehicleIn(v, x); linearizeObject(v.root); return v; });
     const c = new Cut(scene, cv);
     if (!seatConsist(c, o, E)) { c.dispose(); cv.forEach(freeVehicle); continue; }
     Object.assign(c, { v: o.cv || 0, rolling: !!o.rolling, stopT: o.stopT || 0, vented: !!o.vented, home: o.home || undefined });
