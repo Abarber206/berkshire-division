@@ -144,6 +144,32 @@ button:focus-visible,.lever:focus-visible{outline:2px solid var(--brass);outline
 #hud[data-theme=acela] .hud-box{box-shadow:inset 0 1px 0 rgba(255,255,255,.1)}
 #hud[data-theme=acela] #levers,#hud[data-theme=acela] #keys,#hud[data-theme=acela] #speedBox{border-top:2px solid #3fb7c9}
 @media (max-height:500px) and (orientation:landscape){ #hudPlate{display:none} }
+/* ---------- on foot ---------- */
+#hud.walk #tl,#hud.walk #stand,#hud.walk #standToggle,#hud.walk #btnCars,#hud.walk #btnPlace,#hud.walk #btnCine{display:none!important}
+#walkHud{position:absolute;inset:0;pointer-events:none;display:none}
+#hud.walk #walkHud{display:block}
+#walkInfo{position:absolute;left:calc(env(safe-area-inset-left,0px) + 10px);top:calc(env(safe-area-inset-top,0px) + 10px);padding:7px 11px;max-width:min(330px,60vw);
+  display:flex;flex-direction:column;gap:3px}
+#walkInfo b{font-size:13px;font-weight:600}
+#walkInfo span{font-size:12px;color:var(--ink-dim);line-height:1.3}
+#walkInfo span em{font-style:normal;color:var(--ink)}
+#walkStick{position:absolute;left:calc(env(safe-area-inset-left,0px) + 22px);bottom:calc(env(safe-area-inset-bottom,0px) + 22px);width:128px;height:128px;border-radius:50%;
+  pointer-events:auto;touch-action:none;background:rgba(14,19,23,.42);border:1px solid rgba(255,255,255,.16);display:none}
+#walkStick i{position:absolute;left:50%;top:50%;width:54px;height:54px;margin:-27px 0 0 -27px;border-radius:50%;background:radial-gradient(circle at 40% 35%,#f0d38a,#b88c35 60%,#7d5d22);
+  box-shadow:0 2px 6px rgba(0,0,0,.6)}
+@media (pointer:coarse){#walkStick{display:block}#walkKeys{display:none}}
+#walkBtns{position:absolute;right:calc(env(safe-area-inset-right,0px) + 14px);bottom:calc(env(safe-area-inset-bottom,0px) + 18px);display:flex;gap:8px;align-items:flex-end}
+#walkBtns button{pointer-events:auto;touch-action:none}
+#walkAct{min-width:118px;height:58px;border-radius:29px;border:1px solid var(--brass-deep);background:linear-gradient(#f1d58c,#c09238);color:#1a1307;
+  font-weight:700;font-size:13px;letter-spacing:.6px;padding:0 18px;box-shadow:0 3px 10px rgba(0,0,0,.5)}
+#walkAct small{display:block;font-size:9px;font-weight:600;letter-spacing:.8px;opacity:.7}
+#walkAct:disabled{background:linear-gradient(#2a3238,#192026);color:var(--ink-dim);border-color:var(--rule)}
+.walkRound{width:46px;height:46px;border-radius:50%;border:1px solid var(--rule);background:rgba(14,19,23,.82);font-size:11px;font-weight:700;letter-spacing:.5px}
+.walkRound.on{border-color:var(--brass);color:var(--brass)}
+#walkKeys{position:absolute;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 14px);transform:translateX(-50%);font-size:11px;color:var(--ink-dim);
+  background:rgba(14,19,23,.6);border-radius:12px;padding:4px 12px;white-space:nowrap}
+#walkKeys kbd{font-family:var(--f-num);font-size:10px;color:var(--ink);border:1px solid var(--rule);border-radius:3px;padding:0 4px;margin:0 1px}
+@media (max-width:760px){#walkKeys{display:none}}
 
 /* ---------- overlays ---------- */
 .overlay{position:fixed;inset:0;z-index:20;display:flex;align-items:center;justify-content:center;
@@ -582,6 +608,7 @@ details.keys kbd{color:var(--brass)}
       <button class="icon-btn" id="btnPlayers" hidden aria-label="Players in the room"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"/><path d="M3 19c0-3.3 2.7-6 6-6s6 2.7 6 6"/><circle cx="17" cy="9" r="2.5"/><path d="M15.6 13.3c2.9.3 5.4 2.6 5.4 5.7"/></svg><span id="mpCount">1</span></button>
       <button class="icon-btn" id="btnCars" aria-label="Couplers: cut cars off the train"><svg viewBox="0 0 24 24"><rect x="2" y="7" width="7" height="8" rx="1"/><rect x="15" y="7" width="7" height="8" rx="1"/><path d="M9 11h2.2M12.8 11H15"/><circle cx="6" cy="17.5" r="1.3"/><circle cx="18" cy="17.5" r="1.3"/></svg></button>
       <button class="icon-btn" id="btnPlace" aria-label="Place engines and cars on the track"><svg viewBox="0 0 24 24"><path d="M12 2.5v9M8.5 8l3.5 3.5L15.5 8"/><path d="M2.5 16.5h19M2.5 20h19"/><path d="M6 16.5V20M10 16.5V20M14 16.5V20M18 16.5V20"/></svg></button>
+      <button class="icon-btn" id="btnWalk" aria-label="Climb down and walk"><svg viewBox="0 0 24 24"><circle cx="12" cy="4.5" r="2"/><path d="M12 7.5v6M12 13.5l-3 7M12 13.5l3 7M8 10.5l4-2 4 2"/></svg></button>
       <button class="icon-btn" id="btnCam" aria-label="Change camera"><svg viewBox="0 0 24 24"><path d="M3 8h4l2-3h6l2 3h4v11H3z"/><circle cx="12" cy="13" r="3.5"/></svg></button>
       <button class="icon-btn" id="btnMap" aria-label="Open track map"><svg viewBox="0 0 24 24"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/></svg></button>
       <button class="icon-btn" id="btnCine" aria-label="Hide controls"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 15h18"/></svg></button>
@@ -589,6 +616,17 @@ details.keys kbd{color:var(--brass)}
     </div>
     <canvas id="minimap" width="336" height="236" class="hud-box" aria-label="Minimap"></canvas>
     <div id="camName">Chase</div>
+  </div>
+  <div id="walkHud">
+    <div id="walkInfo" class="hud-box"><b id="walkTitle">On foot</b><span id="walkSub"></span></div>
+    <div id="walkStick" aria-label="Walk: drag the knob"><i></i></div>
+    <div id="walkBtns">
+      <button class="walkRound" id="walkWave" aria-label="Wave">👋</button>
+      <button class="walkRound" id="walkRun" aria-label="Run">Run</button>
+      <button class="walkRound" id="walkView" aria-label="First or third person">1st</button>
+      <button id="walkAct" disabled>Look around</button>
+    </div>
+    <div id="walkKeys"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> walk · <kbd>Shift</kbd> run · drag to look · <kbd>F</kbd> board, sit, get off · <kbd>V</kbd> view · <kbd>G</kbd> wave · <kbd>Enter</kbd> back to your cab</div>
   </div>
   <div id="toast"></div>
   <div id="cplTip" hidden></div>

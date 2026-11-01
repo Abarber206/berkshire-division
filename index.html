@@ -152,6 +152,32 @@ button:focus-visible,.lever:focus-visible{outline:2px solid var(--brass);outline
 #hud[data-theme=acela] .hud-box{box-shadow:inset 0 1px 0 rgba(255,255,255,.1)}
 #hud[data-theme=acela] #levers,#hud[data-theme=acela] #keys,#hud[data-theme=acela] #speedBox{border-top:2px solid #3fb7c9}
 @media (max-height:500px) and (orientation:landscape){ #hudPlate{display:none} }
+/* ---------- on foot ---------- */
+#hud.walk #tl,#hud.walk #stand,#hud.walk #standToggle,#hud.walk #btnCars,#hud.walk #btnPlace,#hud.walk #btnCine{display:none!important}
+#walkHud{position:absolute;inset:0;pointer-events:none;display:none}
+#hud.walk #walkHud{display:block}
+#walkInfo{position:absolute;left:calc(env(safe-area-inset-left,0px) + 10px);top:calc(env(safe-area-inset-top,0px) + 10px);padding:7px 11px;max-width:min(330px,60vw);
+  display:flex;flex-direction:column;gap:3px}
+#walkInfo b{font-size:13px;font-weight:600}
+#walkInfo span{font-size:12px;color:var(--ink-dim);line-height:1.3}
+#walkInfo span em{font-style:normal;color:var(--ink)}
+#walkStick{position:absolute;left:calc(env(safe-area-inset-left,0px) + 22px);bottom:calc(env(safe-area-inset-bottom,0px) + 22px);width:128px;height:128px;border-radius:50%;
+  pointer-events:auto;touch-action:none;background:rgba(14,19,23,.42);border:1px solid rgba(255,255,255,.16);display:none}
+#walkStick i{position:absolute;left:50%;top:50%;width:54px;height:54px;margin:-27px 0 0 -27px;border-radius:50%;background:radial-gradient(circle at 40% 35%,#f0d38a,#b88c35 60%,#7d5d22);
+  box-shadow:0 2px 6px rgba(0,0,0,.6)}
+@media (pointer:coarse){#walkStick{display:block}#walkKeys{display:none}}
+#walkBtns{position:absolute;right:calc(env(safe-area-inset-right,0px) + 14px);bottom:calc(env(safe-area-inset-bottom,0px) + 18px);display:flex;gap:8px;align-items:flex-end}
+#walkBtns button{pointer-events:auto;touch-action:none}
+#walkAct{min-width:118px;height:58px;border-radius:29px;border:1px solid var(--brass-deep);background:linear-gradient(#f1d58c,#c09238);color:#1a1307;
+  font-weight:700;font-size:13px;letter-spacing:.6px;padding:0 18px;box-shadow:0 3px 10px rgba(0,0,0,.5)}
+#walkAct small{display:block;font-size:9px;font-weight:600;letter-spacing:.8px;opacity:.7}
+#walkAct:disabled{background:linear-gradient(#2a3238,#192026);color:var(--ink-dim);border-color:var(--rule)}
+.walkRound{width:46px;height:46px;border-radius:50%;border:1px solid var(--rule);background:rgba(14,19,23,.82);font-size:11px;font-weight:700;letter-spacing:.5px}
+.walkRound.on{border-color:var(--brass);color:var(--brass)}
+#walkKeys{position:absolute;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 14px);transform:translateX(-50%);font-size:11px;color:var(--ink-dim);
+  background:rgba(14,19,23,.6);border-radius:12px;padding:4px 12px;white-space:nowrap}
+#walkKeys kbd{font-family:var(--f-num);font-size:10px;color:var(--ink);border:1px solid var(--rule);border-radius:3px;padding:0 4px;margin:0 1px}
+@media (max-width:760px){#walkKeys{display:none}}
 
 /* ---------- overlays ---------- */
 .overlay{position:fixed;inset:0;z-index:20;display:flex;align-items:center;justify-content:center;
@@ -593,6 +619,7 @@ details.keys kbd{color:var(--brass)}
       <button class="icon-btn" id="btnPlayers" hidden aria-label="Players in the room"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"/><path d="M3 19c0-3.3 2.7-6 6-6s6 2.7 6 6"/><circle cx="17" cy="9" r="2.5"/><path d="M15.6 13.3c2.9.3 5.4 2.6 5.4 5.7"/></svg><span id="mpCount">1</span></button>
       <button class="icon-btn" id="btnCars" aria-label="Couplers: cut cars off the train"><svg viewBox="0 0 24 24"><rect x="2" y="7" width="7" height="8" rx="1"/><rect x="15" y="7" width="7" height="8" rx="1"/><path d="M9 11h2.2M12.8 11H15"/><circle cx="6" cy="17.5" r="1.3"/><circle cx="18" cy="17.5" r="1.3"/></svg></button>
       <button class="icon-btn" id="btnPlace" aria-label="Place engines and cars on the track"><svg viewBox="0 0 24 24"><path d="M12 2.5v9M8.5 8l3.5 3.5L15.5 8"/><path d="M2.5 16.5h19M2.5 20h19"/><path d="M6 16.5V20M10 16.5V20M14 16.5V20M18 16.5V20"/></svg></button>
+      <button class="icon-btn" id="btnWalk" aria-label="Climb down and walk"><svg viewBox="0 0 24 24"><circle cx="12" cy="4.5" r="2"/><path d="M12 7.5v6M12 13.5l-3 7M12 13.5l3 7M8 10.5l4-2 4 2"/></svg></button>
       <button class="icon-btn" id="btnCam" aria-label="Change camera"><svg viewBox="0 0 24 24"><path d="M3 8h4l2-3h6l2 3h4v11H3z"/><circle cx="12" cy="13" r="3.5"/></svg></button>
       <button class="icon-btn" id="btnMap" aria-label="Open track map"><svg viewBox="0 0 24 24"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/></svg></button>
       <button class="icon-btn" id="btnCine" aria-label="Hide controls"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 15h18"/></svg></button>
@@ -600,6 +627,17 @@ details.keys kbd{color:var(--brass)}
     </div>
     <canvas id="minimap" width="336" height="236" class="hud-box" aria-label="Minimap"></canvas>
     <div id="camName">Chase</div>
+  </div>
+  <div id="walkHud">
+    <div id="walkInfo" class="hud-box"><b id="walkTitle">On foot</b><span id="walkSub"></span></div>
+    <div id="walkStick" aria-label="Walk: drag the knob"><i></i></div>
+    <div id="walkBtns">
+      <button class="walkRound" id="walkWave" aria-label="Wave">👋</button>
+      <button class="walkRound" id="walkRun" aria-label="Run">Run</button>
+      <button class="walkRound" id="walkView" aria-label="First or third person">1st</button>
+      <button id="walkAct" disabled>Look around</button>
+    </div>
+    <div id="walkKeys"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> walk · <kbd>Shift</kbd> run · drag to look · <kbd>F</kbd> board, sit, get off · <kbd>V</kbd> view · <kbd>G</kbd> wave · <kbd>Enter</kbd> back to your cab</div>
   </div>
   <div id="toast"></div>
   <div id="cplTip" hidden></div>
@@ -3013,6 +3051,7 @@ function buildSwitches(scene) {
     const sm = new THREE.Matrix4().makeRotationY(yaw).setPosition(sp);
     gb.add('steel', new THREE.BoxGeometry(0.9, 0.12, 0.5).translate(0, -0.15, 0), sm);
     gb.add('steel', new THREE.CylinderGeometry(0.05, 0.05, 1.5, 8).translate(0, 0.6, 0), sm);
+    solid(sp.x, sp.z, 0.4, sp.y - 0.5, sp.y + 1.4);   // walked round, not through (11j_walk.js)
     gb.add('steel', new THREE.BoxGeometry(0.06, 0.06, 3.3).translate(0, -0.2, -standSide * 1.675), sm);
     gb.add('steel', new THREE.BoxGeometry(0.5, 0.05, 0.06).translate(0.25, 0.25, 0).applyMatrix4(new THREE.Matrix4().makeRotationZ(0.5)), sm);
     const vis = gb.build({ tie: MAT.tie, steel: MAT.steelDark, rail: MAT.rail, ballast: MAT.ballast });
@@ -3668,7 +3707,7 @@ function folColorsDone(im) { if (im.instanceColor) { im.instanceColor.userData =
    Scenery: buildings, bridge, roads & crossings, pole line, signals, trees
    ========================================================================== */
 const SMAT = {};
-const SCN = { bins: new Map(), keepout: [], foot: [], solids: new Map(), signals: [], winMats: [], lamps: [], crossings: [] };
+const SCN = { bins: new Map(), keepout: [], foot: [], decks: [], blocks: [], solids: new Map(), signals: [], winMats: [], lamps: [], crossings: [] };
 function sceneryMaterials() {
   const brick = canvasTex(256, 256, (g, w, h) => {
     g.fillStyle = '#6d5b52'; g.fillRect(0, 0, w, h); const r = rng(5);
@@ -3787,6 +3826,15 @@ function footing(gb, key, base, x, z, w, d, top = 0) {
 }
 /* building footprints, so trees planted round buildings can keep their canopies clear of the walls */
 function foot(base, x, z, w, d) { const e = base.elements, c = new THREE.Vector3(x, 0, z).applyMatrix4(base); SCN.foot.push([c.x, c.z, e[0], e[2], e[8], e[10], w / 2, d / 2]); }
+/* a surface you can walk on (a platform): base-local centre x, z, size w x d, its top at base-local y top.
+   Stored like a footprint with the top's world height last. */
+function walkDeck(base, x, z, w, d, top) { const e = base.elements, c = new THREE.Vector3(x, top, z).applyMatrix4(base); SCN.decks.push([c.x, c.z, e[0], e[2], e[8], e[10], w / 2, d / 2, c.y]); }
+/* something low you can't walk through (a bench, a cart): like a footprint, with its world bottom and top */
+/* an upright thing you walk round (a mast, a leg, a post): base-local x, z, radius, height over the base */
+function walkPost(base, x, z, r, h) { const c = new THREE.Vector3(x, 0, z).applyMatrix4(base); solid(c.x, c.z, r, c.y - 0.5, c.y + h); }
+/* a fence run you can't walk through, between two world points, its bottom and top in world y */
+function walkWall(x0, z0, x1, z1, y0, y1) { const L = Math.hypot(x1 - x0, z1 - z0) || 1, ax = (x1 - x0) / L, az = (z1 - z0) / L; SCN.blocks.push([(x0 + x1) / 2, (z0 + z1) / 2, ax, az, -az, ax, L / 2, 0.05, y0, y1]); }
+function walkBlock(base, x, z, w, d, y0, y1) { const e = base.elements, c = new THREE.Vector3(x, 0, z).applyMatrix4(base); SCN.blocks.push([c.x, c.z, e[0], e[2], e[8], e[10], w / 2, d / 2, c.y + y0, c.y + y1]); }
 function inFoot(X, N, pad) {
   for (const f of SCN.foot) { const dx = X - f[0], dz = -N - f[1]; if (Math.abs(dx * f[2] + dz * f[3]) < f[6] + pad && Math.abs(dx * f[4] + dz * f[5]) < f[7] + pad) return true; }
   return false;
@@ -3846,6 +3894,7 @@ const lampAt = (kind, m, x, y, z, more) => { const l = { kind, p: new THREE.Vect
    x, z are in the depot's own frame, whose platform top is at y = 0.16. */
 function platformLamp(gb, base, x, z) {
   gb.add('black', new THREE.CylinderGeometry(0.15, 0.19, 0.36, 10), P(base, x, 0.16 + 0.18 - 0.01, z));   // sits 1 cm into the boards
+  { const m = new THREE.Vector3(x, 0, z).applyMatrix4(base); solid(m.x, m.z, 0.19, m.y, m.y + 4.3); }
   gb.add('black', new THREE.CylinderGeometry(0.055, 0.075, 3.12, 8), P(base, x, 0.5 + 1.56, z));
   gb.add('black', new THREE.BoxGeometry(0.36, 0.05, 0.36), P(base, x, 3.6, z));
   gb.add('lampGlass', new THREE.BoxGeometry(0.3, 0.38, 0.3), P(base, x, 3.6 + 0.02 + 0.19, z));
@@ -3922,6 +3971,8 @@ function depot(pl, name, big) {
   // platform along the track
   gb.add('platform', boxT(L + 50, 0.32, 5.2, 3), P(base, 0, 0.0, W / 2 + 2.7));
   footing(gb, 'concrete', base, 0, W / 2 + 2.7, L + 50, 5.2, -0.16);
+  walkDeck(base, 0, W / 2 + 2.7, L + 50, 5.2, 0.16);
+  foot(base, 0, 0, L + 0.2, W + 0.2); foot(base, 0, W / 2 + 0.6, 3.3, 1.5);
   // lamp posts along the back of the platform, beyond the depot's ends
   for (const lx of [-(L / 2 + 20), -(L / 2 + 9), L / 2 + 11, L / 2 + 20]) platformLamp(gb, base, lx, W / 2 + 0.9);
   doorLamp(gb, base, L / 2 - 2.5, 3.25, W / 2);   // over the freight door
@@ -3937,8 +3988,11 @@ function depot(pl, name, big) {
     gb.add('trim', new THREE.BoxGeometry(1.8, 0.06, 0.45), P(base, bx, 0.6, bz));
     gb.add('trim', new THREE.BoxGeometry(1.8, 0.4, 0.05), P(base, bx, 0.83, bz - 0.2));
     for (const lx of [-0.75, 0.75]) gb.add('trim', new THREE.BoxGeometry(0.06, 0.42, 0.42), P(base, bx + lx, 0.36, bz));
+    walkBlock(base, bx, bz - 0.05, 1.85, 0.55, 0.16, 1.05);
   }
   gb.add('wood', boxT(2.8, 0.7, 1.2), P(base, L / 2 + 6, 0.51, W / 2 + 2.6));
+  walkBlock(base, L / 2 + 6, W / 2 + 2.6, 2.8, 1.2, 0.16, 0.86);
+  { const m = new THREE.Vector3(0, 0, W / 2 + 2.4).applyMatrix4(base); solid(m.x, m.z, 0.18, m.y, m.y + 7.3); }
   // train order signal mast at the bay
   gb.add('steel', new THREE.CylinderGeometry(0.08, 0.1, 7, 8), P(base, 0, 3.5 + 0.16, W / 2 + 2.4));
   gb.add('steel', new THREE.CylinderGeometry(0.16, 0.18, 0.12, 10), P(base, 0, 0.22, W / 2 + 2.4));
@@ -3971,7 +4025,7 @@ function waterColumn(pl) {
   const base = baseM(pl.X, pl.y - 0.2, pl.N, pl.yaw + (pl.lat < 0 ? 0 : Math.PI));
   const gb = binAt(pl.X, pl.N);
   gb.add('steel', new THREE.CylinderGeometry(0.35, 0.45, 0.6, 12), P(base, 0, 0.3, 0));
-  footing(gb, 'concrete', base, 0, 0, 1.2, 1.2, 0.02);
+  footing(gb, 'concrete', base, 0, 0, 1.2, 1.2, 0.02); walkPost(base, 0, 0, 0.5, 5);
   gb.add('steel', new THREE.CylinderGeometry(0.2, 0.2, 4.4, 12), P(base, 0, 2.6, 0));
   gb.add('steel', new THREE.CylinderGeometry(0.17, 0.17, 3.0, 10), P(base, 1.4, 4.7, 0.25, 0, 0, Math.PI / 2));
   gb.add('steel', new THREE.CylinderGeometry(0.16, 0.2, 1.1, 10), P(base, 2.85, 4.25, 0.25));
@@ -3989,7 +4043,7 @@ function waterTower(pl) {
     // legs splay outward toward the foot; each stands on a concrete pier
     gb.add('steel', new THREE.CylinderGeometry(0.16, 0.22, H, 8), P(base, x * 0.92, H / 2, z * 0.92 + 1.6, -z * 0.03, 0, x * 0.03));
     const sp = Math.sin(2.6 * 0.03) * H / 2 / 2.6;
-    footing(gb, 'concrete', base, x * (0.92 + sp), z * (0.92 + sp) + 1.6, 0.9, 0.9, 0.25);
+    footing(gb, 'concrete', base, x * (0.92 + sp), z * (0.92 + sp) + 1.6, 0.9, 0.9, 0.25); walkPost(base, x * (0.92 + sp), z * (0.92 + sp) + 1.6, 0.55, 9);
   }
   for (const y of [3, 6]) { gb.add('steel', new THREE.BoxGeometry(5.0, 0.12, 0.12), P(base, 0, y, -2.4 + 1.6)); gb.add('steel', new THREE.BoxGeometry(5.0, 0.12, 0.12), P(base, 0, y, 2.4 + 1.6)); gb.add('steel', new THREE.BoxGeometry(0.12, 0.12, 5), P(base, -2.4, y, 1.6)); gb.add('steel', new THREE.BoxGeometry(0.12, 0.12, 5), P(base, 2.4, y, 1.6)); }
   gb.add('steel', new THREE.BoxGeometry(6.4, 0.3, 6.4), P(base, 0, H, 1.6));
@@ -4004,7 +4058,7 @@ function coalingTower(pl) {
   const base = baseM(pl.X, pl.y - 0.25, pl.N, pl.yaw);
   const gb = binAt(pl.X, pl.N);
   // straddles the track: legs at z = ±3.2
-  for (const z of [-3.4, 3.4]) for (const x of [-4.5, 4.5]) { gb.add('concrete', boxT(1.1, 7.5, 1.1), P(base, x, 3.75, z)); footing(gb, 'concrete', base, x, z, 1.5, 1.5, 0.1); }
+  for (const z of [-3.4, 3.4]) for (const x of [-4.5, 4.5]) { walkPost(base, x, z, 0.8, 7.5); gb.add('concrete', boxT(1.1, 7.5, 1.1), P(base, x, 3.75, z)); footing(gb, 'concrete', base, x, z, 1.5, 1.5, 0.1); }
   gb.add('concrete', boxT(11, 15, 9, 3), P(base, 0, 7.5 + 7.5, 0));
   gb.add('concrete', boxT(11.4, 0.5, 9.4), P(base, 0, 7.5, 0));
   gb.add('tin', boxT(6, 4, 5, 2), P(base, 0, 24.5, 0));
@@ -4014,7 +4068,7 @@ function coalingTower(pl) {
   // conveyor/hoist house at side, on whichever side is clear of the neighbouring track
   const sd = trackGap(...latXN(pl, 8)) >= 4.5 ? 1 : -1;
   gb.add('tin', boxT(4, 3, 4), P(base, 0, 1.5, sd * 8));
-  footing(gb, 'concrete', base, 0, sd * 8, 4.2, 4.2, 0.05);
+  footing(gb, 'concrete', base, 0, sd * 8, 4.2, 4.2, 0.05); foot(base, 0, sd * 8, 4.2, 4.2);
   gb.add('tin', gableRoof(4, 4, 0.9, 0.2), P(base, 0, 3, sd * 8));
   // inclined conveyor from the hoist house roof into the bin
   gb.add('steel', new THREE.BoxGeometry(1.4, 1.4, 10.6), P(base, 0, 7.75, sd * 5.95, -sd * Math.atan2(9.7, 4.1), 0, 0));
@@ -4024,11 +4078,11 @@ function sandHouse(pl) {
   const base = baseM(pl.X, pl.y - 0.2, pl.N, pl.yaw);
   const gb = binAt(pl.X, pl.N);
   gb.add('brick', boxT(8, 4, 5, 2), P(base, 0, 2, 8));
-  footing(gb, 'concrete', base, 0, 8, 8.2, 5.2, 0.05);
+  footing(gb, 'concrete', base, 0, 8, 8.2, 5.2, 0.05); foot(base, 0, 8, 8.2, 5.2);
   gb.add('slate', gableRoof(8, 5, 1.4), P(base, 0, 4, 8));
   // dry-sand bin on four legs between the house and the track, spout raised clear of engines
   for (const x of [-0.68, 0.68]) for (const z of [2.72, 4.08]) gb.add('steel', new THREE.CylinderGeometry(0.08, 0.08, 6.4, 6), P(base, x, 3.2, z));
-  footing(gb, 'concrete', base, 0, 3.4, 2.0, 2.0, 0.05);
+  footing(gb, 'concrete', base, 0, 3.4, 2.0, 2.0, 0.05); foot(base, 0, 3.4, 2.0, 2.0);
   gb.add('steel', new THREE.CylinderGeometry(1.0, 1.0, 3.5, 14), P(base, 0, 7.8, 3.4));
   gb.add('steel', new THREE.ConeGeometry(1.0, 1.2, 14), P(base, 0, 5.45, 3.4, Math.PI, 0, 0));
   gb.add('steel', new THREE.CylinderGeometry(0.08, 0.08, 2.4, 6), P(base, 0, 6.5, 2.15, -0.695, 0, 0));
@@ -4045,8 +4099,10 @@ function engineHouse(pl) {
   gb.add('brick', boxT(0.8, H - 6.0, 3.8, 2.4), P(base, -L / 2, 6.0 + (H - 6.0) / 2, 0));
   gb.add('trim', new THREE.BoxGeometry(0.2, 6.0, 1.9), P(base, -L / 2 - 1.0, 3.03, -2.6, 0, -0.9, 0));
   gb.add('trim', new THREE.BoxGeometry(0.2, 6.0, 1.9), P(base, -L / 2 - 1.0, 3.03, 2.6, 0, 0.9, 0));
-  footing(gb, 'concrete', base, 0, 0, L + 0.8, W + 0.8);
-  for (const z of [-1, 1]) footing(gb, 'concrete', base, -L / 2 - 1.3, z * 2.9, 2.0, 2.0);
+  footing(gb, 'concrete', base, 0, 0, L + 0.8, W + 0.8);   // no footprint: the engines run in through the doors
+  for (const z of [-1, 1]) { walkBlock(base, 0, z * W / 2, L + 0.8, 0.8, -0.5, H); walkBlock(base, -L / 2, z * 3.45, 0.8, 3.1, -0.5, H); }   // the walls you walk round
+  walkBlock(base, L / 2, 0, 0.8, W, -0.5, H);
+  for (const z of [-1, 1]) { footing(gb, 'concrete', base, -L / 2 - 1.3, z * 2.9, 2.0, 2.0); foot(base, -L / 2 - 1.3, z * 2.9, 2.0, 2.0); }
   gb.add('tin', boxT(L + 0.9, 0.3, W + 0.9), P(base, 0, H + 0.15, 0));
   gb.add('slate', gableRoof(L, W, 2.2, 0.5), P(base, 0, H + 0.3, 0));
   windowsRow(gb, base, -L / 2 + 4, L / 2 - 4, 5.2, W / 2 + 0.4, 1.5, 3.0, 8);
@@ -4079,7 +4135,7 @@ function yardOffice(pl) {
   const base = baseM(pl.X, pl.y - 0.2, pl.N, pl.yaw);
   const gb = binAt(pl.X, pl.N);
   gb.add('cream', boxT(8, 3.4, 5, 2), P(base, 0, 1.7, 0));
-  footing(gb, 'concrete', base, 0, 0, 8.2, 5.2, 0.05);
+  footing(gb, 'concrete', base, 0, 0, 8.2, 5.2, 0.05); foot(base, 0, 0, 8.2, 5.2);
   gb.add('slate', gableRoof(8, 5, 1.8, 0.6), P(base, 0, 3.4, 0));
   windowsRow(gb, base, -2.5, 2.5, 2, 2.5, 0.9, 1.3, 3);
   windowsRow(gb, base, -2.5, 2.5, 2, -2.5, 0.9, 1.3, 3, -1);
@@ -4098,9 +4154,9 @@ function grainElevator(pl) {
   gb.add('slate', gableRoof(9.4, 10.4, 1.6, 0.2), P(base, 21, 51, 6.8));
   windowsRow(gb, base, 18, 24, 40, 1.8, 0.8, 1.2, 3, -1);
   gb.add('tin', boxT(16, 6, 9, 2), P(base, 33, 3.02, 5));
-  footing(gb, 'concrete', base, 1.6, 6.8, 34.6, 14, 0.05);
-  footing(gb, 'concrete', base, 21, 6.8, 9.4, 10.4, 0.05);
-  footing(gb, 'concrete', base, 33, 5, 16.2, 9.2, 0.05);
+  footing(gb, 'concrete', base, 1.6, 6.8, 34.6, 14, 0.05); foot(base, 1.6, 6.8, 34.6, 14);
+  footing(gb, 'concrete', base, 21, 6.8, 9.4, 10.4, 0.05); foot(base, 21, 6.8, 9.4, 10.4);
+  footing(gb, 'concrete', base, 33, 5, 16.2, 9.2, 0.05); foot(base, 33, 5, 16.2, 9.2);
   gb.add('slate', gableRoof(16, 9, 1.8), P(base, 33, 6, 5));
   // loading spouts hang from the headhouse and the end bin out over the track
   gb.add('steel', new THREE.BoxGeometry(1.2, 1.2, 14), P(base, 21, 30.98, -2.58, -0.8, 0, 0));
@@ -4113,7 +4169,7 @@ function interlockingTower(pl, label) {
   const base = baseM(pl.X, pl.y - 0.2, pl.N, pl.yaw + (pl.lat < 0 ? 0 : Math.PI));
   const gb = binAt(pl.X, pl.N);
   gb.add('brick', boxT(5, 3.2, 4.5, 2), P(base, 0, 1.6, 0));
-  footing(gb, 'concrete', base, 0, 0, 5.2, 4.7, 0.05);
+  footing(gb, 'concrete', base, 0, 0, 5.2, 4.7, 0.05); foot(base, 0, 0, 5.2, 4.7);
   gb.add('cream', boxT(5.2, 3.0, 4.7, 2), P(base, 0, 4.7, 0));
   windowsRow(gb, base, -1.8, 1.8, 4.9, 2.35, 1.0, 1.8, 3);
   windowsRow(gb, base, -1.8, 1.8, 4.9, -2.35, 1.0, 1.8, 3, -1);
@@ -4263,7 +4319,7 @@ function xingMast(scene, xg, X, N, face, roadW) {
   const mast = { flash: [], lightAt: new THREE.Vector3(0.6, 3.0, 0).applyMatrix4(cb) };
   xg.masts.push(mast);
   if (!SMAT['xA' + id]) for (const k of ['xA', 'xB', 'xT']) SMAT[k + id] = new THREE.MeshBasicMaterial({ color: 0x1e0604 });
-  footing(gb, 'concrete', cb, 0, 0, 0.9, 0.9, 0.12);
+  footing(gb, 'concrete', cb, 0, 0, 0.9, 0.9, 0.12); walkPost(cb, 0, 0, 0.5, 5);
   gb.add('alu', new THREE.CylinderGeometry(0.07, 0.08, 5.0, 10), P(cb, 0, 2.6, 0));
   gb.add('alu', new THREE.CylinderGeometry(0.16, 0.2, 0.3, 10), P(cb, 0, 0.27, 0));
   // the crossbuck
@@ -4504,7 +4560,7 @@ function buildSignals(scene) {
       lens.userData.glowAt = new THREE.Vector3().setFromMatrixPosition(P(base, x + 0.1, hy, 0)); };
     if (dwarf) {
       // a dwarf: two lamps in a low cast housing on a short pedestal
-      footing(gb, 'concrete', base, 0, 0, 0.7, 0.7, 0.3);
+      footing(gb, 'concrete', base, 0, 0, 0.7, 0.7, 0.3); walkPost(base, 0, 0, 0.45, 1.3);
       gb.add('steel', new THREE.CylinderGeometry(0.08, 0.1, 0.32, 8), P(base, 0, 0.46, 0));
       gb.add('steel', new THREE.BoxGeometry(0.3, 0.62, 0.36), P(base, -0.02, 0.92, 0));
       gb.add('signBack', new THREE.BoxGeometry(0.03, 0.7, 0.46), P(base, 0.145, 0.92, 0));
@@ -4513,7 +4569,7 @@ function buildSignals(scene) {
         lamp(0.165, hy, 0.075);
       }
     } else {
-      footing(gb, 'concrete', base, 0, 0, 0.9, 0.9, 0.35);
+      footing(gb, 'concrete', base, 0, 0, 0.9, 0.9, 0.35); walkPost(base, -0.08, 0, 0.55, 7.5);
       gb.add('steel', new THREE.CylinderGeometry(0.09, 0.11, 7.2, 8), P(base, 0, 3.8, 0));
       gb.add('steel', new THREE.BoxGeometry(0.05, 0.05, 0.6), P(base, 0.0, 5.0, -0.3));
       // ladder up the back of the mast: stiles on standoffs, rungs between
@@ -4557,7 +4613,7 @@ function buildSigns() {
     const base = baseM(pl.X, y, pl.N, pl.yaw + Math.PI / 2);
     const gb = binAt(pl.X, pl.N);
     const k = 'mp' + mp.num; SMAT[k] = numberPlate(mp.num);
-    gb.add('white', boxT(0.22, 1.9, 0.22), P(base, 0, 0.65, 0));
+    gb.add('white', boxT(0.22, 1.9, 0.22), P(base, 0, 0.65, 0)); walkPost(base, 0, 0, 0.17, 1.6);
     gb.add(k, new THREE.BoxGeometry(0.24, 0.75, 0.24), P(base, 0, 1.1, 0));
   }
   // yard limit boards
@@ -4566,7 +4622,7 @@ function buildSigns() {
     const y = groundAt(pl.X, pl.N);
     const base = baseM(pl.X, y, pl.N, pl.yaw + (d > 0 ? Math.PI : 0));
     const gb = binAt(pl.X, pl.N);
-    gb.add('white', boxT(0.12, 2.7, 0.12), P(base, 0, 1.05, 0));
+    gb.add('white', boxT(0.12, 2.7, 0.12), P(base, 0, 1.05, 0)); walkPost(base, 0, 0, 0.12, 3.0);
     gb.add('yardLimit', new THREE.BoxGeometry(0.04, 0.8, 1.3), P(base, 0.08, 2.4, 0));
   }
 }
@@ -5147,7 +5203,7 @@ function buildPastureLife(scene) {
           if (!free(X, N, 14)) { prev = null; continue; }
           const y = groundAt(X, N) - 0.05, b = bin(X, N);
           b.posts.push([X, y, N]);
-          if (prev) for (const hgt of [0.55, 0.9, 1.25]) b.wires.push(prev[0], prev[1] + hgt, -prev[2], X, y + hgt, -N);
+          if (prev) { for (const hgt of [0.55, 0.9, 1.25]) b.wires.push(prev[0], prev[1] + hgt, -prev[2], X, y + hgt, -N); walkWall(prev[0], -prev[2], X, -N, Math.min(y, prev[1]), Math.max(y, prev[1]) + 1.3); }
           prev = [X, y, N];
         }
       }
@@ -7631,6 +7687,9 @@ function freightModel(type, num, r) {
    diaphragm, a fish-belly centre sill with the battery boxes, water tanks and axle generator underneath, on
    six-wheel trucks. The observation car ends in an open brass-railed platform with the drumhead. */
 const CH = { L: 24.7, hw: 1.52, yT: 1.30, sill: [1.05, 1.47], belt: 2.13, win: [2.2, 3.0], lint: 3.1, eave: 3.43, xb: 11.0, xv: 11.76 };
+/* the coach's window pairs (centres) and each window opening [x0, x1], shared with the seating inside (06g_person.js) */
+const coachPairs = () => { const a = []; for (let i = 0; i < 13; i++) a.push(-9.5 + i * 1.58); return a; };
+function coachOpens() { const o = []; for (const x of coachPairs()) for (const d of [-0.33, 0.33]) o.push([x + d - 0.28, x + d + 0.28]); return o; }
 function coachModel(spec, num, observation, trim = '') {
   carMaterials();
   const root = new THREE.Group(); const gb = new GeoBin();
@@ -7644,8 +7703,7 @@ function coachModel(spec, num, observation, trim = '') {
   gb.add(G, barGeo(0.03, [-(he - 0.3), 0.98, -0.34], [he - 0.3, 0.98, -0.34], 6));
   for (let x = -(he - 0.8); x < he - 0.5; x += 3.0) gb.box(G, 0.05, CH.yT - 0.06 - 0.98, 0.05, x, (CH.yT - 0.06 + 0.98) / 2, -0.34);
   // the sides: riveted side sill, lower sheets, belt rail, window band with its posts, lintel and letterboard
-  const pairs = []; for (let i = 0; i < 13; i++) pairs.push(-9.5 + i * 1.58);
-  const opens = []; for (const x of pairs) for (const d of [-0.33, 0.33]) opens.push([x + d - 0.28, x + d + 0.28]);
+  const opens = coachOpens();
   const [w0, w1] = CH.win;
   for (const s of [-1, 1]) {
     const z = s * (hw - 0.02);
@@ -10711,6 +10769,295 @@ function drawHsScreen(sc, T) {
     g.textAlign = 'right'; g.fillText('PAN ' + Math.round(S.pan * 100) + '%', w - 24, 290);
   }
   sc.tex.needsUpdate = true;
+}
+
+/* ============================================================================
+   People: the railroader you walk about as (and the other players in a room),
+   built to a 5 ft 10 in man's proportions and jointed like one, and the inside
+   of the heavyweight coaches you ride in.
+   Person frame: the soles on y = 0, facing +Z, +X to his left.
+   Every piece of him overlaps the piece it hangs from, so however he is posed
+   nothing comes apart, and the pose is put down so the lowest sole is on the
+   ground: he never floats or sinks.
+   ========================================================================== */
+/* a 1.78 m man. Joint heights: ankle 0.085, knee 0.515, hip 0.945, shoulder 1.44, crown 1.78 */
+const PD = { ankle: 0.085, shin: 0.43, thigh: 0.43, hipX: 0.095, hips: 0.95, spine: 0.08, shY: 0.41, shX: 0.195, upper: 0.29, fore: 0.255, neck: 0.49, head: 0.145, eye: 1.66, seatHip: 0.12, r: 0.27 };
+const PMAT = {};
+function personMaterials(shirt) {
+  const key = 'p' + shirt;
+  if (PMAT[key]) return PMAT[key];
+  const std = (c, r = 0.85, m = 0, extra = {}) => new THREE.MeshStandardMaterial({ color: c, roughness: r, metalness: m, ...extra });
+  if (!PMAT.hickory) {
+    // hickory stripe: the ticking railroaders' caps and jackets were made of, thin navy stripes on off-white
+    PMAT.hickory = canvasTex(64, 16, (g, w, h) => { g.fillStyle = '#d9dcdf'; g.fillRect(0, 0, w, h); g.fillStyle = '#26354f'; for (let x = 0; x < w; x += 8) g.fillRect(x, 0, 3, h); }, { repeat: true });
+    PMAT.hickory.repeat.set(9, 1);
+    PMAT.denim = canvasTex(64, 64, (g, w, h) => { const r = rng(1873); g.fillStyle = '#34496b'; g.fillRect(0, 0, w, h); for (let i = 0; i < 900; i++) { const v = r(); g.fillStyle = v < 0.5 ? 'rgba(20,30,50,0.25)' : 'rgba(140,160,190,0.18)'; g.fillRect(r() * w, r() * h, 1, 2 + r() * 3); } }, { repeat: true });
+    PMAT.denim.repeat.set(3, 3);
+  }
+  const M0 = {
+    skin: std(0xc99878, 0.62), shirt: std(shirt, 0.9), denim: std(0xffffff, 0.92, 0, { map: PMAT.denim }), cap: std(0xffffff, 0.88, 0, { map: PMAT.hickory }),
+    boot: std(0x2b1e15, 0.55, 0.05), sole: std(0x15110e, 0.8), glove: std(0x8d6a43, 0.7), hair: std(0x3a2a1e, 0.8), eye: std(0x1c1a18, 0.3),
+    lip: std(0xa9705e, 0.6), red: std(0xa3231d, 0.85), brass: std(0xc9a24e, 0.4, 0.8),
+  };
+  for (const k in M0) M0[k].userData.person = true;
+  return (PMAT[key] = M0);
+}
+/* a rounded limb hanging from its joint at the origin down to -len: r0 at the joint, r1 at the far end */
+function limbGeo(r0, r1, len, seg = 12) {
+  const pts = [], n = 4;
+  for (let i = 0; i <= n; i++) { const a = -Math.PI / 2 + i / n * Math.PI / 2; pts.push(new THREE.Vector2(Math.max(0, Math.cos(a) * r1), -len + Math.sin(a) * r1)); }
+  for (let i = 1; i <= n; i++) { const a = i / n * Math.PI / 2; pts.push(new THREE.Vector2(Math.max(0, Math.cos(a) * r0), Math.sin(a) * r0)); }
+  return new THREE.LatheGeometry(pts, seg);
+}
+/* a body section turned from a profile of [radius, y], flattened front to back by zs */
+function turned(prof, zs, seg = 18, phi0 = 0, phiL = TAU) {
+  const g = new THREE.LatheGeometry(prof.map(([r, y]) => new THREE.Vector2(r, y)), seg, phi0, phiL);
+  g.scale(1, 1, zs);
+  return g;
+}
+const TORSO = [[0.0, -0.11], [0.12, -0.105], [0.142, -0.06], [0.146, 0.04], [0.143, 0.12], [0.156, 0.2], [0.174, 0.29], [0.181, 0.35], [0.172, 0.41], [0.14, 0.455], [0.085, 0.485], [0.0, 0.5]];
+const TORSO_ZS = 0.64;
+const torsoR = y => { for (let i = 1; i < TORSO.length; i++) if (y <= TORSO[i][1]) { const [r0, y0] = TORSO[i - 1], [r1, y1] = TORSO[i]; return lerp(r0, r1, (y - y0) / (y1 - y0)); } return 0; };
+/* a point on the torso's surface at height y, x across, on the front (side 1) or back (-1), lifted out by lift */
+const torsoAt = (x, y, side, lift = 0.006) => { const r = torsoR(y) + lift; return [x, y, side * TORSO_ZS * Math.sqrt(Math.max(0, r * r - x * x))]; };
+
+/* Build a person. opts.shirt: shirt colour (other players wear their own colour). Returns the rig:
+   { root, j: joints, soles, pose(state) } */
+function buildPerson(opts = {}) {
+  const mt = personMaterials(opts.shirt || 0x5f7896);
+  const root = new THREE.Group(); root.name = 'person';
+  const joint = (parent, x, y, z) => { const g = new THREE.Group(); g.position.set(x, y, z); parent.add(g); return g; };
+  const put = (parent, bin) => { const g = bin.build(mt); g.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } }); parent.add(g); return g; };
+  const hips = joint(root, 0, PD.hips, 0), spine = joint(hips, 0, PD.spine, 0), neck = joint(spine, 0, PD.neck, 0), head = joint(neck, 0, PD.head, 0);
+  const j = { hips, spine, neck, head, sh: [], el: [], wr: [], hip: [], kn: [], an: [] };
+  // pelvis, in the overalls
+  { const b = new GeoBin(); b.add('denim', turned([[0.0, -0.14], [0.1, -0.135], [0.152, -0.09], [0.165, -0.01], [0.158, 0.06], [0.14, 0.11]], 0.72)); put(hips, b); }
+  // the torso: a chambray shirt, the overalls up to the waist and the bib over the chest, braces over the shoulders
+  {
+    const b = new GeoBin();
+    b.add('shirt', turned(TORSO, TORSO_ZS));
+    b.add('denim', turned(TORSO.filter(p => p[1] <= 0.24).concat([[torsoR(0.24), 0.24]]).map(([r, y]) => [r && r * 1.035, y]), TORSO_ZS));
+    b.add('denim', turned([[torsoR(0.2) * 1.04, 0.2], [torsoR(0.3) * 1.04, 0.3], [torsoR(0.37) * 1.035, 0.37]], TORSO_ZS, 12, -0.62, 1.24));
+    b.add('denim', turned([[torsoR(0.2) * 1.04, 0.2], [torsoR(0.27) * 1.04, 0.27]], TORSO_ZS, 12, Math.PI - 0.7, 1.4));
+    for (const s of [-1, 1]) {
+      const x0 = s * 0.075, pts = [torsoAt(x0, 0.365, 1, 0.012), torsoAt(s * 0.1, 0.43, 1, 0.012), [s * 0.11, 0.495, 0.0], torsoAt(s * 0.1, 0.43, -1, 0.012), torsoAt(s * 0.06, 0.3, -1, 0.012), torsoAt(s * 0.02, 0.24, -1, 0.012)];
+      b.tube('denim', pts, 0.008, 18, 4);
+      b.add('brass', new THREE.SphereGeometry(0.011, 8, 6).translate(...torsoAt(x0, 0.355, 1, 0.014)));
+    }
+    // the shoulders' round, so an arm swung any way still meets the body
+    for (const s of [-1, 1]) b.add('shirt', new THREE.SphereGeometry(0.068, 14, 10).translate(s * PD.shX, PD.shY, 0));
+    // a red bandana round the neck, knotted at the front
+    b.add('red', new THREE.TorusGeometry(0.058, 0.017, 6, 18).rotateX(Math.PI / 2).translate(0, 0.475, 0));
+    b.add('red', new THREE.ConeGeometry(0.03, 0.07, 4).rotateX(Math.PI).translate(0, 0.43, 0.06));
+    put(spine, b);
+  }
+  // neck and head: face, ears, hair under an engineer's cap of hickory stripe
+  { const b = new GeoBin(); b.add('skin', new THREE.CylinderGeometry(0.05, 0.055, 0.15, 12).translate(0, 0.045, 0)); put(neck, b); }
+  {
+    const b = new GeoBin(), sx = 0.78, sy = 1.15, sz = 0.98;
+    b.add('skin', new THREE.SphereGeometry(0.1, 22, 16).scale(sx, sy, sz));
+    b.add('skin', new THREE.SphereGeometry(0.019, 8, 6).scale(0.8, 1.3, 1).translate(0, -0.012, 0.096));         // nose
+    for (const s of [-1, 1]) {
+      b.add('skin', new THREE.SphereGeometry(0.026, 8, 6).scale(0.35, 1, 0.7).translate(s * 0.077, -0.005, -0.005));   // ears
+      b.add('eye', new THREE.SphereGeometry(0.011, 8, 6).translate(s * 0.032, 0.018, 0.083));                        // eyes
+      b.add('hair', new THREE.BoxGeometry(0.03, 0.007, 0.012).translate(s * 0.033, 0.038, 0.088));                  // brows
+    }
+    b.add('lip', new THREE.BoxGeometry(0.036, 0.008, 0.012).translate(0, -0.05, 0.085));
+    b.add('hair', new THREE.SphereGeometry(0.103, 18, 8, Math.PI, Math.PI, 0.3 * Math.PI, 0.32 * Math.PI).scale(sx, sy, sz));   // back of the head under the cap
+    // the cap: a soft crown, a puffed top and a short peak
+    b.add('cap', new THREE.CylinderGeometry(0.094, 0.088, 0.075, 22).scale(1, 1, 1.13).translate(0, 0.098, 0));
+    b.add('cap', new THREE.SphereGeometry(0.095, 22, 6, 0, TAU, 0, Math.PI / 2).scale(1, 0.38, 1.13).translate(0, 0.133, 0));
+    b.add('cap', new THREE.CylinderGeometry(0.105, 0.105, 0.008, 22, 1, false, -1.15, 2.3).scale(1, 1, 0.82).rotateX(0.16).translate(0, 0.066, 0.035));
+    put(head, b);
+  }
+  // arms: shirt sleeves to the leather work gloves
+  for (const s of [1, -1]) {
+    const sh = joint(spine, s * PD.shX, PD.shY, 0), el = joint(sh, 0, -PD.upper, 0), wr = joint(el, 0, -PD.fore, 0);
+    { const b = new GeoBin(); b.add('shirt', limbGeo(0.056, 0.047, PD.upper)); put(sh, b); }
+    { const b = new GeoBin(); b.add('shirt', limbGeo(0.047, 0.038, PD.fore)); put(el, b); }
+    {
+      const b = new GeoBin();
+      b.add('glove', new THREE.CylinderGeometry(0.044, 0.04, 0.06, 12).translate(0, -0.005, 0));                    // gauntlet over the cuff
+      b.add('glove', new THREE.SphereGeometry(0.05, 12, 10).scale(0.6, 1.75, 1.0).translate(0, -0.085, 0.005));      // hand and fingers
+      b.add('glove', limbGeo(0.016, 0.014, 0.05, 8).rotateX(-0.6).rotateZ(-s * 0.35).translate(0, -0.05, 0.035));  // thumb
+      put(wr, b);
+    }
+    j.sh.push(sh); j.el.push(el); j.wr.push(wr);
+  }
+  // legs: overalls to the boots
+  const soles = [];
+  for (const s of [1, -1]) {
+    const hp = joint(hips, s * PD.hipX, -0.005, 0), kn = joint(hp, 0, -PD.thigh, 0), an = joint(kn, 0, -PD.shin, 0);
+    { const b = new GeoBin(); b.add('denim', limbGeo(0.086, 0.063, PD.thigh)); put(hp, b); }
+    { const b = new GeoBin(); b.add('denim', limbGeo(0.063, 0.05, PD.shin)); b.add('denim', new THREE.CylinderGeometry(0.066, 0.064, 0.05, 14).translate(0, -PD.shin + 0.08, 0)); put(kn, b); }
+    {
+      const b = new GeoBin(), y0 = -PD.ankle;
+      b.add('boot', new THREE.CylinderGeometry(0.058, 0.062, 0.15, 14).translate(0, 0.02, -0.005));              // the shaft round the ankle
+      b.add('boot', new THREE.BoxGeometry(0.1, 0.07, 0.2).translate(0, y0 + 0.022 + 0.035, 0.045));               // the vamp
+      b.add('boot', new THREE.SphereGeometry(0.05, 12, 8, 0, TAU, 0, Math.PI / 2).scale(1, 0.9, 1.15).translate(0, y0 + 0.022, 0.145));   // toe cap
+      b.add('sole', new THREE.BoxGeometry(0.108, 0.022, 0.29).translate(0, y0 + 0.011, 0.045));                   // sole and heel
+      put(an, b);
+      for (const z of [-0.1, 0.19]) for (const x of [-0.05, 0.05]) { const o = new THREE.Object3D(); o.position.set(x, y0, z); an.add(o); soles.push(o); }
+    }
+    j.hip.push(hp); j.kn.push(kn); j.an.push(an);
+  }
+  const rig = { root, j, soles, shirt: opts.shirt, _inv: new THREE.Matrix4(), _p: new THREE.Vector3() };
+  rig.pose = st => posePerson(rig, st);
+  posePerson(rig, {});
+  return rig;
+}
+/* Pose the rig. st: { phase (radians through the two-step cycle), speed m/s, sit (seat height over the
+   floor, or 0), wave (seconds since the wave began, or <0), look (head pitch) } */
+function posePerson(rig, st) {
+  const j = rig.j, sp = st.speed || 0, a = clamp(sp / 1.3, 0, 1), rk = smooth(1.9, 3.4, sp), ph = st.phase || 0;
+  const zero = o => o.rotation.set(0, 0, 0);
+  for (const k of ['sh', 'el', 'wr', 'hip', 'kn', 'an']) j[k].forEach(zero);
+  zero(j.hips); zero(j.spine); zero(j.neck); zero(j.head);
+  if (st.sit) {
+    for (let s = 0; s < 2; s++) {
+      j.hip[s].rotation.set(-1.56, 0, (s ? -1 : 1) * 0.04); j.kn[s].rotation.x = 1.56; j.an[s].rotation.x = -0.02;
+      j.sh[s].rotation.set(-0.3, 0, (s ? -1 : 1) * 0.1); j.el[s].rotation.x = -1.0;
+    }
+    j.spine.rotation.x = -0.06; j.neck.rotation.x = 0.06 + (st.look || 0) * 0.4;
+    j.hips.position.y = st.sit + PD.seatHip;
+  } else {
+    const A = lerp(0.4, 0.74, rk) * a;
+    for (let s = 0; s < 2; s++) {
+      const p = ph + s * Math.PI, th = A * Math.sin(p), sw = Math.max(0, Math.cos(p));
+      const kn = a * (0.07 + lerp(0.9, 1.75, rk) * Math.pow(sw, 1.6)) + a * 0.1 * Math.max(0, -Math.cos(p)) * (1 - rk);
+      j.hip[s].rotation.set(-th, 0, (s ? -1 : 1) * 0.02);
+      j.kn[s].rotation.x = kn;
+      j.an[s].rotation.x = (th - kn) * 0.8;
+      const arm = -0.8 * A * Math.sin(p);
+      j.sh[s].rotation.set(-arm, 0, (s ? -1 : 1) * (0.07 + 0.05 * rk));
+      j.el[s].rotation.x = -(0.12 + 0.25 * a + 1.15 * rk);
+    }
+    j.hips.rotation.y = 0.08 * a * Math.sin(ph);
+    j.spine.rotation.y = -0.13 * a * Math.sin(ph);
+    j.spine.rotation.x = 0.04 * a + 0.14 * rk;
+    // breathing while he stands
+    j.spine.rotation.x += (1 - a) * 0.012 * Math.sin((st.t || 0) * 1.7);
+    j.neck.rotation.x = -j.spine.rotation.x * 0.7 + (st.look || 0) * 0.35;
+    j.hips.position.y = PD.hips;
+  }
+  if (st.wave !== undefined && st.wave >= 0) {
+    const w = st.wave, up = smooth(0, 0.35, w) * (1 - smooth(2.2, 2.7, w));
+    j.sh[1].rotation.set(-0.35 * up, 0, -2.55 * up - 0.07);
+    j.el[1].rotation.set(0, 0, -(0.25 + 0.45 * Math.sin(w * 9)) * up);
+  }
+  // stand him on his lowest sole
+  if (!st.sit) {
+    rig.root.updateMatrixWorld(true);
+    rig._inv.copy(rig.root.matrixWorld).invert();
+    let lo = Infinity;
+    for (const o of rig.soles) { rig._p.setFromMatrixPosition(o.matrixWorld).applyMatrix4(rig._inv); if (rig._p.y < lo) lo = rig._p.y; }
+    j.hips.position.y -= lo;
+  }
+}
+
+/* ======== inside a heavyweight coach ========
+   Mahogany below the windows and between them, a cream ceiling following the lower deck and the clerestory,
+   a red carpet, 13 rows of green plush walkover seats two and two with the aisle between (52 seats, one row to
+   each pair of windows), brass parcel racks over the windows, ceiling lamps, and a bulkhead with a door at each
+   end into the vestibule. Built in the coach's own frame (06_models.js CH), and only for coaches near you. */
+const COACH_IN = { hi: CH.hw - 0.085, aisle: 0.34, seatH: 0.43, seatW: 1.02, rowFwd: 1 };
+COACH_IN.yF = CH.yT + 0.03;
+function coachInMaterials() {
+  if (RMAT.ciWood) return;
+  const lit = (c, r = 0.7, m = 0, extra = {}) => { const x = new THREE.MeshStandardMaterial({ color: c, roughness: r, metalness: m, emissive: c, emissiveIntensity: 0.1, ...extra }); (RMAT.ciLit || (RMAT.ciLit = [])).push(x); return x; };
+  RMAT.ciWood = lit(0x5c3220, 0.45);
+  RMAT.ciCeil = lit(0xe2d8bd, 0.8, 0, { side: THREE.BackSide });
+  RMAT.ciCream = lit(0xe2d8bd, 0.8);
+  RMAT.ciCarpet = lit(0x5e1d1d, 0.95);
+  RMAT.ciPlush = lit(0x2e4a36, 0.95);
+  RMAT.ciCover = lit(0xefeadc, 0.9);
+  RMAT.ciFrame = lit(0x2a2522, 0.5, 0.3);
+  RMAT.ciBrass = lit(0xbf9a4a, 0.35, 0.8);
+  RMAT.ciLamp = new THREE.MeshStandardMaterial({ color: 0xfff3d6, emissive: 0xffe2a8, emissiveIntensity: 0.6, roughness: 0.4 });
+  // the glass of a coach you can see into: clear, a little tinted, still catching the light
+  RMAT.ciGlass = new THREE.MeshStandardMaterial({ color: 0x9fb2b8, roughness: 0.08, metalness: 0.2, transparent: true, opacity: 0.2, depthWrite: false });
+}
+/* the seats in a coach: centre of each place on its cushion, in the coach's frame (all face +X) */
+function coachSeats() {
+  const out = [], z0 = COACH_IN.aisle + COACH_IN.seatW / 4, z1 = COACH_IN.aisle + COACH_IN.seatW * 3 / 4;
+  for (const x of coachPairs()) for (const z of [-z1, -z0, z0, z1]) out.push({ x: x + 0.04, z, h: COACH_IN.seatH });
+  return out;
+}
+function coachInterior(observation) {
+  coachInMaterials();
+  const b = new GeoBin(), yF = COACH_IN.yF, yT = CH.yT, hi = COACH_IN.hi, xb = CH.xb, [w0, w1] = CH.win, yE = CH.eave, th = 0.03;
+  const zw = hi + th / 2;   // the lining's middle; its inside face is at hi
+  // floor
+  b.box('ciCarpet', 2 * xb - 0.02, yF - yT, 2 * hi, 0, (yF + yT) / 2, 0);
+  // walls: panelled below the sills, piers between the windows, a frieze over them; sills and window frames
+  const opens = coachOpens(), x0 = -xb + 0.01, x1 = xb - 0.01;
+  for (const s of [-1, 1]) {
+    b.box('ciWood', x1 - x0, w0 - yF, th, 0, (w0 + yF) / 2, s * zw);
+    b.box('ciCream', x1 - x0, yE - w1, th, 0, (yE + w1) / 2, s * zw);
+    let x = x0;
+    for (const [a, c] of opens) { b.box('ciWood', a - x, w1 - w0, th, (a + x) / 2, (w0 + w1) / 2, s * zw); x = c; }
+    b.box('ciWood', x1 - x, w1 - w0, th, (x1 + x) / 2, (w0 + w1) / 2, s * zw);
+    for (const [a, c] of opens) {
+      b.box('ciWood', c - a + 0.04, 0.035, 0.07, (a + c) / 2, w0 + 0.0175, s * (hi - 0.035 + th));         // sill
+      b.box('ciWood', c - a + 0.04, 0.03, 0.035, (a + c) / 2, w1 - 0.015, s * (hi - 0.0175 + th));          // head
+    }
+    b.box('ciWood', x1 - x0, 0.1, 0.02, 0, yF + 0.05, s * (hi - 0.01));                                       // skirting
+    // parcel rack: brass rails on brackets over the windows
+    for (const z of [hi - 0.08, hi - 0.2, hi - 0.32]) b.add('ciBrass', barGeo(0.009, [x0 + 0.4, yE - 0.12, s * z], [x1 - 0.4, yE - 0.12, s * z], 6));
+    b.add('ciBrass', barGeo(0.012, [x0 + 0.4, yE - 0.06, s * (hi - 0.36)], [x1 - 0.4, yE - 0.06, s * (hi - 0.36)], 6));
+    for (let x = x0 + 0.5; x < x1 - 0.4; x += 1.58) {
+      b.add('ciBrass', barGeo(0.01, [x, yE - 0.12, s * (hi + 0.005)], [x, yE - 0.12, s * (hi - 0.36)], 5));
+      b.add('ciBrass', barGeo(0.01, [x, yE - 0.06, s * (hi - 0.36)], [x, yE - 0.12, s * (hi - 0.36)], 5));
+      b.add('ciBrass', barGeo(0.01, [x, yE - 0.3, s * (hi + 0.005)], [x, yE - 0.12, s * (hi - 0.2)], 5));
+    }
+  }
+  // the ceiling: the lower deck curving up from the wall tops to the clerestory, and its arched top (seen from below)
+  {
+    const rD = 0.8, hD = 0.29, hC = 0.53, cr = 0.95, sh = new THREE.Shape();
+    sh.moveTo(-hi - 0.005, -0.004); sh.quadraticCurveTo(-hi * 0.85, 0.2, -rD, hD); sh.lineTo(-rD, hC);
+    sh.quadraticCurveTo(0, cr, rD, hC); sh.lineTo(rD, hD); sh.quadraticCurveTo(hi * 0.85, 0.2, hi + 0.005, -0.004); sh.closePath();
+    const xe0 = observation ? -xb + 0.01 : -xb + 0.01, len = (xb - 0.01) - xe0;
+    b.add('ciCeil', new THREE.ExtrudeGeometry(sh, { depth: len, bevelEnabled: false, curveSegments: 12 }).rotateY(Math.PI / 2).translate(xe0, yE, 0));
+    // lamps down the clerestory, and the clerestory's deck lights as a band of cream glass
+    for (let x = -9.0; x <= 9.01; x += 3.0) { b.add('ciLamp', new THREE.SphereGeometry(0.11, 14, 8, 0, TAU, Math.PI / 2, Math.PI / 2).translate(x, yE + 0.66, 0)); b.add('ciBrass', new THREE.CylinderGeometry(0.03, 0.03, 0.12, 8).translate(x, yE + 0.71, 0)); }
+  }
+  // bulkheads: a door at each end into the vestibule (the observation car's lounge end is the car's own wall)
+  const dw = 0.42, dh = 2.0;
+  for (const e of observation ? [1] : [1, -1]) {
+    const x = e * (xb - 0.025);
+    for (const s of [-1, 1]) b.box('ciWood', 0.05, yE - yF, hi - dw, x, (yE + yF) / 2, s * (hi + dw) / 2);
+    b.box('ciWood', 0.05, yE - yF - dh, 2 * dw, x, (yE + yF + dh) / 2, 0);
+    b.box('ciBrass', 0.06, 0.04, 2 * dw + 0.08, x, yF + dh + 0.02, 0);
+  }
+  // seats: a walkover seat for two each side of the aisle at every window pair, plush cushion and back, white
+  // covers on the headrests, a cast frame on a pedestal, armrests at the aisle and against the wall
+  const sw = COACH_IN.seatW, sh = COACH_IN.seatH, za = COACH_IN.aisle;
+  for (const x of coachPairs()) for (const s of [-1, 1]) {
+    const zc = s * (za + sw / 2), xs = x + 0.04;
+    b.box('ciFrame', 0.12, sh - 0.12, 0.12, xs, yF + (sh - 0.12) / 2, zc);                                      // pedestal
+    b.box('ciFrame', 0.44, 0.03, 0.34, xs, yF + 0.015, zc);                                                      // its foot
+    b.box('ciFrame', 0.5, 0.06, sw - 0.04, xs, yF + sh - 0.12 + 0.03, zc);                                       // seat frame
+    b.box('ciPlush', 0.52, 0.12, sw - 0.06, xs + 0.01, yF + sh - 0.06 + 0.0, zc);                                // cushion (top at seatH)
+    const back = new THREE.BoxGeometry(0.12, 0.66, sw - 0.06); back.translate(0, 0.33, 0); back.rotateZ(0.2);    // back, leaning 11 degrees
+    b.add('ciPlush', back, M(xs - 0.21, yF + sh - 0.05, zc));
+    const cover = new THREE.BoxGeometry(0.02, 0.2, sw - 0.2); cover.translate(0.07, 0.56, 0); cover.rotateZ(0.2);
+    b.add('ciCover', cover, M(xs - 0.21, yF + sh - 0.05, zc));
+    for (const z of [zc - s * (sw / 2 - 0.03), zc + s * (sw / 2 - 0.03)]) {
+      b.box('ciFrame', 0.42, 0.05, 0.07, xs - 0.02, yF + sh + 0.2, z);                                           // armrest
+      b.box('ciFrame', 0.06, 0.2, 0.05, xs + 0.12, yF + sh + 0.1, z);                                            // and its post
+    }
+  }
+  const grp = b.build(RMAT, { cast: false });
+  grp.name = 'coachInterior';
+  grp.traverse(o => { if (o.isMesh) o.receiveShadow = true; });
+  return grp;
+}
+/* the interior surfaces glow a little by day and more at night, as the coach's own lamps would light them */
+function coachInLight(dark) {
+  if (!RMAT.ciLit) return;
+  const d = smooth(0.2, 0.6, dark || 0);
+  for (const m of RMAT.ciLit) m.emissiveIntensity = lerp(0.1, 0.38, d);
+  RMAT.ciLamp.emissiveIntensity = lerp(0.5, 1.4, d);
 }
 
 /* ============================================================================
@@ -14012,6 +14359,7 @@ const CAM = { mode: 'chase', modes: ['chase', 'cab', 'side', 'drone', 'rear', 'c
 const CAM_HOME = { chase: { yaw: -0.95, pitch: 0.14, dist: 24, pan: 0 }, drone: { droneYaw: 0.8, dronePitch: 0.85, dist: 24, pan: 0 }, cab: { cabYaw: 0, cabPitch: -0.06 } };
 const _cq = new THREE.Quaternion(), _cm = new THREE.Matrix4(), _ce = new THREE.Euler();
 function updateCamera(cam, train, dt) {
+  if (WALK.on && GAME.running) { WALK.camera(cam, dt); return; }
   const L = train.loco, body = L.root;
   cam.near = 0.3; let fov = 52;
   camTrack(train, dt);
@@ -14066,16 +14414,17 @@ function setupViewInput(canvas, camera) {
     const rmb = e.pointerType === 'mouse' && e.button === 2;
     if (rmb) { if (ptrs.size || CAB.grab) return; e.preventDefault(); canvas.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY, rmb: true }); CAM.fling = 0; flick = 0; tapStart = null; canvas.classList.add('dragging'); return; }
     // in the cab, a control under the pointer takes the drag instead of the view
-    if (!ptrs.size && !CAB.grab && CAB.down(e.clientX, e.clientY, e.pointerId)) { canvas.setPointerCapture(e.pointerId); e.preventDefault(); return; }
+    if (!ptrs.size && !CAB.grab && !WALK.on && CAB.down(e.clientX, e.clientY, e.pointerId)) { canvas.setPointerCapture(e.pointerId); e.preventDefault(); return; }
     canvas.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY }); CAM.fling = 0; flick = 0; if (ptrs.size === 1) tapStart = { x: e.clientX, y: e.clientY, t: performance.now() }; if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinch0 = Math.hypot(a.x - b.x, a.y - b.y); ang0 = Math.atan2(b.y - a.y, b.x - a.x); dist0 = CAM.dist; tapStart = null; } });
   canvas.addEventListener('pointermove', e => {
     if (PLACE.on) return;
     if (CAB.grab) { if (e.pointerId === CAB.grab.pid) CAB.move(e.clientX, e.clientY); return; }
-    if (!ptrs.size && e.pointerType === 'mouse') { LTAP.point(null); if (CAB.point(e.clientX, e.clientY)) CPL.point(null); else { CPL.point(e.clientX, e.clientY); if (!CPL.hover) LTAP.point(e.clientX, e.clientY); } return; }
+    if (!ptrs.size && e.pointerType === 'mouse') { if (WALK.on) return; LTAP.point(null); if (CAB.point(e.clientX, e.clientY)) CPL.point(null); else { CPL.point(e.clientX, e.clientY); if (!CPL.hover) LTAP.point(e.clientX, e.clientY); } return; }
     if (!ptrs.has(e.pointerId)) return;
     const p = ptrs.get(e.pointerId), dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
     if (tapStart && Math.hypot(e.clientX - tapStart.x, e.clientY - tapStart.y) > 8) tapStart = null;
     if (!tapStart && e.pointerType === 'mouse') canvas.classList.add('dragging');
+    if (WALK.on) { if (ptrs.size === 1) WALK.look(dx, dy); return; }   // on foot, a drag turns his head
     if (ptrs.size === 2) {
       const [a, b] = [...ptrs.values()], d = Math.hypot(a.x - b.x, a.y - b.y), ang = Math.atan2(b.y - a.y, b.x - a.x);
       if (pinch0 > 0) zoom(dist0 * pinch0 / d);
@@ -14108,7 +14457,7 @@ function setupViewInput(canvas, camera) {
   canvas.addEventListener('pointerup', up); canvas.addEventListener('pointerleave', () => { if (PLACE.on) return; CPL.point(null); LTAP.point(null); if (!CAB.grab) CAB.point(null); }); canvas.addEventListener('pointercancel', e => { if (CAB.grab && e.pointerId === CAB.grab.pid) CAB.up(); ptrs.delete(e.pointerId); tapStart = null; if (!ptrs.size) canvas.classList.remove('dragging'); });
   // no browser menu on a right click anywhere in the game; text boxes keep theirs for paste
   document.addEventListener('contextmenu', e => { const t = e.target; if (t && t.closest && t.closest('input,textarea,[contenteditable="true"]')) return; e.preventDefault(); });
-  canvas.addEventListener('wheel', e => { if (PLACE.on) return; e.preventDefault(); zoom(CAM.dist * (1 + clamp(e.deltaY * (e.deltaMode ? 33 : 1), -120, 120) * 0.0012)); }, { passive: false });
+  canvas.addEventListener('wheel', e => { if (PLACE.on) return; e.preventDefault(); if (WALK.on) { WALK.zoom(1 + clamp(e.deltaY * (e.deltaMode ? 33 : 1), -120, 120) * 0.0015); return; } zoom(CAM.dist * (1 + clamp(e.deltaY * (e.deltaMode ? 33 : 1), -120, 120) * 0.0012)); }, { passive: false });
   document.addEventListener('gesturestart', e => e.preventDefault());
 }
 const _ray = new THREE.Raycaster();
@@ -14190,6 +14539,8 @@ function setupButtons() {
     if (PLACE.on) { PLACE.key(e); return; }
     if (e.repeat && !['KeyW', 'KeyS', 'KeyQ', 'KeyE', 'KeyZ', 'KeyC', 'KeyA', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Minus', 'Equal', 'NumpadSubtract', 'NumpadAdd'].includes(e.code)) return;
     if ($('menu').hidden === false) return;
+    if (WALK.on && WALK.key(e)) return;   // on foot the keys walk him about (11j_walk.js)
+    if (e.code === 'Enter' || e.code === 'NumpadEnter') { WALK.leaveCab(); return; }
     keys[e.code] = true;
     switch (e.code) {
       case 'KeyW': S.throttle = GAME.isDiesel() ? clamp(Math.round(S.throttle * 8 + 1) / 8, 0, 1) : clamp(S.throttle + 0.04, 0, 1); break;
@@ -15039,6 +15390,7 @@ function mpClean(r) {
     o.wk = o.dr && Array.isArray(r.wk) && r.wk.length >= 4 ? [n(r.wk[0], 0, 5000), r.wk[1] < 0 ? -1 : 1, Math.round(n(r.wk[2], 1, 2e9, 1)), n(r.wk[3], 0, 1), n(r.wk[4], 0, 150), n(r.wk[5], -150, 150), r.wk[6] ? 1 : 0] : null;
   }
   o.pz = r.pz ? 1 : 0; o.cs = r.cs ? 1 : 0;
+  o.av = !o.other ? walkClean(r.av) : null;   // walking about or riding (11j_walk.js)
   // send time on their clock, and their echo of ours: [our send time, ms they held it]
   o.ts = n(r.ts, 0, 1e12);
   const ak = r.ak && typeof r.ak === 'object' ? r.ak[MP.id] : null;
@@ -15426,6 +15778,7 @@ MP.state = function () {
     }
     if (S.derailed && T.wk) st.wk = [+T.wk.a.toFixed(1), T.wk.side, T.wk.seed, +T.wk.k.toFixed(2), +(T.wk.v0 || 0).toFixed(1), +(T.wk.vs || 0).toFixed(2), T.wk.hit ? 1 : 0];
   }
+  { const av = WALK.net(); if (av) st.av = av; }
   st.sw = NET.switches.map((sw, i) => MP.swv[i] * 2 + sw.state);
   if (MP.lt) st.lt = MP.lt;
   if (MP.hit) st.hx = MP.hit;
@@ -18205,6 +18558,609 @@ HUDT.sync = function () {
 HUDT.apply('nkp');
 
 /* ============================================================================
+   On foot: climb down from the cab and walk about the railroad, board a coach
+   (yours, an AI train's or a friend's) and ride it, sit by a window, walk the
+   aisle and through the diaphragms from car to car, step off at a station,
+   wait on a platform to be picked up, and climb back into your own cab.
+   The man is a jointed figure (06g_person.js). He walks on the ground, the
+   platforms and the track bed (over bridges and through tunnels), and is kept
+   out of buildings, trees, poles, benches and rolling stock. Riding, he is
+   held in the coach's own frame, so he goes where the coach goes.
+   In a room everyone sees everyone else walking or riding.
+   ========================================================================== */
+const WALK = {
+  on: false, mode: 'drive', p: new THREE.Vector3(), vy: 0, yaw: 0, lookYaw: 0, lookPitch: -0.18, fp: false, dist: 3.6,
+  keys: {}, stick: { x: 0, y: 0, on: false }, runT: false, speed: 0, phase: 0, t: 0, wave: -1, ride: null, rig: null,
+  act: null, actT: 0, interiors: new Map(), inT: 0, holds: new Map(), infoT: 0, peers: new Map(), seen: new Map(),
+};
+const WALK_R = 0.27, WALK_STEP = 0.55, WALK_V = 1.45, RUN_V = 3.9;
+const _kA = new THREE.Vector3(), _kB = new THREE.Vector3(), _kC = new THREE.Vector3(), _kD = new THREE.Vector3(), _kM = new THREE.Matrix4(), _kQ = new THREE.Vector3();
+const yawDir = (th, out) => out.set(Math.sin(th), 0, Math.cos(th));
+const yawOf = d => Math.atan2(d.x, d.z);
+
+/* ---------------- what is underfoot ---------------- */
+/* the track, sampled every 2 m: world x, z, rail-top y and the heading, in 8 m cells */
+WALK.trackGrid = function () {
+  if (WALK.tg) return WALK.tg;
+  const G = new Map(), F = newFrame();
+  for (const e of NET.edges) for (let s = 0; s <= e.len + 0.01; s += 2) {
+    e.pose(Math.min(s, e.len), F);
+    const k = Math.floor(F.p.x / 8) + ',' + Math.floor(F.p.z / 8); let l = G.get(k); if (!l) G.set(k, l = []);
+    const fl = Math.hypot(F.f.x, F.f.z) || 1; l.push(F.p.x, F.p.z, F.p.y, F.f.x / fl, F.f.z / fl, e.isBridge(Math.min(s, e.len)) ? 1 : 0);
+  }
+  return (WALK.tg = G);
+};
+/* the top of whatever is underfoot on the railroad at (x, z): the rail heads (he steps up onto a rail rather
+   than through it), the ties, and the ballast section as 04_world.js lays it (flat to 1.9 m out, then the
+   shoulder and the slope); on a bridge only the deck between the guard timbers. -Infinity away from the track */
+const BALLAST_U = [1.3, 1.9, 3.15, 7.6], BALLAST_V = [-0.2, -0.205, -0.95, -3.4];
+function ballastV(u) {
+  if (u <= BALLAST_U[0]) return -0.17;   // the ties (their tops are the rails' base)
+  for (let i = 1; i < BALLAST_U.length; i++) if (u <= BALLAST_U[i]) return lerp(BALLAST_V[i - 1], BALLAST_V[i], (u - BALLAST_U[i - 1]) / (BALLAST_U[i] - BALLAST_U[i - 1]));
+  return -Infinity;
+}
+function bedAt(x, z) {
+  const G = WALK.trackGrid(), i = Math.floor(x / 8), j = Math.floor(z / 8); let best = -Infinity;
+  for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) {
+    const l = G.get((i + a) + ',' + (j + b)); if (!l) continue;
+    for (let q = 0; q < l.length; q += 6) {
+      const dx = x - l[q], dz = z - l[q + 1]; if (dx * dx + dz * dz > 64) continue;
+      const along = dx * l[q + 3] + dz * l[q + 4]; if (Math.abs(along) > 1.05) continue;
+      const lat = Math.abs(dx * l[q + 4] - dz * l[q + 3]);
+      if (l[q + 5] && lat > 1.4) continue;
+      let v = ballastV(lat);
+      // a boot (11 cm wide) over a rail head stands on the rail
+      if (Math.abs(lat - RAIL_OFF) < 0.09) v = 0;
+      if (l[q + 2] + v > best) best = l[q + 2] + v;
+    }
+  }
+  return best;
+}
+/* the surface to stand on at (x, z) for feet now at y: the highest of the ground, the track bed and the
+   platforms that is no more than a step up. wall: the ground there is a cliff, not a step. */
+function floorAt(x, z, y) {
+  const bore = WORLD.mtn && typeof mtInBore === 'function' ? mtInBore(x, z, 0) : null;
+  const g = bore ? -Infinity : groundAt(x, -z), cands = [g, bedAt(x, z)];
+  if (bore) cands.push(bore.rail - 0.3);
+  for (const d of SCN.decks) if (Math.abs(d[0] - x) < d[6] + d[7] + 1 && Math.abs(d[1] - z) < d[6] + d[7] + 1 && inFootXZ(d, x, z, 0)) cands.push(d[8]);
+  let best = -Infinity;
+  for (const c of cands) if (c <= y + WALK_STEP && c > best) best = c;
+  if (best === -Infinity) return { y: Math.min(...cands.filter(isFinite)), wall: true };
+  return { y: best, wall: false, bore };
+}
+/* push p out of an oriented box f ([cx, cz, ax, az, bx, bz, half a, half b]) by radius r */
+function pushOut(p, f, r) {
+  const dx = p.x - f[0], dz = p.z - f[1]; let u = dx * f[2] + dz * f[3], w = dx * f[4] + dz * f[5];
+  const pu = f[6] + r - Math.abs(u), pw = f[7] + r - Math.abs(w);
+  if (pu <= 0 || pw <= 0) return false;
+  if (pu < pw) u = Math.sign(u || 1) * (f[6] + r); else w = Math.sign(w || 1) * (f[7] + r);
+  p.x = f[0] + u * f[2] + w * f[4]; p.z = f[1] + u * f[3] + w * f[5];
+  return true;
+}
+/* benches, carts and fence runs, in 16 m cells by their centres (none is longer than about 6 m) */
+function blocksNear(x, z) {
+  if (!WALK.bg || WALK.bgN !== SCN.blocks.length) {
+    const G = new Map(); for (const f of SCN.blocks) { const k = Math.floor(f[0] / 16) + ',' + Math.floor(f[1] / 16); let l = G.get(k); if (!l) G.set(k, l = []); l.push(f); }
+    WALK.bg = G; WALK.bgN = SCN.blocks.length;
+  }
+  const i = Math.floor(x / 16), j = Math.floor(z / 16), out = [];
+  for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) { const l = WALK.bg.get((i + a) + ',' + (j + b)); if (l) out.push(...l); }
+  return out;
+}
+/* keep a man standing at p (feet) out of buildings, benches, trees and poles, and rolling stock */
+function walkSolid(p, skip) {
+  for (let pass = 0; pass < 2; pass++) {
+    for (const f of SCN.foot) {
+      if (Math.abs(f[0] - p.x) > f[6] + f[7] + 1 || Math.abs(f[1] - p.z) > f[6] + f[7] + 1) continue;
+      if (inFootXZ(f, p.x, p.z, WALK_R) && p.y < footTop(f) - 0.4) pushOut(p, f, WALK_R);
+    }
+    for (const f of blocksNear(p.x, p.z)) if (p.y < f[9] - 0.05 && p.y + 1.75 > f[8]) pushOut(p, f, WALK_R);
+    for (const t of treesNear(p.x, p.z)) {
+      if (p.y > t[4]) continue;
+      // under a high canopy he still meets the trunk
+      const trunk = p.y + 1.8 < t[3], dx = p.x - t[0], dz = p.z - t[1], h = Math.hypot(dx, dz);
+      if (trunk && (t[2] < 1.2 || p.y + 1.8 < t[3] - 30)) continue;   // a pole or a mast is its own solid; nothing grows 30 m above him
+      const r = (trunk ? clamp(t[2] * 0.09, 0.14, 0.45) : Math.min(t[2], 1.2)) + WALK_R;
+      if (h < r) { const k = h > 1e-3 ? r / h : 0; if (k) { p.x = t[0] + dx * k; p.z = t[1] + dz * k; } else p.x = t[0] + r; }
+    }
+    for (const c of camConsists()) for (const v of c.vehicles) {
+      if (v === skip || !v.pos || Math.abs(v.pos.x - p.x) > v.len || Math.abs(v.pos.z - p.z) > v.len) continue;
+      if (p.y + 1.8 < v.pos.y - 0.3 || p.y > v.pos.y + 4.6) continue;
+      const fl = Math.hypot(v.fwd.x, v.fwd.z) || 1, ax = v.fwd.x / fl, az = v.fwd.z / fl;
+      pushOut(p, [v.pos.x, v.pos.z, ax, az, -az, ax, v.len / 2 + 0.05, 1.62], WALK_R);
+    }
+  }
+}
+
+/* ---------------- the trains about him ---------------- */
+function walkSpeedOf(c) {
+  if (c === GAME.train) return S.v;
+  if (c.ai) return c.ai.v;
+  if (MP.on) for (const p of MP.peers.values()) if (p.rt && p.rt.train === c) return p.rt.v || 0;
+  return c.v || 0;
+}
+const isCoach = v => v.kind === 'coach' && v.model && v.model.root;
+const isObs = v => !!(v.model && v.model.root.userData.markers);
+/* the vestibule doors of a coach, in its own frame: [x, side] */
+const coachDoors = v => { const xd = (CH.xb + CH.xv) / 2, out = []; for (const e of isObs(v) ? [1] : [1, -1]) for (const s of [-1, 1]) out.push([e * xd, s]); return out; };
+function trainName(c) {
+  if (c === GAME.train) return 'your train';
+  if (c.ai) return c.ai.name;
+  if (MP.on) for (const p of MP.peers.values()) if (p.rt && p.rt.train === c) return `${p.st.nm}'s train`;
+  return 'the cars';
+}
+const local2world = (v, l, out) => out.copy(l).applyMatrix4(v.root.matrixWorld);
+const world2local = (v, w, out) => out.copy(w).applyMatrix4(_kM.copy(v.root.matrixWorld).invert());
+/* a direction's yaw between the world and a vehicle's frame (whose +X is ahead and +Z to the right) */
+function yawToLocal(v, th) { yawDir(th, _kA); _kB.copy(_kA).transformDirection(_kM.copy(v.root.matrixWorld).invert()); return Math.atan2(_kB.x, _kB.z); }
+function yawToWorld(v, th) { yawDir(th, _kA); _kA.transformDirection(v.root.matrixWorld); return Math.atan2(_kA.x, _kA.z); }
+
+/* ---------------- getting on and off ---------------- */
+WALK.rigReady = function () {
+  if (!WALK.rig) { WALK.rig = buildPerson({ shirt: 0x5f7896 }); linearizeObject(WALK.rig.root); scene.add(WALK.rig.root); }
+  WALK.rig.root.visible = true;
+  return WALK.rig;
+};
+WALK.setOn = function (on) {
+  WALK.on = on; $('hud').classList.toggle('walk', on);
+  if (!on) { WALK.mode = 'drive'; WALK.ride = null; if (WALK.rig) WALK.rig.root.visible = false; WALK.keys = {}; WALK.stick.on = false; }
+  $('btnWalk').setAttribute('aria-label', on ? 'Back to your cab' : 'Climb down and walk');
+  WALK.ui();
+};
+/* climb down from the cab, on the side with a platform if there is one (else the engineer's side) */
+WALK.leaveCab = function () {
+  const T = GAME.train; if (!T || !GAME.running || S.paused || PLACE.on) return;
+  if (S.derailed) { toast('Not until the train is back on the rails.', 'warn', 2400, 'walk'); return; }
+  if (Math.abs(S.v) > 0.3) { toast('Stop the train before you climb down.', 'warn', 2400, 'walk'); return; }
+  if (MP.watching) MP.unwatch();
+  const L = T.loco, x = (L.cabEye ? L.cabEye.x : 0) - 0.4;
+  let best = null;
+  for (const s of [1, -1]) {
+    const w = _kA.set(x, 0, s * 2.35).applyMatrix4(L.root.matrixWorld), f = floorAt(w.x, w.z, w.y + 0.6);
+    if (!best || f.y > best.y + 0.15) best = { s, y: f.y, x: w.x, z: w.z };
+  }
+  S.throttle = 0; S.indH = 1;
+  if (T.diesel) S.notch = 0;
+  WALK.rigReady();
+  WALK.p.set(best.x, best.y, best.z); WALK.vy = 0;
+  _kB.set(0, 0, best.s).transformDirection(L.root.matrixWorld);
+  WALK.yaw = WALK.lookYaw = Math.atan2(_kB.x, _kB.z); WALK.lookPitch = -0.15;
+  WALK.mode = 'foot'; WALK.setOn(true);
+  toast('Throttle closed and the independent brake set. You climb down from the cab.', '', 3200, 'walk');
+};
+WALK.toCab = function (quiet) {
+  if (!WALK.on) return;
+  WALK.setOn(false);
+  cycleCamera('cab');
+  if (!quiet) toast('Back in the cab.', '', 1800, 'walk');
+};
+WALK.board = function (c, v, door) {
+  const [x, s] = door, sp = Math.abs(walkSpeedOf(c));
+  if (sp > 0.4) { toast('Wait for it to stop.', 'warn', 1800, 'walk'); return; }
+  WALK.ride = { c, v, l: new THREE.Vector3(x, COACH_IN.yF, s * (CH.hw - 0.45)), seat: null, yaw: s > 0 ? Math.PI : 0 };
+  WALK.lookYaw = WALK.ride.yaw; WALK.mode = 'ride'; WALK.vy = 0;
+  WALK.showInterior(v, true);
+  toast(`You climb aboard ${trainName(c)}.`, 'good', 2600, 'walk');
+  WALK.ui();
+};
+/* off a coach by the nearest vestibule door, onto whatever is outside it */
+WALK.alight = function () {
+  const r = WALK.ride; if (!r) return;
+  if (Math.abs(walkSpeedOf(r.c)) > 0.3) { toast('Not while the train is moving.', 'warn', 2000, 'walk'); return; }
+  let best = null;
+  for (const [x, s] of coachDoors(r.v)) {
+    const w = local2world(r.v, _kA.set(x, 0, s * (CH.hw + 0.75)), new THREE.Vector3()), f = floorAt(w.x, w.z, w.y + 0.4);
+    const d = Math.hypot(r.l.x - x, r.l.z - s * CH.hw) - (f.y > w.y - 0.6 ? 6 : 0);   // a platform beats walking a little further
+    if (!best || d < best.d) best = { d, w, f, s };
+  }
+  WALK.p.set(best.w.x, best.f.y, best.w.z); WALK.vy = 0;
+  const yl = best.s > 0 ? 0 : Math.PI;   // facing out of the door
+  WALK.yaw = WALK.lookYaw = yawToWorld(r.v, yl);
+  WALK.ride = null; WALK.mode = 'foot';
+  toast('You step down.', '', 1800, 'walk');
+  WALK.ui();
+};
+WALK.reset = function () { if (WALK.on) WALK.setOn(false); for (const [v] of WALK.interiors) WALK.showInterior(v, false); WALK.tg = null; };
+
+/* ---------------- what he can do where he is ---------------- */
+WALK.findAction = function () {
+  const T = GAME.train;
+  if (WALK.mode === 'ride') {
+    const r = WALK.ride, l = r.l, moving = Math.abs(walkSpeedOf(r.c)) > 0.3;
+    if (r.seat) return { label: 'Stand up', sub: 'Take a walk through the train', go: () => WALK.stand() };
+    const inVest = Math.abs(l.x) > CH.xb + 0.2;
+    if (inVest && Math.abs(l.z) > CH.hw - 0.7) return moving ? { label: 'Get off', sub: 'Wait for a stop', off: true } : { label: 'Get off', sub: 'Step down here', go: () => WALK.alight() };
+    let near = null;
+    if (!inVest) for (const s of coachSeats()) { const d = Math.abs(s.x + 0.35 - l.x); if (d < 0.75 && (!near || d < near.d || (d === near.d && Math.abs(s.z) < Math.abs(near.s.z)))) near = { s, d }; }
+    if (near) { const taken = WALK.seatTaken(r.v, near.s); return { label: 'Sit down', sub: taken ? 'Next seat over is free' : 'Window seat', go: () => WALK.sit(near.s) }; }
+    return moving ? { label: 'Riding', sub: 'Find a seat', off: true } : { label: 'Get off', sub: 'By the nearest door', go: () => WALK.alight() };
+  }
+  // on the ground: a coach door or your own cab within reach
+  let best = null;
+  for (const c of camConsists()) {
+    const sp = Math.abs(walkSpeedOf(c));
+    for (const v of c.vehicles) {
+      if (!v.pos || Math.abs(v.pos.x - WALK.p.x) > v.len || Math.abs(v.pos.z - WALK.p.z) > v.len) continue;
+      if (isCoach(v)) for (const d of coachDoors(v)) {
+        const w = local2world(v, _kA.set(d[0], 0.6, d[1] * (CH.hw + 0.3)), _kC), dd = Math.hypot(w.x - WALK.p.x, w.z - WALK.p.z);
+        if (dd < 1.9 && Math.abs(WALK.p.y - w.y) < 2.2 && (!best || dd < best.dd)) best = { dd, label: 'Board', sub: trainName(c), wait: sp > 0.4, go: () => WALK.board(c, v, d) };
+      }
+      if (c === T && v === T.lead && T.loco.cabEye) {
+        for (const s of [-1, 1]) {
+          const w = _kA.set(T.loco.cabEye.x - 0.4, 0, s * 2.0).applyMatrix4(T.loco.root.matrixWorld), dd = Math.hypot(w.x - WALK.p.x, w.z - WALK.p.z);
+          if (dd < 2.2 && (!best || dd < best.dd)) best = { dd, label: 'Climb up', sub: 'Into your cab', wait: sp > 0.4, go: () => WALK.toCab() };
+        }
+      }
+    }
+  }
+  if (best) return best.wait ? { label: best.label, sub: 'Wait for it to stop', off: true } : best;
+  return null;
+};
+WALK.seatTaken = function (v, s) { for (const p of WALK.peers.values()) if (p.seatOf === v && p.seat && Math.abs(p.seat.x - s.x) < 0.1 && Math.abs(p.seat.z - s.z) < 0.1) return true; return false; };
+WALK.sit = function (s) {
+  const r = WALK.ride; if (!r) return;
+  // the window seat if it is free, else the one by the aisle
+  const row = coachSeats().filter(q => Math.abs(q.x - s.x) < 0.01 && Math.sign(q.z) === Math.sign(s.z)).sort((a, b) => Math.abs(b.z) - Math.abs(a.z));
+  const free = row.find(q => !WALK.seatTaken(r.v, q)) || row[0];
+  r.seat = free; r.l.set(free.x, COACH_IN.yF, free.z); r.yaw = Math.PI / 2; WALK.lookYaw = Math.PI / 2 + (free.z > 0 ? 0.55 : -0.55); WALK.lookPitch = -0.05;
+  WALK.ui();
+};
+WALK.stand = function () { const r = WALK.ride; if (!r || !r.seat) return; r.l.set(r.seat.x + 0.42, COACH_IN.yF, 0); r.seat = null; WALK.ui(); };
+WALK.doAction = function () { const a = WALK.act; if (a && a.go) a.go(); };
+
+/* ---------------- each frame ---------------- */
+WALK.frame = function (dt) {
+  WALK.peersFrame(dt);
+  WALK.interiorsFrame(dt);
+  if (!WALK.on) return;
+  WALK.t += dt;
+  const live = GAME.running && !S.paused && !PLACE.on;
+  if (!live) dt = 0;
+  if (WALK.ride) WALK.ride.v.root.updateMatrixWorld();   // the coach was moved this frame: carry him with it now, not a frame late
+  if (WALK.wave >= 0) { WALK.wave += dt; if (WALK.wave > 2.8) WALK.wave = -1; }
+  // what he wants: keys or the stick, relative to the way he looks
+  let f = 0, s = 0;
+  const k = WALK.keys;
+  if (k.KeyW || k.ArrowUp) f += 1; if (k.KeyS || k.ArrowDown) f -= 1; if (k.KeyD || k.ArrowRight) s += 1; if (k.KeyA || k.ArrowLeft) s -= 1;
+  if (WALK.stick.on) { f += -WALK.stick.y; s += WALK.stick.x; }
+  let m = Math.hypot(f, s); if (m > 1) { f /= m; s /= m; m = 1; }
+  const run = WALK.runT !== !!(k.ShiftLeft || k.ShiftRight) || (WALK.stick.on && m > 0.92);
+  const want = m * (run ? RUN_V : WALK_V);
+  WALK.speed += clamp(want - WALK.speed, -6 * dt, 4 * dt);
+  if (WALK.mode === 'ride') WALK.rideStep(dt, f, s, m); else WALK.footStep(dt, f, s, m);
+  // the stride
+  const cyc = lerp(1.5, 2.9, smooth(1.9, 3.4, WALK.speed));
+  WALK.phase = (WALK.phase + TAU * WALK.speed / cyc * dt) % (TAU * 1000);
+  WALK.place();
+  // a train standing at a platform waits for a man walking up to it or stepping off it
+  WALK.holdTrains(dt);
+  WALK.actT -= dt;
+  if (WALK.actT <= 0) { WALK.actT = 0.15; WALK.act = WALK.findAction(); WALK.ui(); }
+  WALK.infoT -= dt; if (WALK.infoT <= 0) { WALK.infoT = 0.5; WALK.info(); }
+};
+WALK.footStep = function (dt, f, s, m) {
+  const p = WALK.p, q = _kQ.copy(p);
+  if (m > 0.01) {
+    const fw = yawDir(WALK.lookYaw, _kA), rt = _kB.set(-fw.z, 0, fw.x);
+    _kC.copy(fw).multiplyScalar(f).addScaledVector(rt, s).normalize();
+    q.addScaledVector(_kC, WALK.speed * dt);
+    // he turns to the way he is going; in first person he faces where he looks
+    const ty = WALK.fp ? WALK.lookYaw : yawOf(_kC);
+    WALK.yaw += angWrap(ty - WALK.yaw) * Math.min(1, dt * 10);
+  } else if (WALK.fp) WALK.yaw = WALK.lookYaw;
+  q.x = clamp(q.x, INNER.x0 + 20, INNER.x1 - 20); q.z = clamp(q.z, -INNER.n1 + 20, -INNER.n0 - 20);
+  walkSolid(q, null);
+  let fl = floorAt(q.x, q.z, p.y);
+  // a cliff, or water too deep to wade, turns him back
+  const deep = !WORLD.mtn && !WORLD.custom && fl.y < -4.7;
+  if (fl.wall || deep) { q.x = p.x; q.z = p.z; walkSolid(q, null); fl = floorAt(q.x, q.z, p.y); }
+  p.x = q.x; p.z = q.z;
+  if (p.y > fl.y + 0.03) { WALK.vy -= 9.81 * dt; p.y += WALK.vy * dt; if (p.y <= fl.y) { p.y = fl.y; WALK.vy = 0; } }
+  else { p.y = fl.y > p.y ? p.y + Math.min(fl.y - p.y, Math.max(0.04, dt * 4)) : fl.y; WALK.vy = 0; }
+};
+/* in a coach: the aisle between the seats, the open ends, the bulkhead doors, the vestibule, and through the
+   diaphragm into the next coach */
+function coachRoom(l, prev, obs) {
+  const xb = CH.xb, xv = CH.xv, R = 0.2, rows = 9.86, ax = Math.abs(l.x), sx = Math.sign(l.x) || 1;
+  if (obs && l.x < -(xb - 0.3)) l.x = -(xb - 0.3);
+  const zIn = x => { const a = Math.abs(x); return a <= rows ? COACH_IN.aisle - R - 0.02 : a <= xb - 0.25 ? COACH_IN.hi - R : a < xb + 0.25 ? 0.42 - R : CH.hw - 0.3; };
+  if (ax > xv - 0.2) l.x = sx * (xv - 0.2);
+  const lim = zIn(l.x);
+  if (Math.abs(l.z) > lim) {
+    // stepping into a narrower part sideways on is not allowed: hold him where he was along the car
+    // he is steered along the narrower part toward its middle instead, as a man edges to a door
+    if (Math.abs(prev.z) > lim + 0.01 && zIn(prev.x) > lim) { const st = Math.hypot(l.x - prev.x, l.z - prev.z); l.x = prev.x; l.z = prev.z - Math.sign(prev.z) * Math.min(st, Math.abs(prev.z) - lim); }
+    else l.z = Math.sign(l.z) * lim;
+  }
+  return l;
+}
+WALK.rideStep = function (dt, f, s, m) {
+  const r = WALK.ride;
+  // the coach is gone (a train made up again, a player left): he is left standing beside where it was
+  if (!camConsists().includes(r.c) || !r.c.vehicles.includes(r.v)) { const w = local2world(r.v, r.l, _kA); WALK.ride = null; WALK.mode = 'foot'; WALK.p.copy(w); WALK.p.y = floorAt(w.x, w.z, w.y + 2).y; WALK.ui(); return; }
+  if (r.seat) { WALK.speed = 0; return; }
+  if (m < 0.01) return;
+  const prev = _kD.copy(r.l), fw = yawDir(WALK.lookYaw, _kA), rt = _kB.set(-fw.z, 0, fw.x);
+  _kC.copy(fw).multiplyScalar(f).addScaledVector(rt, s).normalize();
+  const sp = Math.min(WALK.speed, WALK_V);   // nobody runs down a coach aisle
+  WALK.speed = Math.min(WALK.speed, WALK_V);
+  r.l.addScaledVector(_kC, sp * dt);
+  r.yaw += angWrap((WALK.fp ? WALK.lookYaw : yawOf(_kC)) - r.yaw) * Math.min(1, dt * 10);
+  // through the end door to the next car: the one coupled on at this end
+  if (Math.abs(r.l.x) > CH.xv - 0.22 && Math.abs(r.l.z) < 0.3) {
+    const i = r.c.vehicles.indexOf(r.v), n = r.c.vehicles[i + ((r.l.x > 0) !== !!r.v.flip ? -1 : 1)];
+    if (n && isCoach(n) && n.pos && n.pos.distanceTo(r.v.pos) < (n.len + r.v.len) / 2 + 1.5) {
+      const w = local2world(r.v, r.l, _kA), wy = yawToWorld(r.v, r.yaw), wl = yawToWorld(r.v, WALK.lookYaw);
+      world2local(n, w, r.l); r.l.y = COACH_IN.yF; r.l.x = Math.sign(r.l.x) * (CH.xv - 0.3);
+      WALK.showInterior(n, true);
+      r.v = n; r.yaw = yawToLocal(n, wy); WALK.lookYaw = yawToLocal(n, wl);
+      return;
+    }
+  }
+  coachRoom(r.l, prev, isObs(r.v));
+};
+/* put the figure where he is and pose him */
+WALK.place = function () {
+  const rig = WALK.rigReady(), R = rig.root, r = WALK.ride;
+  if (r) {
+    local2world(r.v, r.l, R.position);
+    R.quaternion.setFromRotationMatrix(_kM.extractRotation(r.v.root.matrixWorld)).multiply(_kQQ.setFromAxisAngle(_kU, r.yaw));
+  } else { R.position.copy(WALK.p); R.quaternion.setFromAxisAngle(_kU, WALK.yaw); }
+  rig.pose({ phase: WALK.phase, speed: WALK.speed, sit: r && r.seat ? r.seat.h : 0, wave: WALK.wave, look: WALK.lookPitch, t: WALK.t });
+  R.visible = !WALK.fp;
+};
+const _kU = new THREE.Vector3(0, 1, 0), _kQQ = new THREE.Quaternion();
+
+/* hold an AI train's doors while he walks up to it or is getting off */
+WALK.holdTrains = function (dt) {
+  for (const a of AI.trains) {
+    if (!(a.dwell > 0) || !a.train.lead.pos) { WALK.holds.delete(a); continue; }
+    let h = WALK.holds.get(a); if (!h) WALK.holds.set(a, h = { t: 0 });
+    let near = false;
+    if (WALK.mode === 'ride' && WALK.ride.c === a.train) near = !WALK.ride.seat && Math.abs(WALK.ride.l.x) > CH.xb - 2;
+    else if (WALK.mode === 'foot') for (const v of a.train.vehicles) if (isCoach(v) && v.pos.distanceTo(WALK.p) < 26) { near = true; break; }
+    if (near && a.dwell < 6 && h.t < 45) { h.t += dt; a.dwell = 6; }
+  }
+};
+
+/* ---------------- the camera ---------------- */
+WALK.camera = function (cam, dt) {
+  cam.near = 0.05;
+  const r = WALK.ride, P = WALK.lookPitch;
+  let fov = WALK.fp ? 66 : 56;
+  if (cam.aspect < 1) fov = Math.min(84, fov * 1.25);
+  if (r) {
+    const M4 = r.v.root.matrixWorld, sitH = r.seat ? r.seat.h + PD.seatHip + 0.7 : PD.eye;
+    const head = _kA.copy(r.l); head.y += WALK.fp ? sitH : (r.seat ? sitH - 0.1 : 1.55);
+    const d = _kB.set(Math.sin(WALK.lookYaw) * Math.cos(P), Math.sin(P), Math.cos(WALK.lookYaw) * Math.cos(P));
+    if (WALK.fp) { _kC.copy(head).addScaledVector(d, 0.1); head.addScaledVector(d, 0.1); }
+    else {
+      _kC.copy(head).addScaledVector(d, -Math.min(WALK.dist, 2.2));
+      const vest = Math.abs(_kC.x) > CH.xb - 0.1, zl = (vest ? CH.hw - 0.12 : COACH_IN.hi - 0.08);
+      _kC.x = clamp(_kC.x, -(CH.xv - 0.1), CH.xv - 0.1); _kC.z = clamp(_kC.z, -zl, zl); _kC.y = clamp(_kC.y, COACH_IN.yF + 0.3, CH.eave + 0.45);
+    }
+    const tgt = head.addScaledVector(d, WALK.fp ? 1 : 0.0);
+    cam.position.copy(_kC).applyMatrix4(M4);
+    tgt.applyMatrix4(M4);
+    cam.up.set(0, 1, 0); cam.lookAt(tgt);
+  } else {
+    const p = WALK.p, d = _kB.set(Math.sin(WALK.lookYaw) * Math.cos(P), Math.sin(P), Math.cos(WALK.lookYaw) * Math.cos(P));
+    if (WALK.fp) {
+      cam.position.set(p.x, p.y + PD.eye, p.z).addScaledVector(yawDir(WALK.yaw, _kC), 0.09);
+      cam.lookAt(_kA.copy(cam.position).add(d));
+    } else {
+      const tgt = _kA.set(p.x, p.y + 1.5, p.z), back = _kC.copy(d).negate();
+      const dd = camClear(tgt, back, WALK.dist, 0.5);
+      cam.position.copy(tgt).addScaledVector(back, dd);
+      const g = groundAt(cam.position.x, -cam.position.z), b = WORLD.mtn ? mtInBore(cam.position.x, cam.position.z, 0) : null;
+      if (!b && cam.position.y < g + 0.3) cam.position.y = g + 0.3;
+      cam.lookAt(tgt);
+    }
+  }
+  CAM.fov += (fov - CAM.fov) * Math.min(1, dt * 4);
+  cam.fov = CAM.fov; cam.updateProjectionMatrix();
+};
+WALK.look = function (dx, dy) {
+  const k = 0.0055;
+  WALK.lookYaw -= dx * k;
+  WALK.lookPitch = clamp(WALK.lookPitch - dy * k, -1.35, 1.25);
+};
+WALK.zoom = function (f) { WALK.dist = clamp(WALK.dist * f, 1.6, 9); };
+WALK.toggleView = function () { WALK.fp = !WALK.fp; if (WALK.fp && !WALK.ride) WALK.yaw = WALK.lookYaw; WALK.ui(); };
+
+/* ---------------- coach interiors near the camera ---------------- */
+WALK.showInterior = function (v, on) {
+  const have = WALK.interiors.get(v);
+  if (on && !have) {
+    const g = coachInterior(isObs(v)); linearizeObject(g); v.model.root.add(g);
+    const wins = []; v.model.root.traverse(o => { if (o.isMesh && (o.name === 'win' || o.name === 'holWin')) { wins.push([o, o.material]); o.material = RMAT.ciGlass; } });
+    WALK.interiors.set(v, { g, wins });
+  } else if (!on && have) {
+    have.g.parent && have.g.parent.remove(have.g);
+    have.g.traverse(o => { if (o.isMesh) o.geometry.dispose(); });
+    for (const [o, m] of have.wins) o.material = m;
+    WALK.interiors.delete(v);
+  }
+};
+WALK.interiorsFrame = function (dt) {
+  coachInLight(SKY.dark);
+  WALK.inT -= dt; if (WALK.inT > 0) return; WALK.inT = 0.4;
+  const cam = camera.position, keep = new Set(), near = [];
+  if (WALK.ride) keep.add(WALK.ride.v);
+  for (const c of camConsists()) for (const v of c.vehicles) if (isCoach(v) && v.pos) { const d = v.pos.distanceTo(cam); if (d < 40) near.push([d, v]); }
+  near.sort((a, b) => a[0] - b[0]);
+  for (const [, v] of near.slice(0, 5)) keep.add(v);
+  for (const p of WALK.peers.values()) if (p.seatOf && p.seatOf.pos && p.seatOf.pos.distanceTo(cam) < 60) keep.add(p.seatOf);
+  for (const v of [...WALK.interiors.keys()]) {
+    const live = camConsists().some(c => c.vehicles.includes(v));
+    if (!live || (!keep.has(v) && (!v.pos || v.pos.distanceTo(cam) > 60))) WALK.showInterior(v, false);
+  }
+  for (const v of keep) if (!WALK.interiors.has(v)) WALK.showInterior(v, true);
+};
+
+/* ---------------- the panel ---------------- */
+WALK.ui = function () {
+  const b = $('walkAct'); if (!b) return;
+  const a = WALK.act;
+  const txt = a ? a.label : (WALK.mode === 'ride' ? 'Riding' : 'Walking'), sub = a ? a.sub || '' : '';
+  if (b.dataset.t !== txt + '|' + sub) { b.dataset.t = txt + '|' + sub; b.textContent = txt; if (sub) { const sm = document.createElement('small'); sm.textContent = sub; b.appendChild(sm); } }
+  b.disabled = !(a && a.go);
+  $('walkView').textContent = WALK.fp ? '3rd' : '1st';
+  $('walkRun').classList.toggle('on', WALK.runT);
+  $('walkRun').hidden = WALK.mode === 'ride';
+  $('camName').textContent = WALK.on ? (WALK.mode === 'ride' ? 'Riding' : 'On foot') + (WALK.fp ? ' · 1st person' : '') : CAM.names[CAM.mode];
+};
+/* where he is and what is coming: the next trains due at the station he is standing at, or where the train he
+   is riding stops next */
+WALK.info = function () {
+  let title = 'On foot', sub = '';
+  if (WALK.mode === 'ride') {
+    const c = WALK.ride.c, mph = Math.round(Math.abs(walkSpeedOf(c)) / MPH);
+    title = `Riding ${trainName(c)} · ${mph} mph`;
+    if (c.ai) { const ev = c.ai.events.find(e => e.stop && !e.done); sub = c.ai.dwell > 0 ? `Standing at ${WALK.stationNear(WALK.ride.v.pos, 200) || 'the station'}. ${WALK.ride.seat ? 'Stand up and walk to a door to get off.' : 'Get off at a door.'}` : ev ? `Next stop <em>${ev.stop}</em>` : 'Running to its next stop'; }
+    else if (c === GAME.train) sub = 'Nobody is at the throttle.';
+    else sub = mph < 1 ? 'Stopped. Get off at a door.' : '';
+  } else {
+    const st = WALK.station(WALK.p, 90);
+    if (st) { title = `On foot · ${st.name}`; sub = WALK.due(st); }
+    const T = GAME.train;
+    if (T && T.lead.pos) { const d = T.lead.pos.distanceTo(WALK.p); if (d > 60) sub += (sub ? '<br>' : '') + `Your engine is ${fmtFt(d)} away.`; }
+  }
+  if ($('walkTitle').textContent !== title) $('walkTitle').textContent = title;
+  if ($('walkSub').innerHTML !== sub) $('walkSub').innerHTML = sub;
+};
+WALK.station = function (p, r) { let best = null; for (const st of ROUTE.stations) { if (!st.p || st.kind === 'quarry') continue; const d = Math.hypot(st.p.x - p.x, st.p.z - p.z); if (d < r && (!best || d < best.d)) best = { st, d }; } return best && best.st; };
+WALK.stationNear = function (p, r) { const s = WALK.station(p, r); return s && s.name; };
+/* the AI passenger trains still to call at station st, soonest first */
+WALK.due = function (st) {
+  if (!AI.trains.length) return MP.on ? 'Waiting for a ride. Your friends can see you on the platform.' : 'No trains are running (Other trains is off in the menu).';
+  const L = ROUTE.mainLen, rows = [];
+  for (const a of AI.trains) {
+    if (!a.def.stops || !a.train.lead.pos) continue;
+    const f = AI.along(a.train.endTP('front'), a.dir); if (f === null || st.line !== ROUTE.main) continue;
+    const to = (((a.dir > 0 ? st.sLine : -st.sLine) - f) % L + L) % L;
+    const here = a.train.lead.pos.distanceTo(st.p) < 260 && a.dwell > 0;
+    const eta = here ? 0 : (to + 40) / (a.def.vmax * MPH * 0.7) + (a.dwell > 0 ? a.dwell : 0);
+    rows.push({ a, eta, here, to });
+  }
+  rows.sort((x, y) => x.eta - y.eta);
+  if (!rows.length) return 'No passenger trains call here.';
+  return rows.slice(0, 2).map(r => r.here ? `<em>${r.a.name}</em> ${r.a.def.sub.toLowerCase()} is standing here. Board it!` : `<em>${r.a.name}</em> ${r.a.def.sub.toLowerCase()}, about ${Math.max(1, Math.round(r.eta / 60))} min (${fmtMi(r.to)} off)`).join('<br>');
+};
+
+/* ---------------- input ---------------- */
+const WALK_PASS = ['KeyM', 'KeyP', 'Escape', 'Tab'];
+WALK.key = function (e) {
+  if (WALK_PASS.includes(e.code)) return false;
+  WALK.keys[e.code] = true;
+  if (!e.repeat) switch (e.code) {
+    case 'KeyF': case 'KeyE': case 'Space': WALK.doAction(); break;
+    case 'Enter': case 'NumpadEnter': WALK.toCab(); break;
+    case 'KeyV': case 'KeyC': WALK.toggleView(); break;
+    case 'KeyG': WALK.waveNow(); break;
+    case 'KeyR': WALK.runT = !WALK.runT; WALK.ui(); break;
+    case 'Minus': case 'NumpadSubtract': WALK.zoom(1.15); break;
+    case 'Equal': case 'NumpadAdd': WALK.zoom(1 / 1.15); break;
+  }
+  if (e.code.startsWith('Arrow') || e.code === 'Space') e.preventDefault();
+  return true;
+};
+WALK.keyup = function (e) { WALK.keys[e.code] = false; };
+WALK.waveNow = function () { if (!(WALK.ride && WALK.ride.seat)) WALK.wave = 0; else WALK.wave = 0; };
+WALK.setup = function () {
+  // on foot the camera button swaps first and third person
+  $('btnCam').addEventListener('click', e => { if (WALK.on) { e.stopImmediatePropagation(); WALK.toggleView(); } }, true);
+  $('btnWalk').addEventListener('click', () => { if (WALK.on) WALK.toCab(); else WALK.leaveCab(); });
+  $('walkAct').addEventListener('click', () => WALK.doAction());
+  $('walkView').addEventListener('click', () => WALK.toggleView());
+  $('walkRun').addEventListener('click', () => { WALK.runT = !WALK.runT; WALK.ui(); });
+  $('walkWave').addEventListener('click', () => WALK.waveNow());
+  const st = $('walkStick'), knob = st.querySelector('i');
+  let pid = null;
+  const set = e => { const r = st.getBoundingClientRect(), R = r.width / 2; let x = (e.clientX - r.left - R) / R, y = (e.clientY - r.top - R) / R; const m = Math.hypot(x, y); if (m > 1) { x /= m; y /= m; } WALK.stick.x = x; WALK.stick.y = y; knob.style.transform = `translate(${x * R * 0.62}px,${y * R * 0.62}px)`; };
+  st.addEventListener('pointerdown', e => { pid = e.pointerId; st.setPointerCapture(pid); WALK.stick.on = true; set(e); e.preventDefault(); e.stopPropagation(); });
+  st.addEventListener('pointermove', e => { if (e.pointerId === pid) set(e); });
+  const end = e => { if (e.pointerId !== pid) return; pid = null; WALK.stick.on = false; WALK.stick.x = WALK.stick.y = 0; knob.style.transform = ''; };
+  st.addEventListener('pointerup', end); st.addEventListener('pointercancel', end);
+  addEventListener('blur', () => { WALK.keys = {}; });
+  addEventListener('keyup', e => WALK.keyup(e));
+};
+
+/* sound: the listener rides with our train only while riding it */
+{ const was = CAM.riding; CAM.riding = () => WALK.on ? !!(WALK.ride && WALK.ride.c === GAME.train) : was(); }
+
+/* ---------------- other players ----------------
+   Sent with the room state as av: [1, x, y, z, yaw, speed, flags] on foot, or [2, owner, car, x, z, yaw, speed,
+   flags, seat] riding, the car counted in the owner's train ('' for the owner's own id when it is ours).
+   flags: 1 waving. */
+WALK.net = function () {
+  if (!WALK.on) return null;
+  const fl = WALK.wave >= 0 ? 1 : 0, sp = +WALK.speed.toFixed(2);
+  if (WALK.mode === 'ride') {
+    const r = WALK.ride, c = r.c; let owner = null;
+    if (c === GAME.train) owner = MP.id; else for (const p of MP.peers.values()) if (p.rt && p.rt.train === c) owner = p.id;
+    if (!owner) return null;
+    const si = r.seat ? coachSeats().findIndex(s => s === r.seat || (Math.abs(s.x - r.seat.x) < 0.01 && Math.abs(s.z - r.seat.z) < 0.01)) : -1;
+    return [2, owner, c.vehicles.indexOf(r.v), +r.l.x.toFixed(2), +r.l.z.toFixed(2), +r.yaw.toFixed(2), sp, fl, si];
+  }
+  return [1, +WALK.p.x.toFixed(2), +WALK.p.y.toFixed(2), +WALK.p.z.toFixed(2), +WALK.yaw.toFixed(2), sp, fl];
+};
+function walkClean(a) {
+  if (!Array.isArray(a)) return null;
+  const n = (x, lo, hi) => (typeof x === 'number' && isFinite(x)) ? clamp(x, lo, hi) : 0;
+  if (a[0] === 1 && a.length >= 7) return [1, n(a[1], -1e5, 1e5), n(a[2], -2000, 5000), n(a[3], -1e5, 1e5), n(a[4], -10, 10), n(a[5], 0, 6), a[6] ? 1 : 0];
+  if (a[0] === 2 && a.length >= 9 && typeof a[1] === 'string' && /^[a-z0-9]{6,16}$/.test(a[1])) return [2, a[1], Math.round(n(a[2], 0, 200)), n(a[3], -13, 13), n(a[4], -2, 2), n(a[5], -10, 10), n(a[6], 0, 6), a[7] ? 1 : 0, Math.round(n(a[8], -1, 200))];
+  return null;
+}
+WALK.peersFrame = function (dt) {
+  const live = new Set();
+  if (MP.on) for (const p of MP.peers.values()) {
+    const av = p.st.av; if (!av) continue;
+    live.add(p.id);
+    let w = WALK.peers.get(p.id);
+    if (!w) { const rig = buildPerson({ shirt: p.color ? parseInt(String(p.color).replace('#', ''), 16) || 0x8a4b3a : 0x8a4b3a }); linearizeObject(rig.root); scene.add(rig.root); w = { rig, phase: 0, pos: new THREE.Vector3(), yaw: 0, init: false, wave: -1, tag: null, waitT: 0, toldAt: '' }; WALK.peers.set(p.id, w); }
+    w.seatOf = null; w.seat = null;
+    const R = w.rig.root;
+    if (av[0] === 1) {
+      _kA.set(av[1], av[2], av[3]);
+      if (!w.init || w.pos.distanceTo(_kA) > 20) w.pos.copy(_kA); else w.pos.lerp(_kA, Math.min(1, dt * 8));
+      w.yaw += angWrap(av[4] - w.yaw) * Math.min(1, dt * 10); w.init = true;
+      R.position.copy(w.pos); R.quaternion.setFromAxisAngle(_kU, w.yaw);
+      // tell the room's drivers when a friend is waiting on a platform
+      const st = av[5] < 0.2 ? WALK.station(w.pos, 60) : null;
+      w.waitT = st ? w.waitT + dt : 0;
+      if (st && w.waitT > 6 && w.toldAt !== st.name) { w.toldAt = st.name; toast(`${p.st.nm} is waiting on the platform at ${st.name}.`, 'good', 5000, 'wait' + p.id); }
+      if (!st && w.waitT === 0 && w.pos.distanceTo(_kA) < 1) { /* still walking */ }
+    } else {
+      const owner = av[1] === MP.id ? GAME.train : (MP.peers.get(av[1]) && MP.peers.get(av[1]).rt ? MP.peers.get(av[1]).rt.train : null);
+      const v = owner && owner.vehicles[av[2]];
+      if (!v || !isCoach(v)) { R.visible = false; continue; }
+      v.root.updateMatrixWorld();
+      w.seatOf = v; w.seat = av[8] >= 0 ? coachSeats()[av[8]] || null : null;
+      local2world(v, _kA.set(av[3], COACH_IN.yF, av[4]), R.position);
+      R.quaternion.setFromRotationMatrix(_kM.extractRotation(v.root.matrixWorld)).multiply(_kQQ.setFromAxisAngle(_kU, av[5]));
+      w.pos.copy(R.position); w.init = true; w.toldAt = '';
+    }
+    if (av[6] > 0.05) w.phase = (w.phase + TAU * av[6] / lerp(1.5, 2.9, smooth(1.9, 3.4, av[6])) * dt) % (TAU * 1000);
+    if (av[7]) w.wave = w.wave < 0 ? 0 : w.wave + dt; else w.wave = -1;
+    R.visible = true;
+    w.rig.pose({ phase: w.phase, speed: av[0] === 2 && w.seat ? 0 : av[6], sit: w.seat ? w.seat.h : 0, wave: w.wave, t: WALK.t });
+    WALK.peerTag(p, w);
+  }
+  for (const [id, w] of [...WALK.peers]) if (!live.has(id)) { scene.remove(w.rig.root); w.rig.root.traverse(o => { if (o.isMesh) o.geometry.dispose(); }); if (w.tag) w.tag.remove(); WALK.peers.delete(id); }
+};
+WALK.peerTag = function (p, w) {
+  let el = w.tag;
+  if (!el) { el = w.tag = document.createElement('div'); el.className = 'mpTag'; const dot = document.createElement('i'); dot.style.background = p.color; el.appendChild(dot); el.appendChild(document.createElement('span')); $('mpTags').appendChild(el); }
+  _kA.copy(w.pos); _kA.y += w.seat ? 1.5 : 2.05;
+  const d = _kA.distanceTo(camera.position); _kB.copy(_kA).project(camera);
+  if (d > 400 || _kB.z > 1 || Math.abs(_kB.x) > 1.1 || Math.abs(_kB.y) > 1.1) { el.style.display = 'none'; return; }
+  el.style.display = '';
+  el.style.transform = `translate(${Math.round((_kB.x * 0.5 + 0.5) * innerWidth)}px,${Math.round((-_kB.y * 0.5 + 0.5) * innerHeight)}px) translate(-50%,-100%)`;
+  if (el.children[1].textContent !== p.st.nm) el.children[1].textContent = p.st.nm;
+};
+
+/* ============================================================================
    Game: boot, world loading, main loop, rules, HUD
    ========================================================================== */
 const GAME = {
@@ -18276,7 +19232,7 @@ async function loadWorld() {
   for (const st of ROUTE.stations) { st.edge.pose(st.s, FR); st.p = FR.p.clone(); }
   for (const w of ROUTE.water) { w.edge.pose(w.s, FR); w.p = FR.p.clone(); }
   if (ROUTE.coal) { const c = ROUTE.coal; c.edge.pose(c.s, FR); c.p = FR.p.clone(); }
-  setupViewInput($('gl'), camera); PLACE.setup($('gl')); setupLevers(); setupButtons(); setupMap();
+  setupViewInput($('gl'), camera); PLACE.setup($('gl')); setupLevers(); setupButtons(); setupMap(); WALK.setup();
   linearizeObject(scene);
   makeTrain();
   applyLook(GAME.settings.time, GAME.settings.weather, renderer, scene);
@@ -18355,6 +19311,7 @@ function layoutFit(tp, need) {
   return tp;
 }
 function finishTrain(t) {
+  WALK.reset();
   prepareTrain(t);
   CARS.setup();
   AI.setup();
@@ -18873,6 +19830,7 @@ function renderStep(dt, T) {
   CAB.frame(dt, T);
   AI.render(dt);
   MP.frame(dt);
+  WALK.frame(dt);
   if (GAME.running && !S.paused && !S.derailed && !PLACE.on) MP.contact(T);
   // headlight & glows, brightening through dusk
   const night = SKY.dark, darkH = Math.max(night, smooth(0.3, 0.7, SKY.boreK || 0));   // in a tunnel the headlight works as it does at night
@@ -18905,7 +19863,7 @@ function renderStep(dt, T) {
   // sky follows camera
   skyTick(dt);
   SKY.clouds.material.map.offset.x += dt * 0.0006; SKY.clouds.material.map.offset.y += dt * 0.0003;
-  skyFollow(camera, PLACE.on ? PLACE.focus() : (MP.view() || T).lead.pos);
+  skyFollow(camera, PLACE.on ? PLACE.focus() : WALK.on ? camera.position : (MP.view() || T).lead.pos);
   lampsFrame(camera, dt);
   updateTrackLOD(camera); updateDetailLOD(camera, scene, dt); mtUpdate(camera, scene);
   WORLD.waterT.value += dt;
