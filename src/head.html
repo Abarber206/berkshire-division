@@ -188,7 +188,7 @@ h1{font-family:var(--f-display);font-weight:800;font-size:clamp(44px,8vw,84px);l
 .specs b{font-family:var(--f-num);font-weight:600;font-size:15px;font-variant-numeric:tabular-nums}
 .specs span{font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:var(--ink-dim)}
 .form{background:rgba(14,19,23,.9);border:1px solid var(--rule);border-radius:8px;padding:14px;display:flex;flex-direction:column;gap:12px;min-width:0}
-@media (min-width:601px) and (min-height:501px){ .form{max-height:calc(100vh - 32px)} .mpanes{overflow-y:auto;overscroll-behavior:contain;margin-right:-6px;padding-right:6px} }
+@media (min-width:601px) and (min-height:501px){ .form{max-height:calc(100vh - 32px)} .mpanes{overflow-y:auto;overscroll-behavior:contain;margin-right:-6px;padding-right:6px;scrollbar-width:thin;scrollbar-color:#5d4a22 transparent} }
 .fgroup{display:flex;flex-direction:column;gap:6px}
 .fgroup>.lbl{font-size:10px}
 .seg{display:grid;gap:4px;grid-template-columns:repeat(auto-fit,minmax(88px,1fr))}
@@ -225,10 +225,11 @@ details.keys summary{cursor:var(--cur-hot,pointer);color:var(--ink);font-weight:
 details.keys div{display:grid;grid-template-columns:auto 1fr;gap:3px 10px;margin-top:6px;font-family:var(--f-num);font-size:11px}
 details.keys kbd{color:var(--brass)}
 /* menu: one tab of settings at a time, a footer that keeps the start button in reach, and a minimize */
-.mtop{display:flex;align-items:center;gap:6px;margin:-4px -4px 0}
-.mtabs{flex:1;min-width:0;display:flex;gap:2px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}
-.mtabs::-webkit-scrollbar{display:none}
-.mtabs button{flex:1 0 auto;border:1px solid transparent;background:none;border-radius:5px;padding:7px 9px;font-size:11px;font-weight:700;letter-spacing:1.1px;text-transform:uppercase;color:var(--ink-dim);white-space:nowrap}
+.mtop{display:flex;align-items:flex-start;gap:6px;margin:-4px -4px 0}
+/* every tab stays in sight: the row wraps instead of scrolling sideways (a hidden sideways scroll left Sound and Online
+   reachable only with a middle-mouse drag on PC), four to a row */
+.mtabs{flex:1;min-width:0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:2px}
+.mtabs button{border:1px solid transparent;background:none;border-radius:5px;padding:7px 9px;font-size:11px;font-weight:700;letter-spacing:1.1px;text-transform:uppercase;color:var(--ink-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .mtabs button:hover{color:var(--ink)}
 .mtabs button[aria-selected="true"]{color:#f6e2ad;border-color:var(--brass);background:linear-gradient(#2a2416,#1c180f)}
 .mmin{flex:none;display:flex;align-items:center;gap:5px;border:1px solid var(--rule);background:var(--steel-2);border-radius:5px;padding:6px 8px;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--ink-dim)}
