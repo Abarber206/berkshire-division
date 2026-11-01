@@ -16,7 +16,7 @@ const EXPORTS = ['S', 'ENV', 'GAME', 'autoCutoff', 'railPatch', 'applyFireSettin
   'IX', 'AI', 'routeWalk', 'PLACE', 'PLACE_SNAP', 'PLACE_CLEAR', 'endCoupler', 'carVehicle', 'signalRoute', 'signalAspect', 'swPair',
   'MPC', 'mpcBeats', 'trainCode', 'carToken', 'carTokenIn', 'trackDelta', 'Train', 'CONSISTS', 'SAVE', 'IND', 'INDUSTRIES', 'LADING', 'LOAD_TONS', 'IND_WORK', 'YARD_TURN', 'YARD_CUTS', 'consistOut', 'seatConsist', 'vehicleIn', 'stateOut', 'jobOut', 'jobIn', 'tpOut', 'lineOut',
   'steamK', 'BB', 'BBT', 'bbDrift', 'CTL', 'ctlTravel', 'ctlSetTravel', 'pullToWhistle', 'whistleToPull', 'dialAngle', 'glassLevel', 'stokerNext', 'CAB_READ', 'DIALS',
-  'FLEET', 'fleetPark', 'fleetResume', 'isTrainC', 'fleetOut', 'powerOf', 'FLEET_WORLD'];
+  'FLEET', 'fleetPark', 'fleetResume', 'isTrainC', 'fleetOut', 'powerOf', 'FLEET_WORLD', 'crewNew', 'crewStep'];
 
 /* just enough three.js: real Vector3 math, everything else accepts any call and returns itself */
 class Vector3 {

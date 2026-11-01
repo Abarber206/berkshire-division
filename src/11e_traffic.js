@@ -6,6 +6,8 @@
 const IX = { res: new Map(), idx: null, idxAt: -1 };
 const AI = { trains: [] };
 
+/* what a consist is called where it holds up another train */
+const ixName = c => c === GAME.train ? 'your train' : c.ai ? c.ai.name : c.parkS && typeof FLEET !== 'undefined' ? FLEET.name(c) : c instanceof Cut ? 'cars' : 'a train';
 /* every consist on the railroad: ours, standing cuts, AI trains and other players' trains */
 IX.consists = function () {
   const a = [];
@@ -100,7 +102,7 @@ function signalAspect(s) {
   if (hit.length) {
     if (hit.every(c => c instanceof Cut)) return 'Restricting';
     const c = hit.find(c => !(c instanceof Cut));
-    s.why = c === GAME.train ? 'your train is in the block' : c.ai ? `${c.ai.name} is in the block` : 'a train is in the block';
+    s.why = c === GAME.train ? 'your train is in the block' : `${ixName(c)} is in the block`;
     return 'Stop';
   }
   const nx = r.next && r.next.aspect;
@@ -114,7 +116,7 @@ function signalAspect(s) {
    and the two switches of a crossover lock together. */
 IX.lock = new Map();
 IX.PLAYER = { name: 'your train', signalsAhead: [], pieces: [], locks: [] };
-IX.holders = () => [IX.PLAYER, ...AI.trains];
+IX.holders = () => [IX.PLAYER, ...AI.trains, ...(typeof FLEET !== 'undefined' ? FLEET.holds() : [])];
 IX.reserve = function (owner, e, a, b) {
   const r = { e, a, b, owner };
   let l = IX.res.get(e); if (!l) IX.res.set(e, l = []);
@@ -138,14 +140,15 @@ IX.clear = function () { IX.res.clear(); IX.lock.clear(); Object.assign(IX.PLAYE
 /* The player's train holds the route of a signal it is running up to at speed, and of the signal it has
    just passed for as long as it is on that route, so an AI train is never let in ahead of it. Passing a
    signal at Stop is a rules violation. */
-IX.playerTick = function () {
-  const P = IX.PLAYER, T = GAME.train, sc = GAME.scan;
-  if (!T || !sc) return;
-  const sig = sc.signal, av = Math.abs(S.v);
+IX.playerTick = function () { if (GAME.train && GAME.scan) IX.holdTick(IX.PLAYER, GAME.train, GAME.scan, S.v, true); };
+/* the same for holder P running train T at speed v (along the train) with scan sc ahead: the player's train
+   (mine), or one of your other trains run by its engineer (11l_fleet.js) */
+IX.holdTick = function (P, T, sc, v, mine) {
+  const sig = sc.signal, av = Math.abs(v);
   // passed a signal: the one we were closing on is no longer the one ahead
   if (P.last && (!sig || sig.sg !== P.last.sg || sig.d > P.last.d + 5) && P.last.d < 40) {
     const g = P.last.sg;
-    if (P.last.aspect === 'Stop') { JOB.note('signal', { why: g.why }); toast(`Passed a signal at Stop${g.why ? ': ' + g.why : ''}. Stop short of red signals and wait for them to clear.`, 'bad', 5200, 'stopsig'); }
+    if (P.last.aspect === 'Stop' && mine) { JOB.note('signal', { why: g.why }); toast(`Passed a signal at Stop${g.why ? ': ' + g.why : ''}. Stop short of red signals and wait for them to clear.`, 'bad', 5200, 'stopsig'); }
     P.passed = g.route && g.aspect !== 'Stop' ? g.route : null;
   }
   P.last = sig ? { sg: sig.sg, d: sig.d, aspect: sig.sg.aspect } : null;
@@ -153,12 +156,12 @@ IX.playerTick = function () {
   if (P.passed && P.passed.pieces.some(p => IX.on(p.e, p.a, p.b, []).includes(T))) { want.push(...P.passed.pieces); sws.push(...P.passed.switches); }
   else P.passed = null;
   // running against the current of traffic there are no signals for us: hold the main ahead instead
-  const f = S.v >= 0 ? T.endTP('front') : T.endTP('rear'), dir = (S.v >= 0 ? 1 : -1) * f.o;
+  const f = v >= 0 ? T.endTP('front') : T.endTP('rear'), dir = (v >= 0 ? 1 : -1) * f.o;
   const ln = f.e.line, sp = ROUTE.span2, two = !sp || ln !== ROUTE.main || (f.e.lineS0 + f.s > sp[0] - 200 && f.e.lineS0 + f.s < sp[1] + 200);   // the mountain's terminals are single track
   const against = two && ((ln === ROUTE.main && dir < 0) || (ln === ROUTE.main2 && dir > 0));
   if (against && av > 0.5) {
     routeWalk(f.e, f.s, dir, 900 + av * av / 0.8, (e, a, b) => { want.push({ e, a, b }); }, (nd, d, facing, lined) => { sws.push(nd.sw); return !lined; });
-    if (!P.againstT || S.time - P.againstT > 120) toast(`Running against the current of traffic on track ${ln === ROUTE.main ? 1 : 2}. Trains coming the other way are held for you: keep it moving.`, 'warn', 5200, 'against');
+    if (mine && (!P.againstT || S.time - P.againstT > 120)) toast(`Running against the current of traffic on track ${ln === ROUTE.main ? 1 : 2}. Trains coming the other way are held for you: keep it moving.`, 'warn', 5200, 'against');
     P.againstT = S.time;
   }
   P.signalsAhead = [];
@@ -170,6 +173,12 @@ IX.playerTick = function () {
   P.pieces = []; P.locks = [];
   for (const p of want) if (!IX.reserved(p.e, p.a, p.b, P)) P.pieces.push(IX.reserve(P, p.e, p.a, p.b));
   for (const sw of sws) { const o = IX.lockedBy(sw); if (!o || o === P) { IX.take(P, sw); P.locks.push(sw); } }
+};
+/* holder P lets go of every route and switch it holds */
+IX.release = function (P) {
+  for (const r of P.pieces) IX.unreserve(r);
+  for (const sw of P.locks) IX.drop(P, sw);
+  Object.assign(P, { signalsAhead: [], pieces: [], locks: [], last: null, passed: null });
 };
 
 /* ---------------- AI trains ----------------
@@ -285,7 +294,7 @@ class AITrain extends RemoteTrain {
     if (this.yieldTo && this.inSiding() && !this.passedBy(this.yieldTo)) return `letting ${this.yieldTo === GAME.train ? 'you' : this.yieldTo.ai.name} by`;
     for (const p of r.pieces) {
       const on = IX.on(p.e, p.a, p.b, []).filter(c => c !== me);
-      if (on.length) return on[0] === GAME.train ? 'your train' : on[0].ai ? on[0].ai.name : 'cars';
+      if (on.length) return ixName(on[0]);
       const o = IX.reserved(p.e, p.a, p.b, this);
       if (o) return o === IX.PLAYER ? 'your train' : o.name;
     }
@@ -293,7 +302,7 @@ class AITrain extends RemoteTrain {
       const o = IX.lockedBy(s);
       if (o && o !== this && s.state !== state) return o === IX.PLAYER ? 'your train' : o.name;
       const foul = IX.fouling(s, []).filter(c => c !== me);
-      if (foul.length) return foul[0] === GAME.train ? 'your train' : foul[0].ai ? foul[0].ai.name : 'cars';
+      if (foul.length) return ixName(foul[0]);
       if (Math.abs(s.anim - s.state) > 0.02) return 'a switch moving';
     }
     return '';

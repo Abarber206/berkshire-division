@@ -3,8 +3,10 @@
    another, and take any of them over by clicking it in the world, on the
    map or in the Trains panel (O; [ and ] step through them). A train you
    leave stands where it is with the throttle shut and the brakes set, its
-   fire kept up. It is an ordinary consist on the rails: it holds its block,
-   holds switches, can be shoved, and cars can be cut off it. Single player.
+   fire kept up; one you leave running keeps going with its engineer, and any
+   of them can be told to run or hold. It is an ordinary consist on the rails:
+   it holds its block, holds switches, can be shoved, and cars can be cut off
+   it. Single player.
    ========================================================================== */
 const FLEET = { MAX: 8, n: 0, card: null, armed: null, hover: null, hoverAt: 0, uiT: 0, newLoco: null, newCk: null };
 /* the parts of S that belong to the railroad and the clock rather than to one engine */
@@ -31,21 +33,34 @@ function fleetCfgIn(o) {
   for (const k of FLEET_CFG) if (o[k] !== undefined) g[k] = k === 'custom' ? Object.assign({}, o.custom) : o[k];
 }
 
-/* Leave train T standing: the crew shuts off, sets the train and engine brakes and keeps the fire up. Its
-   controls, boiler, air and supplies are kept with it (T.parkS); it joins the consists standing about. */
+/* Leave train T: running, its engineer keeps it going at about the speed you had it doing (see the crew
+   below); standing, the crew shuts off, sets the train and engine brakes and keeps the fire up. Its controls,
+   boiler, air and supplies are kept with it (T.parkS); it joins the consists on the rails. */
 function fleetPark(T) {
   const st = {};
   for (const k in S) { const x = S[k]; if (typeof x === 'number' ? isFinite(x) : typeof x === 'boolean' || typeof x === 'string') st[k] = x; }
   for (const k of FLEET_WORLD) delete st[k];
-  Object.assign(st, { throttle: 0, notch: 0, dyn: 0, whistle: 0, bell: false, sander: false, slip: false, slide: false, brakeH: Math.max(st.brakeH || 0, 0.5), indH: 1, dist0: T.dist });
+  const mph = Math.abs(S.v) / MPH, run = mph > 1.5 && !S.derailed;
+  Object.assign(st, { whistle: 0, bell: false, dist0: T.dist });
   T.parkS = st;
   T.cfg = fleetCfgOut() || T.cfg || null;
   T.v = S.v; T.rolling = Math.abs(S.v) > 0.005; T.stopT = 0; T.vented = false;
-  // still moving, it brakes to a stand on its own (CARS.step) and is tied down there
-  for (const v of T.vehicles) { v.hb = !T.rolling; if (v.brake) v.brake.BC = Math.max(v.brake.BC || 0, 50); }
+  if (run) {
+    T.crew = crewNew(T, clamp(Math.round(mph / 5) * 5, 5, crewMax(T)), Math.sign(S.v));
+    for (const v of T.vehicles) v.hb = false;
+  } else {
+    T.crew = null;
+    crewShut(T);
+    // still moving, it brakes to a stand on its own (CARS.step) and is tied down there
+    for (const v of T.vehicles) { v.hb = !T.rolling; if (v.brake) v.brake.BC = Math.max(v.brake.BC || 0, 50); }
+  }
   if (!CARS.cuts.includes(T)) CARS.cuts.push(T);
   CARS.gen++; if (typeof IX !== 'undefined') IX.idx = null;
   return st;
+}
+/* the crew shuts off and sets the brakes */
+function crewShut(T) {
+  Object.assign(T.parkS, { throttle: 0, notch: 0, dyn: 0, whistle: 0, bell: false, sander: false, slip: false, slide: false, brakeH: Math.max(T.parkS.brakeH || 0, 0.5), indH: 1 });
 }
 /* take standing train T over: its controls and boiler come back as they were left, and it moves at whatever
    speed it has been shoved to */
@@ -55,12 +70,189 @@ function fleetResume(T) {
   const theta = st.theta - (T.dist - st.dist0) / (T.diesel ? LG.rD : steamK(LOCO_SPEC[T.locoKey]).rD);
   for (const k in st) if (k !== 'dist0' && !FLEET_WORLD.includes(k)) S[k] = st[k];
   S.theta = theta; S.v = S.vw = T.v || 0;
+  if (T.crew) { IX.release(T.crew.ix); T.crew = null; }
   T.parkS = null; T.v = 0; T.rolling = false; T.stopT = 0;
   for (const v of T.vehicles) v.hb = false;
   GAME.train = T;
   CARS.gen++; if (typeof IX !== 'undefined') IX.idx = null;
   return true;
 }
+
+/* ---------------- the engineer on a train you are not driving ----------------
+   A train you leave running keeps going with its own engine, air and boiler (the same physics as the train
+   you drive, swapped into S for its step). Its engineer holds the speed he was given, under the track
+   speed, and stops short of red signals, a switch lined against him, cars or another train ahead, and the
+   end of the track; he goes again when the way clears. Hold brings it to a stand and ties it down. */
+const CREW_DECEL = 0.2;    // m/s2 he plans his stops with: a service application, with plenty in hand
+const CREW_LOOK = 0.25;    // s between looks up the line
+FLEET.crews = () => CARS.cuts.filter(c => c.parkS && c.crew);
+FLEET.holds = () => FLEET.crews().map(c => c.crew.ix);
+const crewMax = T => { const sp = LOCO_SPEC[T.locoKey] || {}; return Math.max(10, Math.floor((sp.vmax || 80) / 5) * 5); };
+function crewNew(T, mph, dir) {
+  return { mph, dir: dir || 1, why: '', brk: true, plan: [], lookAt: -1e9, trav: 0, lim: 99, trim: 0, standT: 0, stopD: Infinity,
+    ix: { name: FLEET.name(T), signalsAhead: [], pieces: [], locks: [], last: null, passed: null } };
+}
+/* which way the train would run: its engineer's way, else the way its reverser is set (+1 front first) */
+FLEET.dirOf = T => T.crew ? T.crew.dir : (T.parkS && Math.sign(T.parkS.reverser)) || 1;
+/* give train T's engineer a speed (mph > 0), or tell him to stop and tie it down (0) */
+FLEET.run = function (T, mph) {
+  if (!T || !T.parkS) return false;
+  if (mph > 0) {
+    mph = clamp(Math.round(mph / 5) * 5, 5, crewMax(T));
+    if (T.crew) { T.crew.mph = mph; T.crew.standT = 0; }
+    else {
+      T.crew = crewNew(T, mph, FLEET.dirOf(T));
+      // the handbrakes come off; the air holds it until he releases, and a car set up while standing releases with it
+      for (const v of T.vehicles) { v.hb = false; if (v.brake && v.brake.BC > 0) v.brake.AR = Math.min(v.brake.AR, 87); }
+      T.vented = false;
+    }
+    T.crewMph = mph;
+  } else if (T.crew) T.crew.mph = 0;
+  FLEET.dim(T);
+  FLEET.ui(true); FLEET.cardFill();
+  return true;
+};
+/* run the other way: only once it stands */
+FLEET.reverse = function (T) {
+  if (!T || !T.parkS) return false;
+  if (Math.abs(T.v || 0) > 0.1) { toast(`${FLEET.name(T)} has to stand before it can change direction.`, 'warn', 3000, 'fleetRev'); return false; }
+  const d = -FLEET.dirOf(T), st = T.parkS;
+  st.reverser = d * (T.diesel || T.elec ? 1 : Math.max(0.5, Math.abs(st.reverser) || 0.75));
+  if (T.crew) { T.crew.dir = d; T.crew.lookAt = -1e9; IX.release(T.crew.ix); }
+  T.dirty = true;
+  FLEET.ui(true); FLEET.cardFill();
+  return true;
+};
+/* he has it stopped: shut off, brakes set, handbrakes tied down; the train stands as one left standing */
+function crewOff(T) {
+  if (!T.crew) return;
+  IX.release(T.crew.ix);
+  T.crew = null;
+  crewShut(T);
+  T.v = 0; T.rolling = false; T.stopT = 0;
+  for (const v of T.vehicles) v.hb = true;
+  FLEET.dim(T);
+}
+FLEET.crewOff = crewOff;
+
+/* what lies ahead, as places to be down to a speed by: { d (m from the leading coupler), v (m/s), len (held
+   that far past d, for the length of the train), why } */
+function crewLook(T) {
+  const cr = T.crew, dir = cr.dir, plan = [];
+  cr.lookAt = S.time; cr.trav = 0;
+  const sc = scanAhead(T, dir, 3000);
+  if (sc.signal) {
+    const g = sc.signal.sg, a = g.aspect || 'Stop';
+    if (a === 'Stop') plan.push({ d: sc.signal.d - 25, v: 0, why: `red signal${g.why ? ': ' + g.why : ''}` });
+    else if (a === 'Restricting') plan.push({ d: sc.signal.d, v: 15 * MPH, len: 1e9, why: 'restricting signal' });
+    else if (/Approach/.test(a)) plan.push({ d: sc.signal.d, v: 30 * MPH, len: 1e9, why: 'approach signal' });
+  }
+  if (sc.sw && sc.sw.sw.state) plan.push({ d: sc.sw.d, v: sc.sw.sw.divLimit * MPH, len: T.length + 10, why: `diverging at ${sc.sw.sw.name}` });
+  if (sc.trail) plan.push({ d: sc.trail.d - 30, v: 0, why: `${sc.trail.sw.name} lined against him` });
+  if (sc.end) plan.push({ d: sc.end.d - 20, v: 0, why: 'end of track' });
+  const ah = CARS.ahead(T, dir, 2500);
+  if (ah) plan.push({ d: ah.d - 20, v: 0, why: ah.c === GAME.train ? 'your train ahead' : `${ixName(ah.c)} ahead` });
+  // lower track speeds ahead, held until the whole train is past their start
+  const f = T.endTP(dir > 0 ? 'front' : 'rear');
+  let last = -1;
+  routeWalk(f.e, f.s, f.o * dir, 2500, (e, a, b, d) => {
+    if (e.limit && e.limit !== last) plan.push({ d, v: e.limit * MPH, len: T.length + Math.abs(b - a), why: `${e.limit} mph track` });
+    last = e.limit;
+  }, () => false);
+  cr.plan = plan;
+  if (AI.trains.length) IX.holdTick(cr.ix, T, sc, T.v || 0, false);
+}
+
+/* the engineer works the controls (S holds this train's engine while he does) */
+function crewDrive(T, cr, h) {
+  const dir = cr.dir, sv = S.v * dir, power = T.diesel || T.elec;
+  let vA = cr.mph * MPH, why = '', stopD = Infinity;
+  if (cr.lim * MPH < vA) { vA = cr.lim * MPH; why = `${cr.lim} mph track`; }
+  for (const k of cr.plan) {
+    const D = k.d - cr.trav;
+    let v;
+    if (D > 0) v = Math.sqrt(k.v * k.v + 2 * CREW_DECEL * D);
+    else if (k.v === 0 || D + (k.len || 0) > 0) v = k.v;
+    else continue;
+    if (k.v === 0) stopD = Math.min(stopD, D);
+    if (v < vA) { vA = v; why = k.why; }
+  }
+  if (cr.mph === 0) { vA = 0; why = 'stopping to tie down'; }
+  cr.why = vA < cr.mph * MPH - 0.4 || cr.mph === 0 ? why : ''; cr.stopD = stopD;
+  S.reverser = dir * (power ? 1 : Math.max(0.5, Math.abs(S.reverser)));
+  if (T.elec) S.panUp = true;
+  if (T.diesel && !S.engineRun && S.crank <= 0 && S.fuel > 0) S.crank = 6;   // the prime mover was shut down: start it
+  S.bailoff = false; S.whistle = 0;
+  // standing at the stop, or waiting for the way to clear
+  if (sv < 0.1 && sv > -0.1 && (vA < 1.2 || stopD < 3)) {
+    S.throttle = 0; S.notch = 0; S.dyn = 0; S.sander = false;
+    S.brakeH = 0.45; S.indH = 1; cr.brk = true; cr.trim = 0;
+    return;
+  }
+  S.indH = 0;
+  if (sv > vA + 0.3 || sv < -0.3) cr.brk = true;
+  else if (cr.brk && sv < vA - 0.8) cr.brk = false;
+  if (cr.brk) {
+    const over = Math.max(0, sv - vA);
+    S.throttle = 0; S.notch = 0; S.sander = false;
+    S.dyn = power && over > 0.2 && sv > 2 ? clamp(0.35 + over / 3, 0, 1) : 0;
+    // the dynamic brake holds the speed on a grade; the air comes in when it can't
+    S.brakeH = S.dyn > 0 && over < 1.5 ? 0.12 : 0.32 + clamp(over / 2.5, 0, 1) * 0.5;
+    if (sv < -0.3) S.brakeH = 0.6;   // rolling back: stop it
+    cr.trim = Math.max(0, cr.trim - h * 0.05);
+  } else {
+    const err = vA - sv;
+    S.brakeH = 0.12; S.dyn = 0;
+    cr.trim = clamp(cr.trim + err * h * 0.01, 0, 0.6);
+    const want = err > 0.25 ? clamp(0.2 + err * 0.1 + cr.trim, 0, 1) : err < -0.25 ? 0 : S.throttle;
+    S.throttle += clamp(want - S.throttle, -h * 0.8, h * 0.25);
+    if (S.slip) S.throttle *= 1 - h * 2;   // ease off a slipping engine and sand the rail
+    S.sander = S.slip || (sv < 4 && err > 1 && !power);
+  }
+}
+
+/* one step of train T's own physics, then it moves (h: seconds) */
+function crewStep(T, h) {
+  const st = T.parkS, cr = T.crew;
+  if (S.time - cr.lookAt > CREW_LOOK || cr.lookAt > S.time) crewLook(T);
+  for (const v of T.vehicles) for (const p of v.fp) p.tp.pose(p.F);
+  const keep = Object.assign({}, S), sk = SK, ev = GAME.event, fail = GAME.fail;
+  let d = 0;
+  try {
+    GAME.event = () => {}; GAME.fail = () => {};   // what the engine does is the crew's business, not a message to you
+    for (const k in st) if (k !== 'dist0') S[k] = st[k];
+    S.autoFire = true; S.autoCut = true;   // his fireman runs the boiler
+    S.v = T.v || 0; if (!S.slip && !S.slide) S.vw = S.v;
+    crewDrive(T, cr, h);
+    d = physicsStep(h, T);
+    cr.lim = S.limit;
+    for (const k in st) if (k !== 'dist0') st[k] = S[k];
+    T.v = S.v;
+  } finally {
+    for (const k in S) if (!(k in keep)) delete S[k];
+    Object.assign(S, keep); SK = sk; GAME.event = ev; GAME.fail = fail;
+  }
+  T.rolling = Math.abs(T.v) > 0.005;
+  if (cr.mph === 0 && Math.abs(T.v) < 0.01) { cr.standT += h; if (cr.standT > 2) { crewOff(T); FLEET.ui(true); return; } }
+  if (!d) return;
+  const lim = CARS.limit(T, d), name = FLEET.name(T);
+  T.move(lim.d, {
+    onRunThrough: sw => { MP.noteThrow(sw); toast(`${name} ran through ${sw.name} and forced the points over.`, 'bad', 3800, 'frt' + sw.id); },
+    onBlocked: () => {
+      const mph = Math.abs(T.v) / MPH;
+      if (mph > 1) { const p = T.lead.pos, g = p ? 1 / (1 + Math.pow(p.distanceTo(camera.position) / 30, 1.3)) : 0; sndClunk(clamp(mph / 4, 0.3, 1.4) * g, 0); }
+      if (mph > 6) toast(`${name} hit the bumping post at ${Math.round(mph)} mph.`, 'bad', 3200, 'fbump');
+      T.v = 0; st.vw = 0;
+    },
+  });
+  st.dist0 = T.dist; cr.trav += Math.abs(lim.d);
+  T.dirty = true;
+  if (lim.hit) CARS.contact(T, Math.sign(d), lim.hit);
+}
+/* every train with an engineer, each physics step */
+FLEET.tick = function (h) {
+  for (const T of CARS.cuts.slice()) if (T.crew && T.parkS && CARS.cuts.includes(T)) crewStep(T, h);
+};
 
 /* why you cannot make up, change or take off a train right now, or '' */
 FLEET.blocked = function () {
@@ -94,6 +286,9 @@ FLEET.where = function (T) {
 FLEET.status = function (T) {
   const v = T === GAME.train ? S.v : T.v || 0, mph = Math.round(Math.abs(v) / MPH);
   if (T === GAME.train) return `Driving · ${mph} mph · ${FLEET.where(T)}`;
+  const cr = T.crew;
+  if (cr && cr.mph === 0) return `Engineer stopping · ${mph} mph · ${FLEET.where(T)}`;
+  if (cr) return `${mph >= 1 ? `Engineer running, ${mph} of ${cr.mph} mph` : 'Engineer waiting'}${cr.why ? ` · ${cr.why}` : ''} · ${FLEET.where(T)}`;
   return `${mph >= 1 ? `Rolling, ${mph} mph` : 'Standing, brakes set'} · ${FLEET.where(T)}`;
 };
 /* boiler or fuel, as it was left */
@@ -120,11 +315,11 @@ FLEET.after = function (T) {
   FLEET.closeCard(); FLEET.ui(true);
   if (MAP.visible) MAP.draw();
 };
-/* a train left standing shows only a dimmed headlight */
+/* a train you are not driving shows only a dimmed headlight */
 FLEET.dim = function (T) {
   const L = T.loco; if (!L) return;
   if (L.beam) L.beam.material.opacity = 0;
-  if (L.halo) L.halo.material.opacity = T.parkS && T.parkS.light ? 0.22 : 0;
+  if (L.halo) L.halo.material.opacity = T.parkS && T.parkS.light ? (T.crew ? 0.55 : 0.22) : 0;   // brighter on the move
   if (L.ditch) for (const d of L.ditch) { d.lens.material.color.setScalar(0.25); d.halo.material.opacity = 0; }
 };
 /* take over standing train T (how.walk: he climbed into its cab on foot) */
@@ -140,7 +335,7 @@ FLEET.select = function (T, how = {}) {
   fleetCfgIn(T.cfg);
   FLEET.after(T);
   old.update(0);
-  if (!how.quiet) toast(`Now driving ${FLEET.name(T)}. ${FLEET.name(old)} stands ${FLEET.where(old)} with its brakes set.`, 'good', 4200, 'fleet');
+  if (!how.quiet) toast(`Now driving ${FLEET.name(T)}. ${FLEET.name(old)} ${old.crew ? `keeps going at ${old.crew.mph} mph with its engineer` : `stands ${FLEET.where(old)} with its brakes set`}.`, 'good', 4600, 'fleet');
   return true;
 };
 /* the next (d = 1) or previous (-1) train, in the order they were made up */
@@ -188,7 +383,7 @@ FLEET.add = function (loco, ck) {
   resetState();   // a fresh engine: fire up, full tender, brakes released
   CARS.gen++; IX.idx = null;
   FLEET.after(t);
-  toast(`${FLEET.name(t)} made up on ${slot.name}. ${FLEET.name(old)} stands with its brakes set: click it, or press O, to go back to it.`, 'good', 5600, 'fleet');
+  toast(`${FLEET.name(t)} made up on ${slot.name}. ${FLEET.name(old)} ${old.crew ? `keeps going at ${old.crew.mph} mph with its engineer` : 'stands with its brakes set'}: click it, or press O, to go back to it.`, 'good', 5600, 'fleet');
   return true;
 };
 /* take train T off the railroad (fromPlace: picked up in Place mode, which already holds everything still) */
@@ -205,6 +400,7 @@ FLEET.remove = function (T, fromPlace) {
   if (WALK.ride && WALK.ride.c === T) WALK.reset();
   if (CPL.hover && CPL.hover.c === T) CPL.point(null);
   if (FLEET.hover === T) FLEET.point(null);
+  if (T.crew) { IX.release(T.crew.ix); T.crew = null; }
   CARS.cuts = CARS.cuts.filter(c => c !== T);
   T.disposeDeep();
   CARS.gen++; IX.idx = null; carPanelState.key = ''; if (CARS.onChange) CARS.onChange();
@@ -249,7 +445,7 @@ FLEET.point = function (x, y) {
   if (!c) { FLEET.point(null); return; }
   FLEET.hover = c;
   $('gl').style.cursor = 'var(--cur-hot, pointer)';
-  tip.textContent = `${FLEET.name(c)} · ${FLEET.what(c)} · click to take it over`; tip.hidden = false;
+  tip.textContent = `${FLEET.name(c)} · ${FLEET.what(c)} · click for orders, or to take it over`; tip.hidden = false;
   tip.style.left = Math.min(innerWidth - tip.offsetWidth - 8, x + 14) + 'px'; tip.style.top = Math.max(8, y - 34) + 'px';
 };
 
@@ -270,9 +466,26 @@ FLEET.cardFill = function () {
   set('fcName', FLEET.name(c)); set('fcWhat', FLEET.what(c));
   set('fcStatus', FLEET.status(c)); set('fcSup', FLEET.supplies(c));
   const drive = $('fcDrive'), del = $('fcDelete'), mine = c === GAME.train;
+  // the engineer's orders: hold or run, how fast, which way
+  const crew = $('fcCrew'); crew.hidden = mine;
+  if (!mine) {
+    const run = !!(c.crew && c.crew.mph);
+    $('fcHold').setAttribute('aria-pressed', String(!run)); $('fcRun').setAttribute('aria-pressed', String(run));
+    const mph = FLEET.mphOf(c); set('fcMph', String(mph));
+    $('fcSlow').disabled = mph <= 5; $('fcFast').disabled = mph >= crewMax(c);
+    const rev = $('fcRev'); set('fcRev', FLEET.dirOf(c) > 0 ? '▶ Forward' : '◀ Reverse'); rev.disabled = Math.abs(c.v || 0) > 0.1;
+    rev.title = rev.disabled ? 'Stop it first' : 'Change direction';
+  }
   drive.disabled = mine; drive.textContent = mine ? 'Driving this one' : 'Take it over';
   del.textContent = FLEET.armed === c ? 'Tap again to remove' : 'Take off railroad';
   del.classList.toggle('warn', FLEET.armed === c);
+};
+
+/* the speed its engineer runs at, or would if told to run */
+FLEET.mphOf = c => (c.crew && c.crew.mph) || c.crewMph || Math.min(25, crewMax(c));
+FLEET.faster = function (c, d) {
+  const mph = clamp(FLEET.mphOf(c) + 5 * d, 5, crewMax(c));
+  if (c.crew && c.crew.mph) FLEET.run(c, mph); else { c.crewMph = mph; FLEET.cardFill(); }
 };
 
 /* ---------------- the Trains panel ---------------- */
@@ -318,7 +531,7 @@ FLEET.ui = function (force) {
   const n = FLEET.all().length, cnt = $('fleetCount'); if (cnt) { const t = n > 1 ? String(n) : ''; if (cnt.textContent !== t) cnt.textContent = t; }
   const p = $('fleetPanel'); if (!p || p.hidden) return;
   const list = $('fleetList'), rows = fleetOrder();
-  const key = rows.map(c => c.fid + (c === GAME.train ? '*' : '') + (FLEET.armed === c ? '!' : '')).join();
+  const key = rows.map(c => c.fid + (c === GAME.train ? '*' : '') + (FLEET.armed === c ? '!' : '') + (c.crew && c.crew.mph ? '>' : '')).join();
   if (force || list.dataset.k !== key) {
     list.dataset.k = key; list.innerHTML = '';
     for (const c of rows) {
@@ -328,7 +541,13 @@ FLEET.ui = function (force) {
       row.querySelector('span').dataset.fid = c.fid;
       const bx = row.querySelector('.flBtns');
       if (mine) { const t = document.createElement('em'); t.textContent = 'Driving'; bx.appendChild(t); }
-      else { const d = document.createElement('button'); d.type = 'button'; d.className = 'btn prim'; d.textContent = 'Drive'; d.addEventListener('click', () => FLEET.select(c)); bx.appendChild(d); }
+      else {
+        const run = !!(c.crew && c.crew.mph), r = document.createElement('button');
+        r.type = 'button'; r.className = 'btn flRun'; r.textContent = run ? 'Hold' : 'Run'; r.setAttribute('aria-pressed', String(run));
+        r.title = run ? 'Have its engineer stop and tie it down' : `Have its engineer run it at ${FLEET.mphOf(c)} mph`;
+        r.addEventListener('click', () => FLEET.run(c, run ? 0 : FLEET.mphOf(c))); bx.appendChild(r);
+        const d = document.createElement('button'); d.type = 'button'; d.className = 'btn prim'; d.textContent = 'Drive'; d.addEventListener('click', () => FLEET.select(c)); bx.appendChild(d);
+      }
       const x = document.createElement('button'); x.type = 'button'; x.className = 'btn' + (FLEET.armed === c ? ' warn' : ''); x.textContent = FLEET.armed === c ? 'Sure?' : 'Remove';
       x.setAttribute('aria-label', `Take ${FLEET.name(c)} off the railroad`); x.disabled = rows.length < 2;
       x.addEventListener('click', () => FLEET.ask(c)); bx.appendChild(x);
@@ -376,5 +595,10 @@ FLEET.setup = function () {
   $('fcDrive').addEventListener('click', () => { const c = FLEET.card; if (c) FLEET.select(c); });
   $('fcDelete').addEventListener('click', () => { const c = FLEET.card; if (c) FLEET.ask(c); });
   $('fcClose').addEventListener('click', () => FLEET.closeCard());
+  $('fcHold').addEventListener('click', () => { const c = FLEET.card; if (c) FLEET.run(c, 0); });
+  $('fcRun').addEventListener('click', () => { const c = FLEET.card; if (c) FLEET.run(c, FLEET.mphOf(c)); });
+  $('fcSlow').addEventListener('click', () => { const c = FLEET.card; if (c) FLEET.faster(c, -1); });
+  $('fcFast').addEventListener('click', () => { const c = FLEET.card; if (c) FLEET.faster(c, 1); });
+  $('fcRev').addEventListener('click', () => { const c = FLEET.card; if (c) FLEET.reverse(c); });
   FLEET.ui(true);
 };
