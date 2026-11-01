@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Cut the game's sound takes from the source recordings.
 
-    python3 -I audio/tools/prepare.py <sources dir> audio/tools/recipe.json
+    python3 -I audio/tools/prepare.py <sources dir> audio/tools/recipe.json [name,name...]
+
+Naming entries recuts just those and leaves the rest of the manifest and audio/ alone.
 
 <sources dir> is the project's sound-sources library: each recipe `src` is a path inside it.
 
@@ -12,12 +14,14 @@ Each recipe entry names a source file and what to make of it:
   slice  cut every onset between start and end into its own take (exhaust beats, joints, bell strokes)
   loop   a sustain cut at matching phase so it can loop seamlessly (whistles, horns); written as WAV,
          since MP3 encoder padding would break the loop
+A shot can set its fades (`fade`: [in, out] s) and be levelled by another stretch of its source
+(`ref`: [start, end] s), so a whistle's closing take starts as loud as its sustain loop.
 A bed or shot can also be flattened (`flat`: seconds), which evens out a slow swell in level,
 such as a locomotive drawing closer, so that random slices of it all sit at one level.
 Everything is made mono, filtered as asked, and levelled to a common loudness so the
 in-game trims (SND_GAIN) stay small. Needs ffmpeg and numpy.
 """
-import json, os, subprocess, sys
+import ast, json, os, re, subprocess, sys
 import numpy as np
 
 SR = 44100
@@ -113,9 +117,10 @@ def best_loop(x, length):
     return loop
 
 
-def main(src_dir, recipe):
+def main(src_dir, recipe, only=None):
     files = {}
     for e in json.load(open(recipe)):
+        if only and e['name'] not in only: continue
         x = load(os.path.join(src_dir, e['src']), e.get('start', 0), e.get('end'), e.get('hp'), e.get('lp'))
         name, kind, db = e['name'], e['kind'], e.get('db', -18)
         if e.get('flat'): x = flatten(x, e['flat'])
@@ -143,15 +148,26 @@ def main(src_dir, recipe):
         elif kind == 'loop':
             lst.append(save(level(best_loop(x, e.get('len', 1.5)), db), f'{name}_{len(lst)}', wav=True))
         else:
-            lst.append(save(fade(level(x, db), 0.004 if kind == 'shot' else 0.05, 0.03 if kind == 'shot' else 0.05), f'{name}_{len(lst)}'))
+            fa, fb = e.get('fade', [0.004, 0.03] if kind == 'shot' else [0.05, 0.05])
+            if e.get('ref'):   # levelled as that stretch of the source is, so the take meets it at the same loudness
+                r = load(os.path.join(src_dir, e['src']), e['ref'][0], e['ref'][1], e.get('hp'), e.get('lp'))
+                y = x * (np.max(np.abs(level(r, db))) / max(np.max(np.abs(r)), 1e-9))
+            else:
+                y = level(x, db)
+            lst.append(save(fade(y, fa, fb), f'{name}_{len(lst)}'))
         print(name, kind, len(lst))
     # the manifest the game loads from, between the markers in src/09a_soundbank.js
     js = os.path.join(OUT, '..', 'src', '09a_soundbank.js')
     src = open(js).read()
     a, b = src.index('const SND_FILES = '), src.index('// end SND_FILES')
+    if only:   # recut just these: keep every other entry of the manifest as it is
+        old = dict(re.findall(r"^  (\w+): (\[.*\]),?$", src[a:b], re.M))
+        old = {k: ast.literal_eval(v) for k, v in old.items()}
+        for k, v in files.items(): old[k] = v
+        files = old
     body = ',\n'.join(f"  {k}: [{', '.join(repr(f) for f in v)}]" for k, v in files.items())
     open(js, 'w').write(src[:a] + 'const SND_FILES = {\n' + body + ',\n};\n' + src[b:])
 
 
 if __name__ == '__main__':
-    main(sys.argv[1], sys.argv[2])
+    main(sys.argv[1], sys.argv[2], sys.argv[3].split(',') if len(sys.argv) > 3 else None)

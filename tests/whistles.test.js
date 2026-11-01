@@ -64,7 +64,7 @@ function valveSandbox() {
   const log = [];
   const gain = () => ({ value: 1, cancelScheduledValues() {}, setValueAtTime() {}, setTargetAtTime(v, t, tc) { log.push(['fade', t, tc]); } });
   const ctx = { SND_GAIN: {}, log, SND: { shot: (k, d, o) => { log.push(['shot', k, o.dur]); return { g: { gain: gain() }, s: { stop: t => log.push(['stop', t]) } }; } } };
-  vm.runInNewContext(src.slice(from, to) + ';this.whistleValve = whistleValve; this.whistleOnset = whistleOnset; this.TOOT_MIN = TOOT_MIN;', ctx);
+  vm.runInNewContext(src.slice(from, to) + ';this.whistleValve = whistleValve; this.whistleOnset = whistleOnset; this.whistleTc = whistleTc; this.TOOT_MIN = TOOT_MIN;', ctx);
   return ctx;
 }
 // drive one cord pull of `hold` seconds at 60 fps; returns when the whistle went quiet and the log
@@ -92,4 +92,41 @@ test('holding the cord blows for as long as it is held', () => {
     const r = blow(hold);
     assert.ok(Math.abs(r.shut - hold) < 0.03, `held ${hold} s, sounded ${r.shut} s`);
   }
+});
+
+// a 1-channel MP3/WAV take's level, in dB, over 50 ms windows (decoded with ffmpeg)
+function takeLevels(f) {
+  const { execFileSync } = require('child_process');
+  const raw = execFileSync('ffmpeg', ['-loglevel', 'error', '-i', path.join(ROOT, 'audio', f), '-f', 'f32le', '-ac', '1', '-ar', '44100', '-']);
+  const x = new Float32Array(raw.buffer, raw.byteOffset, raw.length / 4), n = 2205, out = [];
+  for (let i = 0; i + n <= x.length; i += n) { let e = 0; for (let j = i; j < i + n; j++) e += x[j] * x[j]; out.push(10 * Math.log10(e / n + 1e-12)); }
+  return out;
+}
+
+test('the Pere Marquette whistle closes with its recorded release, starting at the sustain level and dying away', t => {
+  try { require('child_process').execFileSync('ffmpeg', ['-version']); } catch (e) { t.skip('no ffmpeg'); return; }
+  assert.ok(bank.SND_FILES.wh_chime6_off && bank.WHISTLE_REC.chime6.xf > 0);
+  const loop = takeLevels(bank.SND_FILES.wh_chime6[0]), off = takeLevels(bank.SND_FILES.wh_chime6_off[0]);
+  const sustain = loop.reduce((a, b) => a + b) / loop.length;
+  assert.ok(Math.abs(off[0] - sustain) < 3, `release starts at ${off[0].toFixed(1)} dB, the loop sustains at ${sustain.toFixed(1)} dB`);
+  assert.ok(off[off.length - 1] < off[0] - 25, 'the release does not die away');
+  assert.ok(off.length * 0.05 > 0.6 && off.length * 0.05 < 2, 'the release should be under 2 s');
+});
+
+test('when the cord drops, a recorded release takes over and the loop under it fades fast', () => {
+  const c = valveSandbox();
+  c.SND.has = k => k === 'wh_x_off';
+  const o = { whPull: 0 }, R = { quill: 0.05, attack: 0.05, release: 0.12, on: 1.2, xf: 0.03 };
+  let tcShut = null;
+  for (let f = 0; f < 90; f++) {
+    const now = f / 60, p = c.whistleValve(o, now < 1 ? 0.8 : 0, now);
+    c.whistleOnset(o, 'wh_x', R, p, null, now, 0.7);
+    if (now >= 1 && tcShut === null) tcShut = c.whistleTc(o, R, false);
+    o.whPull = p;
+  }
+  const shots = c.log.filter(e => e[0] === 'shot').map(e => e[1]);
+  assert.deepEqual(shots, ['wh_x_on', 'wh_x_off']);
+  assert.equal(tcShut, R.xf);
+  // reopening goes back to the normal valve
+  const p = c.whistleValve(o, 0.8, 2); c.whistleOnset(o, 'wh_x', R, p, null, 2); assert.equal(c.whistleTc(o, R, false), R.release);
 });
