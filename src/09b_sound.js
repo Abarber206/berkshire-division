@@ -286,14 +286,16 @@ function makeRoom() {
   const ctx = AU.ctx, tail = ctx.createGain(), wall = ctx.createGain();
   const cv = ctx.createConvolver(), ir = tunnelTail(ctx.sampleRate), buf = ctx.createBuffer(2, ir[0].length, ctx.sampleRate);
   buf.getChannelData(0).set(ir[0]); buf.getChannelData(1).set(ir[1]); cv.buffer = buf;
-  tail.connect(cv); cv.connect(AU.master);
+  // the room's return: everything sent here comes from a bus already mixed (an emitter after its level, or the effects bus)
+  const ret = ctx.createGain(); ret.connect(AU.master);
+  tail.connect(cv); cv.connect(ret);
   const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 140; hp.Q.value = 0.5; wall.connect(hp);
   const side = pan => {
     const d = ctx.createDelay(1); d.delayTime.value = 0.06;
     const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 3200; f.Q.value = 0.5;
     const fb = ctx.createGain(); fb.gain.value = 0;
     const g = ctx.createGain(); g.gain.value = 0.8; d.connect(f); f.connect(g); f.connect(fb);
-    if (ctx.createStereoPanner) { const p = ctx.createStereoPanner(); p.pan.value = pan; g.connect(p); p.connect(AU.master); } else g.connect(AU.master);
+    if (ctx.createStereoPanner) { const p = ctx.createStereoPanner(); p.pan.value = pan; g.connect(p); p.connect(ret); } else g.connect(ret);
     g.connect(tail);   // the walls' repeats ring on down the tube too
     return { d, fb };
   };

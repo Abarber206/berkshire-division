@@ -14343,6 +14343,11 @@ class Emitter {
     this.pan = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
     if (this.pan) { this.g.connect(this.pan); this.pan.connect(AU.master); } else this.g.connect(AU.master);
     this.send = ctx.createGain(); this.send.gain.value = 0.15; this.g.connect(this.send); this.send.connect(AU.verbIn);
+    // into the bore's tail before the falloff (a tube carries its roar), and to the walls after it
+    if (SND.room) {
+      this.rt = ctx.createGain(); this.rt.gain.value = 0; this.lp.connect(this.rt); this.rt.connect(SND.room.tail);
+      this.rw = ctx.createGain(); this.rw.gain.value = 0; this.g.connect(this.rw); this.rw.connect(SND.room.wall);
+    }
     this.ref = o.ref || 26; this.law = o.law || 1.25; this.d = -1;
     this.bus = o.bus || null;   // a mixer bus (VOL_KEYS) this emitter's level follows; without one, its input is already mixed
   }
@@ -14355,11 +14360,21 @@ class Emitter {
     if (this.d < 0 || Math.abs(dl - this.delay.delayTime.value) > 0.25) { this.delay.delayTime.cancelScheduledValues(now); this.delay.delayTime.setValueAtTime(dl, now); }
     else this.delay.delayTime.setTargetAtTime(dl, now, 0.09);
     this.d = d;
-    const gain = o.cab ? (o.cabGain || 0.85) : 1 / (1 + Math.pow(d / this.ref, this.law));
-    const bus = this.bus ? volGain(this.bus) : 1;
-    this.g.gain.setTargetAtTime(gain * bus * (o.gain === undefined ? 1 : o.gain), now, 0.08);
-    this.lp.frequency.setTargetAtTime(o.cab ? (o.cabLP || 6500) : clamp(16000 / (1 + d / 90), 900, 16000), now, 0.1);
-    this.send.gain.setTargetAtTime((o.cab ? 0.05 : 0.12 + 0.55 * clamp(d / 400, 0, 1)) * bus, now, 0.2);
+    // shut in: the listener's bore and cut, and whether this source is in a bore too
+    const E = SND.encl, sb = o.cab ? E.bore : sndBoreAt(p), both = Math.min(E.bore, sb);
+    // in the tube with the listener the sound has nowhere to spread, and in the cab it comes back off the lining
+    const gain = o.cab ? (o.cabGain || 0.85) * (1 + ROOM.cab * E.bore) : 1 / (1 + Math.pow(d / this.ref, this.law * (1 - ROOM.law * both)));
+    const bus = this.bus ? volGain(this.bus) : 1, lv = (o.gain === undefined ? 1 : o.gain) * bus;
+    this.g.gain.setTargetAtTime(gain * lv, now, 0.08);
+    this.lp.frequency.setTargetAtTime(o.cab ? lerp(o.cabLP || 6500, 9000, 0.6 * E.bore) : clamp(16000 / (1 + d / (90 + 400 * both)), 900, 16000), now, 0.1);
+    // the open-country reverb is the land round about: none of it reaches into the bore
+    this.send.gain.setTargetAtTime((o.cab ? 0.05 : 0.12 + 0.55 * clamp(d / 400, 0, 1)) * (1 - 0.85 * Math.max(E.bore, sb)) * bus, now, 0.2);
+    if (this.rt) {
+      // the tube's roar: all round a listener inside, out of the portal to one outside, fading with the distance from it
+      const tail = Math.max(both / (1 + d / 260), sb * (1 - E.bore) * 1.6 / (1 + Math.pow(d / this.ref, this.law)), o.cab ? E.bore : 0);
+      this.rt.gain.setTargetAtTime(ROOM.tail * tail * lv, now, 0.2);
+      this.rw.gain.setTargetAtTime(ROOM.wall * Math.max(E.bore, E.cut * 0.8), now, 0.2);   // (after g, so already at the bus level)
+    }
     if (this.pan) {
       let x = 0;
       if (!o.cab) { _snA.subVectors(p, cam).normalize(); _snB.set(1, 0, 0).applyQuaternion(camera.quaternion); x = _snA.dot(_snB) * clamp(30 / (d + 10), 0.35, 0.85); }
@@ -14394,12 +14409,137 @@ function makeEcho() {
   return { in: inp };
 }
 
+/* ---------------------------------------------------------------- tunnels and cuts
+   Sound shut in by rock. In a bore the lining is a few metres away on every side, so each
+   exhaust beat, wheel and whistle is thrown back from wall to wall (a flutter of quick
+   repeats) and the length of the tube carries it on in a long, dark roar; with nowhere to
+   spread, it hardly fades with distance, and the birds and the wind outside are cut off.
+   A train in the bore booms out of the portal at a listener outside. In a deep cut the
+   walls give a short slap from either side and a little ring; under open sky, nothing.
+   ROOM: the room sends (bore tail, wall slaps), the tail's reverberation times (low and
+   high, s) and length, the feedback of the flutter between the walls (cut, bore), and
+   how much of the tube's carrying the direct sound gets (law: share of the falloff kept). */
+const ROOM = { tail: 0.85, wall: 0.5, rt: 2.9, rtHi: 1.0, len: 3.6, fb: [0.3, 0.52], law: 0.5, cab: 0.4, duck: 0.92 };
+/* SND.encl: what the listener is shut in by, from the ground round about and the bore.
+   bore 0..1 (how far into a tunnel), cut 0..1 (how high the ground stands round about),
+   wl/wr the distance to the wall on the listener's left and right, m */
+SND.encl = { bore: 0, cut: 0, wl: 30, wr: 30, t: 0 };
+/* p: the ear (three.js coords), right: the listener's right; ground(X, N) the ground height,
+   bore(x, z) the bore the point is in or null (mtInBore). Each of 16 bearings looks out to
+   40 m for the steepest rise of the ground over the ear: under a cliff that's the whole sky
+   on that side, in a field none of it. The rise in front of and behind the ear counts for as
+   much as at the sides, so a hillside on one hand gives a slap, both hands a cut. */
+const ENCL_R = [5, 8, 12, 17, 24, 32, 40];
+function sndEnclosure(p, right, ground, bore) {
+  const out = { bore: 0, cut: 0, wl: 30, wr: 30 };
+  const b = bore ? bore(p.x, p.z, 0) : null;
+  if (b && p.y < b.rail + b.top + 0.5) {
+    out.bore = smooth(1.5, 40, b.depth);
+    // the walls of the bore either side of the ear: which hand is which from the bore's axis
+    const side = -right.x * b.P.sn - right.z * b.P.c;
+    const toPlus = Math.max(0.6, BORE.half - b.l), toMinus = Math.max(0.6, BORE.half + b.l);
+    out.wr = side >= 0 ? toPlus : toMinus; out.wl = side >= 0 ? toMinus : toPlus;
+    if (Math.abs(side) < 0.4) out.wl = out.wr = (toPlus + toMinus) / 2;   // looking across the bore: both walls alike
+  }
+  let sum = 0, wl = 30, wr = 30;
+  const n = 16;
+  for (let i = 0; i < n; i++) {
+    const a = i / n * Math.PI * 2, dx = Math.cos(a), dz = Math.sin(a);
+    let rise = 0, hit = 0;
+    for (const r of ENCL_R) {
+      const h = ground(p.x + dx * r, -(p.z + dz * r)) - p.y;
+      rise = Math.max(rise, h / r);
+      if (!hit && h > 2.5) hit = r;
+    }
+    const shut = clamp(rise / 0.7, 0, 1);   // 35 degrees of rock over the ear is as shut in as it gets
+    sum += shut;
+    if (hit && shut > 0.25) {
+      const s = dx * right.x + dz * right.z;   // which hand this bearing is on
+      const w = hit * (0.6 + 0.4 * Math.abs(s));
+      if (s > 0.35) wr = Math.min(wr, w); else if (s < -0.35) wl = Math.min(wl, w);
+    }
+  }
+  out.cut = smooth(0.1, 0.48, sum / n);
+  if (!out.bore || out.bore < 0.5) { out.wl = out.bore ? lerp(wl, out.wl, out.bore * 2) : wl; out.wr = out.bore ? lerp(wr, out.wr, out.bore * 2) : wr; }
+  return out;
+}
+/* is a sound source in a bore, and how far in (0..1) */
+function sndBoreAt(p) {
+  if (!WORLD.mtn || typeof mtInBore !== 'function') return 0;
+  const b = mtInBore(p.x, p.z, 1);
+  return b && p.y < b.rail + b.top + 1 ? smooth(1, 30, b.depth) : 0;
+}
+/* the tail of a stone tube: dense from the first few milliseconds, low notes ringing on
+   long after the highs have died (rt low, rtHi high), both ears different. Returns the
+   channel data, so it can be checked without an audio context. */
+function tunnelTail(rate, o = ROOM) {
+  const len = Math.floor(rate * o.len), ch = [new Float32Array(len), new Float32Array(len)];
+  const kLo = 6.91 / o.rt, kHi = 6.91 / o.rtHi, a = Math.exp(-2 * Math.PI * 700 / rate);
+  for (const d of ch) {
+    let lo = 0, lo2 = 0;
+    for (let i = 0; i < len; i++) {
+      const t = i / rate, w = Math.random() * 2 - 1;
+      lo = a * lo + (1 - a) * w; lo2 = a * lo2 + (1 - a) * lo;   // two poles: the darker body of the roar
+      const on = t < 0.006 ? 0 : t < 0.03 ? (t - 0.006) / 0.024 : 1;
+      d[i] = on * (5 * lo2 * Math.exp(-kLo * t) + 0.55 * (w - lo2) * Math.exp(-kHi * t));
+    }
+  }
+  return ch;
+}
+/* the room every train sound is sent to: the tube's tail, and the slap and flutter off the walls
+   to the left and right (a ping-pong of two delays set from the walls' distance) */
+function makeRoom() {
+  const ctx = AU.ctx, tail = ctx.createGain(), wall = ctx.createGain();
+  const cv = ctx.createConvolver(), ir = tunnelTail(ctx.sampleRate), buf = ctx.createBuffer(2, ir[0].length, ctx.sampleRate);
+  buf.getChannelData(0).set(ir[0]); buf.getChannelData(1).set(ir[1]); cv.buffer = buf;
+  // the room's return: everything sent here comes from a bus already mixed (an emitter after its level, or the effects bus)
+  const ret = ctx.createGain(); ret.connect(AU.master);
+  tail.connect(cv); cv.connect(ret);
+  const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 140; hp.Q.value = 0.5; wall.connect(hp);
+  const side = pan => {
+    const d = ctx.createDelay(1); d.delayTime.value = 0.06;
+    const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 3200; f.Q.value = 0.5;
+    const fb = ctx.createGain(); fb.gain.value = 0;
+    const g = ctx.createGain(); g.gain.value = 0.8; d.connect(f); f.connect(g); f.connect(fb);
+    if (ctx.createStereoPanner) { const p = ctx.createStereoPanner(); p.pan.value = pan; g.connect(p); p.connect(ret); } else g.connect(ret);
+    g.connect(tail);   // the walls' repeats ring on down the tube too
+    return { d, fb };
+  };
+  const L = side(-0.75), R = side(0.75);
+  hp.connect(L.d); hp.connect(R.d); L.fb.connect(R.d); R.fb.connect(L.d);   // each repeat crosses to the other wall
+  // the train's own one-shots (rail joints, couplers) go straight to the world bus: send it too
+  const wt = ctx.createGain(), ww = ctx.createGain(); wt.gain.value = ww.gain.value = 0;
+  AU.world.connect(wt); wt.connect(tail); AU.world.connect(ww); ww.connect(wall);
+  return { tail, wall, L, R, wt, ww };
+}
+/* a few times a second: where the listener is, and the room set to match */
+function roomTick(dt) {
+  const E = SND.encl, now = AU.ctx.currentTime;
+  E.t -= dt;
+  const right = _snB.set(1, 0, 0).applyQuaternion(camera.quaternion); right.y = 0; right.normalize();
+  if (E.t <= 0) {
+    E.t = 0.2;
+    const e = sndEnclosure(camera.position, right, groundAt, WORLD.mtn && typeof mtInBore === 'function' ? mtInBore : null);
+    Object.assign(E, e);
+  }
+  const Rm = SND.room; if (!Rm) return;
+  const wet = Math.max(E.bore, E.cut * 0.8);
+  for (const [s, w] of [[Rm.L, E.wl], [Rm.R, E.wr]]) {
+    s.d.delayTime.setTargetAtTime(clamp(2 * w / C_AIR, 0.012, 0.2), now, 0.35);
+    s.fb.gain.setTargetAtTime(wet > 0.02 ? lerp(ROOM.fb[0], ROOM.fb[1], E.bore) : 0, now, 0.3);
+  }
+  // the rail joints and couplers: from right by the listener, so as shut in as the listener is
+  Rm.wt.gain.setTargetAtTime(ROOM.tail * 0.8 * E.bore, now, 0.3);
+  Rm.ww.gain.setTargetAtTime(ROOM.wall * 0.7 * wet, now, 0.3);
+}
+
 /* ---------------------------------------------------------------- voices
    SND.init runs once the audio context exists. The engine's own bus (AU.loco)
    is re-routed through SND.loco, so synthesized fallbacks get the same
    propagation. Wheels, flanges and brakes come from SND.train, which sits on
    whichever car is nearest the listener. */
 SND.init = function () {
+  SND.room = makeRoom();
   SND.loco = new Emitter({ ref: 26 });
   AU.locoLP.disconnect(); AU.locoLP.connect(SND.loco.in);
   SND.train = new Emitter({ ref: 16, law: 1.35, bus: 'effects' });
@@ -14434,7 +14574,7 @@ function soundMix(dt, T, fx, tv) {
   const L = T.loco, DSL = T.diesel, cp = camera.position, inCab = CAM.mode === 'cab';
   const now = AU.ctx.currentTime, v = Math.abs(S.v), working = fx.working, Vv = SND.v;
   SND.ahead = clamp(dt * 4, 0.5, 2);   // schedule further ahead when frames come slowly
-  SND.tick();
+  SND.tick(); roomTick(dt);
   SND.loco.place(fx.src, { cab: inCab, cabLP: DSL ? 5200 : 7000 });
   AU.locoLP.frequency.setTargetAtTime(16000, now, 0.1);
   // wheels, flanges and brakes: from the car nearest the listener
@@ -14535,7 +14675,8 @@ function whistleMix(T, tv, inCab) {
     SND.whPull = pull;
     // the echo comes back off the hills, so it fades less with distance than the whistle itself
     const d = inCab ? 3 : camera.position.distanceTo(T.worldOf(DSL ? T.loco.hornPos : T.loco.whistlePos));
-    SND.echo.in.gain.setTargetAtTime(ECHO.send * Math.sqrt(1 / (1 + Math.pow(d / 26, 1.25))), now, 0.2);
+    // (in a bore there are no hills to hear: the tube itself rings instead)
+    SND.echo.in.gain.setTargetAtTime(ECHO.send * Math.sqrt(1 / (1 + Math.pow(d / 26, 1.25))) * (1 - SND.encl.bore), now, 0.2);
     if (AU.whistle) setG(AU.whistle.out, 0);
     return;
   }
@@ -14559,9 +14700,11 @@ let sndChirpT = 2;
 function ambience(dt, inCab, v) {
   const P = WX.P, Vv = SND.v, snow = SKY.snow || P.snow > 0.3, night = SKY.night, gk = clamp(P.gray / 0.55, 0, 1);
   const draught = inCab ? 0.9 * Math.min(1, (v / 30) ** 2) : 0, gust = 0.16 + 0.08 * gk + 0.035 * Math.max(0, P.wind - 1.4) + (snow ? 0.12 : 0);
-  duo(Vv.wind, AU.wind, inCab ? 0.32 * Math.min(1, (v / 30) ** 2) + 0.02 : 0.03, gust * (inCab ? 0.5 : 1) + draught, 1 + (inCab ? 0.25 * Math.min(1, v / 30) : 0), 0.4);
-  const out = inCab ? 0.35 : 1, inside = SKY.boreK || 0;
-  const dark = SKY.dark, h = SKY.hour, chorus = dnChorus(h, SKY.sunEl), still = snow ? 0 : out * (1 - inside * 0.8), G = k => SND_GAIN[k] || 1;
+  // in a bore the countryside is shut out, all but at the mouth; a deep cut hushes it a little
+  const E = SND.encl, outside = (1 - ROOM.duck * E.bore) * (1 - 0.3 * E.cut);
+  duo(Vv.wind, AU.wind, inCab ? 0.32 * Math.min(1, (v / 30) ** 2) + 0.02 : 0.03 * outside, gust * (inCab ? 0.5 : 1) * outside + draught, 1 + (inCab ? 0.25 * Math.min(1, v / 30) : 0), 0.4);
+  const out = (inCab ? 0.35 : 1) * outside, inside = Math.max(SKY.boreK || 0, E.bore);
+  const dark = SKY.dark, h = SKY.hour, chorus = dnChorus(h, SKY.sunEl), still = snow ? 0 : out, G = k => SND_GAIN[k] || 1;
   const hush = (1 - 0.5 * gk) * (1 - 0.9 * Math.min(1, P.rain * 1.5));   // birds go quiet under a grey sky and in the rain
   Vv.birds.set(still * (1 - dark) * (1 - 0.5 * chorus) * hush * G('birds'), 1, 3);
   Vv.dawn.set(still * chorus * hush * G('dawn'), 1, 3);
