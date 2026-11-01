@@ -161,6 +161,27 @@ class Emitter {
   kill() { try { this.g.disconnect(); this.send.disconnect(); if (this.pan) this.pan.disconnect(); } catch (e) {} }
 }
 
+/* A whistle heard across open country comes back off hillsides and tree lines: a few
+   distinct, duller repeats from either side, then the wash of the reverb. Each tap is one
+   reflection (delay s, level, pan); the sound loses its top and bottom on the way. */
+const ECHO = { send: 0.5, taps: [[0.34, 0.32, -0.55], [0.71, 0.24, 0.6], [1.18, 0.16, -0.3], [1.86, 0.1, 0.4], [2.6, 0.06, -0.15]] };
+function makeEcho() {
+  const ctx = AU.ctx, inp = ctx.createGain(); inp.gain.value = 0;
+  const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 260; hp.Q.value = 0.5;
+  const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2400; lp.Q.value = 0.5;
+  inp.connect(hp); hp.connect(lp);
+  for (const [t, g, pan] of ECHO.taps) {
+    const dl = ctx.createDelay(4); dl.delayTime.value = t;
+    const gn = ctx.createGain(); gn.gain.value = g;
+    // each later echo has travelled further, so it is duller
+    const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 2400 / (1 + t); f.Q.value = 0.5;
+    lp.connect(dl); dl.connect(f); f.connect(gn);
+    if (ctx.createStereoPanner) { const p = ctx.createStereoPanner(); p.pan.value = pan; gn.connect(p); p.connect(AU.master); } else gn.connect(AU.master);
+    gn.connect(AU.verbIn);
+  }
+  return { in: inp };
+}
+
 /* ---------------------------------------------------------------- voices
    SND.init runs once the audio context exists. The engine's own bus (AU.loco)
    is re-routed through SND.loco, so synthesized fallbacks get the same
@@ -181,6 +202,9 @@ SND.init = function () {
   };
   SND.dz = (SND_DZ || []).map((r, i) => ({ rpm: r.rpm, load: r.load || 0, bed: new Bed('dz', L, { i, seg: [1.6, 3.2], xf: 0.6 }) }));
   SND.whistle = null; SND.whKey = null;
+  // the player's whistle or horn: to the engine, and to the echo off the hills
+  SND.whBus = AU.ctx.createGain(); SND.whBus.connect(L);
+  SND.echo = makeEcho(); SND.whBus.connect(SND.echo.in);
   SND.load();
 };
 SND.tick = function () { for (const b of SND.beds) b.tick(); };
@@ -260,12 +284,21 @@ function whistleValve(o, pull, now) {
   o.whOpen = -1; return pull;
 }
 /* The opening take (the valve cracking open into the full chord) starts when the valve opens and is
-   cut off with the sustain loop when it closes, so a tap is a toot rather than the whole take. */
-function whistleOnset(o, k, R, pull, dest, now) {
+   cut off with the sustain loop when it closes, so a tap is a toot rather than the whole take.
+   A whistle recorded closing (k_off) plays that when the cord drops: the chord sagging as the valve
+   shuts and its ring dying away, taking over from the loop at the level the loop was sounding
+   (lv: the caller's trim). o.whShut is set while that take has the whistle, so the loop under it
+   is faded out in R.xf rather than lingering. */
+function whistleOnset(o, k, R, pull, dest, now, lv = 1) {
   const was = o.whPull || 0;
-  if (pull > 0.05 && was <= 0.05) { whistleCut(o, now, 0.01); o.whOn = SND.shot(k + '_on', dest, { gain: (SND_GAIN[k] || 1) * Math.pow(pull, 0.6), vary: 0.01, dur: R.on }); }
-  else if (pull <= 0.05 && was > 0.05) whistleCut(o, now, R.release);
+  if (pull > 0.05 && was <= 0.05) { whistleCut(o, now, 0.01); o.whShut = false; o.whOn = SND.shot(k + '_on', dest, { gain: (SND_GAIN[k] || 1) * Math.pow(pull, 0.6), vary: 0.01, dur: R.on }); }
+  else if (pull <= 0.05 && was > 0.05) {
+    const off = R.xf && SND.has(k + '_off') ? SND.shot(k + '_off', dest, { gain: (SND_GAIN[k] || 1) * Math.pow(was, 0.8) * lv, rate: 1 - R.quill * (1 - was), vary: 0 }) : null;
+    o.whShut = !!off; whistleCut(o, now, off ? R.xf : R.release);
+  }
 }
+/* how fast the sustain loop follows the valve */
+function whistleTc(o, R, opening) { return opening ? R.attack : o.whShut ? R.xf : R.release; }
 function whistleCut(o, now, tc) {
   const sh = o.whOn; o.whOn = null; if (!sh) return;
   try { const g = sh.g.gain; g.cancelScheduledValues(now); g.setValueAtTime(g.value, now); g.setTargetAtTime(0, now, tc); sh.s.stop(now + tc * 6 + 0.02); } catch (e) {}
@@ -278,13 +311,16 @@ function whistleMix(T, tv, inCab) {
   const DSL = T.diesel, key = LOCO_SPEC[GAME.settings.loco].whistle, k = 'wh_' + key, now = AU.ctx.currentTime;
   let pull = S.whistle;
   if (SND.has(k)) {
-    if (SND.whKey !== k) { if (SND.whistle) SND.whistle.kill(); SND.whistle = new Loop(k, AU.loco); SND.whKey = k; SND.whPull = 0; }
-    const R = WHISTLE_REC[key];
+    if (SND.whKey !== k) { if (SND.whistle) SND.whistle.kill(); SND.whistle = new Loop(k, SND.whBus); SND.whKey = k; SND.whPull = 0; }
+    const R = WHISTLE_REC[key], lv = inCab ? 0.7 : 1;
     pull = whistleValve(SND, pull, now);
     const opening = pull > SND.whPull + 0.002;
-    whistleOnset(SND, k, R, pull, AU.loco, now);
-    SND.whistle.set((SND_GAIN[k] || 1) * Math.pow(pull, DSL ? 0.5 : 0.8) * (inCab ? 0.7 : 1), 1 - R.quill * (1 - pull), opening ? R.attack : R.release);
+    whistleOnset(SND, k, R, pull, SND.whBus, now, lv);
+    SND.whistle.set((SND_GAIN[k] || 1) * Math.pow(pull, DSL ? 0.5 : 0.8) * lv, 1 - R.quill * (1 - pull), whistleTc(SND, R, opening));
     SND.whPull = pull;
+    // the echo comes back off the hills, so it fades less with distance than the whistle itself
+    const d = inCab ? 3 : camera.position.distanceTo(T.worldOf(DSL ? T.loco.hornPos : T.loco.whistlePos));
+    SND.echo.in.gain.setTargetAtTime(ECHO.send * Math.sqrt(1 / (1 + Math.pow(d / 26, 1.25))), now, 0.2);
     if (AU.whistle) setG(AU.whistle.out, 0);
     return;
   }
@@ -426,7 +462,7 @@ function remoteSound(R, dt, st, d, cam) {
     if (B.whistle) {
       const Rw = WHISTLE_REC[key], now = AU.ctx.currentTime, wh = whistleValve(B, st.wh, now);
       whistleOnset(B, k, Rw, wh, B.g, now);
-      B.whistle.set((SND_GAIN[k] || 1) * Math.pow(wh, T.diesel ? 0.5 : 0.8), 1 - Rw.quill * (1 - wh), wh > (B.whPull || 0) ? Rw.attack : Rw.release);
+      B.whistle.set((SND_GAIN[k] || 1) * Math.pow(wh, T.diesel ? 0.5 : 0.8), 1 - Rw.quill * (1 - wh), whistleTc(B, Rw, wh > (B.whPull || 0)));
       B.whistle.tick(); B.whPull = wh;
     }
     return;
