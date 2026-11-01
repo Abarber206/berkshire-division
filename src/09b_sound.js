@@ -199,6 +199,7 @@ SND.init = function () {
     roll: new Bed('roll', W, { seg: [2, 4], xf: 0.9 }), flange: new Bed('flange', W, { seg: [1.2, 2.6], xf: 0.5, vary: 0.05 }), squeal: new Bed('squeal', W, { seg: [1, 2], xf: 0.4, vary: 0.04 }),
     wind: new Bed('wind', A, { seg: [3, 6], xf: 1.2 }), crickets: new Bed('crickets', A, { seg: [6, 11], xf: 1.8 }), birds: new Bed('birds', A, { seg: [6, 11], xf: 1.8 }), night: new Bed('night', A, { seg: [6, 11], xf: 1.8 }),
     dawn: new Bed('dawn', A, { seg: [6, 11], xf: 1.8 }), frogs: new Bed('frogs', A, { seg: [6, 11], xf: 1.8 }),
+    rain_lt: new Bed('rain_lt', A, { seg: [5, 9], xf: 1.6 }), rain: new Bed('rain', A, { seg: [5, 9], xf: 1.6 }), rain_hvy: new Bed('rain_hvy', A, { seg: [5, 9], xf: 1.6 }),
   };
   SND.dz = (SND_DZ || []).map((r, i) => ({ rpm: r.rpm, load: r.load || 0, bed: new Bed('dz', L, { i, seg: [1.6, 3.2], xf: 0.6 }) }));
   SND.whistle = null; SND.whKey = null;
@@ -338,19 +339,31 @@ function whistleMix(T, tv, inCab) {
 }
 
 /* the countryside: wind (rising past the cab windows with speed), a dawn chorus at first light,
-   birds by day, chorus frogs from dusk, wind in the trees and crickets at night, all hushed by snow */
+   birds by day, chorus frogs from dusk, wind in the trees and crickets at night, all hushed by snow;
+   rain from a patter to a downpour, and thunder rolling in after the lightning */
 let sndChirpT = 2;
 function ambience(dt, inCab, v) {
-  const Vv = SND.v, snow = SKY.snow, night = SKY.night, wet = SKY.weather === 'overcast';
-  const draught = inCab ? 0.9 * Math.min(1, (v / 30) ** 2) : 0;
-  duo(Vv.wind, AU.wind, inCab ? 0.32 * Math.min(1, (v / 30) ** 2) + 0.02 : 0.03, (snow ? 0.32 : wet ? 0.24 : 0.16) * (inCab ? 0.5 : 1) + draught, 1 + (inCab ? 0.25 * Math.min(1, v / 30) : 0), 0.4);
-  const out = inCab ? 0.35 : 1;
-  const dark = SKY.dark, h = SKY.hour, chorus = dnChorus(h, SKY.sunEl), still = snow ? 0 : out, G = k => SND_GAIN[k] || 1;
-  Vv.birds.set(still * (1 - dark) * (1 - 0.5 * chorus) * (wet ? 0.5 : 1) * G('birds'), 1, 3);
-  Vv.dawn.set(still * chorus * (wet ? 0.6 : 1) * G('dawn'), 1, 3);
+  const P = WX.P, Vv = SND.v, snow = SKY.snow || P.snow > 0.3, night = SKY.night, gk = clamp(P.gray / 0.55, 0, 1);
+  const draught = inCab ? 0.9 * Math.min(1, (v / 30) ** 2) : 0, gust = 0.16 + 0.08 * gk + 0.035 * Math.max(0, P.wind - 1.4) + (snow ? 0.12 : 0);
+  duo(Vv.wind, AU.wind, inCab ? 0.32 * Math.min(1, (v / 30) ** 2) + 0.02 : 0.03, gust * (inCab ? 0.5 : 1) + draught, 1 + (inCab ? 0.25 * Math.min(1, v / 30) : 0), 0.4);
+  const out = inCab ? 0.35 : 1, inside = SKY.boreK || 0;
+  const dark = SKY.dark, h = SKY.hour, chorus = dnChorus(h, SKY.sunEl), still = snow ? 0 : out * (1 - inside * 0.8), G = k => SND_GAIN[k] || 1;
+  const hush = (1 - 0.5 * gk) * (1 - 0.9 * Math.min(1, P.rain * 1.5));   // birds go quiet under a grey sky and in the rain
+  Vv.birds.set(still * (1 - dark) * (1 - 0.5 * chorus) * hush * G('birds'), 1, 3);
+  Vv.dawn.set(still * chorus * hush * G('dawn'), 1, 3);
   Vv.night.set(still * dark * G('night'), 1, 3);
-  Vv.crickets.set(still * smooth(0.3, 0.8, dark) * G('crickets'), 1, 3);
+  Vv.crickets.set(still * smooth(0.3, 0.8, dark) * (1 - Math.min(1, P.rain * 2)) * G('crickets'), 1, 3);
   Vv.frogs.set(still * smooth(0.35, 0.85, dark) * (h > 16 || h < 1 ? 1 : 0.35) * G('frogs'), 1, 3);
+  // rain: drumming on the cab roof sounds louder than out in the open; a tunnel keeps most of it out
+  const r = P.rain * (1 - 0.85 * inside), roof = inCab ? 1.15 : 1;
+  Vv.rain_lt.set(smooth(0, 0.3, r) * (1 - smooth(0.35, 0.6, r)) * roof * G('rain_lt'), 1, 2);
+  Vv.rain.set(smooth(0.25, 0.5, r) * (1 - 0.6 * smooth(0.7, 1, r)) * roof * G('rain'), 1, 2);
+  Vv.rain_hvy.set(smooth(0.6, 0.95, r) * roof * G('rain_hvy'), 1, 2);
+  for (const b of WX.bolts) {
+    if (b.heard || b.at < b.dist / C_AIR) continue;
+    b.heard = true;
+    SND.shot('thunder', AU.world, { gain: G('thunder') * clamp(1300 / b.dist, 0.18, 1.15) * (1 - 0.6 * inside), lp: clamp(6000 * 800 / b.dist, 380, 6000), rate: 0.9 + 0.12 * Math.random(), vary: 0 });
+  }
   if (Vv.birds.ok) return;
   sndChirpT -= dt; if (sndChirpT < 0) { sndChirpT = 1.5 + Math.random() * (night ? 2 : 5); if (!inCab && !snow) sndChirp(night); }
 }

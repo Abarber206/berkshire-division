@@ -437,5 +437,123 @@
   "len": 1.2,
   "max": 12,
   "db": -14
+ },
+ {
+  "name": "rain",
+  "kind": "bed",
+  "src": "ambient-rain/rain-on-leaves-langeland.mp3",
+  "start": 40,
+  "end": 130,
+  "db": -24,
+  "hp": 150
+ },
+ {
+  "name": "rain_lt",
+  "kind": "bed",
+  "src": "ambient-rain/rain-on-leaves-langeland.mp3",
+  "start": 400,
+  "end": 470,
+  "db": -26,
+  "hp": 150
+ },
+ {
+  "name": "rain_hvy",
+  "kind": "bed",
+  "src": "ambient-rain/thunderstorm-heavy-rain-malvern.mp3",
+  "start": 10,
+  "end": 90,
+  "db": -22,
+  "hp": 60
+ },
+ {
+  "name": "thunder",
+  "kind": "shot",
+  "src": "ambient-rain/thunderstorm-light-rain-breitbrunn.mp3",
+  "start": 12,
+  "end": 27,
+  "db": -13,
+  "lp": 3200,
+  "fade": [
+   0.08,
+   1.8
+  ]
+ },
+ {
+  "name": "thunder",
+  "kind": "shot",
+  "src": "ambient-rain/thunderstorm-light-rain-breitbrunn.mp3",
+  "start": 94,
+  "end": 114,
+  "db": -13,
+  "lp": 3200,
+  "fade": [
+   0.08,
+   1.8
+  ]
+ },
+ {
+  "name": "thunder",
+  "kind": "shot",
+  "src": "ambient-rain/thunderstorm-light-rain-breitbrunn.mp3",
+  "start": 200,
+  "end": 214,
+  "db": -13,
+  "lp": 3200,
+  "fade": [
+   0.08,
+   1.8
+  ]
+ },
+ {
+  "name": "thunder",
+  "kind": "shot",
+  "src": "ambient-rain/thunderstorm-light-rain-breitbrunn.mp3",
+  "start": 262,
+  "end": 274,
+  "db": -13,
+  "lp": 3200,
+  "fade": [
+   0.08,
+   1.8
+  ]
+ },
+ {
+  "name": "thunder",
+  "kind": "shot",
+  "src": "ambient-rain/rain-on-leaves-langeland.mp3",
+  "start": 252,
+  "end": 274,
+  "db": -13,
+  "lp": 3200,
+  "fade": [
+   0.08,
+   1.8
+  ]
+ },
+ {
+  "name": "thunder",
+  "kind": "shot",
+  "src": "ambient-rain/rain-on-leaves-langeland.mp3",
+  "start": 770,
+  "end": 786,
+  "db": -13,
+  "lp": 3200,
+  "fade": [
+   0.08,
+   1.8
+  ]
+ },
+ {
+  "name": "thunder",
+  "kind": "shot",
+  "src": "ambient-rain/yellowstone-thunder-and-rain.mp3",
+  "start": 9,
+  "end": 28,
+  "db": -13,
+  "lp": 3200,
+  "fade": [
+   0.08,
+   1.8
+  ]
  }
 ]

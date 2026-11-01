@@ -1,15 +1,11 @@
 /* ============================================================================
-   Sky, sun and moon on the clock, weather, smoke & steam particles, snow
+   Sky, sun and moon on the clock, the weather's light, smoke & steam particles
    ========================================================================== */
 const SKY = { hour: 6 + 40 / 60, weather: 'clear', dark: 0, night: false, look: {}, envKey: '', envAt: -1e9,
   // shared by every fogged material (see the fog chunks below): the sun's glow in the haze, and how
   // the haze thins with height. Plain objects, so each material's copy of the uniform is this one
   fogSun: { x: 0, y: 1, z: 0 }, fogSunC: { x: 0, y: 0, z: 0 }, fogHaze: { x: 0, y: 260, z: 1 } };   // haze base height, thinning scale (m), on
-const WEATHER = {
-  clear: { name: 'Clear', sub: 'Dry rail', mu: 0.27, fogK: 1, sunK: 1, cloud: 0.25, snow: 0, gray: 0 },
-  overcast: { name: 'Overcast', sub: 'Damp rail', mu: 0.2, fogK: 1.9, sunK: 0.32, cloud: 0.95, snow: 0, gray: 0.55 },
-  snow: { name: 'Snow', sub: 'Slippery, low visibility', mu: 0.15, fogK: 3.4, sunK: 0.25, cloud: 1, snow: 1, gray: 0.7 },
-};
+/* the weather itself (WEATHER, WX, the kinds and how they change) is in 10d_weather.js */
 
 /* Haze that behaves like air: brighter and warmer looking toward the sun (light scattered forward
    by the haze, strongest at golden hour and twilight), and thinner higher up, so valleys hold
@@ -60,20 +56,6 @@ function buildSky(scene, renderer) {
   dome.renderOrder = -10; dome.frustumCulled = false;
   scene.add(dome);
   SKY.dome = dome; SKY.uni = uni;
-  // clouds: big textured plane
-  const ct = canvasTex(512, 512, (g, w, h) => {
-    const id = g.createImageData(w, h);
-    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-      const n = Noise.fbm(x / 64, y / 64, 5) * 0.5 + 0.5; const n2 = Noise.fbm(x / 22 + 40, y / 22, 3) * 0.5 + 0.5;
-      const a = clamp((n * 0.85 + n2 * 0.25 - 0.52) * 3.2, 0, 1);
-      const i = (y * w + x) * 4; id.data[i] = id.data[i + 1] = id.data[i + 2] = 255; id.data[i + 3] = a * 255;
-    }
-    g.putImageData(id, 0, 0);
-  }, { repeat: true });
-  ct.repeat.set(5, 5);
-  const cm = new THREE.MeshBasicMaterial({ map: ct, transparent: true, depthWrite: false, fog: false, opacity: 0.6 });
-  const clouds = new THREE.Mesh(new THREE.PlaneGeometry(30000, 30000), cm); clouds.rotation.x = Math.PI / 2; clouds.position.y = 1600; clouds.renderOrder = -9; clouds.frustumCulled = false;
-  scene.add(clouds); SKY.clouds = clouds;
   // stars over the whole sphere, turning about the pole star through the night; those near the
   // horizon dim out as starlight does through the thick air there
   const sp = [], mag = []; const r = rng(9);
@@ -121,22 +103,45 @@ function buildSky(scene, renderer) {
    to leave it as it is. */
 function applyLook(timeKey, weatherKey) {
   if (timeKey && DN.starts[timeKey]) SKY.hour = DN.starts[timeKey].h;
-  if (weatherKey && WEATHER[weatherKey]) SKY.weather = weatherKey;
-  const W = WEATHER[SKY.weather];
-  SKY.snow = W.snow > 0; WORLD.snowU.value = W.snow;
+  if (weatherKey && WEATHER[weatherKey]) { SKY.weather = weatherKey; wxSet(weatherKey, Date.now() % 1e6); if (CLOUD.on) CLOUD.fresh = 2; }
+  wxGround();
   skyLight(true);
+}
+/* snow lies on the ground in winter: the grass is hidden and the ground goes white */
+function wxGround() {
+  SKY.snow = WX.season === 'winter'; WORLD.snowU.value = SKY.snow ? 1 : 0;
+  if (FX.snow) FX.snow.visible = WX.P.snow > 0.01;
 }
 /* the clock: a job runs on its own railroad clock; otherwise time passes at the chosen rate */
 function skyTick(dt) {
   if (JOB.run && !JOB.run.over) SKY.hour = dnWrap(JOB.clock() / 3600);
   else if (GAME.running && !S.paused) SKY.hour = dnWrap(SKY.hour + dt * ((DN.rates[GAME.settings.cycle] || DN.rates.x30).k) / 3600);
+  // the weather runs on real time whatever the clock does, so a spell lasts minutes at any clock rate
+  if (!S.paused) { wxStep(dt, (1 - SKY.dark) * (1 - CLOUD.shade)); wxNews(); wxWind(dt); }
+  SKY.dt = dt;
   skyLight(false);
+}
+/* a word when the weather turns, and when the rail goes slippery */
+function wxNews() {
+  const c = WX.changed; if (!c || !GAME.running) return;
+  const K = WX_KINDS[c.to], was = WX_KINDS[c.from];
+  if (K.rain > 0 && !was.rain) toast(K.bolt ? 'A thunderstorm is coming in. Wet rail ahead: sand before she slips.' : 'Rain coming on. The rail will be greasy at first: use the sand.', 'warn', 5000, 'wx');
+  else if (K.snow > 0 && !was.snow) toast('Snow starting. Slippery rail and poor visibility.', 'warn', 5000, 'wx');
+  else if (c.to === 'fog') toast('Fog rolling in. Watch the signals.', '', 4000, 'wx');
+  else if ((was.rain || was.snow) && !K.rain && !K.snow) toast('The rain is easing off. The rail will dry slowly.', '', 4000, 'wx');
+}
+/* the weather's wind: its strength, and a direction that veers slowly */
+const WX_WIND = { a: 2.68 };
+function wxWind(dt) {
+  WX_WIND.a += dt * 0.004 * Math.sin(performance.now() * 0.00003);
+  const k = WX.P.wind * (1 + 0.25 * Math.sin(performance.now() * 0.00041) * Math.sin(performance.now() * 0.00017));
+  ENV.wind.set(Math.cos(WX_WIND.a) * k, 0, Math.sin(WX_WIND.a) * k);
 }
 
 const _skC = new THREE.Color(), _skC2 = new THREE.Color(), _skQ = new THREE.Quaternion();
 /* everything the hour and weather decide: sky, sun or moon light, fog, exposure, stars, lit windows */
 function skyLight(force) {
-  const W = WEATHER[SKY.weather], h = SKY.hour;
+  const W = WX.P, h = SKY.hour, gk = clamp(W.gray / 0.55, 0, 1), fl = WX.flash;
   const sb = dnSun(h), mb = dnMoon(h);
   dnDir(sb, SKY.sunDir); dnDir(mb, SKY.moonDir);
   const L = dnLook(sb.el, SKY.look);
@@ -144,7 +149,8 @@ function skyLight(force) {
   Object.assign(SKY, { sunEl: sb.el, sunAz: sb.az, moonEl: mb.el, dark, night: dark > 0.5, gray });
   const u = SKY.uni;
   u.uTop.value.setHex(L.top); u.uHor.value.setHex(L.hor);
-  if (W.gray) { u.uTop.value.lerp(_skC.setHex(mixHex(0x8e98a3, 0x0b0f16, dark)), W.gray * 0.8); u.uHor.value.lerp(_skC.setHex(mixHex(0xb9bec2, 0x121820, dark)), W.gray * 0.8); }
+  if (W.gray > 0.005) { const sd = W.dark * 0.35; u.uTop.value.lerp(_skC.setHex(mixHex(mixHex(0x8e98a3, 0x5a6068, sd), 0x0b0f16, dark)), W.gray * 0.8); u.uHor.value.lerp(_skC.setHex(mixHex(mixHex(0xb9bec2, 0x80868c, sd), 0x121820, dark)), W.gray * 0.8); }
+  if (fl > 0) { u.uTop.value.addScalar(fl * 0.35); u.uHor.value.addScalar(fl * 0.4); }
   u.uSun.value.copy(SKY.sunDir); u.uSunC.value.setHex(L.sun).multiplyScalar(smooth(-12, -1, sb.el));
   const mk = dnMoonK(sb.el, mb.el);
   u.uMoon.value.copy(SKY.moonDir); u.uMoonC.value.setHex(0x8ea6d6).multiplyScalar(0.25 * mk);
@@ -153,38 +159,48 @@ function skyLight(force) {
   const bySun = sb.el > -1.5;
   SKY.keyDir.copy(bySun ? SKY.sunDir : SKY.moonDir);
   SKY.sun.color.setHex(bySun ? L.sun : 0x8ea6d6).convertSRGBToLinear();
-  SKY.sun.intensity = SKY.sunBase = (bySun ? L.sunI : 0.22 * mk) * W.sunK;
+  // the sun through the weather, and dimmed while a cloud's shadow passes over us
+  SKY.sunBase = (bySun ? L.sunI : 0.22 * mk) * W.sunK * (SKY.cloudSun === undefined ? 1 : SKY.cloudSun);
+  SKY.sun.intensity = SKY.sunBase;
   SKY.hemi.color.setHex(L.hemiS).convertSRGBToLinear(); SKY.hemi.groundColor.setHex(L.hemiG).convertSRGBToLinear();
-  SKY.hemi.intensity = SKY.hemiBase = L.hemiI * (W.gray ? 1.25 : 1);
+  SKY.hemi.intensity = SKY.hemiBase = L.hemiI * (1 + 0.25 * gk) * (1 - 0.3 * W.dark * (1 - dark)) + fl * 2.2;
   // haze
-  _skC.setHex(L.fog); if (W.gray) _skC.lerp(_skC2.setHex(mixHex(0xb3b8bc, 0x0d1218, dark)), W.gray);
+  _skC.setHex(L.fog); if (W.gray > 0.005) _skC.lerp(_skC2.setHex(mixHex(mixHex(0xb3b8bc, 0x8e9498, W.dark * 0.4), 0x0d1218, dark)), W.gray);
+  if (fl > 0) _skC.addScalar(fl * 0.25);
   scene.fog.color.copy(_skC).convertSRGBToLinear(); scene.fog.density = L.fogD * W.fogK;
+  // in thick fog the sky itself is the fog: the dome and the clouds fade into it
+  const fogSky = smooth(3, 30, W.fogK); SKY.fogSky = fogSky;
+  if (fogSky > 0) { u.uTop.value.lerp(_skC, fogSky); u.uHor.value.lerp(_skC, fogSky); u.uGray.value = Math.max(u.uGray.value, fogSky); }
+  // fog lies low in the valleys; ordinary haze thins slowly with height
+  SKY.fogHaze.y = W.haze;
   const glowDir = sb.el > -8 ? SKY.sunDir : SKY.moonDir;
   const glowK = (sb.el > -8 ? smooth(-8, -1, sb.el) * (1 - 0.6 * smooth(10, 40, sb.el)) : mk * 0.2) * (1 - gray * 0.85);
   _skC.setHex(sb.el > -8 ? L.sun : 0x8ea6d6).convertSRGBToLinear().multiplyScalar(glowK);
   Object.assign(SKY.fogSun, { x: glowDir.x, y: glowDir.y, z: glowDir.z }); Object.assign(SKY.fogSunC, { x: _skC.r, y: _skC.g, z: _skC.b });
   renderer.toneMappingExposure = L.exp;
-  SKY.clouds.material.opacity = W.cloud * lerp(1, 0.25, dark); SKY.clouds.material.color.setHex(W.gray ? mixHex(0xb8bcc0, 0x1a2030, dark) : L.cloud);
-  SKY.starU.uAlpha.value = W.gray ? 0 : 0.85 * dnStars(sb.el); SKY.stars.visible = SKY.starU.uAlpha.value > 0.003;
+  SKY.starU.uAlpha.value = 0.85 * dnStars(sb.el) * (1 - 0.7 * gk); SKY.stars.visible = SKY.starU.uAlpha.value > 0.003;
   SKY.stars.quaternion.copy(_skQ.setFromAxisAngle(SKY.pole, -h / 24 * TAU));
-  SKY.moon.visible = mb.el > -1 && !W.gray; SKY.moon.material.opacity = 1 - 0.8 * smooth(-4, 8, sb.el);
-  ENV.mu = W.mu * (SKY.night && !W.gray ? 0.92 : 1);
+  SKY.moon.visible = mb.el > -1; SKY.moon.material.opacity = 1 - 0.8 * smooth(-4, 8, sb.el);
+  // dew on a clear night takes a little off the rail too
+  ENV.mu = wxMu() * (SKY.night ? lerp(0.92, 1, gk) : 1);
+  SKY.railWord = wxRailWord(ENV.mu);
   // windows light up through dusk: not all at once, each material at its own darkness
   // (house and depot windows decide for themselves, window by window: see winMaterial)
-  for (const m of SCN.winMats) { if (m.userData.perWindow) continue; const a = m.userData.litAt !== undefined ? m.userData.litAt : 0.3; m.emissiveIntensity = Math.max(smooth(a, a + 0.1, dark) * (m.userData.litI || 0.95), W.gray ? 0.15 : 0, m.userData.minI || 0); }
-  RMAT.coachWin.emissiveIntensity = Math.max(smooth(0.15, 0.3, dark) * 1.2, W.gray ? 0.25 : 0);
+  for (const m of SCN.winMats) { if (m.userData.perWindow) continue; const a = m.userData.litAt !== undefined ? m.userData.litAt : 0.3; m.emissiveIntensity = Math.max(smooth(a, a + 0.1, dark) * (m.userData.litI || 0.95), 0.15 * gk, m.userData.minI || 0); }
+  RMAT.coachWin.emissiveIntensity = Math.max(smooth(0.15, 0.3, dark) * 1.2, 0.25 * gk);
   lampsLight(dark);
-  const sm = L.smoke, gk = W.gray ? lerp(0.75, 1, dark) : 1;
-  FX.light.setRGB(sm[0] * gk, sm[1] * gk, sm[2] * gk);
+  const sm = L.smoke, sk = lerp(1, lerp(0.75, 1, dark), gk) * (1 + fl);
+  FX.light.setRGB(sm[0] * sk, sm[1] * sk, sm[2] * sk);
+  cloudLight(L, dark, bySun, SKY.keyDir, bySun ? u.uSunC.value : u.uMoonC.value, gray);
   // the environment map (a small canvas cube painted with the same sky): repainted only when the
   // light has moved enough to show, as it costs a few milliseconds
-  const key = `${Math.round(sb.el * 1.5)}|${Math.round(sb.az / 5)}|${SKY.weather}|${bySun}`;
+  const key = `${Math.round(sb.el * 1.5)}|${Math.round(sb.az / 5)}|${Math.round(gray * 12)}|${SKY.snow}|${bySun}`;
   const now = performance.now();
   if (force || (key !== SKY.envKey && now - SKY.envAt > 900)) {
     SKY.envKey = key; SKY.envAt = now;
     if (SKY.envCube) SKY.envCube.dispose();
     const kc = bySun ? u.uSunC.value : u.uMoonC.value;
-    SKY.envCube = makeEnvCube(u.uTop.value, u.uHor.value, SKY.keyDir, kc, gray, mixHex(W.snow ? 0xc3c7cb : 0x55503e, 0x070707, dark));
+    SKY.envCube = makeEnvCube(u.uTop.value, u.uHor.value, SKY.keyDir, kc, gray, mixHex(SKY.snow ? 0xc3c7cb : mixHex(0x55503e, 0x3a382e, WX.wet), 0x070707, dark));
     scene.environment = SKY.envCube;
   }
 }
@@ -192,7 +208,8 @@ function skyLight(force) {
 function skyFollow(cam, focus) {
   const c = cam.position;
   SKY.dome.position.copy(c); SKY.stars.position.copy(c);
-  SKY.clouds.position.set(c.x, c.y + 1600, c.z);
+  if (CLOUD.lay) CLOUD.lay.position.copy(c);
+  SKY.cloudSun = cloudSunAt(focus, SKY.dt || 0.016);
   SKY.moon.position.copy(SKY.moonDir).multiplyScalar(7000).add(c);
   SKY.sun.target.position.copy(focus); SKY.sun.position.copy(focus).addScaledVector(SKY.keyDir, 300);
 }
@@ -255,12 +272,6 @@ function buildFX(scene) {
   const pts = new THREE.Points(g, mat); pts.frustumCulled = false; pts.renderOrder = 5;
   scene.add(pts);
   Object.assign(FX, { N, g, pos, size, alpha, col, mat, pts, vel: new Float32Array(N * 3), age: new Float32Array(N).fill(1e9), life: new Float32Array(N), s0: new Float32Array(N), s1: new Float32Array(N), a0: new Float32Array(N), base: new Float32Array(N * 3), buoy: new Float32Array(N), drag: new Float32Array(N), next: 0 });
-  // snow
-  const SN = 3500, sp = new Float32Array(SN * 3), r = rng(3);
-  for (let i = 0; i < SN; i++) { sp[i * 3] = (r() - 0.5) * 120; sp[i * 3 + 1] = r() * 60; sp[i * 3 + 2] = (r() - 0.5) * 120; }
-  const sgeo = new THREE.BufferGeometry(); sgeo.setAttribute('position', new THREE.BufferAttribute(sp, 3));
-  FX.snow = new THREE.Points(sgeo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.16, transparent: true, opacity: 0.95, depthWrite: false, map: tex }));
-  FX.snow.frustumCulled = false; FX.snow.visible = false; scene.add(FX.snow);
 }
 function emit(p, v, life, s0, s1, a0, c, buoy = 0.6, drag = 1.0) {
   const i = FX.next; FX.next = (FX.next + 1) % FX.N;
@@ -286,15 +297,4 @@ function updateFX(dt, cam) {
   }
   FX.g.attributes.position.needsUpdate = true; FX.g.attributes.aSize.needsUpdate = true; FX.g.attributes.aAlpha.needsUpdate = true; FX.g.attributes.aColor.needsUpdate = true;
   FX.mat.uniforms.uScale.value = innerHeight * (Math.min(devicePixelRatio, 2)) * 0.5 / Math.tan(cam.fov * Math.PI / 360);
-  if (FX.snow.visible) {
-    const p = FX.snow.geometry.attributes.position, a = p.array, c = cam.position;
-    for (let i = 0; i < a.length; i += 3) {
-      a[i + 1] -= dt * (1.1 + (i % 7) * 0.12); a[i] += dt * (w.x * 0.6 + Math.sin(i + S.time) * 0.3); a[i + 2] += dt * w.z * 0.6;
-      if (a[i + 1] < c.y - 25) a[i + 1] += 55;
-      const dx = a[i] - c.x, dz = a[i + 2] - c.z;
-      if (dx > 60) a[i] -= 120; else if (dx < -60) a[i] += 120;
-      if (dz > 60) a[i + 2] -= 120; else if (dz < -60) a[i + 2] += 120;
-    }
-    p.needsUpdate = true;
-  }
 }

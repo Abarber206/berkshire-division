@@ -158,7 +158,7 @@ SAVE.snapshot = function () {
     S: st, sw: NET.switches.map(s => [s.name, s.state]),
     train: Object.assign(consistOut(T, power), { loco: T.locoKey, ck: T.consistKey, units: T.nUnits || 1 }),
     cuts: CARS.cuts.map(c => Object.assign(consistOut(c), { cv: rnd(c.v), rolling: !!c.rolling, stopT: rnd(c.stopT || 0), vented: !!c.vented, home: c.home || null })),
-    job, ai: aiOut(), sky: { hour: rnd(SKY.hour, 1e5), weather: SKY.weather }, cam, wreck,
+    job, ai: aiOut(), sky: { hour: rnd(SKY.hour, 1e5), weather: SKY.weather, wx: wxOut() }, cam, wreck,
     misc: { placed: PLACE.made || 0, lastStation: GAME.lastStation || null, spawnName: GAME.spawnName || '' },
     sum: SAVE.summary(T, job),
   };
@@ -300,8 +300,9 @@ SAVE.apply = function (d) {
   aiIn(d.ai, E);
   if (typeof jobMenu === 'function') jobMenu();
   // the sky
-  applyLook(null, d.sky.weather); SKY.hour = d.sky.hour; skyLight(true);
-  if (FX.snow) FX.snow.visible = SKY.snow;
+  applyLook(null, d.sky.weather); SKY.hour = d.sky.hour;
+  if (d.sky.wx) { wxIn(d.sky.wx); wxGround(); }   // the same spell of weather, part way through, and the rail as wet as it was
+  skyLight(true);
   // a wreck lies where it came to rest
   if (d.wreck && S.derailed) {
     wreckIn(t, d.wreck);
