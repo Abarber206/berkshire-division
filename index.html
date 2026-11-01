@@ -6554,6 +6554,8 @@ function rollingMaterials() {
   RMAT.steel = S(0x5c6064, 0.8, 0.42);
   RMAT.dark = S(0x202123, 0.65, 0.55);
   RMAT.brass = S(0xd4a24a, 1.0, 0.26);
+  // bells: the Nickel Plate's darker cast bronze, the diesel's grey-painted steel
+  RMAT.bronze = S(0x8a5524, 1.0, 0.4); RMAT.bellGrey = S(0x5f6468, 0.25, 0.5);
   RMAT.copper = S(0xb5703f, 1.0, 0.35);
   RMAT.glass = S(0x0a1216, 0.2, 0.06);
   RMAT.white = S(0xe9e7df, 0.1, 0.6);
@@ -6586,7 +6588,7 @@ function rollingMaterials() {
   RMAT.hit = new THREE.MeshBasicMaterial({ visible: false });
   RMAT.rbEdge = S(0x141516, 0.25, 0.48);   // running-board edge (white on excursion finish)
   RMAT.dWall = S(0x141516, 0.25, 0.5);     // outer face of driver & engine-truck tires
-  for (const k of ['black', 'blackMatte', 'graphite', 'dark', 'tire', 'rod', 'brass', 'green', 'roof', 'oxide', 'oxide2', 'caboose', 'tank', 'steel', 'backhead', 'cabInt', 'wood']) RMAT[k].side = THREE.DoubleSide;
+  for (const k of ['black', 'blackMatte', 'graphite', 'dark', 'tire', 'rod', 'brass', 'bronze', 'bellGrey', 'green', 'roof', 'oxide', 'oxide2', 'caboose', 'tank', 'steel', 'backhead', 'cabInt', 'wood']) RMAT[k].side = THREE.DoubleSide;
   trimMaterials();
   // worn paint on the engines' black, the smokebox's heat-dulled graphite, oily running gear, dirty frames and trucks
   wear(RMAT.black); wear(RMAT.blackMatte, 0.6, 21); wear(RMAT.graphite, 0.35, 22); wear(RMAT.dark, 0.5, 23); wear(RMAT.rod); wear(RMAT.steel, 0.35, 24);
@@ -6961,7 +6963,7 @@ function buildBerkshire(key, trim = '') {
     for (const z of [-0.3, 0.3]) gb.box('black', 0.06, 0.38, 0.05, bx, by + 0.2, z);
     gb.cylZ('dark', 0.025, 0.62, 8, bx, by + 0.22, 0);
     gb.box('black', 0.08, 0.06, 0.66, bx, by + 0.4, 0);
-    bellR = bellRig(body, bx, by + 0.22, 1, 0.3);
+    bellR = bellRig(body, bx, by + 0.22, 1, 0.3, key === '765' ? 'nkp' : 'pm');
   };
   /* A Pyle-National headlight case: a drum with a rounded back, a hinged front door whose rim holds the lens
      a little behind its lip, a visor over the top of the door, a ventilator cap on top, the door hinge on the
@@ -7294,10 +7296,25 @@ function buildBerkshire(key, trim = '') {
 /* A locomotive bell that swings on its yoke while it rings. (x, y) is the trunnion axis, which runs across the
    engine, s scales the 765's bell (0.25 m across the mouth) and A is the swing either way in radians. The bell,
    its clapper and the ringer's crank arm are built round the axis in their own group; bellSwing turns it. */
-function bellRig(parent, x, y, s = 1, A = 0.3) {
-  const gb = new GeoBin(), py = 0.22;
-  gb.add('brass', new THREE.LatheGeometry([[0, 0.27], [0.09, 0.27], [0.16, 0.24], [0.21, 0.13], [0.25, 0.0], [0.24, -0.01]].map(p => new THREE.Vector2(p[0] * s, (p[1] - py) * s)), 28));
-  gb.add('brass', new THREE.LatheGeometry([[0.2, 0.0], [0.21, 0.13], [0.16, 0.24], [0.0, 0.25]].map(p => new THREE.Vector2(p[0] * s, (p[1] - py) * s)), 28));   // inside of the bell
+/* Each engine's bell has its own casting (BELL_LOOK), all inside the same swing envelope:
+   pm    the Pere Marquette's polished brass bell, a plain classic profile
+   nkp   the Nickel Plate's darker cast bronze, waisted, with a bead at the crown and a heavy lip
+   up    the Big Boy's tall polished brass bell with a stepped crown and a ring cast round the waist
+   diesel a small grey steel bell, straight-sided like a modern air-rung bell
+   gt    the gas turbine's squat black-painted bell, hung under the frame behind the pilot */
+const BELL_LOOK = {
+  pm: { mat: 'brass', out: [[0, 0.27], [0.09, 0.27], [0.16, 0.24], [0.21, 0.13], [0.25, 0.0], [0.24, -0.01]], inn: [[0.24, -0.01], [0.2, 0.0], [0.21, 0.13], [0.16, 0.24], [0.0, 0.25]] },
+  nkp: { mat: 'bronze', out: [[0, 0.275], [0.06, 0.275], [0.085, 0.262], [0.075, 0.25], [0.14, 0.235], [0.165, 0.16], [0.18, 0.08], [0.23, 0.03], [0.25, 0.0], [0.245, -0.012]],
+    inn: [[0.245, -0.012], [0.21, -0.012], [0.17, 0.03], [0.155, 0.1], [0.14, 0.2], [0.0, 0.22]] },
+  up: { mat: 'brass', out: [[0, 0.28], [0.05, 0.28], [0.06, 0.265], [0.12, 0.26], [0.13, 0.245], [0.17, 0.2], [0.19, 0.12], [0.205, 0.115], [0.205, 0.095], [0.21, 0.07], [0.235, 0.015], [0.24, 0.0], [0.228, -0.006]],
+    inn: [[0.228, -0.006], [0.212, -0.006], [0.18, 0.06], [0.16, 0.18], [0.0, 0.23]] },
+  gt: { mat: 'black', out: [[0, 0.2], [0.1, 0.2], [0.13, 0.19], [0.18, 0.12], [0.215, 0.05], [0.245, 0.0], [0.24, -0.012]], inn: [[0.24, -0.012], [0.21, -0.012], [0.19, 0.04], [0.15, 0.13], [0.0, 0.17]] },
+  diesel: { mat: 'bellGrey', out: [[0, 0.26], [0.13, 0.26], [0.14, 0.25], [0.2, 0.06], [0.235, 0.0], [0.225, -0.01]], inn: [[0.225, -0.01], [0.2, -0.01], [0.17, 0.08], [0.12, 0.24], [0.0, 0.245]] },
+};
+function bellRig(parent, x, y, s = 1, A = 0.3, look = 'pm') {
+  const gb = new GeoBin(), py = 0.22, L = BELL_LOOK[look] || BELL_LOOK.pm;
+  gb.add(L.mat, new THREE.LatheGeometry(L.out.map(p => new THREE.Vector2(p[0] * s, (p[1] - py) * s)), 28));
+  gb.add(L.mat, new THREE.LatheGeometry(L.inn.map(p => new THREE.Vector2(p[0] * s, (p[1] - py) * s)), 28));   // inside of the bell
   gb.cyl('dark', 0.01 * s, 0.01 * s, 0.16 * s, 6, 0, -0.1 * s, 0); gb.add('dark', new THREE.SphereGeometry(0.035 * s, 10, 8).translate(0, -0.19 * s, 0));    // clapper
   gb.box('black', 0.04 * s, 0.16 * s, 0.03 * s, 0, 0.07 * s, 0.25 * s);                                                     // ringer's crank arm
   gb.cylZ('black', 0.045 * s, 0.05 * s, 10, 0, 0, 0.25 * s);
@@ -8733,7 +8750,7 @@ function buildDiesel(opts) {
   box('dUnder', bellA - 0.16, bellA + 0.16, bellY - 0.03, bellY + 0.025, -0.22, 0.22);                  // base plate on the roof
   for (const s of [-1, 1]) box('dUnder', bellA - 0.035, bellA + 0.035, bellY, bp + 0.05, s * 0.17, s * 0.2);   // stand posts
   gb.cylZ('dSteel', 0.016, 0.4, 8, dx(bellA), bp, 0);                                                  // trunnion shaft
-  const bellRigD = bellRig(body, dx(bellA), bp, bs, 0.35);
+  const bellRigD = bellRig(body, dx(bellA), bp, bs, 0.35, 'diesel');
   const lenses = [];
   for (const y of [3.04, 2.78]) {
     const ln = new THREE.Mesh(new THREE.CircleGeometry(0.105, 20), lead ? RMAT.lens : RMAT.headOff); ln.position.set(dx(N0 - 0.035), y, 0); ln.rotation.y = Math.PI / 2; body.add(ln); lenses.push(ln);
@@ -12011,7 +12028,7 @@ function buildBigBoy(key, trim = '') {
   { const ab = 1.66, bx = ax(ab), by = yB + BBOIL.sb[2] + 0.12;
     for (const z of [-0.3, 0.3]) { gb.box('black', 0.5, 0.05, 0.05, ax(ab + 0.23), by + 0.03, z); gb.box('black', 0.08, by + 0.05 - (yB + BBOIL.sb[2] - 0.06), 0.05, ax(2.12), (by + 0.05 + yB + BBOIL.sb[2] - 0.06) / 2, z); }
     gb.cylZ('dark', 0.025, 0.62, 8, bx, by, 0);
-    bellR = bellRig(body, bx, by, 0.9, 0.3); }
+    bellR = bellRig(body, bx, by, 0.9, 0.3, 'up'); }
   // class lamps at the top corners of the smokebox front
   const cls = clsLampSet();
   for (const z of [-0.86, 0.86]) {
@@ -12981,7 +12998,7 @@ function buildTurbineUnit(opts) {
     const bellA = 1.05, bp = GT.sill - 0.2;
     for (const z of [-0.2, 0.2]) box('dark', bellA - 0.035, bellA + 0.035, bp - 0.03, GT.sill + 0.005, z - 0.015, z + 0.015);   // hangers from the frame
     gb.cylZ('dSteel', 0.014, 0.43, 8, dx(bellA), bp, 0);                                                                      // trunnion shaft
-    out.bellRig = bellRig(body, dx(bellA), bp, 0.55, 0.3);
+    out.bellRig = bellRig(body, dx(bellA), bp, 0.55, 0.3, 'gt');
     const beam = headBeam(dx(N0) + 0.1, 3.36); body.add(beam); out.beam = beam;
     const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: haloTex(), color: 0xffffff, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0 }));
     halo.position.set(dx(N0) + 0.16, 3.36, 0); halo.scale.set(2.4, 2.4, 1); body.add(halo); out.halo = halo;
@@ -15249,11 +15266,11 @@ function sndPump(phase) {
   if (phase % 2) envNoise(t, 0.22, 800, 1.2, 0.22, AU.loco, 'bandpass', AU.noise, 0.02);
   else { envNoise(t, 0.16, 300, 1, 0.3, AU.loco, 'lowpass', AU.noise, 0.01); envTone(t, 0.1, 90, 0.12, AU.loco); }
 }
-function sndBell(diesel, dest = AU.loco) {
+/* one stroke of an engine's bell (BELL_VOICE: each engine's own) */
+function sndBell(B, dest = AU.loco) {
   if (!AU.on) return;
-  // the steam engine's big cast bell rings lower than the diesel's
-  if (SND.has('bell')) { SND.shot('bell', dest, { gain: SND_GAIN.bell || 1, rate: diesel ? 0.7 : 0.56, vary: 0.01 }); return; } const t = AU.ctx.currentTime + 0.005;
-  const f = diesel ? 640 : 435;
+  if (SND.has(B.take)) { SND.shot(B.take, dest, { gain: (SND_GAIN[B.take] || 1) * (B.gain || 1), rate: B.rate, vary: 0.01 }); return; } const t = AU.ctx.currentTime + 0.005;
+  const f = B.f;
   for (const [r, g, d] of [[1, 0.5, 2.6], [2.02, 0.28, 1.8], [2.74, 0.22, 1.3], [3.95, 0.14, 0.9], [5.41, 0.08, 0.6], [0.5, 0.18, 2.0]]) envTone(t, d, f * r, g * 0.55, dest, 'sine');
   envNoise(t, 0.03, 4000, 2, 0.15, dest, 'bandpass', AU.white, 0.001);
 }
@@ -15324,9 +15341,10 @@ const SND_FILES = {
   gt_roar: ['gt_roar_0.mp3'],
   wh_s5t: ['wh_s5t_0.wav'],
   wh_s5t_on: ['wh_s5t_on_0.mp3'],
+  bell_st: ['bell_st_0.mp3', 'bell_st_1.mp3', 'bell_st_2.mp3', 'bell_st_3.mp3'],
 };
 // end SND_FILES (written by audio/tools/prepare.py)
-const SND_GAIN = { gt_whine: 0.55, gt_roar: 0.8, chuff: 1, chuff_hard: 0.9, fire: 0.6, comp: 0.5, purge: 0.6, dump: 0.8, squeal: 0.5, bell: 0.8, crickets: 0.45, dawn: 0.5, frogs: 0.3, joint: 0.9, roll: 0.7, flange: 0.35, wind: 0.8, birds: 0.5, night: 0.5, blower: 0.5, safety: 0.9, pump: 0.6, cocks: 0.6, bpx: 0.7, injector: 0.5, dz: 1, wh_deep6: 1, wh_chime6: 1, wh_k5: 1, rain_lt: 0.7, rain: 0.65, rain_hvy: 0.6, thunder: 1 };
+const SND_GAIN = { bell_st: 0.8, gt_whine: 0.55, gt_roar: 0.8, chuff: 1, chuff_hard: 0.9, fire: 0.6, comp: 0.5, purge: 0.6, dump: 0.8, squeal: 0.5, bell: 0.8, crickets: 0.45, dawn: 0.5, frogs: 0.3, joint: 0.9, roll: 0.7, flange: 0.35, wind: 0.8, birds: 0.5, night: 0.5, blower: 0.5, safety: 0.9, pump: 0.6, cocks: 0.6, bpx: 0.7, injector: 0.5, dz: 1, wh_deep6: 1, wh_chime6: 1, wh_k5: 1, rain_lt: 0.7, rain: 0.65, rain_hvy: 0.6, thunder: 1 };
 // idle (a freight engine in Houston), mid throttle (a CSX freight at a crawl) and full throttle
 // (a UP freight drawing near); notching up crossfades between them (see dieselRec)
 const SND_DZ = [{ rpm: 300 }, { rpm: 650, load: 0.6 }, { rpm: 1050, load: 1 }];
@@ -15341,6 +15359,20 @@ const WHISTLE_REC = {
   k5: { quill: 0, attack: 0.02, release: 0.08, on: 1.2 },
   s5t: { quill: 0, attack: 0.03, release: 0.1, on: 0.7 },   // Leslie S-5T-R, the gas turbine's horn
 };
+
+/* Every engine rings its own bell. take: the recorded strokes it plays (bell_st, a locomotive bell rung at
+   Steamtown, cleaned of the engine blowing behind it; bell, an old cast crossing bell); rate: played this
+   much slower, which is a bigger, deeper bell; P: seconds between strokes (a heavy bell swings slower, an
+   air ringer on a diesel quicker); f: the strike note for the synthesized fallback. */
+const BELL_VOICE = {
+  '1225': { take: 'bell_st', rate: 0.64, P: 0.86, gain: 1, f: 620 },     // Pere Marquette: bright polished brass
+  '765': { take: 'bell_st', rate: 0.5, P: 0.98, gain: 1.05, f: 495 },     // Nickel Plate: bigger and darker
+  '4014': { take: 'bell', rate: 0.47, P: 1.14, gain: 1.1, f: 380 },       // Big Boy: the biggest, a slow heavy swing
+  diesel: { take: 'bell', rate: 0.82, P: 0.7, gain: 0.85, f: 760 },      // AC44: small steel bell on an air ringer
+  '18': { take: 'bell_st', rate: 0.8, P: 0.78, gain: 0.9, f: 790 },      // UP gas turbine: a small bell under the frame
+  acela: { take: 'bell', rate: 0.9, P: 0.8, gain: 0.8, f: 820 },
+};
+function bellVoice(lk) { return BELL_VOICE[lk] || (LOCO_SPEC[lk] && LOCO_SPEC[lk].diesel ? BELL_VOICE.diesel : BELL_VOICE['765']); }
 
 /* ============================================================================
    Recorded sound. Voices are played from field recordings in audio/ (sources
@@ -15980,7 +16012,7 @@ function remoteSound(R, dt, st, d, cam) {
     E.o1.frequency.setTargetAtTime(fire, now, 0.1); E.o2.frequency.setTargetAtTime(fire / 2, now, 0.1); E.f.frequency.setTargetAtTime(260 + 700 * rf + 400 * rf * st.ex, now, 0.1);
     setG(E.g, st.rpm > 20 ? (0.2 + 0.3 * rf) * units : 0, 0.15);
   }
-  if (R.bellHit) { R.bellHit = false; if (d < 1200) sndBell(T.diesel, B.g); }   // strokes are timed in fx, where the bell swings
+  if (R.bellHit) { R.bellHit = false; if (d < 1200) sndBell(bellVoice(st.lk), B.g); }   // strokes are timed in fx, where the bell swings
   // whistle or horn: recorded through the emitter (which gives the Doppler), or the synthesized voices
   const key = LOCO_SPEC[st.lk].whistle, k = whTake(key);
   if (SND.has(k)) {
@@ -18946,7 +18978,7 @@ class RemoteTrain {
   }
   fx(dt, st, cam) {
     // the bell's strokes: the sound rings on them and the bell swings to them
-    const bellP = this.train.diesel ? 1.05 : 0.86; let struck = false;
+    const bellP = bellVoice(st.lk).P; let struck = false;
     if (st.bl) { this.bellT += dt; if (this.bellT > bellP) { this.bellT = 0; struck = this.bellHit = true; } } else { this.bellT = 0.8; this.bellHit = false; }
     if (!this.placed || !this.visible) return;
     const T = this.train, L = T.loco, night = SKY.dark;
@@ -24587,8 +24619,8 @@ function effectsAndSound(dt, T) {
   const DSL = T.diesel;
   const tv = new THREE.Vector3().copy(T.lead.fwd).multiplyScalar(S.v);
   const fx = T.elec ? electricFX(dt, T, tv) : T.turb ? turbineFX(dt, T, tv) : DSL ? dieselFX(dt, T, tv) : steamFX(dt, T, tv);
-  const bellP = DSL ? 1.05 : 0.86; let struck = false;
-  if (S.bell) { bellT += dt; if (bellT > bellP) { bellT = 0; struck = true; sndBell(DSL); } } else bellT = 0.8;
+  const BV = bellVoice(GAME.settings.loco), bellP = BV.P; let struck = false;
+  if (S.bell) { bellT += dt; if (bellT > bellP) { bellT = 0; struck = true; sndBell(BV); } } else bellT = 0.8;
   bellSwing(T, S.bell, bellT, bellP, struck, dt);
   if (!DSL && T.loco) clsLampsShow(T.loco.cls, S.classLamps);
   if (!AU.on) return;

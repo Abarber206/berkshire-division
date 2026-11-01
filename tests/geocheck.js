@@ -38,7 +38,7 @@ function world() {
     const _build = GeoBin.prototype.build;
     GeoBin.prototype.build = function (mats, opt) { const grp = _build.call(this, mats, opt); grp.userData.pieces = this.pieces || []; return grp; };
     rollingMaterials();
-    globalThis.__W = { buildTurbineUnit, buildTurbineTender, GT, GTT, THREE, RMAT, SCN, LOCO_SPEC, TRIM, TD, DG, GeoBin, buildBerkshire, buildTender, buildDiesel, bellRig, bellSwing, clsLampsShow, BELL_KICK, coachModel, freightModel, truckBins, plainAxle, mergeGeos, AXJ, CH, LIVERIES, buildPerson, PD, coachInterior, coachSeats, COACH_IN, coachPairs, GRAFFITI, gfName, gfHash, graffitiSpots, rng, buildBigBoy, buildBigBoyTender, animateBigBoy, artFront, artSwing, BB, BBT, BBCAB, bxR, bxF };`,
+    globalThis.__W = { buildTurbineUnit, buildTurbineTender, GT, GTT, THREE, RMAT, SCN, LOCO_SPEC, TRIM, TD, DG, GeoBin, buildBerkshire, buildTender, buildDiesel, bellRig, BELL_LOOK, bellSwing, clsLampsShow, BELL_KICK, coachModel, freightModel, truckBins, plainAxle, mergeGeos, AXJ, CH, LIVERIES, buildPerson, PD, coachInterior, coachSeats, COACH_IN, coachPairs, GRAFFITI, gfName, gfHash, graffitiSpots, rng, buildBigBoy, buildBigBoyTender, animateBigBoy, artFront, artSwing, BB, BBT, BBCAB, bxR, bxF };`,
   ctx, { filename: 'rolling.js' });
   return (W = ctx.__W);
 }

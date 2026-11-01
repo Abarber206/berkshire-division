@@ -212,11 +212,11 @@ function sndPump(phase) {
   if (phase % 2) envNoise(t, 0.22, 800, 1.2, 0.22, AU.loco, 'bandpass', AU.noise, 0.02);
   else { envNoise(t, 0.16, 300, 1, 0.3, AU.loco, 'lowpass', AU.noise, 0.01); envTone(t, 0.1, 90, 0.12, AU.loco); }
 }
-function sndBell(diesel, dest = AU.loco) {
+/* one stroke of an engine's bell (BELL_VOICE: each engine's own) */
+function sndBell(B, dest = AU.loco) {
   if (!AU.on) return;
-  // the steam engine's big cast bell rings lower than the diesel's
-  if (SND.has('bell')) { SND.shot('bell', dest, { gain: SND_GAIN.bell || 1, rate: diesel ? 0.7 : 0.56, vary: 0.01 }); return; } const t = AU.ctx.currentTime + 0.005;
-  const f = diesel ? 640 : 435;
+  if (SND.has(B.take)) { SND.shot(B.take, dest, { gain: (SND_GAIN[B.take] || 1) * (B.gain || 1), rate: B.rate, vary: 0.01 }); return; } const t = AU.ctx.currentTime + 0.005;
+  const f = B.f;
   for (const [r, g, d] of [[1, 0.5, 2.6], [2.02, 0.28, 1.8], [2.74, 0.22, 1.3], [3.95, 0.14, 0.9], [5.41, 0.08, 0.6], [0.5, 0.18, 2.0]]) envTone(t, d, f * r, g * 0.55, dest, 'sine');
   envNoise(t, 0.03, 4000, 2, 0.15, dest, 'bandpass', AU.white, 0.001);
 }

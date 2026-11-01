@@ -636,7 +636,7 @@ function remoteSound(R, dt, st, d, cam) {
     E.o1.frequency.setTargetAtTime(fire, now, 0.1); E.o2.frequency.setTargetAtTime(fire / 2, now, 0.1); E.f.frequency.setTargetAtTime(260 + 700 * rf + 400 * rf * st.ex, now, 0.1);
     setG(E.g, st.rpm > 20 ? (0.2 + 0.3 * rf) * units : 0, 0.15);
   }
-  if (R.bellHit) { R.bellHit = false; if (d < 1200) sndBell(T.diesel, B.g); }   // strokes are timed in fx, where the bell swings
+  if (R.bellHit) { R.bellHit = false; if (d < 1200) sndBell(bellVoice(st.lk), B.g); }   // strokes are timed in fx, where the bell swings
   // whistle or horn: recorded through the emitter (which gives the Doppler), or the synthesized voices
   const key = LOCO_SPEC[st.lk].whistle, k = whTake(key);
   if (SND.has(k)) {

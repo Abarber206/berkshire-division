@@ -16,7 +16,8 @@ Each recipe entry names a source file and what to make of it:
          since MP3 encoder padding would break the loop
 A shot can set its fades (`fade`: [in, out] s) and be levelled by another stretch of its source
 (`ref`: [start, end] s), so a whistle's closing take starts as loud as its sustain loop.
-A bed or shot can also be flattened (`flat`: seconds), which evens out a slow swell in level,
+Any entry can be denoised (`denoise`: [[start, end], ...] s of background alone), a spectral gate for
+a take recorded over loud machinery. A bed or shot can also be flattened (`flat`: seconds), which evens out a slow swell in level,
 such as a locomotive drawing closer, so that random slices of it all sit at one level.
 Everything is made mono, filtered as asked, and levelled to a common loudness so the
 in-game trims (SND_GAIN) stay small. Needs ffmpeg and numpy.
@@ -62,6 +63,29 @@ def flatten(x, w):
     """divide out the level averaged over w seconds, so a take recorded as its source drew near holds steady"""
     r = np.sqrt(mavg(x * x, int(w * SR)))
     return x * (np.median(r) / np.maximum(r, np.median(r) * 0.05))
+
+
+def denoise(x, spans, over=1.6, floor=0.1):
+    """spectral gate: take the noise's spectrum from the [start, end] spans (s), where only the background
+    sounds, and turn each bin down by how far it stands above that, so a bell recorded over a blowing
+    engine keeps its own partials and loses the hiss between them"""
+    n, hop = 4096, 1024
+    win = np.hanning(n)
+    pad = np.concatenate([np.zeros(n), x, np.zeros(n)])
+    frames = np.array([pad[i:i + n] * win for i in range(0, len(pad) - n, hop)])
+    X = np.fft.rfft(frames, axis=1)
+    mag = np.abs(X)
+    idx = [i for i in range(len(frames)) if any(a * SR <= i * hop - n + n // 2 <= b * SR for a, b in spans)]
+    N = np.sqrt(np.mean(mag[idx] ** 2, axis=0))
+    g = np.clip(1 - over * N / np.maximum(mag, 1e-12), floor, 1)
+    # smooth the gain across neighbouring bins and frames so it doesn't warble
+    k = np.ones(5) / 5
+    g = np.apply_along_axis(lambda r: np.convolve(r, k, 'same'), 1, g)
+    g = np.apply_along_axis(lambda c: np.convolve(c, np.ones(3) / 3, 'same'), 0, g)
+    Y = np.fft.irfft(X * g, n, axis=1) * win
+    out = np.zeros(len(pad)); norm = np.zeros(len(pad))
+    for j, i in enumerate(range(0, len(pad) - n, hop)): out[i:i + n] += Y[j]; norm[i:i + n] += win ** 2
+    return (out / np.maximum(norm, 1e-6))[n:n + len(x)].astype(np.float32)
 
 
 def fade(x, a=0.004, b=0.02):
@@ -124,6 +148,7 @@ def main(src_dir, recipe, only=None):
         x = load(os.path.join(src_dir, e['src']), e.get('start', 0), e.get('end'), e.get('hp'), e.get('lp'))
         name, kind, db = e['name'], e['kind'], e.get('db', -18)
         if e.get('flat'): x = flatten(x, e['flat'])
+        if e.get('denoise'): x = denoise(x, e['denoise'])
         lst = files.setdefault(name, [])
         if kind == 'cuts':   # explicit [start, end] pairs, in seconds from `start`
             for a, b in e['at']:

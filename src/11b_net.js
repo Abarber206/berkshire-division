@@ -291,7 +291,7 @@ class RemoteTrain {
   }
   fx(dt, st, cam) {
     // the bell's strokes: the sound rings on them and the bell swings to them
-    const bellP = this.train.diesel ? 1.05 : 0.86; let struck = false;
+    const bellP = bellVoice(st.lk).P; let struck = false;
     if (st.bl) { this.bellT += dt; if (this.bellT > bellP) { this.bellT = 0; struck = this.bellHit = true; } } else { this.bellT = 0.8; this.bellHit = false; }
     if (!this.placed || !this.visible) return;
     const T = this.train, L = T.loco, night = SKY.dark;
