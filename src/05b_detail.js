@@ -2,7 +2,7 @@
    Ground detail & country life: standing corn, roadside grass and wildflowers,
    pasture fences, cattle, hay bales, and small towns around the depots.
    ========================================================================== */
-const DET = { cornGroups: [], lifeGroups: [], grassMats: [], timeU: { value: 0 } };
+const DET = { cornGroups: [], lifeGroups: [], grassMats: [], timeU: { value: 0 }, windK: { value: 1 } };
 
 /* ---------- precise distance to any track (2 m samples hashed in 10 m cells) ---------- */
 function buildTrackHash() {
@@ -45,7 +45,7 @@ function detailTextures() {
       g.beginPath(); g.moveTo(x0, h); g.quadraticCurveTo(x0 + lean * 0.2, (h + top) / 2, x0 + lean, top); g.stroke();
     }
   };
-  TEX.grass = canvasTex(128, 128, (g, w, h) => { const r = rng(21); blades(g, w, h, r, 70, ['#e9eedc', '#d3dcc0', '#f4f2e2', '#bfcaa6'], 0.35); });
+  TEX.grass = grassTexture();
   TEX.goldenrod = canvasTex(128, 128, (g, w, h) => {
     const r = rng(22); blades(g, w, h, r, 26, ['#6f8a45', '#5e7a3b'], 0.45);
     for (let k = 0; k < 7; k++) { const cx = w * (0.15 + 0.7 * r()), cy = h * (0.08 + 0.3 * r()); for (let i = 0; i < 40; i++) { g.fillStyle = r() < 0.5 ? '#f0c63a' : '#d9a92a'; g.beginPath(); g.arc(cx + (r() - 0.5) * 22 + (i / 40) * 10, cy + (r() - 0.2) * 16 + i * 0.5, 1.6 + r() * 1.8, 0, TAU); g.fill(); } }
@@ -99,17 +99,126 @@ function detailTextures() {
   SMAT.cornWall = new THREE.MeshLambertMaterial({ map: TEX.cornWall, alphaTest: 0.5, side: THREE.DoubleSide });
   SMAT.hay = new THREE.MeshLambertMaterial({ map: TEX.hay, vertexColors: true });
   SMAT.post = new THREE.MeshLambertMaterial({ color: 0x6a5a48, map: TEX.wood });
-  const sway = sh => {
-    sh.uniforms.uTime = DET.timeU;
-    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nuniform float uTime;')
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\n#ifdef USE_INSTANCING\n float sw = sin(uTime * 1.8 + instanceMatrix[3].x * 0.37 + instanceMatrix[3].z * 0.23) * 0.08 * position.y;\n transformed.x += sw; transformed.z += sw * 0.6;\n#endif');
-  };
   for (const k of ['grass', 'goldenrod', 'aster', 'fern']) {
-    const m = new THREE.MeshLambertMaterial({ map: TEX[k], alphaTest: 0.5 });
-    m.onBeforeCompile = sway; m.customProgramCacheKey = () => 'sway';
-    fadeByDistance(m, k === 'grass' || k === 'fern' ? LOD.grass : LOD.flowers, true);
+    // grass is one-sided cards drawn from both sides (both lit as the front); alpha to coverage keeps the thin
+    // blades from shimmering or thinning out to nothing as they go back into the distance
+    const grass = k === 'grass';
+    const m = new THREE.MeshLambertMaterial({ map: TEX[k], alphaTest: grass ? 0.3 : 0.5, side: grass ? THREE.DoubleSide : THREE.FrontSide });
+    if (grass) m.alphaToCoverage = true;
+    const amp = grass ? 1 : k === 'fern' ? 0.45 : 0.6;
+    m.onBeforeCompile = sh => grassWind(sh, amp, grass); m.customProgramCacheKey = () => 'wind' + amp + grass;
+    fadeByDistance(m, grass || k === 'fern' ? LOD.grass : LOD.flowers, true);
     SMAT['g_' + k] = m; DET.grassMats.push(m);
   }
+}
+/* Meadow grass, 256 x 256: tapered blades that are dark down in the clump and light at the tips (so a clump
+   is shaded like the real thing, and sits down into the ground), a back layer darker than the front, some
+   tips gone to straw, and a few timothy and foxtail seed heads standing above. Light greys: the instance
+   colour gives green, gold or straw. */
+function grassTexture() {
+  return canvasTex(256, 256, (g, w, h) => {
+    const r = rng(21);
+    const blade = (x0, top, lean, bw, c0, c1) => {
+      const tx = x0 + lean, mx = x0 + lean * 0.3, my = (h + top) / 2;
+      const grd = g.createLinearGradient(0, h, 0, top); grd.addColorStop(0, c0); grd.addColorStop(0.3, c0); grd.addColorStop(1, c1);
+      g.fillStyle = grd; g.beginPath();
+      g.moveTo(x0 - bw / 2, h + 1); g.quadraticCurveTo(mx - bw * 0.3, my, tx, top); g.quadraticCurveTo(mx + bw * 0.3, my, x0 + bw / 2, h + 1); g.closePath(); g.fill();
+    };
+    const grey = (v, warm = 0) => `rgb(${Math.min(255, v + warm) | 0},${Math.min(255, v + 6) | 0},${Math.max(0, v * 0.86 - warm) | 0})`;
+    for (let layer = 0; layer < 3; layer++) {
+      const n = [55, 60, 45][layer];
+      for (let i = 0; i < n; i++) {
+        const c = 0.5 + (r() - 0.5) * (layer === 2 ? 0.75 : 0.9) * (0.6 + 0.4 * r());
+        const x0 = w * c, top = h * (1 - (layer === 0 ? 0.55 + 0.42 * r() : layer === 1 ? 0.4 + 0.5 * r() : 0.2 + 0.45 * r()));
+        const lean = (x0 - w / 2) * (0.35 + 0.5 * r()) + (r() - 0.5) * w * 0.18;
+        const lo = [52, 72, 92][layer] + r() * 18, hi = [150, 195, 230][layer] + r() * 25;
+        const dryTip = r() < 0.22;
+        blade(x0, top, lean, 3.5 + r() * 4.5, grey(lo), dryTip ? grey(hi + 10, 22) : grey(hi));
+      }
+    }
+    // seed heads: a thin stem, then a slender spike of florets, a little browner than the leaves
+    for (let i = 0; i < 4; i++) {
+      const x0 = w * (0.3 + 0.4 * r()), top = h * (0.02 + 0.12 * r()), lean = (r() - 0.5) * w * 0.25, L = 12 + r() * 12;
+      g.strokeStyle = grey(140, 8); g.lineWidth = 1.3; g.beginPath(); g.moveTo(x0, h); g.quadraticCurveTo(x0 + lean * 0.2, (h + top) / 2, x0 + lean, top + L); g.stroke();
+      for (let k = 0; k < 14; k++) {
+        const t = k / 13, px = x0 + lean, py = top + L * (1 - t);
+        g.fillStyle = grey(150 + r() * 40, 30); g.beginPath(); g.ellipse(px + (r() - 0.5) * 1.6, py, 1.7 - t * 0.6, 2.2, 0, 0, TAU); g.fill();
+      }
+    }
+  });
+}
+/* One meadow clump: four cards round the centre, each in three rows so the wind can bend it into a curve, leaning
+   out a little and spreading wider at the top. Normals point up, so the clump is lit like the ground it grows from. */
+function grassClumpGeo(w = 1.0, h = 0.8) {
+  const pos = [], uv = [], nor = [], idx = [], r = rng(57), segs = 3, n = 4;
+  for (let k = 0; k < n; k++) {
+    const a = k * Math.PI / n + (r() - 0.5) * 0.35, ax = Math.cos(a), az = Math.sin(a), nx = -az, nz = ax;
+    const ox = (r() - 0.5) * 0.14, oz = (r() - 0.5) * 0.14, lean = (k % 2 ? 1 : -1) * h * (0.1 + 0.1 * r()), cw = w * (0.85 + 0.25 * r());
+    const b = pos.length / 3;
+    for (let j = 0; j <= segs; j++) {
+      const t = j / segs, y = h * t * (1 - 0.06 * t * t), d = lean * t * t, sp = 1 + 0.18 * t;
+      for (let i = 0; i < 2; i++) {
+        const u = (i - 0.5) * cw * sp;
+        pos.push(ox + ax * u + nx * d, y, oz + az * u + nz * d); uv.push(i, t); nor.push(0, 1, 0);
+      }
+    }
+    for (let j = 0; j < segs; j++) { const q = b + j * 2; idx.push(q, q + 1, q + 3, q, q + 3, q + 2); }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.setIndex(idx); g.computeBoundingSphere();
+  return g;
+}
+/* Wind through the grass: slow gusts that roll across the field as a wave (so neighbouring clumps move together,
+   not each on its own beat), a quicker flutter on top, and the bend growing with the square of the height so the
+   roots stay put. Stronger under an overcast sky. With grass set, both faces of a card are lit as the front. */
+function grassWind(sh, amp, grass) {
+  sh.uniforms.uTime = DET.timeU; sh.uniforms.uWindK = DET.windK;
+  sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nuniform float uTime; uniform float uWindK;')
+    .replace('#include <project_vertex>', `vec4 mvPosition = vec4(transformed, 1.0);
+      #ifdef USE_INSTANCING
+        mvPosition = instanceMatrix * mvPosition;
+        {
+          vec2 wp = instanceMatrix[3].xz, wd = vec2(0.8, 0.6);
+          float hg = max(position.y, 0.0), bend = hg * hg * ${amp.toFixed(2)} * uWindK;
+          float wave = sin(dot(wp, wd) * 0.07 - uTime * 1.5) + 0.5 * sin(dot(wp, vec2(-0.3, 0.95)) * 0.19 - uTime * 2.6);
+          float gust = 0.5 + 0.4 * wave;
+          float flut = sin(uTime * 6.3 + wp.x * 2.3 + wp.y * 1.7 + position.x * 5.0 + position.z * 4.0);
+          vec2 off = wd * (0.18 + 0.3 * gust) * bend + vec2(-wd.y, wd.x) * flut * 0.07 * bend;
+          mvPosition.xz += off; mvPosition.y -= 0.5 * dot(off, off) / max(hg, 0.1);
+        }
+      #endif
+      mvPosition = modelViewMatrix * mvPosition;
+      gl_Position = projectionMatrix * mvPosition;`);
+  if (grass) sh.fragmentShader = sh.fragmentShader
+    .replace('( gl_FrontFacing ) ? vLightFront : vLightBack', 'vLightFront')
+    .replace('( gl_FrontFacing ) ? vIndirectFront : vIndirectBack', 'vIndirectFront');
+}
+/* How dry the grass is here, from the same broad drifts the ground shader paints (TEX.detail blue channel), so a
+   clump's colour matches the turf it stands in: 0 lush, 1 parched. */
+function grassDryAt(X, N) {
+  let D = DET.detailB;
+  if (!D) {
+    const img = TEX.detail && TEX.detail.image; if (!img || !img.getContext) return 0.5;
+    const d = img.getContext('2d').getImageData(0, 0, img.width, img.height).data, B = new Uint8Array(img.width * img.height);
+    for (let i = 0; i < B.length; i++) B[i] = d[i * 4 + 2];
+    D = DET.detailB = { B, w: img.width, h: img.height };
+  }
+  const at = (u, v) => { const x = ((Math.floor(u * D.w) % D.w) + D.w) % D.w, y = ((Math.floor((1 - v) * D.h) % D.h) + D.h) % D.h; return D.B[y * D.w + x] / 255; };
+  const x = X, z = -N;
+  const b1 = at(x * 0.0011 + 0.13, z * 0.0011 + 0.13), b2 = at(x * 0.0047 - 0.31, z * 0.0047 - 0.31);
+  return smooth(0.38, 0.66, b1 * 0.65 + b2 * 0.35);
+}
+/* the colour of a meadow clump: lush green, summer green or straw, by the drifts, with each clump a little its own */
+function grassColor(X, N, r, dryBias = 0) {
+  // the mountain is in autumn: its meadows have mostly gone over to tawny and straw
+  const d = clamp(grassDryAt(X, N) * 0.8 + dryBias + (WORLD.mtn ? 0.3 : 0) + (r() - 0.5) * 0.45, 0, 1);
+  const lush = [0.34, 0.50, 0.20], summer = [0.50, 0.58, 0.29], straw = [0.74, 0.65, 0.42];
+  const c = d < 0.5 ? lush.map((v, i) => lerp(v, summer[i], d * 2)) : summer.map((v, i) => lerp(v, straw[i], (d - 0.5) * 2));
+  const b = 0.88 + r() * 0.24;
+  return c.map(v => Math.min(1, v * b));
 }
 const colorize = (g, c) => { const a = new Float32Array(g.attributes.position.count * 3); for (let i = 0; i < a.length; i += 3) { a[i] = c[0]; a[i + 1] = c[1]; a[i + 2] = c[2]; } g.setAttribute('color', new THREE.BufferAttribute(a, 3)); return g; };
 const hex3 = h => [((h >> 16) & 255) / 255, ((h >> 8) & 255) / 255, (h & 255) / 255];
@@ -416,20 +525,21 @@ function crossedQuads(w, h, n = 3) {
 }
 function grassGeos() {
   if (DET.geos) return DET.geos;
-  return (DET.geos = { grass: crossedQuads(1.0, 0.75), goldenrod: crossedQuads(0.9, 1.2), aster: crossedQuads(0.8, 0.9), fern: crossedQuads(1.3, 0.75, 2), bush: foliageGeos().bush });
+  return (DET.geos = { grass: grassClumpGeo(1.0, 0.8), goldenrod: crossedQuads(0.9, 1.2), aster: crossedQuads(0.8, 0.9), fern: crossedQuads(1.3, 0.75, 2), bush: foliageGeos().bush });
 }
 function genGrass(piece, scene) {
   const U = piece.userData, e = U.edge, G = grassGeos();
   const r = rng(e.id * 131 + Math.floor(U.s0 * 7));
   const L = { grass: [], goldenrod: [], aster: [], bush: [] };
-  for (let s = U.s0; s < U.s1; s += 1.15) {
+  const step = GFX.lite ? 1.15 : 0.8;
+  for (let s = U.s0; s < U.s1; s += step) {
     if (e.isBridge(s) || e.isTunnel(s)) continue;
     e.pose(s, FR);
     for (const side of [-1, 1]) {
-      const n = 2 + (r() < 0.55 ? 1 : 0);
+      const n = 2 + (r() < 0.6 ? 1 : 0) + (GFX.lite ? 0 : 1);
       for (let q = 0; q < n; q++) {
-        const lat = q < 2 ? 3.35 + r() * r() * 7 : 8 + r() * 15;
-        const along = (r() - 0.5) * 1.15;
+        const lat = q < 2 ? 3.35 + r() * r() * 7 : q < 3 ? 6 + r() * 8 : 9 + r() * 15;
+        const along = (r() - 0.5) * step;
         const x = FR.p.x + FR.r.x * lat * side + FR.f.x * along, z = FR.p.z + FR.r.z * lat * side + FR.f.z * along;
         const X = x, N = -z;
         if (distToTrack(X, N) < 3.3 || riverDist(X, N) < 30 || onRoad(X, N, 5.5) || kept(X, N, 0) || inTown(X, N)) continue;
@@ -438,11 +548,11 @@ function genGrass(piece, scene) {
         if (lat > 4.5 && pick < 0.07) type = 'goldenrod'; else if (lat > 4.5 && pick < 0.1) type = 'aster'; else if (lat > 7 && pick < 0.118) type = 'bush';
         const dry = r();
         let c;
-        if (type === 'grass') c = dry < 0.35 ? [0.70, 0.64, 0.42] : (dry < 0.75 ? [0.50, 0.58, 0.30] : [0.40, 0.52, 0.24]);
+        if (type === 'grass') c = grassColor(X, N, r, lat < 4.6 ? 0.12 : 0);   // a little drier on the ballast toe
         else if (type === 'bush') c = r() < 0.4 ? [0.52, 0.2, 0.12] : (r() < 0.5 ? [0.66, 0.44, 0.2] : [0.32, 0.42, 0.2]);
         else c = [1, 1, 1];
-        const sc = type === 'grass' ? 0.7 + r() * 0.7 : type === 'bush' ? 0.55 + r() * 0.45 : 0.8 + r() * 0.45;
-        L[type].push([X, y, N, r() * TAU, sc, c]);
+        const sc = type === 'grass' ? 0.6 + r() * 0.7 : type === 'bush' ? 0.55 + r() * 0.45 : 0.8 + r() * 0.45;
+        L[type].push([X, y, N, r() * TAU, sc, c, 0.6 + r() * 0.65]);
       }
     }
   }
@@ -451,8 +561,8 @@ function genGrass(piece, scene) {
     const list = L[k]; if (!list.length) continue;
     const mat = k === 'bush' ? MAT.bush : SMAT['g_' + k];
     const im = new THREE.InstancedMesh(k === 'bush' ? shareGeo(G.bush, U.sphere.clone()) : G[k].clone(), mat, list.length);
-    list.forEach((q, i) => { _m4.compose(_v1.set(q[0], q[1], -q[2]), _q.setFromEuler(_e.set(0, q[3], 0)), _v2.set(q[4], q[4] * (k === 'grass' ? 0.8 + (i % 5) * 0.12 : 1), q[4])); im.setMatrixAt(i, _m4); _tc.setRGB(q[5][0], q[5][1], q[5][2]).convertSRGBToLinear(); im.setColorAt(i, _tc); });
-    im.geometry.boundingSphere = U.sphere.clone();
+    list.forEach((q, i) => { _m4.compose(_v1.set(q[0], q[1], -q[2]), _q.setFromEuler(_e.set(0, q[3], 0)), _v2.set(q[4], q[4] * (k === 'grass' ? q[6] : 1), q[4])); im.setMatrixAt(i, _m4); _tc.setRGB(q[5][0], q[5][1], q[5][2]).convertSRGBToLinear(); im.setColorAt(i, _tc); });
+    im.geometry.boundingSphere = U.sphere.clone(); folColorsDone(im);
     im.castShadow = false; im.receiveShadow = true; im.userData.kind = k;
     grp.add(im);
   }
@@ -461,6 +571,7 @@ function genGrass(piece, scene) {
 }
 function updateDetailLOD(cam, scene, dt) {
   DET.timeU.value += dt;
+  DET.windK.value += ((SKY.weather === 'clear' ? 1 : 1.7) - DET.windK.value) * Math.min(1, dt * 0.5);
   const cp = cam.position;
   let budget = 1;
   for (const p of WORLD.pieces) {
@@ -492,23 +603,23 @@ function coverCell(ci, cj, scene) {
       else if (pick < 0.335) type = 'goldenrod';
     } else {
       const f = fieldAt(X, N), n = f.t.n, edge = f.edge < 4.5;
-      const p = edge ? 0.7 : n === 'pasture' ? 0.3 : n === 'woods' ? 0.4 : n === 'stubble' ? 0.03 : 0;
+      const p = edge ? 0.7 : n === 'pasture' ? (GFX.lite ? 0.3 : 0.42) : n === 'woods' ? 0.4 : n === 'stubble' ? 0.03 : 0;
       if (pick >= p) continue;
       type = edge && pick < 0.1 ? (pick < 0.06 ? 'goldenrod' : 'aster') : 'grass';
     }
     if (!type) continue;
     const lat = latticeAt(X, N); if (lat && lat.d < 26) continue;
     if ((mtn ? mtRiverDist(X, N) < 24 : riverDist(X, N) < 30) || onRoad(X, N, 6) || kept(X, N, 1) || inTown(X, N) || inFoot(X, N, 1.5)) continue;
-    if (type === 'grass') { const d = r(); c = d < 0.4 ? [0.68, 0.62, 0.42] : d < 0.8 ? [0.46, 0.55, 0.28] : [0.38, 0.5, 0.22]; }
+    if (type === 'grass') c = grassColor(X, N, r);
     if (!c) c = [1, 1, 1];
     const sc = type === 'grass' ? 0.55 + r() * 0.7 : type === 'fern' ? 0.6 + r() * 0.6 : 0.75 + r() * 0.4;
-    L[type].push([X, groundAt(X, N) - 0.05, N, r() * TAU, sc, c]);
+    L[type].push([X, groundAt(X, N) - 0.05, N, r() * TAU, sc, c, 0.6 + r() * 0.65]);
   }
   const grp = new THREE.Group(), sph = new THREE.Sphere(new THREE.Vector3(X0 + S / 2, groundAt(X0 + S / 2, N0 + S / 2), -(N0 + S / 2)), S * 0.75 + 6);
   for (const k in L) {
     const list = L[k]; if (!list.length) continue;
     const im = new THREE.InstancedMesh(shareGeo(G[k], sph.clone()), SMAT['g_' + k], list.length);
-    list.forEach((q, i) => { _m4.compose(_v1.set(q[0], q[1], -q[2]), _q.setFromEuler(_e.set(0, q[3], 0)), _v2.set(q[4], q[4] * (k === 'grass' ? 0.8 + (i % 5) * 0.12 : 1), q[4])); im.setMatrixAt(i, _m4); _tc.setRGB(q[5][0], q[5][1], q[5][2]).convertSRGBToLinear(); im.setColorAt(i, _tc); });
+    list.forEach((q, i) => { _m4.compose(_v1.set(q[0], q[1], -q[2]), _q.setFromEuler(_e.set(0, q[3], 0)), _v2.set(q[4], q[4] * (k === 'grass' ? q[6] : 1), q[4])); im.setMatrixAt(i, _m4); _tc.setRGB(q[5][0], q[5][1], q[5][2]).convertSRGBToLinear(); im.setColorAt(i, _tc); });
     folColorsDone(im);
     im.castShadow = false; im.receiveShadow = true; im.userData.kind = k;
     grp.add(im);
