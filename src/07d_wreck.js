@@ -91,9 +91,11 @@ class WreckSim {
     for (let x = -1; x <= 1; x++) for (let y = -1; y <= 1; y++) for (let z = -1; z <= 1; z++) if (x || y || z) b.pts.push(new THREE.Vector3(x * h.x, y * h.y, z * h.z));
     // where the trucks were when it came off, so they stay with it
     b.t0 = v.tp.map(t => { const m4 = frameMatrix(t.F, new THREE.Matrix4()); if (v.flip) m4.multiply(new THREE.Matrix4().makeRotationY(Math.PI)); return m4; });
-    if ((v.kind === 'loco' || v.kind === 'loco2') && this.T.diesel) b.u0 = v.model.trucks.map(tg => tg.matrix.clone());
-    else if (v.kind === 'loco' && this.T.loco && this.T.loco.leadTruck) b.l0 = this.T.loco.leadTruck.matrix.clone();
-    if (v.kind === 'loco' && this.T.loco && this.T.loco.front) b.f0 = this.T.loco.front.matrix.clone();
+    // each engine's own model: a helper MU'd in behind can be a different kind of engine
+    const U = v.helper ? v.model : (v.kind === 'loco' ? this.T.loco : null) || v.model;
+    if ((v.kind === 'loco' || v.kind === 'loco2') && U && U.trucks && U.wheels) b.u0 = U.trucks.map(tg => tg.matrix.clone());
+    else if (v.kind === 'loco' && U && U.leadTruck) b.l0 = U.leadTruck.matrix.clone();
+    if (v.kind === 'loco' && U && U.front) b.f0 = U.front.matrix.clone();
     if (v.model && v.model.truck) b.s0 = v.model.truck.matrix.clone();
     v.rb = b; this.bodies.push(b);
     this.pose(b);

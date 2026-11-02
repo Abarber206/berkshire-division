@@ -160,7 +160,7 @@ function helperIn(h) {
   let X = HELPER_IN.get(h.g);
   if (!X) { X = new Train(scene, h.loco, 'light', Object.assign({}, h.opts, { dark: true })); for (const im of X.inst) scene.remove(im); HELPER_IN.set(h.g, X); }
   const v = X.vehicles[h.i]; if (!v) throw new Error('a helper engine has changed since this save');
-  X.release(v); v.helper = h;
+  X.release(v); v.helper = h; if (v.kind === 'tender') v.mass = h.m || helperTender(X);
   return v;
 }
 /* Build train t's consist again from its record o: the engine as the Train made it, and its cars as they were.

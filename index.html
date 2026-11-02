@@ -13585,6 +13585,16 @@ function carVehicle(m) {
     brake: { AR: 90, BC: 0, BP: 90, emerg: false, released: true }, kn: [0, 0] };
 }
 
+/* the wheels of vehicle x that click over the rail joints, as [point, axles, spacing]. Each engine by its own kind:
+   a helper MU'd into the train can be a diesel behind a steam engine or the other way round. */
+function jointPts(x) {
+  if (x.kind === 'loco' || x.kind === 'loco2') {
+    if (x.leadPt && x.leadPt !== x.fp[0]) return [[x.leadPt, 1, 0], [x.fp[0], 4, 1.855]];
+    const n = x.emu ? 2 : 3, sp = (x.model && x.model.wb) || DG.axle;
+    return [[x.fp[0], n, sp], [x.fp[1], n, sp]];
+  }
+  return x.tp.map((p, i) => [p, x.trucks[i].type === 'four' ? 2 : 3, x.trucks[i].sp || (x.trucks[i].type === 'four' ? 1.73 : 1.676)]);
+}
 /* a helper engine coupled into another train: its trucks, wheels and rods turn with the train's own */
 function helperAnimate(v, roll, theta, rev, D, dist) {
   const M = v.model; if (!M) return;
@@ -13829,7 +13839,7 @@ const isTrainC = c => !!c && (c === GAME.train || !!c.parkS);
 function consistMass(c) {
   let m = 0;
   const st = c.parkS || S;   // a standing train's tender holds what it had when it was left
-  for (const v of c.vehicles) m += v.kind === 'tender' ? (c.turb ? turbineTenderMass(c, st) : c.tenderEmpty + st.water + st.coal) : v.mass;
+  for (const v of c.vehicles) m += v.kind === 'tender' && !v.helper ? (c.turb ? turbineTenderMass(c, st) : c.tenderEmpty + st.water + st.coal) : v.mass;
   return m;
 }
 const velOf = c => c === GAME.train ? S.v : c.v;
@@ -14007,11 +14017,21 @@ CARS.ahead = function (T, dir, range) {
 /* Train X is being coupled into another: its engine (and tender or units) go in as a helper, MU'd to the
    train's controls. Each helper vehicle keeps what it needs to be built again for a save. Returns X's name. */
 let HELPER_N = 0;
+/* the weight of engine X's tender, from its supplies st (full when it has none) */
+function helperTender(X, st) {
+  if (X.turb) return turbineTenderMass(X, st || { oil: GTP.oilFull });
+  const k = steamK(LOCO_SPEC[X.locoKey]); st = st || k;
+  return X.tenderEmpty + (st.water || 0) + (st.coal || 0);
+}
 function helperOf(X) {
   const name = typeof FLEET !== 'undefined' && X.parkS ? FLEET.name(X) : 'the other engine';
   const own = X.vehicles.filter(v => isPower(v) && !v.helper), g = ++HELPER_N + '.' + Math.round(performance.now());
   const opts = JSON.parse(JSON.stringify(Object.assign({}, X.opts || {}, { remote: undefined })));
-  own.forEach((v, i) => { v.helper = { g, loco: X.locoKey, opts, i }; });
+  own.forEach((v, i) => {
+    v.helper = { g, loco: X.locoKey, opts, i };
+    // its tender keeps what was in it, as a fixed weight: the train's own supplies are its lead engine's
+    if (v.kind === 'tender') v.mass = v.helper.m = helperTender(X, X.parkS);
+  });
   if (X.crew && typeof IX !== 'undefined') IX.release(X.crew.ix);
   X.crew = null; X.parkS = null;
   if (typeof FLEET !== 'undefined' && FLEET.card === X) FLEET.closeCard();
@@ -14574,9 +14594,11 @@ class WreckSim {
     for (let x = -1; x <= 1; x++) for (let y = -1; y <= 1; y++) for (let z = -1; z <= 1; z++) if (x || y || z) b.pts.push(new THREE.Vector3(x * h.x, y * h.y, z * h.z));
     // where the trucks were when it came off, so they stay with it
     b.t0 = v.tp.map(t => { const m4 = frameMatrix(t.F, new THREE.Matrix4()); if (v.flip) m4.multiply(new THREE.Matrix4().makeRotationY(Math.PI)); return m4; });
-    if ((v.kind === 'loco' || v.kind === 'loco2') && this.T.diesel) b.u0 = v.model.trucks.map(tg => tg.matrix.clone());
-    else if (v.kind === 'loco' && this.T.loco && this.T.loco.leadTruck) b.l0 = this.T.loco.leadTruck.matrix.clone();
-    if (v.kind === 'loco' && this.T.loco && this.T.loco.front) b.f0 = this.T.loco.front.matrix.clone();
+    // each engine's own model: a helper MU'd in behind can be a different kind of engine
+    const U = v.helper ? v.model : (v.kind === 'loco' ? this.T.loco : null) || v.model;
+    if ((v.kind === 'loco' || v.kind === 'loco2') && U && U.trucks && U.wheels) b.u0 = U.trucks.map(tg => tg.matrix.clone());
+    else if (v.kind === 'loco' && U && U.leadTruck) b.l0 = U.leadTruck.matrix.clone();
+    if (v.kind === 'loco' && U && U.front) b.f0 = U.front.matrix.clone();
     if (v.model && v.model.truck) b.s0 = v.model.truck.matrix.clone();
     v.rb = b; this.bodies.push(b);
     this.pose(b);
@@ -14940,7 +14962,7 @@ function physicsStep(dt, train) {
   let gradeLead = 0, limit = 99;
   for (let i = 0; i < V.length; i++) {
     const v = V[i];
-    const mass = v.kind === 'tender' ? (train.turb ? turbineTenderMass(train) : train.tenderEmpty + S.water + S.coal) : v.mass;
+    const mass = v.kind === 'tender' && !v.helper ? (train.turb ? turbineTenderMass(train) : train.tenderEmpty + S.water + S.coal) : v.mass;
     M += mass;
     const f = v.fp[0].F && v.fp[1].F ? _v1.addVectors(v.fp[0].F.f, v.fp[1].F.f).multiplyScalar(0.5) : _v1.set(1, 0, 0);
     Fgrade -= mass * 9.81 * f.y;
@@ -15855,7 +15877,7 @@ function soundMix(dt, T, fx, tv) {
     for (const x of T.vehicles) {
       const dv = x.pos.distanceTo(cp); if (dv > 110 && !(inCab && x.kind === 'loco')) continue;
       const g = Math.min(1, v / 7) / (1 + Math.pow((inCab ? Math.max(4, dv) : dv) / 13, 1.4)) * (inCab ? 0.7 : 1);
-      const pts = (x.kind === 'loco' || x.kind === 'loco2') ? (DSL ? [[x.fp[0], x.emu ? 2 : 3, x.model.wb || DG.axle], [x.fp[1], x.emu ? 2 : 3, x.model.wb || DG.axle]] : [[x.leadPt, 1, 0], [x.fp[0], 4, 1.855]]) : x.tp.map((p, i) => [p, x.trucks[i].type === 'four' ? 2 : 3, x.trucks[i].sp || (x.trucks[i].type === 'four' ? 1.73 : 1.676)]);
+      const pts = jointPts(x);
       for (const [p, axles, sp] of pts) {
         const j = Math.floor(p.tp.s / 11.89), prev = mem.get(p);
         if (prev && prev.e === p.tp.e && prev.j !== j) for (let a = 0; a < axles; a++) sndJoint(g * (a === 0 ? 1 : 0.8), a * sp / v, inCab ? null : x.pos, v);
@@ -19645,7 +19667,7 @@ function mpJoints(T, mem, speed, cp) {
   for (const v of T.vehicles) {
     const dv = v.pos.distanceTo(cp); if (dv > 110) continue;
     const g = Math.min(1, Math.abs(speed) / 7) / (1 + Math.pow(dv / 13, 1.4));
-    const pts = (v.kind === 'loco' || v.kind === 'loco2') ? (T.diesel ? [[v.fp[0], v.emu ? 2 : 3, v.model.wb || DG.axle], [v.fp[1], v.emu ? 2 : 3, v.model.wb || DG.axle]] : [[v.leadPt, 1, 0], [v.fp[0], 4, 1.855]]) : v.tp.map((p, i) => [p, v.trucks[i].type === 'four' ? 2 : 3, v.trucks[i].sp || (v.trucks[i].type === 'four' ? 1.73 : 1.676)]);
+    const pts = jointPts(v);
     for (const [p, axles, sp] of pts) {
       const j = Math.floor(p.tp.s / 11.89), prev = mem.get(p);
       if (prev && prev.e === p.tp.e && prev.j !== j) for (let a = 0; a < axles; a++) sndJoint(g * (a === 0 ? 1 : 0.8), a * sp / Math.max(0.5, Math.abs(speed)), v.pos, Math.abs(speed));
@@ -19671,7 +19693,7 @@ function mpCompose(T, code) {
         helpers.set(gi, X);
       }
       const v = X.vehicles[i]; if (!v) throw new Error('unknown engine ' + tok.slice(0, 20));
-      X.release(v); v.helper = { g: 'r' + gi, loco: lk, opts: {}, i };
+      X.release(v); v.helper = { g: 'r' + gi, loco: lk, opts: {}, i }; if (v.kind === 'tender') v.mass = helperTender(X);
       T.markerLamps(v); V.push(v); continue;
     }
     if (tok[0] === '#') {
@@ -22178,7 +22200,7 @@ function helperIn(h) {
   let X = HELPER_IN.get(h.g);
   if (!X) { X = new Train(scene, h.loco, 'light', Object.assign({}, h.opts, { dark: true })); for (const im of X.inst) scene.remove(im); HELPER_IN.set(h.g, X); }
   const v = X.vehicles[h.i]; if (!v) throw new Error('a helper engine has changed since this save');
-  X.release(v); v.helper = h;
+  X.release(v); v.helper = h; if (v.kind === 'tender') v.mass = h.m || helperTender(X);
   return v;
 }
 /* Build train t's consist again from its record o: the engine as the Train made it, and its cars as they were.

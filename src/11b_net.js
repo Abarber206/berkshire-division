@@ -206,7 +206,7 @@ function mpJoints(T, mem, speed, cp) {
   for (const v of T.vehicles) {
     const dv = v.pos.distanceTo(cp); if (dv > 110) continue;
     const g = Math.min(1, Math.abs(speed) / 7) / (1 + Math.pow(dv / 13, 1.4));
-    const pts = (v.kind === 'loco' || v.kind === 'loco2') ? (T.diesel ? [[v.fp[0], v.emu ? 2 : 3, v.model.wb || DG.axle], [v.fp[1], v.emu ? 2 : 3, v.model.wb || DG.axle]] : [[v.leadPt, 1, 0], [v.fp[0], 4, 1.855]]) : v.tp.map((p, i) => [p, v.trucks[i].type === 'four' ? 2 : 3, v.trucks[i].sp || (v.trucks[i].type === 'four' ? 1.73 : 1.676)]);
+    const pts = jointPts(v);
     for (const [p, axles, sp] of pts) {
       const j = Math.floor(p.tp.s / 11.89), prev = mem.get(p);
       if (prev && prev.e === p.tp.e && prev.j !== j) for (let a = 0; a < axles; a++) sndJoint(g * (a === 0 ? 1 : 0.8), a * sp / Math.max(0.5, Math.abs(speed)), v.pos, Math.abs(speed));
@@ -232,7 +232,7 @@ function mpCompose(T, code) {
         helpers.set(gi, X);
       }
       const v = X.vehicles[i]; if (!v) throw new Error('unknown engine ' + tok.slice(0, 20));
-      X.release(v); v.helper = { g: 'r' + gi, loco: lk, opts: {}, i };
+      X.release(v); v.helper = { g: 'r' + gi, loco: lk, opts: {}, i }; if (v.kind === 'tender') v.mass = helperTender(X);
       T.markerLamps(v); V.push(v); continue;
     }
     if (tok[0] === '#') {
