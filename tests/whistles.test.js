@@ -63,8 +63,8 @@ function valveSandbox() {
   const from = src.indexOf('const TOOT_MIN'), to = src.indexOf('/* whistle or horn. Recorded');
   const log = [];
   const gain = () => ({ value: 1, cancelScheduledValues() {}, setValueAtTime() {}, setTargetAtTime(v, t, tc) { log.push(['fade', t, tc]); } });
-  const ctx = { SND_GAIN: {}, log, SND: { shot: (k, d, o) => { log.push(['shot', k, o.dur]); return { g: { gain: gain() }, s: { stop: t => log.push(['stop', t]) } }; } } };
-  vm.runInNewContext(src.slice(from, to) + ';this.whistleValve = whistleValve; this.whistleOnset = whistleOnset; this.whistleTc = whistleTc; this.TOOT_MIN = TOOT_MIN;', ctx);
+  const ctx = { SND_GAIN: {}, log, clamp: (v, a, b) => Math.max(a, Math.min(b, v)), SND: { shot: (k, d, o) => { log.push(['shot', k, o.dur]); return { g: { gain: gain() }, s: { stop: t => log.push(['stop', t]) } }; } } };
+  vm.runInNewContext(src.slice(from, to) + ';this.whistleValve = whistleValve; this.whistleOnset = whistleOnset; this.whistleTc = whistleTc; this.whistleBlend = whistleBlend; this.WH_LEAD = WH_LEAD; this.TOOT_MIN = TOOT_MIN;', ctx);
   return ctx;
 }
 // drive one cord pull of `hold` seconds at 60 fps; returns when the whistle went quiet and the log
@@ -129,4 +129,21 @@ test('when the cord drops, a recorded release takes over and the loop under it f
   assert.equal(tcShut, R.xf);
   // reopening goes back to the normal valve
   const p = c.whistleValve(o, 0.8, 2); c.whistleOnset(o, 'wh_x', R, p, null, 2); assert.equal(c.whistleTc(o, R, false), R.release);
+});
+
+test('the sustain loop waits under the opening take and takes over as it fades, so the chord never sounds twice', () => {
+  const c = valveSandbox(), o = {}, R = { on: 1.2, attack: 0.05, release: 0.12 };
+  let p = c.whistleValve(o, 0.8, 0); c.whistleOnset(o, 'wh_x', R, p, null, 0); o.whPull = p;
+  // the take is played at full level until 62% of its length, then fades linearly to nothing (SND.shot)
+  const take = t => t < 0.62 * R.on ? 1 : Math.max(0, 1 - (t - 0.62 * R.on) / (0.38 * R.on));
+  for (let t = 0; t <= 2; t += 0.05) {
+    // the loop is asked for WH_LEAD early to make up its lag, so it is heard as it was asked for then
+    const loop = c.whistleBlend(o, t - c.WH_LEAD), sum = Math.hypot(take(t), loop);   // two takes of one chord, not in phase: power adds
+    if (t < 0.62 * R.on) assert.equal(loop, 0, `the loop sounds over the opening take at ${t.toFixed(2)} s`);
+    assert.ok(sum > 0.95 && sum < 1.05, `at ${t.toFixed(2)} s the whistle swells or dips (${sum.toFixed(2)})`);
+  }
+  assert.equal(c.whistleBlend(o, 2), 1, 'the loop carries the whistle once the take is done');
+  // let go early: the take is cut, and the loop (fading with the valve) is no longer held back
+  p = c.whistleValve(o, 0, 3); c.whistleOnset(o, 'wh_x', R, p, null, 3);
+  assert.equal(c.whistleBlend(o, 3), 1);
 });

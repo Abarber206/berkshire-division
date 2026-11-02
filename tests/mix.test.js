@@ -43,14 +43,20 @@ test('every voice reaches the master through a mixer bus', () => {
   assert.match(sound, /SND\.train = new Emitter\(\{[^}]*bus: 'effects'/);
 });
 
-test('the hill echo comes back late and soft enough not to sound like a second honk', () => {
+test('the hill echo is a wash, never a repeat of the whistle', () => {
   const echo = sound.slice(sound.indexOf('const ECHO_MIN'), sound.indexOf('function makeEcho'));
   const { ECHO, ECHO_MIN } = vm.runInNewContext(echo + ';({ ECHO, ECHO_MIN })');
   assert.ok(ECHO_MIN >= 0.8);
-  for (const [t, g] of ECHO.taps) {
+  assert.ok(ECHO.taps.length >= 12, 'enough reflections to blur into a wash');
+  for (let i = 0; i < ECHO.taps.length; i++) {
+    const [t, g] = ECHO.taps[i];
     assert.ok(t >= ECHO_MIN, `an echo at ${t} s lands on the tail of a short toot`);
-    assert.ok(ECHO.send * g <= 0.1, `an echo at ${t} s is too loud (${ECHO.send * g})`);
+    // no single reflection loud enough to be heard as the whistle blowing again
+    assert.ok(ECHO.send * g <= 0.02, `an echo at ${t} s stands out (${ECHO.send * g})`);
+    if (i) {
+      const [t0, g0] = ECHO.taps[i - 1];
+      assert.ok(t - t0 < 0.15, `a ${(t - t0).toFixed(2)} s gap between reflections at ${t} s is heard as a separate repeat`);
+      assert.ok(g <= g0, 'each reflection no louder than the one before');
+    }
   }
-  // each repeat quieter than the one before
-  for (let i = 1; i < ECHO.taps.length; i++) assert.ok(ECHO.taps[i][1] < ECHO.taps[i - 1][1] && ECHO.taps[i][0] > ECHO.taps[i - 1][0]);
 });
