@@ -143,6 +143,7 @@ class WreckSim {
     this.kin = kin;
     if (this.asleep) return;
     const T = this.T, V = T.vehicles;
+    for (const b of this.bodies) b.dgS = 0;   // hardest dig-in this frame, for the dirt and gouges (10h_dig.js)
     this.acc = Math.min(this.acc + dt, 0.06);
     while (this.acc >= WK.H) {
       this.acc -= WK.H; this.t += WK.H;
@@ -160,6 +161,8 @@ class WreckSim {
           const vt = _wc.set(vp.x, 0, vp.z), sp = vt.length();
           const F = new THREE.Vector3(0, fn, 0);
           if (sp > 1e-4) F.addScaledVector(vt, -WK.MU * fn / Math.max(sp, 0.25));
+          const im = Math.max(sp, -vp.y * 1.5);
+          if (im > 1.2 && im * fn > b.dgS) { b.dgS = im * fn; b.dgI = im; b.dgN = Math.min(2, fn / (WK.G * b.m)); (b.dgP || (b.dgP = new THREE.Vector3())).copy(P); (b.dgV || (b.dgV = new THREE.Vector3())).copy(vp); }
           this.force(b, P, F);
         }
       }
@@ -217,6 +220,7 @@ class WreckSim {
       if (!moving && Math.abs(kin.v) < 0.05) { this.still += h; if (this.still > 1) { this.asleep = true; break; } } else this.still = 0;
     }
     for (const b of this.bodies) { b.v.pos.copy(b.p); b.v.fwd.copy(b.ax[0]).multiplyScalar(WreckSim.sF(b.v)); }
+    if (typeof digWreck === 'function') digWreck(this, dt);
   }
   /* push apart rigid car A and car B where their boxes overlap */
   touch(A, B, kin) {
