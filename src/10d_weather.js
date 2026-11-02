@@ -66,8 +66,9 @@ const WX_BLEND = [90, 170];
 
 /* the weather as it stands: the spell blending from `from` to `to`, t seconds into a blend of dur,
    then holding for hold seconds. P is the blend of the two kinds' numbers. wet is how wet the rail
-   is (0-1), wash how long the rain has been washing it clean (0-1). */
-const WX = { key: 'changing', season: 'summer', walk: true, from: 'fair', to: 'fair', t: 1, dur: 1, hold: 300, seed: 1, P: {}, wet: 0, wash: 0, flash: 0, boltIn: 20, bolts: [], changed: null };
+   is (0-1), wash how long the rain has been washing it clean (0-1). lay is the snow lying on the trees and
+   the trains (0 none, 1 a full coat). */
+const WX = { key: 'changing', season: 'summer', walk: true, from: 'fair', to: 'fair', t: 1, dur: 1, hold: 300, seed: 1, P: {}, wet: 0, wash: 0, lay: 0, flash: 0, boltIn: 20, bolts: [], changed: null };
 
 function wxRand() { WX.seed = (WX.seed * 16807) % 2147483647; return (WX.seed - 1) / 2147483646; }
 function wxRange(r) { return r[0] + (r[1] - r[0]) * wxRand(); }
@@ -85,13 +86,16 @@ function wxBlend(a, b, t, out = {}) {
 }
 /* pick the menu's weather. A changing sky starts in a settled kind (with a wet rail if it starts wet) */
 function wxSet(key, seed) {
-  const M = WEATHER[key] || WEATHER.changing;
+  const M = WEATHER[key] || WEATHER.changing, was = WX.season;
   WX.key = WEATHER[key] ? key : 'changing'; WX.season = M.season; WX.walk = !!M.walk;
   if (seed !== undefined) WX.seed = (Math.abs(Math.floor(seed)) % 2147483646) + 1;
   let k = M.kind;
   if (!k) k = M.season === 'winter' ? wxPick({ clear: 2, fair: 3, cloudy: 3, overcast: 2, snow: 2 }) : wxPick({ clear: 3, fair: 4, cloudy: 3, overcast: 1, rain: 0.6 });
   WX.from = WX.to = k; WX.t = WX.dur = 1; WX.hold = M.walk ? wxRange(WX_HOLD[k]) : 1e9;
   WX.wet = wxWetTarget(WX_KINDS[k]); WX.wash = WX_KINDS[k].rain > 0.3 ? 0.5 : 0;
+  // turning to winter, it has snowed before: a light coat on the trees and trains (heavier if it is snowing now).
+  // Changing between winter skies keeps what lies; back to summer, it thaws in wxStep
+  if (M.season === 'winter' && was !== 'winter') WX.lay = Math.max(WX.lay, k === 'snow' ? 0.5 : 0.3);
   WX.flash = 0; WX.bolts = []; WX.boltIn = 8 + 20 * wxRand(); WX.changed = null;
   wxBlend(k, k, 1, WX.P);
   return WX;
@@ -118,6 +122,7 @@ function wxStep(dt, sunLight = 1) {
   else WX.wet = Math.max(target, WX.wet - dt * (0.0006 + 0.0016 * sunLight * P.sunK));
   // steady rain washes the grime off the railhead; the film builds back as the rail dries
   WX.wash = P.rain > 0.3 ? Math.min(1, WX.wash + dt * P.rain / 240) : Math.max(0, WX.wash - dt / 900);
+  WX.lay = wxLayStep(WX.lay, dt, P, sunLight, WX.season === 'winter');
   // lightning: a stroke every few seconds to a minute in a storm, each a flicker of two or three flashes
   WX.flash = Math.max(0, WX.flash - dt * 6);
   if (P.bolt > 0.2) {
@@ -135,6 +140,15 @@ function wxStep(dt, sunLight = 1) {
   WX.bolts = WX.bolts.filter(b => b.at < b.dist / 343 + 8);
   return WX;
 }
+/* snow lying on the trees and the trains: a full coat builds in about six minutes of steady snow (less in a
+   flurry), thaws over twenty minutes or so of winter sun and an hour of grey, and goes in a minute or two
+   once the season turns */
+const WX_LAY_BUILD = 360;
+function wxLayStep(lay, dt, P, sunLight = 1, winter = true) {
+  const fall = (P.snow || 0) / 0.8;
+  if (fall > 0.05) return Math.min(1, lay + dt * fall / WX_LAY_BUILD);
+  return Math.max(0, lay - dt * (winter ? 0.00025 + 0.0005 * sunLight * (P.sunK ?? 1) : 1 / 60));
+}
 /* adhesion on the rail: dry 0.27; a film of water on a dirty railhead is the worst (about 0.16),
    and a long rain washes it a little better; snow and frost 0.15 */
 const WX_DRY_MU = 0.27;
@@ -147,7 +161,7 @@ function wxMu(P = WX.P, wet = WX.wet, wash = WX.wash, winter = WX.season === 'wi
 /* the rail's condition for the HUD and toasts */
 function wxRailWord(mu) { return mu > 0.25 ? 'dry' : mu > 0.215 ? 'damp' : mu > 0.18 ? 'wet' : 'slippery'; }
 function wxName() { return WX_KINDS[WX.t / WX.dur < 0.5 ? WX.from : WX.to].name; }
-function wxOut() { return { key: WX.key, from: WX.from, to: WX.to, t: +WX.t.toFixed(2), dur: +WX.dur.toFixed(2), hold: +WX.hold.toFixed(1), seed: WX.seed, wet: +WX.wet.toFixed(3), wash: +WX.wash.toFixed(3) }; }
+function wxOut() { return { key: WX.key, from: WX.from, to: WX.to, t: +WX.t.toFixed(2), dur: +WX.dur.toFixed(2), hold: +WX.hold.toFixed(1), seed: WX.seed, wet: +WX.wet.toFixed(3), wash: +WX.wash.toFixed(3), lay: +WX.lay.toFixed(3) }; }
 function wxIn(d) {
   if (!d || !WEATHER[d.key]) return false;
   wxSet(d.key);
@@ -155,6 +169,7 @@ function wxIn(d) {
   WX.t = +d.t || 0; WX.dur = Math.max(1, +d.dur || 1); WX.hold = WX.walk ? +d.hold || 60 : 1e9;
   if (d.seed) WX.seed = d.seed;
   WX.wet = Math.min(1, Math.max(0, +d.wet || 0)); WX.wash = Math.min(1, Math.max(0, +d.wash || 0));
+  if (d.lay !== undefined) WX.lay = Math.min(1, Math.max(0, +d.lay || 0));
   wxBlend(WX.from, WX.to, WX.t / WX.dur, WX.P);
   return true;
 }

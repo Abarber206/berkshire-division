@@ -18,9 +18,11 @@ function buildTreeFX(scene) { buildTreeShadows(scene); buildLeaves(scene); }
 function treeShadowDepth() {
   const m = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, map: FOL.tex || (FOL.tex = foliageTexture()), alphaTest: 0.45, side: THREE.DoubleSide });
   m.onBeforeCompile = sh => {
-    sh.uniforms.uWind = WORLD.waterT;
+    sh.uniforms.uWind = WORLD.waterT; sh.uniforms.uWinter = FOL.winterU;
     sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\nattribute float aLeaf; attribute vec3 aCorner; uniform float uWind;')
+      .replace('#include <common>', '#include <common>\nattribute float aLeaf; attribute vec3 aCorner; uniform float uWind, uWinter; float vBare;')
+      // bare in winter, as the crowns are (04c): the twigs throw a thin web of shadow
+      .replace('#include <uv_vertex>', '#include <uv_vertex>' + FOL_BARE_GLSL)
       // the same breath of wind as foliageShader (04c), so a shadow moves with its crown
       .replace('#include <begin_vertex>', `#include <begin_vertex>
         { float ph = instanceMatrix[3].x * 0.21 + instanceMatrix[3].z * 0.17;

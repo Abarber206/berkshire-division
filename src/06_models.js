@@ -343,7 +343,7 @@ function buildBerkshire(key, trim = '') {
 
   /* ---- boiler ---- */
   const lathe = (pts, a0) => { const g = new THREE.LatheGeometry(pts.map(p => new THREE.Vector2(p[1], p[0])), 48); g.rotateZ(-Math.PI / 2); g.translate(ax(a0), yB, 0); return g; };
-  const barrel = (a0, a1, r, y) => gb.add('black', new THREE.CylinderGeometry(r, r, a1 - a0, 48, 1, true).rotateZ(Math.PI / 2).translate(ax((a0 + a1) / 2), y, 0));
+  const barrel = (a0, a1, r, y) => gb.add('jacket', new THREE.CylinderGeometry(r, r, a1 - a0, 48, 1, true).rotateZ(Math.PI / 2).translate(ax((a0 + a1) / 2), y, 0));
   // smokebox (graphite on the as-delivered finish) with its front ring, dished door, hinges and dogs
   gb.add('graphite', new THREE.CylinderGeometry(BOIL.sb[2], BOIL.sb[2], BOIL.sb[1] - BOIL.sb[0], 48).rotateZ(Math.PI / 2).translate(ax((BOIL.sb[0] + BOIL.sb[1]) / 2), yB, 0));
   gb.add('graphite', new THREE.CylinderGeometry(BOIL.sb[2] + 0.025, BOIL.sb[2] + 0.025, 0.09, 48).rotateZ(Math.PI / 2).translate(ax(BOIL.sb[0] + 0.045), yB, 0));
@@ -358,11 +358,11 @@ function buildBerkshire(key, trim = '') {
     const L = BOIL.cone[1] - BOIL.cone[0], g = new THREE.CylinderGeometry(BOIL.c1[2], BOIL.c3[2], L, 48, 1, true).rotateZ(-Math.PI / 2);   // r1 at +x (front)
     const p = g.attributes.position;
     for (let i = 0; i < p.count; i++) p.setY(i, p.getY(i) + (BOIL.yR - yB) * (L / 2 - p.getX(i)) / L);
-    g.computeVertexNormals(); g.translate(ax((BOIL.cone[0] + BOIL.cone[1]) / 2), yB, 0); gb.add('black', g);
+    g.computeVertexNormals(); g.translate(ax((BOIL.cone[0] + BOIL.cone[1]) / 2), yB, 0); gb.add('jacket', g);
   }
   barrel(BOIL.c3[0], BOIL.c3[1] + 0.3, BOIL.c3[2], BOIL.yR);                                // runs into the firebox
   gb.add('black', new THREE.CircleGeometry(BOIL.c1[2], 48).rotateY(Math.PI / 2).translate(ax(BOIL.c1[0] - 0.02), yB, 0));   // first course closed behind the smokebox
-  for (const a of [BOIL.sb[1], 6.0, BOIL.cone[0], BOIL.cone[1], 10.3, BOIL.c3[1] - 0.02]) { const r = BOIL.bR(a + 0.01) + 0.012; gb.add('dark', new THREE.CylinderGeometry(r, r, 0.07, 48, 1, true).rotateZ(Math.PI / 2).translate(ax(a), BOIL.bY(a + 0.01), 0)); }   // jacket bands
+  for (const a of [BOIL.sb[1], 6.0, BOIL.cone[0], BOIL.cone[1], 10.3, BOIL.c3[1] - 0.02]) { const r = BOIL.bR(a + 0.01) + 0.012; gb.add('jacketBand', new THREE.CylinderGeometry(r, r, 0.07, 48, 1, true).rotateZ(Math.PI / 2).translate(ax(a), BOIL.bY(a + 0.01), 0)); }   // jacket bands
   // firebox: round top over flat sides flaring to the mud ring, from the throat to the back sheet in the cab
   {
     const s = new THREE.Shape();
@@ -399,8 +399,8 @@ function buildBerkshire(key, trim = '') {
       const yy = Math.pow(y, 0.55);
       p.setXYZ(i, c * se * r * L / 2, yy * h, sn * se * r * w / 2);
     }
-    g.computeVertexNormals(); g.translate(ax((a0 + a1) / 2), base, 0); gb.add(k || 'black', g);
-    gb.add(k || 'black', new THREE.CylinderGeometry(1, 1, 0.34, 32, 1, true).scale(L / 2 * 1.0, 1, w / 2).translate(ax((a0 + a1) / 2), base - 0.17 + 0.001, 0));
+    g.computeVertexNormals(); g.translate(ax((a0 + a1) / 2), base, 0); gb.add(k || 'jacket', g);
+    gb.add(k || 'jacket', new THREE.CylinderGeometry(1, 1, 0.34, 32, 1, true).scale(L / 2 * 1.0, 1, w / 2).translate(ax((a0 + a1) / 2), base - 0.17 + 0.001, 0));
   };
   dome(6.00, 7.08, 1.02, 4.70);                                                              // steam dome
   dome(7.57, 10.33, 0.92, 4.68);                                                             // long sand dome
@@ -686,7 +686,7 @@ function buildBerkshire(key, trim = '') {
   gb.box('dark', 0.6, 0.3, 1.2, ax(LG.len - 0.2), 1.0, 0);                                    // drawbar pocket at the back
   gb.box('dark', 0.2, 0.7, 2.0, ax(LG.len - 0.1), 1.45, 0);                                   // rear buffer beam under the deck
 
-  const statics = gb.build({ ...RMAT, black: RMAT.black });
+  const statics = gb.build({ ...RMAT, black: RMAT.black, jacket: RMAT.black, jacketBand: RMAT.dark });   // jacket: the warm boiler, which sheds snow (10i_snow.js)
   body.add(statics);
 
   /* ---- glows & lights ---- */

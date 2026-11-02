@@ -1083,7 +1083,8 @@ class GeoBin {
     const g = new THREE.Group();
     for (const k in this.bins) {
       if (!this.bins[k].length) continue;
-      const mesh = new THREE.Mesh(mergeGeos(this.bins[k]), mats[k]);
+      // snow on the engines and cars: snowMat (10i_snow.js) gives the outside its coat and keeps the inside dry
+      const mesh = new THREE.Mesh(mergeGeos(this.bins[k]), typeof snowMat === 'function' ? snowMat(mats, k, opt) : mats[k]);
       mesh.castShadow = opt.cast !== false && !(mats[k] && mats[k].userData.noShadow);
       mesh.receiveShadow = opt.receive !== false;
       mesh.name = k;
@@ -3679,7 +3680,7 @@ function mtGroundColor(X, N, h, lat, out) {
    tree becomes a single camera-facing card whose picture is rendered from the near model when the world
    loads, so the two dissolve into each other without changing shape or colour.
    ========================================================================== */
-const FOL = { geos: null, imp: null };
+const FOL = { geos: null, imp: null, winterU: { value: 0 }, layU: { value: 0 } };   // winter: hardwoods bare; lay: snow on the trees (10i_snow.js)
 /* phones and small tablets: shorter near-tree band, thinner ground cover */
 const GFX = { lite: typeof screen !== 'undefined' && Math.min(screen.width, screen.height) < 600 };
 
@@ -3725,7 +3726,15 @@ function foliageTexture() {
     g.restore();
     // ---- bare twigs (a winter or thin crown filler)
     g.save(); g.translate(256, 256);
-    for (let i = 0; i < 40; i++) { g.strokeStyle = 'rgba(80,68,56,0.95)'; g.lineWidth = 1 + r() * 2; const a = r() * TAU; g.beginPath(); g.moveTo(128, 200); g.lineTo(128 + Math.cos(a) * 110, 128 + Math.sin(a) * 110); g.stroke(); }
+    // a winter crown seen through: limbs forking into finer and finer twigs, all reaching out from the middle
+    const limb = (x, y, a, len, w, d) => {
+      const x1 = x + Math.cos(a) * len, y1 = y + Math.sin(a) * len, v = 62 + (d * 9) + r() * 16 | 0;
+      g.strokeStyle = `rgba(${v},${v * 0.88 | 0},${v * 0.76 | 0},0.97)`; g.lineWidth = w; g.lineCap = 'round';
+      g.beginPath(); g.moveTo(x, y); g.quadraticCurveTo((x + x1) / 2 + (r() - 0.5) * len * 0.3, (y + y1) / 2 + (r() - 0.5) * len * 0.3, x1, y1); g.stroke();
+      if (d < 4) for (let k = 0, n = 2 + (r() < 0.5); k < n; k++) limb(x1, y1, a + (r() - 0.5) * 1.3, len * (0.6 + r() * 0.12), Math.max(1, w * 0.62), d + 1);
+    };
+    // kept within about 90 px of the middle, so no twig runs out to the card's edge and shows as a stray line
+    for (let i = 0; i < 9; i++) limb(128 + (r() - 0.5) * 16, 128 + (r() - 0.5) * 16, i / 9 * TAU + r() * 0.5, 22 + r() * 8, 3, 0);
     g.restore();
   });
   t.anisotropy = 4;
@@ -3733,7 +3742,7 @@ function foliageTexture() {
 }
 
 /* ---- a geometry made of cards and tubes; colour carries ambient occlusion, aLeaf says what the season tints */
-function folAcc() { return { pos: [], nor: [], uv: [], col: [], leaf: [], cor: [], idx: [] }; }
+function folAcc() { return { pos: [], nor: [], uv: [], col: [], leaf: [], cor: [], snow: [], idx: [] }; }
 function folGeo(A) {
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(A.pos, 3));
@@ -3742,6 +3751,7 @@ function folGeo(A) {
   g.setAttribute('color', new THREE.Float32BufferAttribute(A.col, 3));
   g.setAttribute('aLeaf', new THREE.Float32BufferAttribute(A.leaf, 1));
   g.setAttribute('aCorner', new THREE.Float32BufferAttribute(A.cor, 3));
+  g.setAttribute('aSnow', new THREE.Float32BufferAttribute(A.snow, 1));   // how much snow this corner holds (0-1)
   g.setIndex(A.idx); g.computeBoundingSphere();
   // the colours are written linear already
   const done = linearizeObject.done || (linearizeObject.done = new WeakSet()); done.add(g.attributes.color.array);
@@ -3751,6 +3761,8 @@ const _fa = new THREE.Vector3(), _fb = new THREE.Vector3(), _fc = new THREE.Vect
 /* one leaf card: centre c, unit axes u and v (half sizes hu, hv), uv rect, lighting centre lc; ao(p) shades each corner */
 function folCard(A, c, u, v, hu, hv, rect, lc, ao, up = 0.35) {
   const b = A.pos.length / 3;
+  // snow lies on a card's upper edge, and all over one that lies flat; less on the shaded cards deep inside
+  const flat = Math.abs(_ft.crossVectors(u, v).normalize().y), reach = Math.abs(u.y) * hu + Math.abs(v.y) * hv + 1e-3;
   for (const [su, sv] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
     _fa.copy(c).addScaledVector(u, su * hu).addScaledVector(v, sv * hv);
     A.pos.push(_fa.x, _fa.y, _fa.z);
@@ -3758,6 +3770,8 @@ function folCard(A, c, u, v, hu, hv, rect, lc, ao, up = 0.35) {
     A.nor.push(_fn.x, _fn.y, _fn.z);
     A.uv.push(su < 0 ? rect[0] : rect[2], sv < 0 ? rect[1] : rect[3]);
     const s = ao(_fa); A.col.push(s, s, s); A.leaf.push(1); A.cor.push(0, 0, 0);
+    const rel = (su * u.y * hu + sv * v.y * hv) / reach;
+    A.snow.push(clamp(0.2 + 0.6 * flat + 0.55 * rel, 0, 1) * clamp((s - 0.35) / 0.4, 0.3, 1));
   }
   A.idx.push(b, b + 1, b + 2, b, b + 2, b + 3);
 }
@@ -3766,12 +3780,13 @@ function folCard(A, c, u, v, hu, hv, rect, lc, ao, up = 0.35) {
 function folBill(A, c, hs, roll, lc, ao, up = 0.3) {
   const b = A.pos.length / 3, cr = Math.cos(roll), sr = Math.sin(roll);
   _fn.copy(c).sub(lc); _fn.y = Math.max(_fn.y, -0.3 * _fn.length()); _fn.normalize(); _fn.y += up; _fn.normalize();
-  const s = ao(c), R = FOL_UV.leaf;
+  const s = ao(c), e = 2 / 512, L = FOL_UV.leaf, R = [L[0] + e, L[1] + e, L[2] - e, L[3] - e];   // inset off the tile edges (the bark bleeds in)
   for (const [su, sv] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
     A.pos.push(c.x, c.y, c.z); A.nor.push(_fn.x, _fn.y, _fn.z);
     A.uv.push(su < 0 ? R[0] : R[2], sv < 0 ? R[1] : R[3]);
     A.col.push(s, s, s); A.leaf.push(1);
     A.cor.push((su * cr - sv * sr) * hs, (su * sr + sv * cr) * hs, 1);
+    A.snow.push(clamp(0.15 + 0.4 * (su * sr + sv * cr), 0, 1) * clamp((s - 0.35) / 0.4, 0.3, 1));
   }
   A.idx.push(b, b + 1, b + 2, b, b + 2, b + 3);
 }
@@ -3788,6 +3803,7 @@ function folTube(A, a, b, r0, r1, sides, vLen = 1) {
     A.pos.push(p.x + nx * rr, p.y + ny * rr, p.z + nz * rr); A.nor.push(nx, ny * 0.6 + 0.2, nz);
     A.uv.push(lerp(R[0], R[2], k / sides), lerp(R[1], R[3], e ? Math.min(1, len / 6 * vLen) : 0));
     const s = e ? 1 : 0.8; A.col.push(s, s, s); A.leaf.push(0); A.cor.push(0, 0, 0);
+    A.snow.push(clamp((ny - 0.25) / 0.45, 0, 1));   // along the top of a limb; never down a trunk
   }
   for (let k = 0; k < sides; k++) { const i0 = base + k, i1 = base + k + 1, j0 = i0 + sides + 1, j1 = i1 + sides + 1; A.idx.push(i0, j0, i1, i1, j0, j1); }
 }
@@ -3854,11 +3870,18 @@ function bushGeo(seed) {
   return folGeo(A);
 }
 
-/* ---- the shaders: season tint on the leaves only, a breath of wind in the crowns, both faces lit as the front */
+/* ---- the shaders: season tint on the leaves only, a breath of wind in the crowns, both faces lit as the front.
+   In winter the hardwood leaf cards (the billboards: aCorner.z is 1) show the bare twig picture instead and lose the season tint, and snow lies
+   on the trees as FOL.layU says: on the upper edges of the needle sprays and along the tops of the limbs. */
+const FOL_BARE_GLSL = `
+      if (uWinter > 0.5 && aCorner.z > 0.5) { vUv = vec2(0.75, 0.25) + (vUv - vec2(0.25, 0.75)) * 0.9; vBare = 1.0; }`;
+   // the hardwood and bush leaf cards (the only billboards) take the twig tile, kept clear of its edges so the
+   // opaque bark next door never bleeds in as a thin line along a card's edge
 function foliageShader(sh) {
-  sh.uniforms.uWind = WORLD.waterT;
+  sh.uniforms.uWind = WORLD.waterT; sh.uniforms.uWinter = FOL.winterU; sh.uniforms.uLay = FOL.layU;
   sh.vertexShader = sh.vertexShader
-    .replace('#include <common>', '#include <common>\nattribute float aLeaf; attribute vec3 aCorner; uniform float uWind;')
+    .replace('#include <common>', '#include <common>\nattribute float aLeaf; attribute vec3 aCorner; attribute float aSnow; uniform float uWind, uWinter; varying float vSnow; float vBare;')
+    .replace('#include <uv_vertex>', '#include <uv_vertex>\n vBare = 0.0;' + FOL_BARE_GLSL + '\n vSnow = aSnow;')
     .replace('#include <project_vertex>', `#include <project_vertex>
       if (aCorner.z > 0.5) {
         #ifdef USE_INSTANCING
@@ -3868,7 +3891,7 @@ function foliageShader(sh) {
         #endif
         gl_Position = projectionMatrix * mvPosition;
       }`)
-    .replace('#include <color_vertex>', '#include <color_vertex>\n#ifdef USE_INSTANCING_COLOR\n vColor.xyz = color.xyz * mix(vec3(1.0), instanceColor.xyz, aLeaf);\n#endif')
+    .replace('#include <color_vertex>', '#include <color_vertex>\n#ifdef USE_INSTANCING_COLOR\n vColor.xyz = color.xyz * mix(vec3(1.0), instanceColor.xyz, aLeaf * (1.0 - vBare));\n#endif')
     .replace('#include <begin_vertex>', `#include <begin_vertex>
       #ifdef USE_INSTANCING
        { float ph = instanceMatrix[3].x * 0.21 + instanceMatrix[3].z * 0.17;
@@ -3876,6 +3899,13 @@ function foliageShader(sh) {
          transformed.x += w; transformed.z += w * 0.7; }
       #endif`);
   sh.fragmentShader = sh.fragmentShader
+    .replace('#include <common>', '#include <common>\nuniform float uLay; varying float vSnow;')
+    .replace('#include <color_fragment>', `#include <color_fragment>
+      { // a coat that grows from the best placed corners; the texture's own light and dark break its edge up
+        float tl = dot(diffuseColor.rgb, vec3(0.3, 0.5, 0.2)) / max(0.02, dot(vColor, vec3(0.3, 0.5, 0.2)));
+        float cov = smoothstep(0.34, 0.58, vSnow * (0.3 + 1.1 * uLay) + 0.3 * (tl - 0.75)) * smoothstep(0.02, 0.2, uLay);
+        diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.78, 0.81, 0.86), cov);
+      }`)
     .replace('( gl_FrontFacing ) ? vLightFront : vLightBack', 'vLightFront')
     .replace('( gl_FrontFacing ) ? vIndirectFront : vIndirectBack', 'vIndirectFront');
 }
@@ -3885,8 +3915,12 @@ function foliageMaterial() {
   return m;
 }
 
-/* ---- impostors: one card per tree, facing the camera, whose picture is the near tree rendered once at load */
-const IMP = { dec: { u0: 0 }, con: { u0: 0.5 } };
+/* ---- impostors: one card per tree, facing the camera, whose picture is the near tree rendered once at load.
+   Eight 256 px slots across: 0 and 1 the summer hardwood and conifer (grey, tinted per tree as they draw),
+   2 and 3 the same in winter, bare and with no snow, 4 and 5 winter with a coat of snow. Winter cards are
+   baked in their own colours, and the far shader blends the bare and snowy slots by how much snow lies. */
+const IMP = { dec: { u0: 0 }, con: { u0: 1 }, slots: 8 };
+const IMP_WINTER = { needle: [0.032, 0.062, 0.026], twig: [0.72, 0.72, 0.72], snow: [0.78, 0.81, 0.86] };   // linear, as the near shader draws them
 /* the square frame each tree is drawn in: its height from the bounding box, centred on the trunk */
 function impFrame(k, g) {
   const p = g.attributes.position, c = g.attributes.aCorner, B = IMP[k]; let y0 = 1e9, y1 = -1e9;
@@ -3894,13 +3928,17 @@ function impFrame(k, g) {
   B.y0 = y0 - 0.1; B.y1 = y1 + 0.1; B.x = (B.y1 - B.y0) / 2; return B;
 }
 function bakeImpostors(G) {
-  const rt = new THREE.WebGLRenderTarget(512, 256, { minFilter: THREE.LinearMipmapLinearFilter, magFilter: THREE.LinearFilter, generateMipmaps: true });
+  const rt = new THREE.WebGLRenderTarget(256 * IMP.slots, 256, { minFilter: THREE.LinearMipmapLinearFilter, magFilter: THREE.LinearFilter, generateMipmaps: true });
   const mat = new THREE.ShaderMaterial({
-    uniforms: { map: { value: FOL.tex } }, side: THREE.DoubleSide,
-    vertexShader: 'attribute float aLeaf; attribute vec3 aCorner; varying vec2 vUv; varying vec3 vCol; varying float vLeaf; varying vec3 vN;\n' +
-      'void main(){ vUv = uv; vCol = color; vLeaf = aLeaf; vN = normal; vec4 mv = modelViewMatrix * vec4(position, 1.0); mv.xy += aCorner.xy * aCorner.z; gl_Position = projectionMatrix * mv; }',
-    fragmentShader: 'uniform sampler2D map; varying vec2 vUv; varying vec3 vCol; varying float vLeaf; varying vec3 vN;\n' +
-      'void main(){ vec4 t = texture2D(map, vUv); if (t.a < 0.45) discard; vec3 c = pow(t.rgb, vec3(2.2)) * vCol;\n' +
+    uniforms: { map: { value: FOL.tex }, uWinter: { value: 0 }, uLay: { value: 0 }, uNeedle: { value: new THREE.Vector3(...IMP_WINTER.needle) }, uTwig: { value: new THREE.Vector3(...IMP_WINTER.twig) }, uSnowC: { value: new THREE.Vector3(...IMP_WINTER.snow) } }, side: THREE.DoubleSide,
+    vertexShader: 'attribute float aLeaf; attribute vec3 aCorner; attribute float aSnow; uniform float uWinter; varying vec2 vUv; varying vec3 vCol; varying float vLeaf; varying vec3 vN; varying float vSnow;\n' +
+      'void main(){ vUv = uv; float vBare = 0.0;' + FOL_BARE_GLSL + ' vCol = color; vLeaf = aLeaf * (1.0 - vBare); vSnow = aSnow; vN = normal; vec4 mv = modelViewMatrix * vec4(position, 1.0); mv.xy += aCorner.xy * aCorner.z; gl_Position = projectionMatrix * mv; }',
+    fragmentShader: 'uniform sampler2D map; uniform float uWinter, uLay; uniform vec3 uNeedle, uTwig, uSnowC; varying vec2 vUv; varying vec3 vCol; varying float vLeaf; varying vec3 vN; varying float vSnow;\n' +
+      'void main(){ vec4 t = texture2D(map, vUv); if (t.a < 0.45) discard; vec3 tl = pow(t.rgb, vec3(2.2)); vec3 c = tl * vCol;\n' +
+      // winter cards carry their own colour: green needles, grey-brown twigs and bark, and the snow
+      ' if (uWinter > 0.5) { c *= vLeaf > 0.5 ? uNeedle * 1.6 : uTwig * 1.4;\n' +
+      '   float cov = smoothstep(0.34, 0.58, vSnow * (0.3 + 1.1 * uLay) + 0.3 * (dot(tl, vec3(0.3, 0.5, 0.2)) - 0.75)) * step(0.02, uLay);\n' +
+      '   c = mix(c, uSnowC * mix(1.0, vCol.g, 0.3), cov); }\n' +
       // a little of the near tree's own light, from above and from the viewer's side, so the far card is not flat
       ' vec3 n = normalize(vN); c *= 0.82 + 0.28 * clamp(n.y * 0.6 + n.z * 0.5, -0.4, 1.0);\n' +
       ' gl_FragColor = vec4(c, 1.0); }',
@@ -3909,11 +3947,12 @@ function bakeImpostors(G) {
   const sc = new THREE.Scene(), oldRT = renderer.getRenderTarget(), oldC = renderer.getClearColor(new THREE.Color()), oldA = renderer.getClearAlpha();
   renderer.setClearColor(0x5d6450, 0);   // the colour the edge texels fade toward in the small mip levels
   rt.scissorTest = true;
-  for (const k of ['dec', 'con']) {
-    const B = IMP[k];
+  for (const [wi, lay] of [[0, 0], [1, 0], [1, 0.85]]) for (const k of ['dec', 'con']) {
+    const B = IMP[k], slot = B.u0 + 2 * wi + (lay > 0 ? 2 : 0);
+    mat.uniforms.uWinter.value = wi; mat.uniforms.uLay.value = lay;
     const cam = new THREE.OrthographicCamera(-B.x, B.x, B.y1, B.y0, -50, 50); cam.position.set(0, 0, 10); cam.lookAt(0, 0, 0); cam.updateProjectionMatrix();
     const m = new THREE.Mesh(G[k], mat); sc.add(m);
-    rt.viewport.set(B.u0 * 512, 0, 256, 256); rt.scissor.copy(rt.viewport);
+    rt.viewport.set(slot * 256, 0, 256, 256); rt.scissor.copy(rt.viewport);
     renderer.setRenderTarget(rt); renderer.clear(); renderer.render(sc, cam);
     sc.remove(m);
   }
@@ -3924,7 +3963,7 @@ function bakeImpostors(G) {
 function impostorGeo(k) {
   const B = IMP[k], g = new THREE.PlaneGeometry(B.x * 2, B.y1 - B.y0);
   g.translate(0, (B.y1 + B.y0) / 2, 0);
-  const uv = g.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setX(i, B.u0 + uv.getX(i) * 0.5);
+  const uv = g.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setX(i, (B.u0 + uv.getX(i)) / IMP.slots);
   const c = new Float32Array(uv.count * 3).fill(1); g.setAttribute('color', new THREE.BufferAttribute(c, 3));
   (linearizeObject.done || (linearizeObject.done = new WeakSet())).add(c);
   return g;
@@ -3932,7 +3971,19 @@ function impostorGeo(k) {
 function impostorMaterial(tex) {
   const m = new THREE.MeshLambertMaterial({ vertexColors: true, map: tex, alphaTest: 0.5 });
   m.onBeforeCompile = sh => {
+    sh.uniforms.uWinter = FOL.winterU; sh.uniforms.uLay = FOL.layU;
+    // winter: the bare and the snowy pictures (two and four slots along), blended by the snow lying; their
+    // colours are baked in, so the per-tree season tint is left off
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', '#include <common>\nuniform float uWinter, uLay;')
+      .replace('#include <map_fragment>', `
+        vec4 texelColor = texture2D( map, vUv );
+        if ( uWinter > 0.5 ) texelColor = mix( texture2D( map, vUv + vec2( 0.25, 0.0 ) ), texture2D( map, vUv + vec2( 0.5, 0.0 ) ), smoothstep( 0.0, 0.85, uLay ) );
+        texelColor = mapTexelToLinear( texelColor );
+        diffuseColor *= texelColor;`);
     sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nuniform float uWinter;')
+      .replace('#include <color_vertex>', '#include <color_vertex>\n if ( uWinter > 0.5 ) vColor.xyz = color.xyz;')
       .replace('#include <defaultnormal_vertex>', '#include <defaultnormal_vertex>\n transformedNormal = normalize((viewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz * 0.7 + vec3(0.0, 0.0, 0.5));')
       .replace('#include <project_vertex>', `
         vec4 mvPosition = modelViewMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);
@@ -6897,7 +6948,7 @@ function buildBerkshire(key, trim = '') {
 
   /* ---- boiler ---- */
   const lathe = (pts, a0) => { const g = new THREE.LatheGeometry(pts.map(p => new THREE.Vector2(p[1], p[0])), 48); g.rotateZ(-Math.PI / 2); g.translate(ax(a0), yB, 0); return g; };
-  const barrel = (a0, a1, r, y) => gb.add('black', new THREE.CylinderGeometry(r, r, a1 - a0, 48, 1, true).rotateZ(Math.PI / 2).translate(ax((a0 + a1) / 2), y, 0));
+  const barrel = (a0, a1, r, y) => gb.add('jacket', new THREE.CylinderGeometry(r, r, a1 - a0, 48, 1, true).rotateZ(Math.PI / 2).translate(ax((a0 + a1) / 2), y, 0));
   // smokebox (graphite on the as-delivered finish) with its front ring, dished door, hinges and dogs
   gb.add('graphite', new THREE.CylinderGeometry(BOIL.sb[2], BOIL.sb[2], BOIL.sb[1] - BOIL.sb[0], 48).rotateZ(Math.PI / 2).translate(ax((BOIL.sb[0] + BOIL.sb[1]) / 2), yB, 0));
   gb.add('graphite', new THREE.CylinderGeometry(BOIL.sb[2] + 0.025, BOIL.sb[2] + 0.025, 0.09, 48).rotateZ(Math.PI / 2).translate(ax(BOIL.sb[0] + 0.045), yB, 0));
@@ -6912,11 +6963,11 @@ function buildBerkshire(key, trim = '') {
     const L = BOIL.cone[1] - BOIL.cone[0], g = new THREE.CylinderGeometry(BOIL.c1[2], BOIL.c3[2], L, 48, 1, true).rotateZ(-Math.PI / 2);   // r1 at +x (front)
     const p = g.attributes.position;
     for (let i = 0; i < p.count; i++) p.setY(i, p.getY(i) + (BOIL.yR - yB) * (L / 2 - p.getX(i)) / L);
-    g.computeVertexNormals(); g.translate(ax((BOIL.cone[0] + BOIL.cone[1]) / 2), yB, 0); gb.add('black', g);
+    g.computeVertexNormals(); g.translate(ax((BOIL.cone[0] + BOIL.cone[1]) / 2), yB, 0); gb.add('jacket', g);
   }
   barrel(BOIL.c3[0], BOIL.c3[1] + 0.3, BOIL.c3[2], BOIL.yR);                                // runs into the firebox
   gb.add('black', new THREE.CircleGeometry(BOIL.c1[2], 48).rotateY(Math.PI / 2).translate(ax(BOIL.c1[0] - 0.02), yB, 0));   // first course closed behind the smokebox
-  for (const a of [BOIL.sb[1], 6.0, BOIL.cone[0], BOIL.cone[1], 10.3, BOIL.c3[1] - 0.02]) { const r = BOIL.bR(a + 0.01) + 0.012; gb.add('dark', new THREE.CylinderGeometry(r, r, 0.07, 48, 1, true).rotateZ(Math.PI / 2).translate(ax(a), BOIL.bY(a + 0.01), 0)); }   // jacket bands
+  for (const a of [BOIL.sb[1], 6.0, BOIL.cone[0], BOIL.cone[1], 10.3, BOIL.c3[1] - 0.02]) { const r = BOIL.bR(a + 0.01) + 0.012; gb.add('jacketBand', new THREE.CylinderGeometry(r, r, 0.07, 48, 1, true).rotateZ(Math.PI / 2).translate(ax(a), BOIL.bY(a + 0.01), 0)); }   // jacket bands
   // firebox: round top over flat sides flaring to the mud ring, from the throat to the back sheet in the cab
   {
     const s = new THREE.Shape();
@@ -6953,8 +7004,8 @@ function buildBerkshire(key, trim = '') {
       const yy = Math.pow(y, 0.55);
       p.setXYZ(i, c * se * r * L / 2, yy * h, sn * se * r * w / 2);
     }
-    g.computeVertexNormals(); g.translate(ax((a0 + a1) / 2), base, 0); gb.add(k || 'black', g);
-    gb.add(k || 'black', new THREE.CylinderGeometry(1, 1, 0.34, 32, 1, true).scale(L / 2 * 1.0, 1, w / 2).translate(ax((a0 + a1) / 2), base - 0.17 + 0.001, 0));
+    g.computeVertexNormals(); g.translate(ax((a0 + a1) / 2), base, 0); gb.add(k || 'jacket', g);
+    gb.add(k || 'jacket', new THREE.CylinderGeometry(1, 1, 0.34, 32, 1, true).scale(L / 2 * 1.0, 1, w / 2).translate(ax((a0 + a1) / 2), base - 0.17 + 0.001, 0));
   };
   dome(6.00, 7.08, 1.02, 4.70);                                                              // steam dome
   dome(7.57, 10.33, 0.92, 4.68);                                                             // long sand dome
@@ -7240,7 +7291,7 @@ function buildBerkshire(key, trim = '') {
   gb.box('dark', 0.6, 0.3, 1.2, ax(LG.len - 0.2), 1.0, 0);                                    // drawbar pocket at the back
   gb.box('dark', 0.2, 0.7, 2.0, ax(LG.len - 0.1), 1.45, 0);                                   // rear buffer beam under the deck
 
-  const statics = gb.build({ ...RMAT, black: RMAT.black });
+  const statics = gb.build({ ...RMAT, black: RMAT.black, jacket: RMAT.black, jacketBand: RMAT.dark });   // jacket: the warm boiler, which sheds snow (10i_snow.js)
   body.add(statics);
 
   /* ---- glows & lights ---- */
@@ -11941,16 +11992,16 @@ function buildBigBoy(key, trim = '') {
   gb.add('graphite', lathe([[0, door.r + 0.05], [0.04, door.r + 0.05], [0.07, door.r], [0.14, 0.62], [0.17, 0.0]], BBOIL.sb[0] - 0.005));
   for (let i = 0; i < 18; i++) { const t = (i + 0.5) / 18 * TAU; gb.add('dark', new THREE.BoxGeometry(0.07, 0.13, 0.07), M(ax(BBOIL.sb[0] - 0.03), yB + 1.05 * Math.cos(t), 1.05 * Math.sin(t), t, 0, 0)); }
   gb.box('dark', 0.06, 0.08, 0.5, ax(door.a + 0.02), yB - 0.3, 0);                   // door handle
-  gb.add('black', new THREE.CylinderGeometry(BBOIL.c1[2], BBOIL.c1[2], BBOIL.c1[1] - BBOIL.c1[0] + 0.02, 48, 1, true).rotateZ(Math.PI / 2).translate(ax((BBOIL.c1[0] + BBOIL.c1[1]) / 2 - 0.01), yB, 0));
+  gb.add('jacket', new THREE.CylinderGeometry(BBOIL.c1[2], BBOIL.c1[2], BBOIL.c1[1] - BBOIL.c1[0] + 0.02, 48, 1, true).rotateZ(Math.PI / 2).translate(ax((BBOIL.c1[0] + BBOIL.c1[1]) / 2 - 0.01), yB, 0));
   gb.add('black', new THREE.CircleGeometry(BBOIL.c1[2], 48).rotateY(Math.PI / 2).translate(ax(BBOIL.c1[0] - 0.01), yB, 0));
   {
     const L = BBOIL.cone[1] - BBOIL.cone[0], g = new THREE.CylinderGeometry(BBOIL.c1[2], BBOIL.c3[2], L, 48, 1, true).rotateZ(-Math.PI / 2);
     const p = g.attributes.position;
     for (let i = 0; i < p.count; i++) p.setY(i, p.getY(i) + (BBOIL.yR - yB) * (L / 2 - p.getX(i)) / L);
-    g.computeVertexNormals(); g.translate(ax((BBOIL.cone[0] + BBOIL.cone[1]) / 2), yB, 0); gb.add('black', g);
+    g.computeVertexNormals(); g.translate(ax((BBOIL.cone[0] + BBOIL.cone[1]) / 2), yB, 0); gb.add('jacket', g);
   }
-  gb.add('black', new THREE.CylinderGeometry(BBOIL.c3[2], BBOIL.c3[2], BBOIL.c3[1] - BBOIL.c3[0] + 0.3, 48, 1, true).rotateZ(Math.PI / 2).translate(ax((BBOIL.c3[0] + BBOIL.c3[1] + 0.3) / 2), BBOIL.yR, 0));
-  for (const a of [BBOIL.sb[1], 7.7, BBOIL.cone[0], BBOIL.cone[1], 12.9, 14.8, BBOIL.c3[1] - 0.02]) { const r = BBOIL.bR(a + 0.01) + 0.012; gb.add('dark', new THREE.CylinderGeometry(r, r, 0.07, 48, 1, true).rotateZ(Math.PI / 2).translate(ax(a), BBOIL.bY(a + 0.01), 0)); }
+  gb.add('jacket', new THREE.CylinderGeometry(BBOIL.c3[2], BBOIL.c3[2], BBOIL.c3[1] - BBOIL.c3[0] + 0.3, 48, 1, true).rotateZ(Math.PI / 2).translate(ax((BBOIL.c3[0] + BBOIL.c3[1] + 0.3) / 2), BBOIL.yR, 0));
+  for (const a of [BBOIL.sb[1], 7.7, BBOIL.cone[0], BBOIL.cone[1], 12.9, 14.8, BBOIL.c3[1] - 0.02]) { const r = BBOIL.bR(a + 0.01) + 0.012; gb.add('jacketBand', new THREE.CylinderGeometry(r, r, 0.07, 48, 1, true).rotateZ(Math.PI / 2).translate(ax(a), BBOIL.bY(a + 0.01), 0)); }
   // firebox: round top over sides flaring to the mud ring, from the throat back to the backhead in the cab
   {
     const s = new THREE.Shape();
@@ -11978,8 +12029,8 @@ function buildBigBoy(key, trim = '') {
       const se = Math.pow(Math.pow(Math.abs(c), 4) + Math.pow(Math.abs(sn), 4), -0.25);
       p.setXYZ(i, c * se * r * L / 2, Math.pow(y, 0.55) * h, sn * se * r * w / 2);
     }
-    g.computeVertexNormals(); g.translate(ax((a0 + a1) / 2), base, 0); gb.add(k || 'black', g);
-    gb.add(k || 'black', new THREE.CylinderGeometry(1, 1, 0.34, 32, 1, true).scale(L / 2, 1, w / 2).translate(ax((a0 + a1) / 2), base - 0.17 + 0.001, 0));
+    g.computeVertexNormals(); g.translate(ax((a0 + a1) / 2), base, 0); gb.add(k || 'jacket', g);
+    gb.add(k || 'jacket', new THREE.CylinderGeometry(1, 1, 0.34, 32, 1, true).scale(L / 2, 1, w / 2).translate(ax((a0 + a1) / 2), base - 0.17 + 0.001, 0));
   };
   dome(7.4, 10.4, 0.98, 4.86);                                                     // the long sand dome
   dome(12.2, 13.5, 1.08, 4.90);                                                    // steam dome
@@ -12179,7 +12230,7 @@ function buildBigBoy(key, trim = '') {
   gb.box('dark', 0.6, 0.3, 1.2, ax(BB.len - 0.2), 1.0, 0);                          // drawbar pocket
   gb.box('dark', 0.2, 0.9, 2.0, ax(BB.len - 0.1), 1.6, 0);                          // rear buffer beam under the deck
 
-  body.add(gb.build({ ...RMAT }));
+  body.add(gb.build({ ...RMAT, jacket: RMAT.black, jacketBand: RMAT.dark }));   // the warm boiler sheds snow (10i_snow.js)
   front.add(gf.build({ ...RMAT }));
 
   /* ---- glows & lights ---- */
@@ -16314,6 +16365,7 @@ function applyLook(timeKey, weatherKey) {
 function wxGround() {
   SKY.snow = WX.season === 'winter'; WORLD.snowU.value = SKY.snow ? 1 : 0;
   if (FX.snow) FX.snow.visible = WX.P.snow > 0.01;
+  if (typeof snowFrame === 'function') snowFrame();   // bare hardwoods, snow on the trees and trains (10i_snow.js)
 }
 /* the clock: a job runs on its own railroad clock; otherwise time passes at the chosen rate */
 function skyTick(dt) {
@@ -16321,6 +16373,7 @@ function skyTick(dt) {
   else if (GAME.running && !S.paused) SKY.hour = dnWrap(SKY.hour + dt * ((DN.rates[GAME.settings.cycle] || DN.rates.x30).k) / 3600);
   // the weather runs on real time whatever the clock does, so a spell lasts minutes at any clock rate
   if (!S.paused) { wxStep(dt, (1 - SKY.dark) * (1 - CLOUD.shade)); wxNews(); wxWind(dt); }
+  if (typeof snowFrame === 'function') snowFrame();
   SKY.dt = dt;
   skyLight(false);
 }
@@ -16688,8 +16741,9 @@ const WX_BLEND = [90, 170];
 
 /* the weather as it stands: the spell blending from `from` to `to`, t seconds into a blend of dur,
    then holding for hold seconds. P is the blend of the two kinds' numbers. wet is how wet the rail
-   is (0-1), wash how long the rain has been washing it clean (0-1). */
-const WX = { key: 'changing', season: 'summer', walk: true, from: 'fair', to: 'fair', t: 1, dur: 1, hold: 300, seed: 1, P: {}, wet: 0, wash: 0, flash: 0, boltIn: 20, bolts: [], changed: null };
+   is (0-1), wash how long the rain has been washing it clean (0-1). lay is the snow lying on the trees and
+   the trains (0 none, 1 a full coat). */
+const WX = { key: 'changing', season: 'summer', walk: true, from: 'fair', to: 'fair', t: 1, dur: 1, hold: 300, seed: 1, P: {}, wet: 0, wash: 0, lay: 0, flash: 0, boltIn: 20, bolts: [], changed: null };
 
 function wxRand() { WX.seed = (WX.seed * 16807) % 2147483647; return (WX.seed - 1) / 2147483646; }
 function wxRange(r) { return r[0] + (r[1] - r[0]) * wxRand(); }
@@ -16707,13 +16761,16 @@ function wxBlend(a, b, t, out = {}) {
 }
 /* pick the menu's weather. A changing sky starts in a settled kind (with a wet rail if it starts wet) */
 function wxSet(key, seed) {
-  const M = WEATHER[key] || WEATHER.changing;
+  const M = WEATHER[key] || WEATHER.changing, was = WX.season;
   WX.key = WEATHER[key] ? key : 'changing'; WX.season = M.season; WX.walk = !!M.walk;
   if (seed !== undefined) WX.seed = (Math.abs(Math.floor(seed)) % 2147483646) + 1;
   let k = M.kind;
   if (!k) k = M.season === 'winter' ? wxPick({ clear: 2, fair: 3, cloudy: 3, overcast: 2, snow: 2 }) : wxPick({ clear: 3, fair: 4, cloudy: 3, overcast: 1, rain: 0.6 });
   WX.from = WX.to = k; WX.t = WX.dur = 1; WX.hold = M.walk ? wxRange(WX_HOLD[k]) : 1e9;
   WX.wet = wxWetTarget(WX_KINDS[k]); WX.wash = WX_KINDS[k].rain > 0.3 ? 0.5 : 0;
+  // turning to winter, it has snowed before: a light coat on the trees and trains (heavier if it is snowing now).
+  // Changing between winter skies keeps what lies; back to summer, it thaws in wxStep
+  if (M.season === 'winter' && was !== 'winter') WX.lay = Math.max(WX.lay, k === 'snow' ? 0.5 : 0.3);
   WX.flash = 0; WX.bolts = []; WX.boltIn = 8 + 20 * wxRand(); WX.changed = null;
   wxBlend(k, k, 1, WX.P);
   return WX;
@@ -16740,6 +16797,7 @@ function wxStep(dt, sunLight = 1) {
   else WX.wet = Math.max(target, WX.wet - dt * (0.0006 + 0.0016 * sunLight * P.sunK));
   // steady rain washes the grime off the railhead; the film builds back as the rail dries
   WX.wash = P.rain > 0.3 ? Math.min(1, WX.wash + dt * P.rain / 240) : Math.max(0, WX.wash - dt / 900);
+  WX.lay = wxLayStep(WX.lay, dt, P, sunLight, WX.season === 'winter');
   // lightning: a stroke every few seconds to a minute in a storm, each a flicker of two or three flashes
   WX.flash = Math.max(0, WX.flash - dt * 6);
   if (P.bolt > 0.2) {
@@ -16757,6 +16815,15 @@ function wxStep(dt, sunLight = 1) {
   WX.bolts = WX.bolts.filter(b => b.at < b.dist / 343 + 8);
   return WX;
 }
+/* snow lying on the trees and the trains: a full coat builds in about six minutes of steady snow (less in a
+   flurry), thaws over twenty minutes or so of winter sun and an hour of grey, and goes in a minute or two
+   once the season turns */
+const WX_LAY_BUILD = 360;
+function wxLayStep(lay, dt, P, sunLight = 1, winter = true) {
+  const fall = (P.snow || 0) / 0.8;
+  if (fall > 0.05) return Math.min(1, lay + dt * fall / WX_LAY_BUILD);
+  return Math.max(0, lay - dt * (winter ? 0.00025 + 0.0005 * sunLight * (P.sunK ?? 1) : 1 / 60));
+}
 /* adhesion on the rail: dry 0.27; a film of water on a dirty railhead is the worst (about 0.16),
    and a long rain washes it a little better; snow and frost 0.15 */
 const WX_DRY_MU = 0.27;
@@ -16769,7 +16836,7 @@ function wxMu(P = WX.P, wet = WX.wet, wash = WX.wash, winter = WX.season === 'wi
 /* the rail's condition for the HUD and toasts */
 function wxRailWord(mu) { return mu > 0.25 ? 'dry' : mu > 0.215 ? 'damp' : mu > 0.18 ? 'wet' : 'slippery'; }
 function wxName() { return WX_KINDS[WX.t / WX.dur < 0.5 ? WX.from : WX.to].name; }
-function wxOut() { return { key: WX.key, from: WX.from, to: WX.to, t: +WX.t.toFixed(2), dur: +WX.dur.toFixed(2), hold: +WX.hold.toFixed(1), seed: WX.seed, wet: +WX.wet.toFixed(3), wash: +WX.wash.toFixed(3) }; }
+function wxOut() { return { key: WX.key, from: WX.from, to: WX.to, t: +WX.t.toFixed(2), dur: +WX.dur.toFixed(2), hold: +WX.hold.toFixed(1), seed: WX.seed, wet: +WX.wet.toFixed(3), wash: +WX.wash.toFixed(3), lay: +WX.lay.toFixed(3) }; }
 function wxIn(d) {
   if (!d || !WEATHER[d.key]) return false;
   wxSet(d.key);
@@ -16777,6 +16844,7 @@ function wxIn(d) {
   WX.t = +d.t || 0; WX.dur = Math.max(1, +d.dur || 1); WX.hold = WX.walk ? +d.hold || 60 : 1e9;
   if (d.seed) WX.seed = d.seed;
   WX.wet = Math.min(1, Math.max(0, +d.wet || 0)); WX.wash = Math.min(1, Math.max(0, +d.wash || 0));
+  if (d.lay !== undefined) WX.lay = Math.min(1, Math.max(0, +d.lay || 0));
   wxBlend(WX.from, WX.to, WX.t / WX.dur, WX.P);
   return true;
 }
@@ -17311,9 +17379,11 @@ function buildTreeFX(scene) { buildTreeShadows(scene); buildLeaves(scene); }
 function treeShadowDepth() {
   const m = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, map: FOL.tex || (FOL.tex = foliageTexture()), alphaTest: 0.45, side: THREE.DoubleSide });
   m.onBeforeCompile = sh => {
-    sh.uniforms.uWind = WORLD.waterT;
+    sh.uniforms.uWind = WORLD.waterT; sh.uniforms.uWinter = FOL.winterU;
     sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\nattribute float aLeaf; attribute vec3 aCorner; uniform float uWind;')
+      .replace('#include <common>', '#include <common>\nattribute float aLeaf; attribute vec3 aCorner; uniform float uWind, uWinter; float vBare;')
+      // bare in winter, as the crowns are (04c): the twigs throw a thin web of shadow
+      .replace('#include <uv_vertex>', '#include <uv_vertex>' + FOL_BARE_GLSL)
       // the same breath of wind as foliageShader (04c), so a shadow moves with its crown
       .replace('#include <begin_vertex>', `#include <begin_vertex>
         { float ph = instanceMatrix[3].x * 0.21 + instanceMatrix[3].z * 0.17;
@@ -18294,6 +18364,106 @@ function digFrame(dt, cam) {
   DIG.U.uLight.value = lerp(1, 0.16, SKY.dark || 0);
   const h = Math.min(dt, 0.05);
   digPoolStep(DIG.clods, h, false); digPoolStep(DIG.dust, h, true);
+}
+
+/* ============================================================================
+   Snow on the engines and cars, and the winter trees.
+   While it snows a coat builds up on everything that faces the sky: car roofs, tender decks, hood tops,
+   running boards, the tops of the trucks, the floors of open cars. The flattest surfaces fill first, then
+   the coat creeps down curved roofs as it deepens, broken into drifts by a noise fixed to each car (so it
+   rides along with the train). It thaws slowly after the snow stops (WX.lay in 10d_weather.js).
+   The coat is drawn in the paint's own shader, on the surface itself, so it can never float or gap.
+   Kept dry: insides (cabs, coach saloons, anything built with cast false), the warm boiler jacket of a
+   steam engine, and parts that move, shine or run hot (rods, tires, brass, the smokebox).
+   In winter the hardwoods and bushes stand bare and snow lies on the pines (04c_foliage.js).
+   ========================================================================== */
+const SNOWC = { U: { value: 0 }, done: new WeakSet(), dry: new WeakSet(), twins: new WeakMap() };
+// bins never coated: moving, polished or hot parts, glass and lamps, and the holiday trim's own snow
+const SNOW_SKIP = new Set(['graphite', 'rod', 'tire', 'dWall', 'brass', 'copper', 'bronze', 'bellGrey', 'gold', 'fan', 'snow', 'snowDust', 'garland', 'berry', 'ribbon',
+  'glow', 'lens', 'lensOff', 'hlLens', 'headOff', 'screen', 'hsLamp', 'hsTail', 'hsTailOff', 'hsGlass', 'hsWin', 'glass', 'glassT', 'win', 'coachWin', 'holWin', 'hit']);
+
+/* can this material carry the coat? plain lit paint only: no glass, no lamps, no shader of its own */
+function snowOk(m) {
+  if (!m || !(m.isMeshStandardMaterial || m.isMeshLambertMaterial || m.isMeshPhongMaterial)) return false;
+  if (m.transparent || m.visible === false || m.userData.noSnow) return false;
+  if (m.emissive && m.emissive.r + m.emissive.g + m.emissive.b > 0) return false;   // windows and lamps that light up
+  return !Object.prototype.hasOwnProperty.call(m, 'onBeforeCompile');
+}
+/* the material for bin k of a GeoBin being built (01_util.js calls this): rolling stock only, which every
+   engine and car builds with the RMAT set */
+function snowMat(mats, k, opt = {}) {
+  const m = mats[k];
+  if (!m || typeof RMAT === 'undefined' || !RMAT.black || mats.black !== RMAT.black) return m;
+  const ours = SNOWC.done.has(m);
+  if (!ours && !snowOk(m)) return m;
+  if (opt.cast === false || k.startsWith('jacket')) return snowDry(m);   // inside, or on the warm boiler
+  if (SNOW_SKIP.has(k)) { if (!ours) SNOWC.dry.add(m); return m; }
+  if (!ours && !SNOWC.dry.has(m)) snowCoat(m);
+  return m;
+}
+/* a twin of a material that never takes the coat: the same colour (shared, so a repaint reaches it) and maps */
+function snowDry(m) {
+  let t = SNOWC.twins.get(m);
+  if (!t) {
+    t = m.clone(); t.color = m.color; t.userData.noSnow = true;
+    if (m.name) t.name = m.name + ' (dry)';
+    SNOWC.twins.set(m, t);
+  }
+  return t;
+}
+function snowCoat(m) {
+  SNOWC.done.add(m);
+  const std = !!m.isMeshStandardMaterial;
+  m.onBeforeCompile = sh => snowShader(sh, std);
+  m.customProgramCacheKey = () => 'snowcoat';
+  m.needsUpdate = true;
+}
+const SNOW_GLSL = {
+  vert: `
+    { vec3 snN = objectNormal; vec4 snP = vec4( transformed, 1.0 );
+      #ifdef USE_INSTANCING
+        snN = mat3( instanceMatrix ) * snN;
+      #endif
+      vSnN = normalize( mat3( modelMatrix ) * snN ); vSnP = snP.xyz; }`,
+  pars: `
+    uniform float uSnowLay; varying vec3 vSnN; varying vec3 vSnP;
+    float snHash( vec2 p ) { return fract( sin( dot( p, vec2( 127.1, 311.7 ) ) ) * 43758.5453 ); }
+    float snNoise( vec2 p ) {
+      vec2 i = floor( p ), f = fract( p ); f = f * f * ( 3.0 - 2.0 * f );
+      return mix( mix( snHash( i ), snHash( i + vec2( 1.0, 0.0 ) ), f.x ), mix( snHash( i + vec2( 0.0, 1.0 ) ), snHash( i + vec2( 1.0, 1.0 ) ), f.x ), f.y );
+    }`,
+  frag: `
+    float snowCov = 0.0;
+    if ( uSnowLay > 0.003 ) {
+      vec3 snN = normalize( vSnN );
+      #ifdef DOUBLE_SIDED
+        snN *= gl_FrontFacing ? 1.0 : -1.0;
+      #endif
+      // drifts fixed to the car (its own coordinates, so they ride along), big and small
+      float nz = snNoise( vSnP.xz * 1.7 + vSnP.y * 0.9 ) * 0.62 + snNoise( vSnP.xz * 6.1 - vSnP.y * 2.3 ) * 0.38;
+      // a thin coat holds only on the flat; a deep one reaches down the curve of a roof
+      float thr = mix( 0.97, 0.42, uSnowLay );
+      snowCov = smoothstep( thr - 0.05, thr + 0.05, snN.y + ( nz - 0.5 ) * 0.32 )
+              * smoothstep( 0.0, 0.14, uSnowLay * 1.5 - ( 1.0 - nz ) * 0.3 );
+      diffuseColor.rgb = mix( diffuseColor.rgb, vec3( 0.84, 0.87, 0.91 ), snowCov );
+    }`,
+};
+function snowShader(sh, std) {
+  sh.uniforms.uSnowLay = SNOWC.U;
+  sh.vertexShader = sh.vertexShader
+    .replace('#include <common>', '#include <common>\nvarying vec3 vSnN; varying vec3 vSnP;')
+    .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>' + SNOW_GLSL.vert);
+  const at = std ? '#include <metalnessmap_fragment>' : '#include <specularmap_fragment>';
+  sh.fragmentShader = sh.fragmentShader
+    .replace('#include <common>', '#include <common>' + SNOW_GLSL.pars)
+    .replace(at, at + SNOW_GLSL.frag + (std ? `
+    roughnessFactor = mix( roughnessFactor, 0.88, snowCov ); metalnessFactor = mix( metalnessFactor, 0.0, snowCov );` : ''));
+}
+
+/* each frame, from the weather: the coat on the trains and the trees, and whether the hardwoods are bare */
+function snowFrame() {
+  SNOWC.U.value = WX.lay;
+  if (typeof FOL !== 'undefined') { FOL.layU.value = WX.lay; FOL.winterU.value = WX.season === 'winter' ? 1 : 0; }
 }
 
 /* ============================================================================
