@@ -84,7 +84,8 @@ class GeoBin {
     const g = new THREE.Group();
     for (const k in this.bins) {
       if (!this.bins[k].length) continue;
-      const mesh = new THREE.Mesh(mergeGeos(this.bins[k]), mats[k]);
+      // snow on the engines and cars: snowMat (10i_snow.js) gives the outside its coat and keeps the inside dry
+      const mesh = new THREE.Mesh(mergeGeos(this.bins[k]), typeof snowMat === 'function' ? snowMat(mats, k, opt) : mats[k]);
       mesh.castShadow = opt.cast !== false && !(mats[k] && mats[k].userData.noShadow);
       mesh.receiveShadow = opt.receive !== false;
       mesh.name = k;

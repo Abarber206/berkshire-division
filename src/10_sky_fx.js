@@ -149,6 +149,7 @@ function applyLook(timeKey, weatherKey) {
 function wxGround() {
   SKY.snow = WX.season === 'winter'; WORLD.snowU.value = SKY.snow ? 1 : 0;
   if (FX.snow) FX.snow.visible = WX.P.snow > 0.01;
+  if (typeof snowFrame === 'function') snowFrame();   // bare hardwoods, snow on the trees and trains (10i_snow.js)
 }
 /* the clock: a job runs on its own railroad clock; otherwise time passes at the chosen rate */
 function skyTick(dt) {
@@ -156,6 +157,7 @@ function skyTick(dt) {
   else if (GAME.running && !S.paused) SKY.hour = dnWrap(SKY.hour + dt * ((DN.rates[GAME.settings.cycle] || DN.rates.x30).k) / 3600);
   // the weather runs on real time whatever the clock does, so a spell lasts minutes at any clock rate
   if (!S.paused) { wxStep(dt, (1 - SKY.dark) * (1 - CLOUD.shade)); wxNews(); wxWind(dt); }
+  if (typeof snowFrame === 'function') snowFrame();
   SKY.dt = dt;
   skyLight(false);
 }

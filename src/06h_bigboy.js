@@ -159,16 +159,16 @@ function buildBigBoy(key, trim = '') {
   gb.add('graphite', lathe([[0, door.r + 0.05], [0.04, door.r + 0.05], [0.07, door.r], [0.14, 0.62], [0.17, 0.0]], BBOIL.sb[0] - 0.005));
   for (let i = 0; i < 18; i++) { const t = (i + 0.5) / 18 * TAU; gb.add('dark', new THREE.BoxGeometry(0.07, 0.13, 0.07), M(ax(BBOIL.sb[0] - 0.03), yB + 1.05 * Math.cos(t), 1.05 * Math.sin(t), t, 0, 0)); }
   gb.box('dark', 0.06, 0.08, 0.5, ax(door.a + 0.02), yB - 0.3, 0);                   // door handle
-  gb.add('black', new THREE.CylinderGeometry(BBOIL.c1[2], BBOIL.c1[2], BBOIL.c1[1] - BBOIL.c1[0] + 0.02, 48, 1, true).rotateZ(Math.PI / 2).translate(ax((BBOIL.c1[0] + BBOIL.c1[1]) / 2 - 0.01), yB, 0));
+  gb.add('jacket', new THREE.CylinderGeometry(BBOIL.c1[2], BBOIL.c1[2], BBOIL.c1[1] - BBOIL.c1[0] + 0.02, 48, 1, true).rotateZ(Math.PI / 2).translate(ax((BBOIL.c1[0] + BBOIL.c1[1]) / 2 - 0.01), yB, 0));
   gb.add('black', new THREE.CircleGeometry(BBOIL.c1[2], 48).rotateY(Math.PI / 2).translate(ax(BBOIL.c1[0] - 0.01), yB, 0));
   {
     const L = BBOIL.cone[1] - BBOIL.cone[0], g = new THREE.CylinderGeometry(BBOIL.c1[2], BBOIL.c3[2], L, 48, 1, true).rotateZ(-Math.PI / 2);
     const p = g.attributes.position;
     for (let i = 0; i < p.count; i++) p.setY(i, p.getY(i) + (BBOIL.yR - yB) * (L / 2 - p.getX(i)) / L);
-    g.computeVertexNormals(); g.translate(ax((BBOIL.cone[0] + BBOIL.cone[1]) / 2), yB, 0); gb.add('black', g);
+    g.computeVertexNormals(); g.translate(ax((BBOIL.cone[0] + BBOIL.cone[1]) / 2), yB, 0); gb.add('jacket', g);
   }
-  gb.add('black', new THREE.CylinderGeometry(BBOIL.c3[2], BBOIL.c3[2], BBOIL.c3[1] - BBOIL.c3[0] + 0.3, 48, 1, true).rotateZ(Math.PI / 2).translate(ax((BBOIL.c3[0] + BBOIL.c3[1] + 0.3) / 2), BBOIL.yR, 0));
-  for (const a of [BBOIL.sb[1], 7.7, BBOIL.cone[0], BBOIL.cone[1], 12.9, 14.8, BBOIL.c3[1] - 0.02]) { const r = BBOIL.bR(a + 0.01) + 0.012; gb.add('dark', new THREE.CylinderGeometry(r, r, 0.07, 48, 1, true).rotateZ(Math.PI / 2).translate(ax(a), BBOIL.bY(a + 0.01), 0)); }
+  gb.add('jacket', new THREE.CylinderGeometry(BBOIL.c3[2], BBOIL.c3[2], BBOIL.c3[1] - BBOIL.c3[0] + 0.3, 48, 1, true).rotateZ(Math.PI / 2).translate(ax((BBOIL.c3[0] + BBOIL.c3[1] + 0.3) / 2), BBOIL.yR, 0));
+  for (const a of [BBOIL.sb[1], 7.7, BBOIL.cone[0], BBOIL.cone[1], 12.9, 14.8, BBOIL.c3[1] - 0.02]) { const r = BBOIL.bR(a + 0.01) + 0.012; gb.add('jacketBand', new THREE.CylinderGeometry(r, r, 0.07, 48, 1, true).rotateZ(Math.PI / 2).translate(ax(a), BBOIL.bY(a + 0.01), 0)); }
   // firebox: round top over sides flaring to the mud ring, from the throat back to the backhead in the cab
   {
     const s = new THREE.Shape();
@@ -196,8 +196,8 @@ function buildBigBoy(key, trim = '') {
       const se = Math.pow(Math.pow(Math.abs(c), 4) + Math.pow(Math.abs(sn), 4), -0.25);
       p.setXYZ(i, c * se * r * L / 2, Math.pow(y, 0.55) * h, sn * se * r * w / 2);
     }
-    g.computeVertexNormals(); g.translate(ax((a0 + a1) / 2), base, 0); gb.add(k || 'black', g);
-    gb.add(k || 'black', new THREE.CylinderGeometry(1, 1, 0.34, 32, 1, true).scale(L / 2, 1, w / 2).translate(ax((a0 + a1) / 2), base - 0.17 + 0.001, 0));
+    g.computeVertexNormals(); g.translate(ax((a0 + a1) / 2), base, 0); gb.add(k || 'jacket', g);
+    gb.add(k || 'jacket', new THREE.CylinderGeometry(1, 1, 0.34, 32, 1, true).scale(L / 2, 1, w / 2).translate(ax((a0 + a1) / 2), base - 0.17 + 0.001, 0));
   };
   dome(7.4, 10.4, 0.98, 4.86);                                                     // the long sand dome
   dome(12.2, 13.5, 1.08, 4.90);                                                    // steam dome
@@ -397,7 +397,7 @@ function buildBigBoy(key, trim = '') {
   gb.box('dark', 0.6, 0.3, 1.2, ax(BB.len - 0.2), 1.0, 0);                          // drawbar pocket
   gb.box('dark', 0.2, 0.9, 2.0, ax(BB.len - 0.1), 1.6, 0);                          // rear buffer beam under the deck
 
-  body.add(gb.build({ ...RMAT }));
+  body.add(gb.build({ ...RMAT, jacket: RMAT.black, jacketBand: RMAT.dark }));   // the warm boiler sheds snow (10i_snow.js)
   front.add(gf.build({ ...RMAT }));
 
   /* ---- glows & lights ---- */
