@@ -342,7 +342,7 @@ function mtForestTile(key, scene) {
         let l = SCN.solids.get(cell); if (!l) SCN.solids.set(cell, l = []); l.push(e); tt.solids.push([cell, e]);
       });
       im.userData.sph = im.geometry.boundingSphere;
-      im.castShadow = false; im.receiveShadow = true; im.visible = false; scene.add(im); tt.hi.push(im);
+      im.castShadow = true; im.receiveShadow = true; im.visible = false; scene.add(im); tt.hi.push(im);
     }
   }
   if (T.pts.length) { const s = new THREE.Sphere().setFromPoints(T.pts); tt.c = s.center; tt.r = s.radius + 12; }

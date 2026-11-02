@@ -4767,7 +4767,7 @@ function xingMast(scene, xg, X, N, face, roadW) {
   ag.add('w', new THREE.BoxGeometry(0.18, 0.34, 0.32), M(0, -0.02, -0.82));
   const lampsOnArm = [[La * 0.38, 'xA'], [La * 0.7, 'xB'], [La - 0.12, 'xT']];
   for (const [z, k] of lampsOnArm) { ag.add('black', new THREE.CylinderGeometry(0.07, 0.07, 0.11, 10), M(0, 0.12, z, 0, 0, Math.PI / 2)); ag.add(k, new THREE.CircleGeometry(0.055, 12), M(0.056, 0.12, z, 0, Math.PI / 2, 0)); }
-  const grp = ag.build({ m: SMAT.alu, arm: SMAT.gateArm, w: SMAT.black, black: SMAT.black, xA: SMAT['xA' + id], xB: SMAT['xB' + id], xT: SMAT['xT' + id] }, { cast: false });
+  const grp = ag.build({ m: SMAT.alu, arm: SMAT.gateArm, w: SMAT.black, black: SMAT.black, xA: SMAT['xA' + id], xB: SMAT['xB' + id], xT: SMAT['xT' + id] });
   arm.add(grp); arm.rotation.x = -Math.PI / 2 * 0.96;
   mast.arm = arm; mast.armLamps = lampsOnArm.map(([z, k]) => ({ at: new THREE.Vector3(0.1, 0.12, z), ab: k === 'xA' ? 0 : 1, tip: k === 'xT' }));
   return mast;
@@ -4915,7 +4915,7 @@ function buildPoleLine(scene) {
     const sph = new THREE.Sphere(); const pts = group.map(g => g.p);
     sph.setFromPoints(pts); sph.radius += 12;
     group.forEach((g, i) => im.setMatrixAt(i, new THREE.Matrix4().makeRotationY(g.yaw).setPosition(g.p)));
-    im.geometry.boundingSphere = sph; im.castShadow = false; im.name = 'pole line'; scene.add(im);
+    im.geometry.boundingSphere = sph; im.castShadow = true; im.receiveShadow = true; im.name = 'pole line'; scene.add(im);
     im.userData = { c: sph.center.clone(), r: sph.radius };
     const grpM = [im];
     if (groupWires.length) { const lg = new THREE.BufferGeometry(); lg.setAttribute('position', new THREE.Float32BufferAttribute(groupWires, 3)); lg.computeBoundingSphere(); const ls = new THREE.LineSegments(lg, wireMat); ls.userData = im.userData; scene.add(ls); grpM.push(ls); }
@@ -5250,8 +5250,8 @@ function finalizeScenery(scene) {
   const mats = { ...SMAT, steel: SMAT.steel, redPaint: MAT.redPaint, tie: MAT.tie };
   WORLD.binGroups = [];
   for (const [, gb] of SCN.bins) {
-    const grp = gb.build(mats, { cast: false });
-    grp.children.forEach(m => { m.castShadow = false; m.receiveShadow = true; });
+    const grp = gb.build(mats);   // houses, barns, stations, posts, signs, platforms...: all cast and receive
+    grp.children.forEach(m => { m.receiveShadow = true; });
     const sp = new THREE.Sphere(); let first = true;
     grp.children.forEach(m => { const b = m.geometry.boundingSphere; if (first) { sp.copy(b); first = false; } else sp.union(b); });
     grp.userData = { c: sp.center.clone(), r: sp.radius };
@@ -5771,7 +5771,6 @@ function buildPastureLife(scene) {
     b.cows.forEach((list, k) => inst(cows[k], cowMat, list, (q, m) => { m.compose(_v1.set(q[0], q[1], -q[2]), _q.setFromEuler(_e.set(0, q[3], q[5])), _v2.setScalar(q[4])); }));
     inst(bale, SMAT.hay, b.bales, (q, m) => m.compose(_v1.set(q[0], q[1], -q[2]), _q.setFromEuler(_e.set(0, q[3], 0)), _v2.set(1, 1, 1)));
     const pim = inst(post, SMAT.post, b.posts, (q, m) => m.compose(_v1.set(q[0], q[1], -q[2]), _q.set(0, 0, 0, 1), _v2.set(1, 1, 1)));
-    if (pim) pim.castShadow = false;
     if (b.wires.length) { const lg = new THREE.BufferGeometry(); lg.setAttribute('position', new THREE.Float32BufferAttribute(b.wires, 3)); grp.add(new THREE.LineSegments(lg, wireMat)); }
     if (!pts.length) continue;
     const sp = new THREE.Sphere().setFromPoints(pts); sp.radius += 6;
@@ -6448,7 +6447,7 @@ function mtForestTile(key, scene) {
         let l = SCN.solids.get(cell); if (!l) SCN.solids.set(cell, l = []); l.push(e); tt.solids.push([cell, e]);
       });
       im.userData.sph = im.geometry.boundingSphere;
-      im.castShadow = false; im.receiveShadow = true; im.visible = false; scene.add(im); tt.hi.push(im);
+      im.castShadow = true; im.receiveShadow = true; im.visible = false; scene.add(im); tt.hi.push(im);
     }
   }
   if (T.pts.length) { const s = new THREE.Sphere().setFromPoints(T.pts); tt.c = s.center; tt.r = s.radius + 12; }
@@ -17506,7 +17505,7 @@ function birdGeo() {
 
 function buildBirds(scene) {
   const lite = typeof GFX !== 'undefined' && GFX.lite;
-  const nFlock = lite ? 20 : 40, nPool = lite ? 40 : 80, n = nFlock + nPool;
+  const nFlock = lite ? 36 : 96, nPool = lite ? 40 : 80, n = nFlock + nPool;
   const g = birdGeo();
   const wing = new THREE.InstancedBufferAttribute(new Float32Array(n * 2), 2); wing.setUsage(THREE.DynamicDrawUsage);
   g.setAttribute('aWing', wing);
@@ -17524,7 +17523,7 @@ function buildBirds(scene) {
   };
   const mesh = new THREE.InstancedMesh(g, mat, n);
   mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-  mesh.frustumCulled = false; mesh.castShadow = false; mesh.receiveShadow = false; mesh.name = 'birds';
+  mesh.frustumCulled = false; mesh.castShadow = true; mesh.receiveShadow = false; mesh.name = 'birds';   // little shadows on the ground
   const r = rng(4417), c = new THREE.Color(), zero = new THREE.Matrix4().makeScale(0, 0, 0);
   for (let i = 0; i < n; i++) {
     c.setHex(BIRD_COL[Math.floor(r() * BIRD_COL.length)]); mesh.setColorAt(i, c); mesh.setMatrixAt(i, zero);
@@ -17535,8 +17534,8 @@ function buildBirds(scene) {
   mesh.instanceColor.setUsage(THREE.StaticDrawUsage);
   scene.add(mesh);
   BIRDS.mesh = mesh; BIRDS.wing = wing; BIRDS.nFlock = nFlock; BIRDS.pool = nPool; BIRDS.built = true;
-  // three flocks of a dozen or so (fewer on a phone); each bird holds its own place in the loose cloud
-  const nf = lite ? 2 : 3;
+  // six flocks of sixteen (three of twelve on a phone); each bird holds its own place in the loose cloud
+  const nf = lite ? 3 : 6;
   for (let f = 0; f < nf; f++) BIRDS.flocks.push({ c: new THREE.Vector3(), v: new THREE.Vector3(), goal: new THREE.Vector3(), next: 0, live: false, members: [] });
   for (let i = 0; i < nFlock; i++) {
     const b = BIRDS.list[i], F = BIRDS.flocks[i % nf]; F.members.push(b);

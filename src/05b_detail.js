@@ -510,7 +510,6 @@ function buildPastureLife(scene) {
     b.cows.forEach((list, k) => inst(cows[k], cowMat, list, (q, m) => { m.compose(_v1.set(q[0], q[1], -q[2]), _q.setFromEuler(_e.set(0, q[3], q[5])), _v2.setScalar(q[4])); }));
     inst(bale, SMAT.hay, b.bales, (q, m) => m.compose(_v1.set(q[0], q[1], -q[2]), _q.setFromEuler(_e.set(0, q[3], 0)), _v2.set(1, 1, 1)));
     const pim = inst(post, SMAT.post, b.posts, (q, m) => m.compose(_v1.set(q[0], q[1], -q[2]), _q.set(0, 0, 0, 1), _v2.set(1, 1, 1)));
-    if (pim) pim.castShadow = false;
     if (b.wires.length) { const lg = new THREE.BufferGeometry(); lg.setAttribute('position', new THREE.Float32BufferAttribute(b.wires, 3)); grp.add(new THREE.LineSegments(lg, wireMat)); }
     if (!pts.length) continue;
     const sp = new THREE.Sphere().setFromPoints(pts); sp.radius += 6;
