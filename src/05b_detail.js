@@ -111,6 +111,22 @@ function detailTextures() {
     SMAT['g_' + k] = m; DET.grassMats.push(m);
   }
 }
+/* Shadows from the ground cover (not on phones): the shadow pass draws each card cut to its blades, leaves or
+   petals and swaying in the same wind, so a clump throws a ragged little shadow instead of a rectangle. */
+function coverShadow(im, k) {
+  if (GFX.lite) { im.castShadow = false; return; }
+  const D = DET.depth || (DET.depth = {});
+  if (!D[k]) {
+    if (k === 'bush') { if (typeof treeShadowDepth !== 'function') { im.castShadow = false; return; } D[k] = treeShadowDepth(); }
+    else {
+      const grass = k === 'grass', amp = grass ? 1 : k === 'fern' ? 0.45 : 0.6;
+      const m = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, map: TEX[k], alphaTest: grass ? 0.4 : 0.5, side: THREE.DoubleSide });
+      m.onBeforeCompile = sh => grassWind(sh, amp, false); m.customProgramCacheKey = () => 'windDepth' + amp;
+      D[k] = m;
+    }
+  }
+  im.customDepthMaterial = D[k]; im.castShadow = true;
+}
 /* Meadow grass, 256 x 256: tapered blades that are dark down in the clump and light at the tips (so a clump
    is shaded like the real thing, and sits down into the ground), a back layer darker than the front, some
    tips gone to straw, and a few timothy and foxtail seed heads standing above. Light greys: the instance
@@ -567,7 +583,7 @@ function genGrass(piece, scene) {
     const im = new THREE.InstancedMesh(k === 'bush' ? shareGeo(G.bush, U.sphere.clone()) : G[k].clone(), mat, list.length);
     list.forEach((q, i) => { _m4.compose(_v1.set(q[0], q[1], -q[2]), _q.setFromEuler(_e.set(0, q[3], 0)), _v2.set(q[4], q[4] * (k === 'grass' ? q[6] : 1), q[4])); im.setMatrixAt(i, _m4); _tc.setRGB(q[5][0], q[5][1], q[5][2]).convertSRGBToLinear(); im.setColorAt(i, _tc); });
     im.geometry.boundingSphere = U.sphere.clone(); folColorsDone(im);
-    im.castShadow = false; im.receiveShadow = true; im.userData.kind = k;
+    coverShadow(im, k); im.receiveShadow = true; im.userData.kind = k;
     grp.add(im);
   }
   scene.add(grp);
@@ -625,7 +641,7 @@ function coverCell(ci, cj, scene) {
     const im = new THREE.InstancedMesh(shareGeo(G[k], sph.clone()), SMAT['g_' + k], list.length);
     list.forEach((q, i) => { _m4.compose(_v1.set(q[0], q[1], -q[2]), _q.setFromEuler(_e.set(0, q[3], 0)), _v2.set(q[4], q[4] * (k === 'grass' ? q[6] : 1), q[4])); im.setMatrixAt(i, _m4); _tc.setRGB(q[5][0], q[5][1], q[5][2]).convertSRGBToLinear(); im.setColorAt(i, _tc); });
     folColorsDone(im);
-    im.castShadow = false; im.receiveShadow = true; im.userData.kind = k;
+    coverShadow(im, k); im.receiveShadow = true; im.userData.kind = k;
     grp.add(im);
   }
   scene.add(grp);
