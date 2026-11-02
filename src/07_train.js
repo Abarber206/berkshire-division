@@ -193,6 +193,16 @@ function carVehicle(m) {
     brake: { AR: 90, BC: 0, BP: 90, emerg: false, released: true }, kn: [0, 0] };
 }
 
+/* the wheels of vehicle x that click over the rail joints, as [point, axles, spacing]. Each engine by its own kind:
+   a helper MU'd into the train can be a diesel behind a steam engine or the other way round. */
+function jointPts(x) {
+  if (x.kind === 'loco' || x.kind === 'loco2') {
+    if (x.leadPt && x.leadPt !== x.fp[0]) return [[x.leadPt, 1, 0], [x.fp[0], 4, 1.855]];
+    const n = x.emu ? 2 : 3, sp = (x.model && x.model.wb) || DG.axle;
+    return [[x.fp[0], n, sp], [x.fp[1], n, sp]];
+  }
+  return x.tp.map((p, i) => [p, x.trucks[i].type === 'four' ? 2 : 3, x.trucks[i].sp || (x.trucks[i].type === 'four' ? 1.73 : 1.676)]);
+}
 /* a helper engine coupled into another train: its trucks, wheels and rods turn with the train's own */
 function helperAnimate(v, roll, theta, rev, D, dist) {
   const M = v.model; if (!M) return;

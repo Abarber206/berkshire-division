@@ -194,7 +194,7 @@ function physicsStep(dt, train) {
   let gradeLead = 0, limit = 99;
   for (let i = 0; i < V.length; i++) {
     const v = V[i];
-    const mass = v.kind === 'tender' ? (train.turb ? turbineTenderMass(train) : train.tenderEmpty + S.water + S.coal) : v.mass;
+    const mass = v.kind === 'tender' && !v.helper ? (train.turb ? turbineTenderMass(train) : train.tenderEmpty + S.water + S.coal) : v.mass;
     M += mass;
     const f = v.fp[0].F && v.fp[1].F ? _v1.addVectors(v.fp[0].F.f, v.fp[1].F.f).multiplyScalar(0.5) : _v1.set(1, 0, 0);
     Fgrade -= mass * 9.81 * f.y;

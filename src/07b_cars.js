@@ -49,7 +49,7 @@ const isTrainC = c => !!c && (c === GAME.train || !!c.parkS);
 function consistMass(c) {
   let m = 0;
   const st = c.parkS || S;   // a standing train's tender holds what it had when it was left
-  for (const v of c.vehicles) m += v.kind === 'tender' ? (c.turb ? turbineTenderMass(c, st) : c.tenderEmpty + st.water + st.coal) : v.mass;
+  for (const v of c.vehicles) m += v.kind === 'tender' && !v.helper ? (c.turb ? turbineTenderMass(c, st) : c.tenderEmpty + st.water + st.coal) : v.mass;
   return m;
 }
 const velOf = c => c === GAME.train ? S.v : c.v;
@@ -227,11 +227,21 @@ CARS.ahead = function (T, dir, range) {
 /* Train X is being coupled into another: its engine (and tender or units) go in as a helper, MU'd to the
    train's controls. Each helper vehicle keeps what it needs to be built again for a save. Returns X's name. */
 let HELPER_N = 0;
+/* the weight of engine X's tender, from its supplies st (full when it has none) */
+function helperTender(X, st) {
+  if (X.turb) return turbineTenderMass(X, st || { oil: GTP.oilFull });
+  const k = steamK(LOCO_SPEC[X.locoKey]); st = st || k;
+  return X.tenderEmpty + (st.water || 0) + (st.coal || 0);
+}
 function helperOf(X) {
   const name = typeof FLEET !== 'undefined' && X.parkS ? FLEET.name(X) : 'the other engine';
   const own = X.vehicles.filter(v => isPower(v) && !v.helper), g = ++HELPER_N + '.' + Math.round(performance.now());
   const opts = JSON.parse(JSON.stringify(Object.assign({}, X.opts || {}, { remote: undefined })));
-  own.forEach((v, i) => { v.helper = { g, loco: X.locoKey, opts, i }; });
+  own.forEach((v, i) => {
+    v.helper = { g, loco: X.locoKey, opts, i };
+    // its tender keeps what was in it, as a fixed weight: the train's own supplies are its lead engine's
+    if (v.kind === 'tender') v.mass = v.helper.m = helperTender(X, X.parkS);
+  });
   if (X.crew && typeof IX !== 'undefined') IX.release(X.crew.ix);
   X.crew = null; X.parkS = null;
   if (typeof FLEET !== 'undefined' && FLEET.card === X) FLEET.closeCard();

@@ -102,6 +102,27 @@ test('with a knuckle open two trains couple: the other engine is a helper, MU\'d
   assert.equal(sim.helperK(A), 1);
 });
 
+test('a gas turbine MU\'d behind a steam engine keeps its own fuel tender weight, and its wheels are all on the rails', () => {
+  const sim = h.load(), y = railroad(sim), { A, B } = twoTrains(sim, y);
+  Object.assign(B, { turb: true, locoKey: '18', diesel: true, tenderEmpty: 77000 });
+  B.parkS.oil = 50000;
+  A.lead.leadPt = A.lead.fp[0] && { loc: 1, a: 0, tp: A.lead.fp[0].tp, F: A.lead.fp[0].F, v: A.lead };   // the steam engine's own lead truck
+  for (const v of B.vehicles) if (v.kind === 'loco') { v.leadPt = v.fp[0]; v.model = { wb: 2.03 }; }   // a diesel's lead is its front truck
+  Object.assign(sim.S, { water: 80000, coal: 19000, oil: 0 });
+  sim.S.v = 1.2;
+  sim.endCoupler(B, 'rear').v.kn[1] = sim.KN_OPEN;
+  sim.CARS.contact(A, 1, { c: B, end: 'rear', facing: true });
+  const ht = A.vehicles[1];
+  assert.ok(ht.helper && ht.kind === 'tender');
+  assert.equal(Math.round(ht.mass), Math.round(77000 + 50000 * 0.97), 'its own oil, not your coal and water');
+  const mine = 92000 + 80000 + 19000;
+  assert.equal(Math.round(sim.consistMass(A)), Math.round(200000 * 2 + ht.mass + mine + 2 * h.FREIGHT_CAR));
+  // the joints under every engine, whatever kind: no wheel left without a point on the track (the crash that blacked the screen)
+  for (const v of A.vehicles.filter(v => v.kind === 'loco')) for (const [p] of sim.jointPts(v)) assert.ok(p && p.tp, v.kind + (v.helper ? ' helper' : ''));
+  assert.equal(sim.jointPts(A.lead).length, 2);
+  assert.equal(sim.jointPts(A.lead)[0][0], A.lead.leadPt, 'the steam engine clicks on its lead truck');
+});
+
 test('a rolling cut couples onto a standing train, and the train keeps its engine at the head', () => {
   const sim = h.load(), y = railroad(sim), { B } = twoTrains(sim, y);
   const c = cut(sim, y.yard, 440, 2);   // 2 cars, front coupler 10 m short of B's rear (450)
