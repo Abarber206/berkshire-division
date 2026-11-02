@@ -793,7 +793,7 @@ function xingMast(scene, xg, X, N, face, roadW) {
   ag.add('w', new THREE.BoxGeometry(0.18, 0.34, 0.32), M(0, -0.02, -0.82));
   const lampsOnArm = [[La * 0.38, 'xA'], [La * 0.7, 'xB'], [La - 0.12, 'xT']];
   for (const [z, k] of lampsOnArm) { ag.add('black', new THREE.CylinderGeometry(0.07, 0.07, 0.11, 10), M(0, 0.12, z, 0, 0, Math.PI / 2)); ag.add(k, new THREE.CircleGeometry(0.055, 12), M(0.056, 0.12, z, 0, Math.PI / 2, 0)); }
-  const grp = ag.build({ m: SMAT.alu, arm: SMAT.gateArm, w: SMAT.black, black: SMAT.black, xA: SMAT['xA' + id], xB: SMAT['xB' + id], xT: SMAT['xT' + id] }, { cast: false });
+  const grp = ag.build({ m: SMAT.alu, arm: SMAT.gateArm, w: SMAT.black, black: SMAT.black, xA: SMAT['xA' + id], xB: SMAT['xB' + id], xT: SMAT['xT' + id] });
   arm.add(grp); arm.rotation.x = -Math.PI / 2 * 0.96;
   mast.arm = arm; mast.armLamps = lampsOnArm.map(([z, k]) => ({ at: new THREE.Vector3(0.1, 0.12, z), ab: k === 'xA' ? 0 : 1, tip: k === 'xT' }));
   return mast;
@@ -941,7 +941,7 @@ function buildPoleLine(scene) {
     const sph = new THREE.Sphere(); const pts = group.map(g => g.p);
     sph.setFromPoints(pts); sph.radius += 12;
     group.forEach((g, i) => im.setMatrixAt(i, new THREE.Matrix4().makeRotationY(g.yaw).setPosition(g.p)));
-    im.geometry.boundingSphere = sph; im.castShadow = false; im.name = 'pole line'; scene.add(im);
+    im.geometry.boundingSphere = sph; im.castShadow = true; im.receiveShadow = true; im.name = 'pole line'; scene.add(im);
     im.userData = { c: sph.center.clone(), r: sph.radius };
     const grpM = [im];
     if (groupWires.length) { const lg = new THREE.BufferGeometry(); lg.setAttribute('position', new THREE.Float32BufferAttribute(groupWires, 3)); lg.computeBoundingSphere(); const ls = new THREE.LineSegments(lg, wireMat); ls.userData = im.userData; scene.add(ls); grpM.push(ls); }
@@ -1276,8 +1276,8 @@ function finalizeScenery(scene) {
   const mats = { ...SMAT, steel: SMAT.steel, redPaint: MAT.redPaint, tie: MAT.tie };
   WORLD.binGroups = [];
   for (const [, gb] of SCN.bins) {
-    const grp = gb.build(mats, { cast: false });
-    grp.children.forEach(m => { m.castShadow = false; m.receiveShadow = true; });
+    const grp = gb.build(mats);   // houses, barns, stations, posts, signs, platforms...: all cast and receive
+    grp.children.forEach(m => { m.receiveShadow = true; });
     const sp = new THREE.Sphere(); let first = true;
     grp.children.forEach(m => { const b = m.geometry.boundingSphere; if (first) { sp.copy(b); first = false; } else sp.union(b); });
     grp.userData = { c: sp.center.clone(), r: sp.radius };

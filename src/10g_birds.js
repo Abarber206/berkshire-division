@@ -47,7 +47,7 @@ function birdGeo() {
 
 function buildBirds(scene) {
   const lite = typeof GFX !== 'undefined' && GFX.lite;
-  const nFlock = lite ? 20 : 40, nPool = lite ? 40 : 80, n = nFlock + nPool;
+  const nFlock = lite ? 36 : 96, nPool = lite ? 40 : 80, n = nFlock + nPool;
   const g = birdGeo();
   const wing = new THREE.InstancedBufferAttribute(new Float32Array(n * 2), 2); wing.setUsage(THREE.DynamicDrawUsage);
   g.setAttribute('aWing', wing);
@@ -65,7 +65,7 @@ function buildBirds(scene) {
   };
   const mesh = new THREE.InstancedMesh(g, mat, n);
   mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-  mesh.frustumCulled = false; mesh.castShadow = false; mesh.receiveShadow = false; mesh.name = 'birds';
+  mesh.frustumCulled = false; mesh.castShadow = true; mesh.receiveShadow = false; mesh.name = 'birds';   // little shadows on the ground
   const r = rng(4417), c = new THREE.Color(), zero = new THREE.Matrix4().makeScale(0, 0, 0);
   for (let i = 0; i < n; i++) {
     c.setHex(BIRD_COL[Math.floor(r() * BIRD_COL.length)]); mesh.setColorAt(i, c); mesh.setMatrixAt(i, zero);
@@ -76,8 +76,8 @@ function buildBirds(scene) {
   mesh.instanceColor.setUsage(THREE.StaticDrawUsage);
   scene.add(mesh);
   BIRDS.mesh = mesh; BIRDS.wing = wing; BIRDS.nFlock = nFlock; BIRDS.pool = nPool; BIRDS.built = true;
-  // three flocks of a dozen or so (fewer on a phone); each bird holds its own place in the loose cloud
-  const nf = lite ? 2 : 3;
+  // six flocks of sixteen (three of twelve on a phone); each bird holds its own place in the loose cloud
+  const nf = lite ? 3 : 6;
   for (let f = 0; f < nf; f++) BIRDS.flocks.push({ c: new THREE.Vector3(), v: new THREE.Vector3(), goal: new THREE.Vector3(), next: 0, live: false, members: [] });
   for (let i = 0; i < nFlock; i++) {
     const b = BIRDS.list[i], F = BIRDS.flocks[i % nf]; F.members.push(b);
