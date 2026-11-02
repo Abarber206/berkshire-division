@@ -379,6 +379,70 @@
   "lp": 4000
  },
  {
+  "name": "wh_nkp6",
+  "kind": "loop",
+  "pingpong": true,
+  "src": "steam-exhaust/gcry-centennial-steam-departing.flac",
+  "start": 3.45,
+  "end": 4.75,
+  "len": 1.0,
+  "db": -14,
+  "hp": 200,
+  "lp": 4000,
+  "notch": [
+   540,
+   817,
+   1075,
+   1770
+  ],
+  "pad": 0.1,
+  "flat": 0.3
+ },
+ {
+  "name": "wh_nkp6_on",
+  "kind": "shot",
+  "src": "steam-exhaust/gcry-centennial-steam-departing.flac",
+  "start": 3.17,
+  "end": 4.4,
+  "db": -14,
+  "hp": 200,
+  "lp": 4000,
+  "notch": [
+   540,
+   817,
+   1075,
+   1770
+  ],
+  "ref": [
+   3.55,
+   4.55
+  ]
+ },
+ {
+  "name": "wh_nkp6_off",
+  "kind": "shot",
+  "src": "steam-exhaust/gcry-centennial-steam-departing.flac",
+  "start": 4.5,
+  "end": 4.85,
+  "ref": [
+   3.55,
+   4.55
+  ],
+  "fade": [
+   0.004,
+   0.12
+  ],
+  "db": -14,
+  "hp": 200,
+  "lp": 4000,
+  "notch": [
+   540,
+   817,
+   1075,
+   1770
+  ]
+ },
+ {
   "name": "wh_k5",
   "kind": "loop",
   "src": "horn/commons-airchime-k5la.ogg",

@@ -16,7 +16,7 @@ Each recipe entry names a source file and what to make of it:
          since MP3 encoder padding would break the loop
 A shot can set its fades (`fade`: [in, out] s) and be levelled by another stretch of its source
 (`ref`: [start, end] s), so a whistle's closing take starts as loud as its sustain loop.
-Any entry can be denoised (`denoise`: [[start, end], ...] s of background alone), a spectral gate for
+Any entry can drop narrow tones (`notch`: [Hz, ...]), such as a music bed under a whistle, and can be denoised (`denoise`: [[start, end], ...] s of background alone), a spectral gate for
 a take recorded over loud machinery. A bed or shot can also be flattened (`flat`: seconds), which evens out a slow swell in level,
 such as a locomotive drawing closer, so that random slices of it all sit at one level.
 Everything is made mono, filtered as asked, and levelled to a common loudness so the
@@ -29,8 +29,8 @@ SR = 44100
 OUT = os.path.join(os.path.dirname(__file__), '..')
 
 
-def load(path, start=0, end=None, hp=None, lp=None):
-    af = []
+def load(path, start=0, end=None, hp=None, lp=None, notch=None):
+    af = [f'bandreject=f={f}:width_type=h:w=14' for f in (notch or [])]
     if hp: af.append(f'highpass=f={hp}')
     if lp: af.append(f'lowpass=f={lp}')
     cmd = ['ffmpeg', '-loglevel', 'error', '-ss', str(start)] + (['-to', str(end)] if end else []) + ['-i', path, '-ac', '1', '-ar', str(SR)]
@@ -86,6 +86,27 @@ def denoise(x, spans, over=1.6, floor=0.1):
     out = np.zeros(len(pad)); norm = np.zeros(len(pad))
     for j, i in enumerate(range(0, len(pad) - n, hop)): out[i:i + n] += Y[j]; norm[i:i + n] += win ** 2
     return (out / np.maximum(norm, 1e-6))[n:n + len(x)].astype(np.float32)
+
+
+def pingpong(x, s, n, k=0.02, w=0.015):
+    """a loop twice as long as the steady stretch x[s:s+n]: forward, then back. Where it turns, the run on
+    (forward past the end, or back past the start) is crossfaded over k s into the turned audio at the point,
+    within w s of the end, whose waveform best continues it, so neither turn clicks. x needs k + w s spare
+    either side of the stretch."""
+    k, w = int(k * SR), int(w * SR)
+    cor = lambda a, b: np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b) + 1e-9)
+    # turn at the end: forward runs on as x[s+n:], the reverse starts at m-1 and runs down
+    c = x[s + n:s + n + k]
+    m = max(range(s + n - w, s + n + 1), key=lambda m: cor(c, x[m - k:m][::-1]))
+    # turn at the start: the reverse runs on below s0 as x[s0-1], x[s0-2]... and the forward restarts at s
+    f = x[s:s + k]
+    s0 = max(range(s, s + w + 1), key=lambda s0: cor(f, x[s0 - k:s0][::-1]))
+    up, down = np.sin(np.linspace(0, np.pi / 2, k)), np.cos(np.linspace(0, np.pi / 2, k))
+    fwd = x[s:s + n].copy()
+    rev = x[s0:m][::-1].copy()
+    rev[:k] = rev[:k] * up + c * down
+    fwd[:k] = fwd[:k] * up + x[s0 - k:s0][::-1] * down
+    return np.concatenate([fwd, rev])
 
 
 def fade(x, a=0.004, b=0.02):
@@ -145,7 +166,7 @@ def main(src_dir, recipe, only=None):
     files = {}
     for e in json.load(open(recipe)):
         if only and e['name'] not in only: continue
-        x = load(os.path.join(src_dir, e['src']), e.get('start', 0), e.get('end'), e.get('hp'), e.get('lp'))
+        x = load(os.path.join(src_dir, e['src']), e.get('start', 0), e.get('end'), e.get('hp'), e.get('lp'), e.get('notch'))
         name, kind, db = e['name'], e['kind'], e.get('db', -18)
         if e.get('flat'): x = flatten(x, e['flat'])
         if e.get('denoise'): x = denoise(x, e['denoise'])
@@ -170,12 +191,17 @@ def main(src_dir, recipe, only=None):
                 r = [10 * np.log10(np.mean(x[j:j + w] ** 2) + 1e-12) for j in range(o, end - w, w)]
                 if len(r) < 4 or np.argmax(r) > 2 or max(r[:3]) - np.median(r[len(r) // 2:]) < e.get('decay', 8): continue
                 lst.append(save(fade(level(x[o:end], db), 0.002, min(0.08, (end - o) / SR / 3)), f'{name}_{len(lst)}'))
+        elif kind == 'loop' and e.get('pingpong'):
+            # too short a steady stretch for a long loop: play it forward then back. The turns meet themselves
+            # sample for sample, so there is no seam to match, and the loop is twice as long before it repeats.
+            pad = int(e.get('pad', 0.1) * SR)
+            lst.append(save(level(pingpong(x, pad, int(e.get('len', 1.0) * SR)), db), f'{name}_{len(lst)}', wav=True))
         elif kind == 'loop':
             lst.append(save(level(best_loop(x, e.get('len', 1.5)), db), f'{name}_{len(lst)}', wav=True))
         else:
             fa, fb = e.get('fade', [0.004, 0.03] if kind == 'shot' else [0.05, 0.05])
             if e.get('ref'):   # levelled as that stretch of the source is, so the take meets it at the same loudness
-                r = load(os.path.join(src_dir, e['src']), e['ref'][0], e['ref'][1], e.get('hp'), e.get('lp'))
+                r = load(os.path.join(src_dir, e['src']), e['ref'][0], e['ref'][1], e.get('hp'), e.get('lp'), e.get('notch'))
                 y = x * (np.max(np.abs(level(r, db))) / max(np.max(np.abs(r)), 1e-9))
             else:
                 y = level(x, db)

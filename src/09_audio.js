@@ -73,8 +73,8 @@ function audioInit() {
    keeps every one of them audible on a phone speaker. */
 const WHISTLES = {
   deep6: { kind: 'steam', notes: [164.8, 196.0, 220.0, 246.9, 293.7, 329.6], harm: [1, 0.56, 0.36, 0.24, 0.15, 0.09, 0.05], breath: 0.13, breathF: 1400, vib: [4.8, 0.0025], quill: 0.06, attack: 0.06, beat: 1.0018, pres: 2200 },
-  // the 765: no recording of its own exists, so it blows the Big Boy's take a little lower (see WHISTLE_REC.nkp6)
-  nkp6: { kind: 'steam', notes: [153.3, 182.3, 204.6, 229.6, 273.1, 306.5], harm: [1, 0.56, 0.36, 0.24, 0.15, 0.09, 0.05], breath: 0.13, breathF: 1400, vib: [4.8, 0.0025], quill: 0.06, attack: 0.06, beat: 1.0018, pres: 2200 },
+  // the 765: its recording's chord (see WHISTLE_REC.nkp6), as it is played
+  nkp6: { kind: 'steam', notes: [249.4, 289.8, 329.4, 362.9, 424.0, 514.3], harm: [1, 0.56, 0.36, 0.24, 0.15, 0.09, 0.05], breath: 0.13, breathF: 1400, vib: [4.8, 0.0025], quill: 0.06, attack: 0.06, beat: 1.0018, pres: 2200 },
   chime6: { kind: 'steam', notes: [335.0, 375.4, 444.6, 505.4, 632.3, 825.8], harm: [1, 0.62, 0.38, 0.26, 0.16, 0.1, 0.06], breath: 0.14, breathF: 2200, vib: [5.4, 0.003], quill: 0.05, attack: 0.05, beat: 1.0025, pres: 2600 },
   /* Shinkansen air horn: a bright two-tone (A5 over F#5) with few upper partials */
   shin: { kind: 'horn', notes: [740.0, 880.0], harm: [1, 0.75, 0.5, 0.34, 0.22, 0.14, 0.08], breath: 0.025, breathF: 2400, vib: [0, 0], quill: 0, attack: 0.012, beat: 1.003, pres: 2400 },

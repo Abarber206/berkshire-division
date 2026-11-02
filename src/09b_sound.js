@@ -178,14 +178,18 @@ class Emitter {
   kill() { try { this.g.disconnect(); this.send.disconnect(); if (this.pan) this.pan.disconnect(); } catch (e) {} }
 }
 
-/* A whistle heard across open country comes back off hillsides and tree lines: a few
-   distinct, duller repeats from either side, then the wash of the reverb. Each tap is one
-   reflection (delay s, level, pan); the sound loses its top and bottom on the way.
-   The nearest hill is 150 m off or more (0.9 s there and back): a closer, louder repeat lands
-   right on the tail of a short toot and sounds like a second honk rather than an echo
-   (tests/mix.test.js holds that line). */
+/* A whistle heard across open country comes back off hillsides and tree lines. Distinct repeats sound like the
+   whistle being blown again (a second honk, a stutter after every toot), so the land answers with a wash instead:
+   many faint reflections, closer together than the ear can pick apart, fading as they come from further off and
+   duller for the distance. Each tap is one reflection (delay s, level, pan). The wash starts no sooner than
+   ECHO_MIN, past the tail of a short toot (tests/mix.test.js holds both lines). */
 const ECHO_MIN = 0.85;
-const ECHO = { send: 0.45, taps: [[0.95, 0.2, -0.55], [1.45, 0.13, 0.6], [2.1, 0.08, -0.3], [2.9, 0.05, 0.35]] };
+const ECHO = { send: 0.45, taps: (() => {
+  const taps = []; let t = 0.9, seed = 7;
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  for (let i = 0; i < 22; i++) { taps.push([+t.toFixed(3), +(0.034 * Math.exp(-(t - 0.9) / 1.1)).toFixed(4), +((i % 2 ? 1 : -1) * (0.25 + 0.5 * rnd())).toFixed(2)]); t += 0.07 + 0.06 * rnd(); }
+  return taps;
+})() };
 function makeEcho() {
   const ctx = AU.ctx, inp = ctx.createGain(); inp.gain.value = 0;
   const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 260; hp.Q.value = 0.5;
@@ -442,13 +446,22 @@ function whistleValve(o, pull, now) {
 const whTake = key => 'wh_' + ((WHISTLE_REC[key] && WHISTLE_REC[key].take) || key);
 function whistleOnset(o, k, R, pull, dest, now, lv = 1) {
   const was = o.whPull || 0, rr = R.rate || 1;
-  if (pull > 0.05 && was <= 0.05) { whistleCut(o, now, 0.01); o.whShut = false; o.whOn = SND.shot(k + '_on', dest, { gain: (SND_GAIN[k] || 1) * Math.pow(pull, 0.6), vary: 0.01, dur: R.on / rr, rate: rr }); }
+  if (pull > 0.05 && was <= 0.05) { whistleCut(o, now, 0.01); o.whShut = false; o.whOn = SND.shot(k + '_on', dest, { gain: (SND_GAIN[k] || 1) * Math.pow(pull, 0.6), vary: 0.01, dur: R.on / rr, rate: rr }); o.whOnAt = now; o.whOnD = R.on / rr; }
   else if (pull <= 0.05 && was > 0.05) {
     const off = R.xf && SND.has(k + '_off') ? SND.shot(k + '_off', dest, { gain: (SND_GAIN[k] || 1) * Math.pow(was, 0.8) * lv, rate: rr * (1 - R.quill * (1 - was)), vary: 0 }) : null;
     o.whShut = !!off; whistleCut(o, now, off ? R.xf : R.release);
   }
 }
 /* how fast the sustain loop follows the valve */
+/* While the opening take sounds, the sustain loop waits under it and takes over as the take fades out (its last
+   38%, see SND.shot's dur), so the chord is never blown twice at once: no swell for the first second and no dip
+   or second attack when the take ends. Without an opening take the loop carries the whistle from the pull. */
+const WH_LEAD = 0.15;   // the loop's level follows its target with a lag (Loop.set's tc), so it is asked for this early
+function whistleBlend(o, now) {
+  if (!o.whOn) return 1;
+  const D = o.whOnD || 1, k = clamp((now + WH_LEAD - o.whOnAt - 0.62 * D) / (0.38 * D), 0, 1);
+  return Math.sqrt(1 - (1 - k) * (1 - k));   // the take falls linearly: the two together hold the power steady
+}
 function whistleTc(o, R, opening) { return opening ? R.attack : o.whShut ? R.xf : R.release; }
 function whistleCut(o, now, tc) {
   const sh = o.whOn; o.whOn = null; if (!sh) return;
@@ -467,7 +480,7 @@ function whistleMix(T, tv, inCab) {
     pull = whistleValve(SND, pull, now);
     const opening = pull > SND.whPull + 0.002;
     whistleOnset(SND, k, R, pull, SND.whBus, now, lv);
-    SND.whistle.set((SND_GAIN[k] || 1) * Math.pow(pull, DSL ? 0.5 : 0.8) * lv, (R.rate || 1) * (1 - R.quill * (1 - pull)), whistleTc(SND, R, opening));
+    SND.whistle.set((SND_GAIN[k] || 1) * Math.pow(pull, DSL ? 0.5 : 0.8) * lv * whistleBlend(SND, now), (R.rate || 1) * (1 - R.quill * (1 - pull)), whistleTc(SND, R, opening));
     SND.whPull = pull;
     // the echo comes back off the hills, so it fades less with distance than the whistle itself
     const d = inCab ? 3 : camera.position.distanceTo(T.worldOf(DSL ? T.loco.hornPos : T.loco.whistlePos));
@@ -644,7 +657,7 @@ function remoteSound(R, dt, st, d, cam) {
     if (B.whistle) {
       const Rw = WHISTLE_REC[key], now = AU.ctx.currentTime, wh = whistleValve(B, st.wh, now);
       whistleOnset(B, k, Rw, wh, B.wg, now);
-      B.whistle.set((SND_GAIN[k] || 1) * Math.pow(wh, T.diesel ? 0.5 : 0.8), (Rw.rate || 1) * (1 - Rw.quill * (1 - wh)), whistleTc(B, Rw, wh > (B.whPull || 0)));
+      B.whistle.set((SND_GAIN[k] || 1) * Math.pow(wh, T.diesel ? 0.5 : 0.8) * whistleBlend(B, now), (Rw.rate || 1) * (1 - Rw.quill * (1 - wh)), whistleTc(B, Rw, wh > (B.whPull || 0)));
       B.whistle.tick(); B.whPull = wh;
     }
     return;
