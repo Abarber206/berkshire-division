@@ -171,7 +171,7 @@ function buildWire(scene) {
   }
   for (const [, bn] of bins) {
     const grp = bn.gb.build(mat, { cast: true });
-    if (bn.lines.length) { const lg = new THREE.BufferGeometry(); lg.setAttribute('position', new THREE.Float32BufferAttribute(bn.lines, 3)); grp.add(new THREE.LineSegments(lg, mat.line)); }
+    if (bn.lines.length) { const lg = new THREE.BufferGeometry(); lg.setAttribute('position', new THREE.Float32BufferAttribute(bn.lines, 3)); const cl = new THREE.LineSegments(lg, mat.line); cl.castShadow = true; grp.add(cl); }
     const sph = new THREE.Box3().setFromObject(grp).getBoundingSphere(new THREE.Sphere());
     grp.userData = { c: sph.center, r: sph.radius }; grp.visible = false;
     scene.add(grp); WIRE.groups.push(grp);
