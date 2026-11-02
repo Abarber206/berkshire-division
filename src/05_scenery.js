@@ -944,7 +944,7 @@ function buildPoleLine(scene) {
     im.geometry.boundingSphere = sph; im.castShadow = true; im.receiveShadow = true; im.name = 'pole line'; scene.add(im);
     im.userData = { c: sph.center.clone(), r: sph.radius };
     const grpM = [im];
-    if (groupWires.length) { const lg = new THREE.BufferGeometry(); lg.setAttribute('position', new THREE.Float32BufferAttribute(groupWires, 3)); lg.computeBoundingSphere(); const ls = new THREE.LineSegments(lg, wireMat); ls.userData = im.userData; scene.add(ls); grpM.push(ls); }
+    if (groupWires.length) { const lg = new THREE.BufferGeometry(); lg.setAttribute('position', new THREE.Float32BufferAttribute(groupWires, 3)); lg.computeBoundingSphere(); const ls = new THREE.LineSegments(lg, wireMat); ls.castShadow = true; ls.userData = im.userData; scene.add(ls); grpM.push(ls); }
     (WORLD.poleGroups || (WORLD.poleGroups = [])).push(grpM);
     group = []; groupWires = [];
   };

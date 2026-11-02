@@ -4969,7 +4969,7 @@ function buildPoleLine(scene) {
     im.geometry.boundingSphere = sph; im.castShadow = true; im.receiveShadow = true; im.name = 'pole line'; scene.add(im);
     im.userData = { c: sph.center.clone(), r: sph.radius };
     const grpM = [im];
-    if (groupWires.length) { const lg = new THREE.BufferGeometry(); lg.setAttribute('position', new THREE.Float32BufferAttribute(groupWires, 3)); lg.computeBoundingSphere(); const ls = new THREE.LineSegments(lg, wireMat); ls.userData = im.userData; scene.add(ls); grpM.push(ls); }
+    if (groupWires.length) { const lg = new THREE.BufferGeometry(); lg.setAttribute('position', new THREE.Float32BufferAttribute(groupWires, 3)); lg.computeBoundingSphere(); const ls = new THREE.LineSegments(lg, wireMat); ls.castShadow = true; ls.userData = im.userData; scene.add(ls); grpM.push(ls); }
     (WORLD.poleGroups || (WORLD.poleGroups = [])).push(grpM);
     group = []; groupWires = [];
   };
@@ -5838,7 +5838,7 @@ function buildPastureLife(scene) {
     b.cows.forEach((list, k) => inst(cows[k], cowMat, list, (q, m) => { m.compose(_v1.set(q[0], q[1], -q[2]), _q.setFromEuler(_e.set(0, q[3], q[5])), _v2.setScalar(q[4])); }));
     inst(bale, SMAT.hay, b.bales, (q, m) => m.compose(_v1.set(q[0], q[1], -q[2]), _q.setFromEuler(_e.set(0, q[3], 0)), _v2.set(1, 1, 1)));
     const pim = inst(post, SMAT.post, b.posts, (q, m) => m.compose(_v1.set(q[0], q[1], -q[2]), _q.set(0, 0, 0, 1), _v2.set(1, 1, 1)));
-    if (b.wires.length) { const lg = new THREE.BufferGeometry(); lg.setAttribute('position', new THREE.Float32BufferAttribute(b.wires, 3)); grp.add(new THREE.LineSegments(lg, wireMat)); }
+    if (b.wires.length) { const lg = new THREE.BufferGeometry(); lg.setAttribute('position', new THREE.Float32BufferAttribute(b.wires, 3)); const fw = new THREE.LineSegments(lg, wireMat); fw.castShadow = true; grp.add(fw); }
     if (!pts.length) continue;
     const sp = new THREE.Sphere().setFromPoints(pts); sp.radius += 6;
     grp.children.forEach(m => { if (m.geometry) m.geometry.boundingSphere = sp.clone(); });
@@ -6155,7 +6155,7 @@ function buildWire(scene) {
   }
   for (const [, bn] of bins) {
     const grp = bn.gb.build(mat, { cast: true });
-    if (bn.lines.length) { const lg = new THREE.BufferGeometry(); lg.setAttribute('position', new THREE.Float32BufferAttribute(bn.lines, 3)); grp.add(new THREE.LineSegments(lg, mat.line)); }
+    if (bn.lines.length) { const lg = new THREE.BufferGeometry(); lg.setAttribute('position', new THREE.Float32BufferAttribute(bn.lines, 3)); const cl = new THREE.LineSegments(lg, mat.line); cl.castShadow = true; grp.add(cl); }
     const sph = new THREE.Box3().setFromObject(grp).getBoundingSphere(new THREE.Sphere());
     grp.userData = { c: sph.center, r: sph.radius }; grp.visible = false;
     scene.add(grp); WIRE.groups.push(grp);
