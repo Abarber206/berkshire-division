@@ -401,6 +401,7 @@ function buildBigBoy(key, trim = '') {
   gb.box('dark', 0.6, 0.3, 1.2, ax(BB.len - 0.2), 1.0, 0);                          // drawbar pocket
   gb.box('dark', 0.2, 0.9, 2.0, ax(BB.len - 0.1), 1.6, 0);                          // rear buffer beam under the deck
 
+  bbDetail(gb, gf, pil);   // rivets, staybolt caps, cylinder studs, pilot fittings (end of 06_models.js)
   body.add(gb.build({ ...RMAT, jacket: RMAT.black, jacketBand: RMAT.dark }));   // the warm boiler sheds snow (10i_snow.js)
   front.add(gf.build({ ...RMAT }));
 

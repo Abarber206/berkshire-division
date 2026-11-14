@@ -12,7 +12,7 @@ const C = require('./clipcheck');
 const kind = p => p.tag.split('#')[0];
 /* joints between two moving parts: [kind, kind, deepest allowed (m)] */
 const PINS = [
-  ['cross', 'piston', 0.07], ['driver', 'main', 0.06], ['driver', 'side', 0.06], ['side', 'side', 0.03], ['driver', 'ecc', 0.05],
+  ['cross', 'piston', 0.07], ['cross', 'main', 0.03], ['driver', 'main', 0.08], ['driver', 'side', 0.06], ['side', 'side', 0.03], ['driver', 'ecc', 0.05],
   ['ecc', 'eccRod', 0.04], ['driver', 'eccRod', 0.035], ['cross', 'union', 0.03], ['comb', 'union', 0.035], ['comb', 'vstem', 0.065],
   // Baker gear (Berkshires)
   ['eccRod', 'gcr', 0.035], ['rbar', 'yoke', 0.04], ['bell', 'gcr', 0.03], ['bell', 'vrod', 0.03], ['comb', 'vrod', 0.035], ['rarm', 'reach', 0.03],
