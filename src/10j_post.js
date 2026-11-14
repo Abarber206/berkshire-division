@@ -230,7 +230,9 @@ function postRender(renderer, scene, camera) {
     _ppV.copy(camera.position).addScaledVector(SKY.keyDir, 1000).project(camera);
     const ahead = _ppV.z < 1 && _ppV.z > -1, sx = _ppV.x * 0.5 + 0.5, sy = _ppV.y * 0.5 + 0.5;
     const edge = Math.max(Math.abs(sx - 0.5), Math.abs(sy - 0.5));
-    shaftK = ahead ? POST.shaftK * (1 - smooth(0.55, 1.1, edge)) : 0;
+    // not from inside a cab: the march can't tell a shiny boiler jacket from the sky behind it
+    const inside = typeof CAM !== 'undefined' && CAM.mode === 'cab';
+    shaftK = ahead && !inside ? POST.shaftK * (1 - smooth(0.55, 1.1, edge)) : 0;
     if (shaftK > 0.01) { const s = POST.mShaft.uniforms; s.tSrc.value = src; s.uSun.value.set(sx, sy); s.uAsp.value = POST.w / POST.h; pass(POST.mShaft, POST.shaft); }
   }
   F.tScene.value = src; F.tBloom.value = bloom || (mips[0] && mips[0].a.texture); F.tShaft.value = POST.shaft.texture;
