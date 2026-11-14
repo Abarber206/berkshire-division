@@ -3195,7 +3195,7 @@ function buildTrack(scene) {
         e.pose(s, FR);
         for (const side of [-1, 1]) { const m = frameMatrix(FR, _tm.clone()).multiply(_m4.makeTranslation(0, -0.085, side * (RAIL_OFF + 0.024))); if (side < 0) m.multiply(_m4.makeRotationY(Math.PI)); accAddGeo(acc, jointGeo, m, [0.24, 0.21, 0.19]); }
       }
-      const rails = new THREE.Mesh(accGeo(acc), MAT.rail); rails.castShadow = false; rails.receiveShadow = true; grp.add(rails);
+      const rails = new THREE.Mesh(accGeo(acc), MAT.rail); rails.castShadow = !GFX.lite; rails.receiveShadow = true; grp.add(rails);
       // ---- ballast
       const bal = newAcc();
       const PU = [-7.6, -3.15, -1.9, -1.25, 1.25, 1.9, 3.15, 7.6], PV = [-3.4, -0.95, -0.205, -0.2, -0.2, -0.205, -0.95, -3.4];
@@ -3325,7 +3325,7 @@ function buildSwitches(scene) {
     gb.add('steel', new THREE.BoxGeometry(0.06, 0.06, 3.3).translate(0, -0.2, -standSide * 1.675), sm);
     gb.add('steel', new THREE.BoxGeometry(0.5, 0.05, 0.06).translate(0.25, 0.25, 0).applyMatrix4(new THREE.Matrix4().makeRotationZ(0.5)), sm);
     const vis = gb.build({ tie: MAT.tie, steel: MAT.steelDark, rail: MAT.rail, ballast: MAT.ballast });
-    if (acc.idx.length) { const m = new THREE.Mesh(accGeo(acc), MAT.rail); m.receiveShadow = true; vis.add(m); }
+    if (acc.idx.length) { const m = new THREE.Mesh(accGeo(acc), MAT.rail); m.castShadow = !GFX.lite; m.receiveShadow = true; vis.add(m); }
     scene.add(vis);
     // rotating target with lamp
     const tgt = new THREE.Group(); tgt.position.copy(sp).add(new THREE.Vector3(0, 1.32, 0)); tgt.rotation.y = yaw; tgt.userData.yaw0 = yaw;
@@ -3346,7 +3346,7 @@ function buildSwitches(scene) {
       extrudeRail(a2, ss, (u, F) => G.away(att, u, F), side * RAIL_OFF, u => 0.25 + 0.75 * smooth(0, G.P * 0.7, u), 0.002);
       G.away(att, G.P, FR); const heel = FR.p.clone();
       const geo = accGeo(a2); geo.translate(-heel.x, -heel.y, -heel.z); geo.computeBoundingSphere();
-      const m = new THREE.Mesh(geo, MAT.rail); m.position.copy(heel); m.receiveShadow = true; scene.add(m);
+      const m = new THREE.Mesh(geo, MAT.rail); m.position.copy(heel); m.castShadow = !GFX.lite; m.receiveShadow = true; scene.add(m);
       pts.push(m);
     }
     sw.vis = { tgt, points: pts, hit, standPos: sp, stat: vis };
