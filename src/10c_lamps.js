@@ -226,9 +226,9 @@ function lampsPick(cam) {
 }
 
 function lampsFrame(cam, dt = 0) {
-  const sc = innerHeight * Math.min(devicePixelRatio, 2) * 0.5 / Math.tan(cam.fov * Math.PI / 360);
+  const sc = innerHeight * ppPx() * 0.5 / Math.tan(cam.fov * Math.PI / 360);
   const pts = [LAMPS.sigPts, LAMPS.xPts, ...(LAMPS.glows || []).map(g => g.pts)];
-  for (const p of pts) if (p) { const u = p.material.uniforms; u.uScale.value = sc; u.uFogD.value = scene.fog.density; u.uMin.value = Math.min(devicePixelRatio, 2) * 2; }
+  for (const p of pts) if (p) { const u = p.material.uniforms; u.uScale.value = sc; u.uFogD.value = scene.fog.density; u.uMin.value = ppPx() * 2; }
   xingTick(dt);
   ditchLamps();
   railLamps();

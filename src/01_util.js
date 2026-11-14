@@ -7,6 +7,8 @@
 const TAU = Math.PI * 2;
 const clamp = (v, a, b) => v < a ? a : (v > b ? b : v);
 const lerp = (a, b, t) => a + (b - a) * t;
+/* render pixels per CSS pixel: the renderer's pixel ratio times the dynamic-resolution scale (for point sizes) */
+function ppPx() { return (typeof renderer !== 'undefined' && renderer && renderer.getPixelRatio ? renderer.getPixelRatio() : Math.min(typeof devicePixelRatio !== 'undefined' ? devicePixelRatio : 1, 2)) * (typeof POST !== 'undefined' && POST.on ? POST.scale : 1); }
 const smooth = (e0, e1, x) => { const t = clamp((x - e0) / (e1 - e0), 0, 1); return t * t * (3 - 2 * t); };
 const MPH = 0.44704, PSI = 6894.76, LBF = 4.44822, STON = 907.185, IN = 0.0254, FT = 0.3048, MILE = 1609.344;
 const GAUGE = 1.435, RAIL_OFF = 0.7535;
