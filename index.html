@@ -6877,7 +6877,7 @@ const LOCO_SPEC = {   // front: 'nkp' headlight on top with number-board wings, 
 const LG = {
   ref: 7.615, rD: 0.8763, rL: 0.457, rT1: 0.457, rT2: 0.546, cr: 0.432,
   aD: [4.834, 6.688, 8.542, 10.396], aL: 1.864, aT: [12.682, 14.663], len: 16.987,
-  yC: 0.94, zC: 1.25, Lm: 3.55, yV: 1.55, yR: 1.41, a: 0.14, b: 0.79, Lu: 0.75,
+  yC: 0.94, zC: 1.25, Lm: 3.55, yV: 1.55, yR: 1.66, a: 0.11, b: 0.93, Lu: 0.75,   // yR: the valve rod meets the combination lever ABOVE the valve stem (inside admission)
   yB: 3.16,
 };
 const ax = a => LG.ref - a;
@@ -6900,7 +6900,7 @@ let ROAD_SHORT = 'NKP';
    works a bell crank in the gear frame; the bell crank's vertical arm drives the valve rod forward to the
    combination lever. With the yoke upright (mid gear) the eccentric's motion never reaches the bell crank;
    tipping the yoke one way or the other sets forward or back motion and the cutoff. */
-const BK = { e: 0.30, Pb: [ax(6.30), 1.92], hb: 0.30, vb: 0.36, E0: [ax(6.62), 0.98], d2: 0.94, k: 0.45, Lrb: 0.40, Lvr: 1.985, gMax: 0.45, z: 1.30, zo: 1.50, aYoke: 5.95, aShaft: 6.95, aPR: 11.0, rArm: 0.32 };
+const BK = { e: 0.30, Pb: [ax(6.30), 1.92], hb: 0.30, vb: 0.36, E0: [ax(6.62), 0.98], d2: 0.94, k: 0.45, Lrb: 0.40, Lvr: 1.985, gMax: 0.45, z: 1.30, zo: 1.50, aYoke: 5.95, aShaft: 6.95, aPR: 11.0, rArm: 0.32, eccLag: Math.PI / 2, g0: 0.07 };
 BK.Rmid = [BK.E0[0], BK.E0[1] + BK.k * BK.d2];
 BK.Lecc = Math.hypot(BK.E0[0] - ax(LG.aD[2]), BK.E0[1] - LG.rD);
 function circLow(x1, y1, r1, x2, y2, r2) {   // lower intersection of two circles
@@ -7446,7 +7446,7 @@ function buildBerkshire(key, trim = '') {
       vrod: (() => { const m = new THREE.Mesh(rodGeo(BK.Lvr, 0.075, 0.07, 0.045, 0.05, 0.05), R); m.castShadow = true; body.add(m); return m; })(),
       comb: (() => { const g = new THREE.BoxGeometry(0.08, LG.a + LG.b + 0.1, 0.05).translate(0, -(LG.a + LG.b) / 2, 0); const m = new THREE.Mesh(g, R); body.add(m); return m; })(),
       union: (() => { const m = new THREE.Mesh(rodGeo(LG.Lu, 0.07, 0.07, 0.04, 0.045, 0.045), R); body.add(m); return m; })(),
-      vstem: (() => { const g = new GeoBin(); g.add('rod', new THREE.CylinderGeometry(0.035, 0.035, 1.0, 8).rotateZ(Math.PI / 2).translate(0.5, 0, 0)); g.box('rod', 0.18, 0.14, 0.44, 0, 0, s * 0.17); const m = g.build(RMAT); body.add(m); return m; })(),
+      vstem: (() => { const g = new GeoBin(); g.add('rod', new THREE.CylinderGeometry(0.035, 0.035, 1.0, 8).rotateZ(Math.PI / 2).translate(0.5, 0, 0)); g.box('rod', 0.18, 0.1, 0.44, 0, 0, s * 0.17); const m = g.build(RMAT); body.add(m); return m; })(),
       reach: (() => { const L = BK.aPR - BK.aShaft; const m = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, L + 0.3, 6).rotateZ(Math.PI / 2).translate(L / 2 - 0.15, 0, 0), RMAT.black); m.visible = s > 0; body.add(m); return m; })(),
       // the arm standing on the reverse shaft that the reach rod pulls
       rarm: (() => { const g = new GeoBin(); g.box('black', 0.06, BK.rArm + 0.07, 0.04, 0, BK.rArm / 2, 0); g.cylZ('black', 0.045, 0.06, 10, 0, BK.rArm, 0); const m = g.build(RMAT); m.visible = s > 0; body.add(m); return m; })(),
@@ -7683,11 +7683,12 @@ function animateBerkshire(L, theta, rev) {
     P.main.position.set(pin[0], pin[1], zs * 1.1); P.main.rotation.z = Math.atan2(wy - pin[1], wx - pin[0]);
     P.cross.position.set(wx, wy, zs * LG.zC);
     P.piston.position.set(wx, wy, zs * LG.zC);
-    // Baker gear: eccentric crank, eccentric rod, gear connecting rod on the radius bars, bell crank, valve rod
-    const Rc = [A3x + BK.e * Math.cos(phi - Math.PI / 2), A3y + BK.e * Math.sin(phi - Math.PI / 2)];
+    // Baker gear: eccentric crank (a quarter turn behind the main pin, as on an inside-admission engine), eccentric
+    // rod, gear connecting rod on the radius bars, bell crank, valve rod
+    const Rc = [A3x + BK.e * Math.cos(phi + BK.eccLag), A3y + BK.e * Math.sin(phi + BK.eccLag)];
     P.ecc.position.set(pin[0], pin[1], zs * 1.21); P.ecc.rotation.z = Math.atan2(Rc[1] - pin[1], Rc[0] - pin[0]);
     P.ecc.scale.x = Math.hypot(Rc[0] - pin[0], Rc[1] - pin[1]) / 0.3;
-    const gam = -rev * BK.gMax, Ym = BK.Rmid;
+    const gam = BK.g0 + rev * BK.gMax, Ym = BK.Rmid;   // g0: where the yoke stands in mid gear
     const Y = [Ym[0] + BK.Lrb * Math.sin(gam), Ym[1] + BK.Lrb * Math.cos(gam)];
     const g = bakerSolve(Rc, Y, P.bk || (P.bk = { b: 0 }));
     const V = [BK.Pb[0] + BK.vb * Math.sin(g.b), BK.Pb[1] - BK.vb * Math.cos(g.b)];
@@ -7701,8 +7702,9 @@ function animateBerkshire(L, theta, rev) {
     // union link and combination lever
     const Ux = wx - 0.1, Uy = 0.6, Bx = Ux + LG.Lu, By = 0.62;
     P.union.position.set(Ux, Uy, zs * BK.zo); P.union.rotation.z = Math.atan2(By - Uy, Bx - Ux);
-    const Tvx = Cx + (Cx - Bx) * (LG.a / LG.b), Tvy = LG.yV;
-    P.comb.position.set(Tvx, Tvy, zs * BK.zo); P.comb.rotation.z = Math.atan2(Bx - Tvx, -(By - Tvy));
+    // the lever hangs from the valve rod; the valve stem takes its motion a little below, the crosshead swings its foot
+    const Tvx = Cx + (Bx - Cx) * LG.a / (LG.a + LG.b), Tvy = LG.yV;
+    P.comb.position.set(Cx, Cy, zs * BK.zo); P.comb.rotation.z = Math.atan2(Bx - Cx, -(By - Cy));
     P.vstem.position.set(Tvx, Tvy, zs * 1.14);
     // the power reverse pushes the reach rod, which swings the arm on the reverse shaft
     const ra = -rev * 0.25;
@@ -12099,8 +12101,8 @@ const bxR = a => BB.refR - a, bxF = a => BB.refF - a;
 const BBW = (() => {
   const mk = aD => {
     const aX = aD[2] - BB.Lm;                            // crosshead at mid stroke
-    return { aD, aX, cyl: [aX - 2.30, aX - 1.10], aLink: aX + 0.92, yLink: 1.78, rl: 0.42, dMax: 0.26, e: 0.21, Lrr: 1.50, yR: BB.yV - 0.14, a: 0.14, b: 0.80, Lu: 0.60,
-      aS: aX + 0.92 + 0.30, yS: 2.21, rS: 0.66, Ll: 0.46, qL: 0.30 }   // reverse shaft stub, its arm, the lifting link, where that takes the radius rod;
+    return { aD, aX, cyl: [aX - 2.30, aX - 1.10], aLink: aX + 0.92, yLink: 1.78, rl: 0.42, dMax: 0.26, e: 0.21, Lrr: 1.50, yR: BB.yV + 0.12, a: 0.12, b: 0.94, Lu: 0.60,   // the radius rod meets the combination lever above the valve stem (inside admission)
+      aS: aX + 0.92 + 0.30, yS: 2.21, rS: 0.66, Ll: 0.41, qL: 0.30 }   // reverse shaft stub, its arm, the lifting link, where that takes the radius rod;
   };
   return { f: mk(BB.aDf), r: mk(BB.aDr) };
 })();
@@ -12559,8 +12561,8 @@ function bbGear(E, P, phi, rev, s) {
   const pin = pins[2], wy = BB.yC, wx = pin[0] + Math.sqrt(BB.Lm * BB.Lm - (wy - pin[1]) ** 2);
   P.main.position.set(pin[0], pin[1], z * 1.1); P.main.rotation.z = Math.atan2(wy - pin[1], wx - pin[0]);
   P.cross.position.set(wx, wy, z * BB.zC); P.piston.position.set(wx, wy, z * BB.zC);
-  // return crank on the main pin, a quarter turn behind the crank
-  const C3 = [bx(W.aD[2]), rD], Ec = [C3[0] + W.e * Math.cos(phi - Math.PI / 2), C3[1] + W.e * Math.sin(phi - Math.PI / 2)];
+  // return crank on the main pin, its centre a quarter turn behind the crank in forward running (inside admission)
+  const C3 = [bx(W.aD[2]), rD], Ec = [C3[0] + W.e * Math.cos(phi + Math.PI / 2), C3[1] + W.e * Math.sin(phi + Math.PI / 2)];
   P.ecc.position.set(pin[0], pin[1], z * 1.22); P.ecc.rotation.z = Math.atan2(Ec[1] - pin[1], Ec[0] - pin[0]);
   P.ecc.scale.x = Math.hypot(Ec[0] - pin[0], Ec[1] - pin[1]) / W.e;
   // the link swings on its trunnion; its foot is where the eccentric rod reaches
@@ -12578,10 +12580,11 @@ function bbGear(E, P, phi, rev, s) {
     return [S[0] + (a * dx - h * dy) / d, S[1] + (a * dy + h * dx) / d]; })();   // where the arm's circle meets the link's, ahead and above
   P.lifter.position.set(Q[0], Q[1], z * 1.452); P.lifter.rotation.z = Math.atan2(T[1] - Q[1], T[0] - Q[0]);
   P.rarm.position.set(S[0], S[1], z * 1.452); P.rarm.rotation.z = Math.atan2(T[1] - S[1], T[0] - S[0]);
-  const By = BB.yV - W.a - W.b, Ux = wx - 0.02, Uy = By - 0.02, Bx = Ux + W.Lu;
+  const By = BB.yV - W.b, Ux = wx - 0.02, Uy = By - 0.02, Bx = Ux + W.Lu;
   P.union.position.set(Ux, Uy, z * 1.36); P.union.rotation.z = Math.atan2(By - Uy, Bx - Ux);
-  const Tvx = Cx + (Cx - Bx) * (W.a / W.b), Tvy = BB.yV;
-  P.comb.position.set(Tvx, Tvy, z * 1.36); P.comb.rotation.z = Math.atan2(Bx - Tvx, -(By - Tvy));
+  // the lever hangs from the radius rod; the valve stem takes its motion a little below, the crosshead swings its foot
+  const Tvx = Cx + (Bx - Cx) * W.a / (W.a + W.b), Tvy = BB.yV;
+  P.comb.position.set(Cx, Cy, z * 1.36); P.comb.rotation.z = Math.atan2(Bx - Cx, -(By - Cy));
   P.vstem.position.set(Tvx, Tvy, z * BB.zV);
 }
 /* wheels and gear for both engines. The front engine runs a little out of step with the rear (bbDrift). */

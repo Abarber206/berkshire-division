@@ -35,8 +35,8 @@ const bxR = a => BB.refR - a, bxF = a => BB.refF - a;
 const BBW = (() => {
   const mk = aD => {
     const aX = aD[2] - BB.Lm;                            // crosshead at mid stroke
-    return { aD, aX, cyl: [aX - 2.30, aX - 1.10], aLink: aX + 0.92, yLink: 1.78, rl: 0.42, dMax: 0.26, e: 0.21, Lrr: 1.50, yR: BB.yV - 0.14, a: 0.14, b: 0.80, Lu: 0.60,
-      aS: aX + 0.92 + 0.30, yS: 2.21, rS: 0.66, Ll: 0.46, qL: 0.30 }   // reverse shaft stub, its arm, the lifting link, where that takes the radius rod;
+    return { aD, aX, cyl: [aX - 2.30, aX - 1.10], aLink: aX + 0.92, yLink: 1.78, rl: 0.42, dMax: 0.26, e: 0.21, Lrr: 1.50, yR: BB.yV + 0.12, a: 0.12, b: 0.94, Lu: 0.60,   // the radius rod meets the combination lever above the valve stem (inside admission)
+      aS: aX + 0.92 + 0.30, yS: 2.21, rS: 0.66, Ll: 0.41, qL: 0.30 }   // reverse shaft stub, its arm, the lifting link, where that takes the radius rod;
   };
   return { f: mk(BB.aDf), r: mk(BB.aDr) };
 })();
@@ -495,8 +495,8 @@ function bbGear(E, P, phi, rev, s) {
   const pin = pins[2], wy = BB.yC, wx = pin[0] + Math.sqrt(BB.Lm * BB.Lm - (wy - pin[1]) ** 2);
   P.main.position.set(pin[0], pin[1], z * 1.1); P.main.rotation.z = Math.atan2(wy - pin[1], wx - pin[0]);
   P.cross.position.set(wx, wy, z * BB.zC); P.piston.position.set(wx, wy, z * BB.zC);
-  // return crank on the main pin, a quarter turn behind the crank
-  const C3 = [bx(W.aD[2]), rD], Ec = [C3[0] + W.e * Math.cos(phi - Math.PI / 2), C3[1] + W.e * Math.sin(phi - Math.PI / 2)];
+  // return crank on the main pin, its centre a quarter turn behind the crank in forward running (inside admission)
+  const C3 = [bx(W.aD[2]), rD], Ec = [C3[0] + W.e * Math.cos(phi + Math.PI / 2), C3[1] + W.e * Math.sin(phi + Math.PI / 2)];
   P.ecc.position.set(pin[0], pin[1], z * 1.22); P.ecc.rotation.z = Math.atan2(Ec[1] - pin[1], Ec[0] - pin[0]);
   P.ecc.scale.x = Math.hypot(Ec[0] - pin[0], Ec[1] - pin[1]) / W.e;
   // the link swings on its trunnion; its foot is where the eccentric rod reaches
@@ -514,10 +514,11 @@ function bbGear(E, P, phi, rev, s) {
     return [S[0] + (a * dx - h * dy) / d, S[1] + (a * dy + h * dx) / d]; })();   // where the arm's circle meets the link's, ahead and above
   P.lifter.position.set(Q[0], Q[1], z * 1.452); P.lifter.rotation.z = Math.atan2(T[1] - Q[1], T[0] - Q[0]);
   P.rarm.position.set(S[0], S[1], z * 1.452); P.rarm.rotation.z = Math.atan2(T[1] - S[1], T[0] - S[0]);
-  const By = BB.yV - W.a - W.b, Ux = wx - 0.02, Uy = By - 0.02, Bx = Ux + W.Lu;
+  const By = BB.yV - W.b, Ux = wx - 0.02, Uy = By - 0.02, Bx = Ux + W.Lu;
   P.union.position.set(Ux, Uy, z * 1.36); P.union.rotation.z = Math.atan2(By - Uy, Bx - Ux);
-  const Tvx = Cx + (Cx - Bx) * (W.a / W.b), Tvy = BB.yV;
-  P.comb.position.set(Tvx, Tvy, z * 1.36); P.comb.rotation.z = Math.atan2(Bx - Tvx, -(By - Tvy));
+  // the lever hangs from the radius rod; the valve stem takes its motion a little below, the crosshead swings its foot
+  const Tvx = Cx + (Bx - Cx) * W.a / (W.a + W.b), Tvy = BB.yV;
+  P.comb.position.set(Cx, Cy, z * 1.36); P.comb.rotation.z = Math.atan2(Bx - Cx, -(By - Cy));
   P.vstem.position.set(Tvx, Tvy, z * BB.zV);
 }
 /* wheels and gear for both engines. The front engine runs a little out of step with the rear (bbDrift). */
