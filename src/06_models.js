@@ -209,7 +209,7 @@ let ROAD_SHORT = 'NKP';
    works a bell crank in the gear frame; the bell crank's vertical arm drives the valve rod forward to the
    combination lever. With the yoke upright (mid gear) the eccentric's motion never reaches the bell crank;
    tipping the yoke one way or the other sets forward or back motion and the cutoff. */
-const BK = { e: 0.30, Pb: [ax(6.30), 1.92], hb: 0.30, vb: 0.36, E0: [ax(6.62), 0.98], d2: 0.94, k: 0.45, Lrb: 0.40, Lvr: 2.185, gMax: 0.45, z: 1.30, aYoke: 5.95, aShaft: 6.95, aPR: 11.0 };
+const BK = { e: 0.30, Pb: [ax(6.30), 1.92], hb: 0.30, vb: 0.36, E0: [ax(6.62), 0.98], d2: 0.94, k: 0.45, Lrb: 0.40, Lvr: 1.985, gMax: 0.45, z: 1.30, zo: 1.50, aYoke: 5.95, aShaft: 6.95, aPR: 11.0, rArm: 0.32 };
 BK.Rmid = [BK.E0[0], BK.E0[1] + BK.k * BK.d2];
 BK.Lecc = Math.hypot(BK.E0[0] - ax(LG.aD[2]), BK.E0[1] - LG.rD);
 function circLow(x1, y1, r1, x2, y2, r2) {   // lower intersection of two circles
@@ -261,6 +261,15 @@ function boxpokCentre(R, main, parts) {
   parts.black.push(new THREE.ExtrudeGeometry(cw, { depth: 0.09, bevelEnabled: false, curveSegments: 18 }));
 }
 
+/* A driver brake shoe: a curved block standing just off the tread ahead of the wheel at (xd, rD), clear of the
+   flange and of the sand pipe that comes down between the tyres, on a head that reaches inboard to its hanger. */
+function brakeShoe(gb, xd, rD, s) {
+  const R0 = rD + 0.006, R1 = rD + 0.05, a0 = -0.72, a1 = -0.25, sh = new THREE.Shape();
+  sh.absarc(0, 0, R1, a0, a1, false); sh.absarc(0, 0, R0, a1, a0, true); sh.closePath();
+  gb.add('dark', new THREE.ExtrudeGeometry(sh, { depth: 0.11, bevelEnabled: false, curveSegments: 10 }).translate(xd, rD, s * 0.77 - 0.055));
+  const xi = Math.sqrt((rD + 0.045) ** 2 - 0.26 * 0.26);                 // the head stays outside the flange's sweep
+  gb.box('dark', 0.995 - xi, 0.1, 0.14, xd + (0.995 + xi) / 2, rD - 0.31, s * 0.67);
+}
 function buildBerkshire(key, trim = '') {
   const spec = LOCO_SPEC[key], nkp = spec.front !== 'pm';
   const root = new THREE.Group();
@@ -318,28 +327,31 @@ function buildBerkshire(key, trim = '') {
     gb.cylX('black', 0.30, 0.30, 1.3, 20, ax(cylA), LG.yV, s * 1.13);                         // valve chest
     for (const a of [cylA - 0.68, cylA + 0.68]) gb.cylX('graphite', 0.32, 0.32, 0.06, 20, ax(a), LG.yV, s * 1.13);
     gb.box('black', 1.18, LG.yV - LG.yC, 0.34, ax(cylA), (LG.yV + LG.yC) / 2, s * 1.13);       // web between cylinder and chest
-    gb.box('black', 0.5, 0.18, 0.18, ax(cyl.a1 + 0.3), LG.yV, s * 1.13);                       // valve stem guide
+    gb.box('black', 0.7, 0.18, 0.18, ax(cyl.a1 + 0.4), LG.yV, s * 1.13);                       // valve stem guide
     for (const a of [cyl.a0 + 0.15, cyl.a1 - 0.15]) gb.add('dark', new THREE.CylinderGeometry(0.025, 0.025, 0.35, 6), M(ax(a), LG.yC - cyl.r - 0.1, z));   // drain cocks
     // crosshead guides (two bars) from the back cylinder head to the guide yoke
     for (const dy of [-0.19, 0.19]) gb.box('rod', BK.aYoke - cyl.a1 + 0.05, 0.06, 0.14, ax((cyl.a1 + BK.aYoke) / 2), LG.yC + dy, z);
     // guide yoke: a deep casting from the frame up to the running board
-    gb.box('black', 0.16, RB.hi - 0.95 - RB.t, 0.42, ax(BK.aYoke), (RB.hi - RB.t + 0.95) / 2, s * 0.98);
-    gb.box('black', 0.16, 0.5, 0.22, ax(BK.aYoke), LG.yC, s * 1.18);
+    // (a beam over the tyres and the rods from the frame out to the guides, a bracket down to the frame inside the
+    // wheels, and a plate closing the guide bars' ends outboard of the main rod, so nothing turns through it)
+    gb.box('black', 0.16, RB.hi - RB.t - 1.53, 0.85, ax(BK.aYoke), (RB.hi - RB.t + 1.53) / 2, s * 0.905);
+    gb.box('black', 0.16, 0.36, 0.15, ax(BK.aYoke), 1.37, s * 0.56);
+    gb.box('black', 0.16, 1.53 - 0.66, 0.13, ax(BK.aYoke), (1.53 + 0.66) / 2, s * 1.265);
     // Baker gear frame behind the yoke: an open outer frame, a solid inner plate, bell-crank bearing, yoke trunnions
     {
       const ga = BK.aYoke + 0.05, gz = ga + 1.12;
-      const fr = new THREE.Shape(); fr.moveTo(ax(ga), 1.28); fr.lineTo(ax(ga), 2.1); fr.lineTo(ax(gz), 2.1); fr.lineTo(ax(gz), 1.62); fr.lineTo(ax(gz - 0.32), 1.28); fr.closePath();
-      const hole = new THREE.Path(); hole.moveTo(ax(ga + 0.1), 1.38); hole.lineTo(ax(ga + 0.1), 2.0); hole.lineTo(ax(gz - 0.1), 2.0); hole.lineTo(ax(gz - 0.1), 1.66); hole.lineTo(ax(gz - 0.36), 1.38); hole.closePath(); fr.holes.push(hole);
+      const fr = new THREE.Shape(); fr.moveTo(ax(ga), 1.28); fr.lineTo(ax(ga), 2.26); fr.lineTo(ax(gz), 2.26); fr.lineTo(ax(gz), 1.62); fr.lineTo(ax(gz - 0.32), 1.28); fr.closePath();
+      const hole = new THREE.Path(); hole.moveTo(ax(ga + 0.1), 1.38); hole.lineTo(ax(ga + 0.1), 2.16); hole.lineTo(ax(gz - 0.1), 2.16); hole.lineTo(ax(gz - 0.1), 1.66); hole.lineTo(ax(gz - 0.36), 1.38); hole.closePath(); fr.holes.push(hole);
       gb.add('black', new THREE.ExtrudeGeometry(fr, { depth: 0.04, bevelEnabled: false }).translate(0, 0, s * 1.45 - 0.02));
-      gb.box('black', 1.12, 0.66, 0.04, ax(ga + 0.56), 1.72, s * 1.13);
-      gb.box('black', 1.12, 0.06, 0.36, ax(ga + 0.56), 2.08, s * 1.29);
-      gb.box('black', 0.1, RB.hi - RB.t - 2.11, 0.1, ax(gz - 0.06), (RB.hi - RB.t + 2.11) / 2, s * 1.29);   // hanger up to the running board
-      gb.cylZ('dark', 0.07, 0.34, 14, BK.Pb[0], BK.Pb[1], s * 1.30);
+      gb.box('black', 1.12, 0.82, 0.04, ax(ga + 0.56), 1.80, s * 1.13);
+      gb.box('black', 0.72, 0.06, 0.36, ax(ga + 0.36), 2.22, s * 1.29);   // stops short of the reverse shaft arm
+      gb.box('black', 0.1, RB.hi - RB.t - 2.25, 0.1, ax(ga + 0.6), (RB.hi - RB.t + 2.25) / 2, s * 1.29);   // hanger up to the running board
+      gb.cylZ('dark', 0.07, 0.44, 14, BK.Pb[0], BK.Pb[1], s * 1.33);   // the bell crank works outside the outer frame plate
       for (const zz of [1.15, 1.43]) gb.cylZ('dark', 0.08, 0.06, 14, BK.Rmid[0], BK.Rmid[1], s * zz);
     }
   }
   gb.box('black', 1.27, yB - LG.yV + 0.1, 2.0, ax(cylA), (yB + LG.yV - 0.3) / 2 + 0.1, 0);   // saddle up into the smokebox
-  gb.cylZ('dark', 0.05, 2.74, 10, ax(BK.aShaft), 1.98, 0);                                      // reverse shaft between the gear frames
+  gb.cylZ('dark', 0.05, 2.82, 10, ax(BK.aShaft), 1.98, 0);                                      // reverse shaft between the gear frames
 
   /* ---- boiler ---- */
   const lathe = (pts, a0) => { const g = new THREE.LatheGeometry(pts.map(p => new THREE.Vector2(p[1], p[0])), 48); g.rotateZ(-Math.PI / 2); g.translate(ax(a0), yB, 0); return g; };
@@ -542,12 +554,13 @@ function buildBerkshire(key, trim = '') {
   for (const s of [-1, 1]) for (let i = 0; i < 4; i++) {
     const xd = ax(LG.aD[i]), as = 8.0 + i * 0.62, xs = ax(as), y0 = BOIL.top(as) - 0.08, z0 = BOIL.half(as, y0) - 0.04;
     const y1 = BOIL.bY(as) + 0.2, z1 = BOIL.half(as, y1) + 0.025, y2 = RB.hi - 0.25, z2 = BOIL.half(as, y2) + 0.03;
-    gb.tube('dark', [[xs, y0, s * z0], [xs, (y0 + y1) / 2, s * (BOIL.half(as, (y0 + y1) / 2) + 0.025)], [xs, y1, s * z1], [xs - 0.05, y2, s * z2], [lerp(xs, xd + 1.0, 0.5), 2.2, s * 1.14], [xd + 1.0, 1.85, s * 1.12], [xd + 0.95, 0.45, s * 0.82], [xd + 0.86, 0.14, s * 0.75]], 0.025, 40, 5);
+    gb.tube('dark', [[xs, y0, s * z0], [xs, (y0 + y1) / 2, s * (BOIL.half(as, (y0 + y1) / 2) + 0.025)], [xs, y1, s * z1], [xs - 0.05, y2, s * z2], [lerp(xs, xd + 1.0, 0.5), 2.2, s * 1.14], [xd + 1.0, 1.85, s * 1.12], [xd + 0.927, 1.62, s * 0.80], [xd + 0.927, 1.1, s * 0.79], [xd + 0.927, 0.45, s * 0.78], [xd + 0.91, 0.14, s * 0.77]], 0.02, 56, 5);
   }
   // driver brake shoes & hangers, springs over the boxes
   for (const s of [-1, 1]) for (let i = 0; i < 4; i++) {
     const xd = ax(LG.aD[i]);
-    gb.box('dark', 0.14, 0.42, 0.18, xd + 0.92, 0.62, s * 0.75); gb.box('dark', 0.05, 0.62, 0.05, xd + 0.98, 1.1, s * 0.62);
+    brakeShoe(gb, xd, LG.rD, s);
+    gb.box('dark', 0.05, 0.9, 0.05, xd + 0.98, 0.96, s * 0.62);
     for (let k = 0; k < 5; k++) gb.box('dark', 0.9 - k * 0.12, 0.035, 0.14, xd, 1.47 + k * 0.035, s * 0.6);
   }
   // air compressors: NKP on the fireman's side at the front, standing on the low running board and strapped to the smokebox;
@@ -667,7 +680,7 @@ function buildBerkshire(key, trim = '') {
     }
     // brake shoes on the leading face of each wheel, on beams across the truck
     for (let i = 0; i < 2; i++) {
-      const R = i ? LG.rT2 : LG.rT1, xs = ax(LG.aT[i] - R - 0.04);
+      const R = i ? LG.rT2 : LG.rT1, xs = ax(LG.aT[i] - R - 0.09);
       for (const s of [-1, 1]) gb.box('dark', 0.08, 0.3, 0.13, xs, R, s * 0.76);
       bar('dark', 0.03, [xs, R, i ? -1.0 : -0.76], [xs, R, i ? 1.0 : 0.76], 6);
       if (!i) for (const s of [-1, 1]) bar('dark', 0.025, [xs, R + 0.1, s * 0.76], [xs, 0.75, s * 0.76], 6);   // hangers up to the front tie
@@ -677,12 +690,12 @@ function buildBerkshire(key, trim = '') {
     const z = s * 1.0;
     for (let i = 0; i < 2; i++) gb.box('dark', 0.36, 0.5, 0.26, ax(LG.aT[i]), i ? LG.rT2 : LG.rT1, z);   // journal boxes
     gb.box('dark', 0.16, 0.36, 0.16, ax(LG.aT[1] + 0.5), 0.88, z * 0.9);
-    bar('dark', 0.07, [ax(LG.aT[0] - 0.4), 0.8, z], [ax(11.4), 1.1, s * 0.4], 8);               // the Delta arms to the pivot
+    bar('dark', 0.07, [ax(LG.aT[0] - 0.58), 0.8, z], [ax(11.4), 1.1, s * 0.4], 8);               // the Delta arms to the pivot
   }
-  gb.box('dark', 0.3, 0.3, 2.1, ax(LG.aT[0] - 0.45), 0.85, 0);
-  gb.box('dark', 0.3, 0.3, 2.1, ax(LG.aT[1] + 0.55), 0.95, 0);
+  gb.box('dark', 0.3, 0.3, 2.1, ax(LG.aT[0] - 0.68), 0.85, 0);                                 // cross ties, clear of the wheels
+  gb.box('dark', 0.3, 0.3, 2.1, ax(LG.aT[1] + 0.75), 0.95, 0);
   gb.box('dark', 0.5, 0.36, 0.9, ax(11.4), 1.12, 0);                                           // pivot casting under the cradle
-  for (const s of [-1, 1]) gb.box('dark', 0.4, (C.bottom - 0.1) - 1.12, 0.2, ax(LG.aT[1] + 0.55), ((C.bottom - 0.1) + 1.12) / 2, s * 0.9);   // rear frame posts
+  for (const s of [-1, 1]) gb.box('dark', 0.4, (C.bottom - 0.1) - 1.08, 0.2, ax(LG.aT[1] + 0.75), ((C.bottom - 0.1) + 1.08) / 2, s * 0.9);   // rear frame posts
   gb.box('dark', 0.6, 0.3, 1.2, ax(LG.len - 0.2), 1.0, 0);                                    // drawbar pocket at the back
   gb.box('dark', 0.2, 0.7, 2.0, ax(LG.len - 0.1), 1.45, 0);                                   // rear buffer beam under the deck
 
@@ -716,7 +729,7 @@ function buildBerkshire(key, trim = '') {
   const leadTruck = new THREE.Group();
   { const lg = new GeoBin();
     for (const s of [-1, 1]) { lg.box('dark', 1.3, 0.22, 0.14, 0, rL + 0.12, s * 0.98); lg.box('dark', 0.34, 0.44, 0.24, 0, rL, s * 0.98); lg.box('dark', 0.8, 0.05, 0.14, 0, rL + 0.27, s * 0.98); }
-    lg.box('dark', 0.36, 0.2, 2.1, 0, rL + 0.22, 0);
+    for (const d of [-0.58, 0.58]) lg.box('dark', 0.1, 0.22, 2.1, d, rL + 0.16, 0);              // cross members ahead of and behind the wheels
     lg.box('dark', 2.0, 0.16, 0.26, -1.05, rL + 0.3, 0);                                       // radius bar back to the frame
     lg.box('dark', 0.5, 0.18, 0.5, 0, rL + 0.4, 0);                                             // centre bearing up to the deck casting
     leadTruck.add(lg.build(RMAT)); }
@@ -730,19 +743,21 @@ function buildBerkshire(key, trim = '') {
     const P = {
       side: [0, 1, 2].map(i => { const L = LG.aD[i + 1] - LG.aD[i]; const m = new THREE.Mesh(rodGeo(L, 0.16, 0.16, 0.07, 0.13, 0.13), R); m.castShadow = true; body.add(m); return m; }),
       main: (() => { const m = new THREE.Mesh(rodGeo(LG.Lm, 0.26, 0.15, 0.09, 0.19, 0.12), R); m.castShadow = true; body.add(m); return m; })(),
-      cross: (() => { const g = new GeoBin(); g.box('rod', 0.5, 0.3, 0.2, 0, 0, 0); g.box('dark', 0.12, 0.42, 0.1, 0.05, -0.32, 0); const m = g.build(RMAT); body.add(m); return m; })(),
+      cross: (() => { const g = new GeoBin(); g.box('rod', 0.5, 0.3, 0.2, 0, 0, 0); g.box('dark', 0.12, 0.5, 0.12, -0.1, -0.28, s * 0.17); const m = g.build(RMAT); body.add(m); return m; })(),
       piston: (() => { const L = 1.82 + 0.3; const m = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, L, 10).rotateZ(Math.PI / 2).translate(L / 2, 0, 0), R); body.add(m); return m; })(),
       ecc: (() => { const m = new THREE.Mesh(rodGeo(0.3, 0.12, 0.1, 0.06, 0.1, 0.07), R); body.add(m); return m; })(),
       eccRod: (() => { const m = new THREE.Mesh(rodGeo(BK.Lecc, 0.1, 0.085, 0.05, 0.065, 0.06), R); m.castShadow = true; body.add(m); return m; })(),
       gcr: (() => { const m = new THREE.Mesh(rodGeo(BK.d2, 0.11, 0.08, 0.055, 0.065, 0.055), R); m.castShadow = true; body.add(m); return m; })(),
       rbar: (() => { const g = new GeoBin(); for (const dz of [-0.055, 0.055]) g.add('rod', rodGeo(BK.Lrb, 0.06, 0.06, 0.025, 0.04, 0.04).translate(0, 0, dz)); const m = g.build(RMAT); body.add(m); return m; })(),
-      yoke: (() => { const g = new GeoBin(); for (const dz of [-0.11, 0.11]) g.add('black', rodGeo(BK.Lrb, 0.12, 0.08, 0.03, 0.08, 0.05).translate(0, 0, dz)); g.box('black', 0.06, 0.07, 0.25, BK.Lrb, 0, 0); const m = g.build(RMAT); body.add(m); return m; })(),
-      bell: (() => { const g = new GeoBin(); g.add('rod', rodGeo(BK.hb, 0.1, 0.07, 0.05, 0.075, 0.05).rotateZ(Math.PI)); g.add('rod', rodGeo(BK.vb, 0.1, 0.07, 0.05, 0, 0.05).rotateZ(-Math.PI / 2)); const m = g.build(RMAT); body.add(m); return m; })(),
+      yoke: (() => { const g = new GeoBin(); for (const dz of [-0.11, 0.11]) g.add('black', rodGeo(BK.Lrb, 0.12, 0.08, 0.03, 0.08, 0.05).translate(0, 0, dz)); for (const dz of [-0.0875, 0.0875]) g.box('black', 0.06, 0.07, 0.075, BK.Lrb, 0, dz); const m = g.build(RMAT); body.add(m); return m; })(),
+      bell: (() => { const g = new GeoBin(); g.add('rod', rodGeo(BK.hb, 0.1, 0.07, 0.05, 0.075, 0.05).rotateZ(Math.PI)); g.add('rod', rodGeo(BK.vb, 0.1, 0.07, 0.05, 0, 0.05).rotateZ(-Math.PI / 2)); g.cylZ('rod', 0.028, 0.2, 10, -BK.hb, 0, -s * 0.1); const m = g.build(RMAT); body.add(m); return m; })(),
       vrod: (() => { const m = new THREE.Mesh(rodGeo(BK.Lvr, 0.075, 0.07, 0.045, 0.05, 0.05), R); m.castShadow = true; body.add(m); return m; })(),
       comb: (() => { const g = new THREE.BoxGeometry(0.08, LG.a + LG.b + 0.1, 0.05).translate(0, -(LG.a + LG.b) / 2, 0); const m = new THREE.Mesh(g, R); body.add(m); return m; })(),
       union: (() => { const m = new THREE.Mesh(rodGeo(LG.Lu, 0.07, 0.07, 0.04, 0.045, 0.045), R); body.add(m); return m; })(),
-      vstem: (() => { const g = new GeoBin(); g.add('rod', new THREE.CylinderGeometry(0.035, 0.035, 1.0, 8).rotateZ(Math.PI / 2).translate(0.5, 0, 0)); g.box('rod', 0.18, 0.14, 0.3, 0, 0, s * 0.11); const m = g.build(RMAT); body.add(m); return m; })(),
-      reach: (() => { const L = BK.aPR - BK.aShaft; const m = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, L, 6).rotateZ(Math.PI / 2).translate(L / 2, 0, 0), RMAT.black); body.add(m); return m; })(),
+      vstem: (() => { const g = new GeoBin(); g.add('rod', new THREE.CylinderGeometry(0.035, 0.035, 1.0, 8).rotateZ(Math.PI / 2).translate(0.5, 0, 0)); g.box('rod', 0.18, 0.14, 0.44, 0, 0, s * 0.17); const m = g.build(RMAT); body.add(m); return m; })(),
+      reach: (() => { const L = BK.aPR - BK.aShaft; const m = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, L + 0.3, 6).rotateZ(Math.PI / 2).translate(L / 2 - 0.15, 0, 0), RMAT.black); m.visible = s > 0; body.add(m); return m; })(),
+      // the arm standing on the reverse shaft that the reach rod pulls
+      rarm: (() => { const g = new GeoBin(); g.box('black', 0.06, BK.rArm + 0.07, 0.04, 0, BK.rArm / 2, 0); g.cylZ('black', 0.045, 0.06, 10, 0, BK.rArm, 0); const m = g.build(RMAT); m.visible = s > 0; body.add(m); return m; })(),
     };
     parts.rods[s] = P;
   }
@@ -989,15 +1004,18 @@ function animateBerkshire(L, theta, rev) {
     P.gcr.position.set(g.E[0], g.E[1], zs * BK.z); P.gcr.rotation.z = Math.atan2(g.B[1] - g.E[1], g.B[0] - g.E[0]);
     P.rbar.position.set(Y[0], Y[1], zs * BK.z); P.rbar.rotation.z = Math.atan2(g.R[1] - Y[1], g.R[0] - Y[0]);
     P.yoke.position.set(Ym[0], Ym[1], zs * BK.z); P.yoke.rotation.z = Math.atan2(Y[1] - Ym[1], Y[0] - Ym[0]);
-    P.bell.position.set(BK.Pb[0], BK.Pb[1], zs * 1.37); P.bell.rotation.z = g.b;
-    P.vrod.position.set(V[0], V[1], zs * 1.37); P.vrod.rotation.z = Math.atan2(Cy - V[1], Cx - V[0]);
+    P.bell.position.set(BK.Pb[0], BK.Pb[1], zs * BK.zo); P.bell.rotation.z = g.b;
+    P.vrod.position.set(V[0], V[1], zs * BK.zo); P.vrod.rotation.z = Math.atan2(Cy - V[1], Cx - V[0]);
     // union link and combination lever
-    const Ux = wx + 0.1, Uy = 0.6, Bx = Ux + LG.Lu, By = 0.62;
-    P.union.position.set(Ux, Uy, zs * 1.37); P.union.rotation.z = Math.atan2(By - Uy, Bx - Ux);
+    const Ux = wx - 0.1, Uy = 0.6, Bx = Ux + LG.Lu, By = 0.62;
+    P.union.position.set(Ux, Uy, zs * BK.zo); P.union.rotation.z = Math.atan2(By - Uy, Bx - Ux);
     const Tvx = Cx + (Cx - Bx) * (LG.a / LG.b), Tvy = LG.yV;
-    P.comb.position.set(Tvx, Tvy, zs * 1.37); P.comb.rotation.z = Math.atan2(Bx - Tvx, -(By - Tvy));
+    P.comb.position.set(Tvx, Tvy, zs * BK.zo); P.comb.rotation.z = Math.atan2(Bx - Tvx, -(By - Tvy));
     P.vstem.position.set(Tvx, Tvy, zs * 1.14);
-    P.reach.position.set(ax(BK.aPR), 2.3, zs * 1.37); P.reach.rotation.z = rev * 0.02;
+    // the power reverse pushes the reach rod, which swings the arm on the reverse shaft
+    const ra = -rev * 0.25;
+    P.rarm.position.set(ax(BK.aShaft), 1.98, zs * 1.37); P.rarm.rotation.z = ra;
+    P.reach.position.set(ax(BK.aPR) - BK.rArm * Math.sin(ra), 1.98 + BK.rArm * Math.cos(ra), zs * 1.37);
   }
 }
 
@@ -1926,7 +1944,7 @@ function journalBox(bin, x, y, z, w, h, d) {
 /* brake shoes on the treads of the wheels at xs, on the side of each wheel toward dir(x) (+1/-1), on beams across */
 function brakeShoes(bin, R, list, yHang, zHang) {
   for (const [xa, d] of list) {
-    const th = 0.2, cx = xa + d * (R + 0.022) * Math.cos(th), cy = R - (R + 0.022) * Math.sin(th);
+    const th = 0.2, rs = R + 0.047, cx = xa + d * rs * Math.cos(th), cy = R - rs * Math.sin(th);   // the shoe stands just off the tread
     for (const s of [-1, 1]) {
       bin.add('dark', new THREE.BoxGeometry(0.05, 0.34, 0.09).rotateZ(d * th), M(cx, cy, s * RAIL_OFF));
       bin.box('dark', 0.07, 0.16, 0.12, cx + d * 0.05, cy, s * (RAIL_OFF - 0.01));                          // brake head
