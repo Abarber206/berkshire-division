@@ -1153,10 +1153,11 @@ function treeMeshes(L, scene) {
       _m4.compose(_v1.set(q[0], q[1], -q[2]), _q.setFromEuler(_e.set(0, ((q[0] * 13.1 + q[2]) % TAU + TAU) % TAU, 0)), _v2.set(q[3], q[4], q[3]));
       im.setMatrixAt(i, _m4); setFolColor(im, i, q[5]);
     };
-    // near trees go in 250 m patches, so only the patches round the camera send their leaf cards to the GPU
+    // near trees go in 400 m patches, so only the patches round the camera send their leaf cards to the GPU
+    // (smaller patches cut a little more vertex work but cost far more draws)
     vari.forEach((vl, v) => {
       const patches = new Map();
-      for (const q of vl) { const key = Math.floor(q[0] / 250) + ',' + Math.floor(q[2] / 250); let a = patches.get(key); if (!a) patches.set(key, a = []); a.push(q); }
+      for (const q of vl) { const key = Math.floor(q[0] / 400) + ',' + Math.floor(q[2] / 400); let a = patches.get(key); if (!a) patches.set(key, a = []); a.push(q); }
       for (const [, pl] of patches) {
         const ps = new THREE.Sphere().setFromPoints(pl.map(q => new THREE.Vector3(q[0], q[1], -q[2]))); ps.radius += 14;
         const im = new THREE.InstancedMesh(shareGeo(G[v ? k + '2' : k], ps), MAT.treeNear, pl.length);
