@@ -218,6 +218,7 @@ function skyLight(force) {
   _skC.setHex(sb.el > -8 ? L.sun : 0x8ea6d6).convertSRGBToLinear().multiplyScalar(glowK);
   Object.assign(SKY.fogSun, { x: glowDir.x, y: glowDir.y, z: glowDir.z }); Object.assign(SKY.fogSunC, { x: _skC.r, y: _skC.g, z: _skC.b });
   renderer.toneMappingExposure = L.exp;
+  if (typeof postLight === 'function') postLight(dark, smooth(-3, 3, sb.el) * (1 - smooth(9, 24, sb.el)), gray, W.fogK);
   SKY.starU.uAlpha.value = 0.85 * dnStars(sb.el) * (1 - 0.7 * gk); SKY.stars.visible = SKY.starU.uAlpha.value > 0.003;
   SKY.stars.quaternion.copy(_skQ.setFromAxisAngle(SKY.pole, -h / 24 * TAU));
   SKY.moon.visible = mb.el > -1; SKY.moon.material.opacity = 1 - 0.8 * smooth(-4, 8, sb.el);
@@ -358,5 +359,5 @@ function updateFX(dt, cam) {
     FX.age[i] = age + dt;
   }
   FX.g.attributes.position.needsUpdate = true; FX.g.attributes.aSize.needsUpdate = true; FX.g.attributes.aAlpha.needsUpdate = true; FX.g.attributes.aColor.needsUpdate = true;
-  FX.mat.uniforms.uScale.value = innerHeight * (Math.min(devicePixelRatio, 2)) * 0.5 / Math.tan(cam.fov * Math.PI / 360);
+  FX.mat.uniforms.uScale.value = innerHeight * ppPx() * 0.5 / Math.tan(cam.fov * Math.PI / 360);
 }

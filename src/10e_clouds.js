@@ -309,7 +309,7 @@ function precipFrame(cam, dt) {
   U.uWind.value.set(ENV.wind.x * 1.4, 0, ENV.wind.z * 1.4);
   const inside = SKY.boreK || 0;
   U.uShelter.value = CAM.mode === 'cab' || (WALK.on && WALK.mode === 'ride') ? 3.2 : 0;
-  U.uPx.value = innerHeight * Math.min(devicePixelRatio, 2) * 0.5 / Math.tan(cam.fov * Math.PI / 360);
+  U.uPx.value = innerHeight * ppPx() * 0.5 / Math.tan(cam.fov * Math.PI / 360);
   const lit = FX.light, b = lerp(0.62, 0.16, SKY.dark) * (1 + WX.flash * 2);
   U.uCol.value.setRGB(lit.r * b, lit.g * b, lit.b * b * 1.04);
   const rain = P.rain * (1 - inside), snow = P.snow * (1 - inside);

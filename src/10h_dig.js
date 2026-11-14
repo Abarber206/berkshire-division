@@ -210,7 +210,7 @@ function digFrame(dt, cam) {
     DIG.scarDirty = false; DIG.scar.visible = true;
   }
   if (!DIG.clods.live && !DIG.dust.live) { DIG.clods.pts.visible = DIG.dust.pts.visible = false; return; }
-  if (typeof renderer !== 'undefined' && renderer && cam) DIG.U.uScale.value = renderer.getDrawingBufferSize(_dgs).y / (2 * Math.tan(cam.fov * Math.PI / 360));
+  if (typeof renderer !== 'undefined' && renderer && cam) DIG.U.uScale.value = renderer.getDrawingBufferSize(_dgs).y * (typeof POST !== 'undefined' && POST.on ? POST.scale : 1) / (2 * Math.tan(cam.fov * Math.PI / 360));
   DIG.U.uLight.value = lerp(1, 0.16, SKY.dark || 0);
   const h = Math.min(dt, 0.05);
   digPoolStep(DIG.clods, h, false); digPoolStep(DIG.dust, h, true);
