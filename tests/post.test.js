@@ -24,8 +24,9 @@ function load(opts = {}) {
   vm.createContext(ctx);
   vm.runInContext(fs.readFileSync(path.join(__dirname, 'vendor', 'three.min.js'), 'utf8'), ctx, { filename: 'three.min.js' });
   vm.runInContext(fs.readFileSync(path.join(SRC, '01_util.js'), 'utf8') + '\n' + fs.readFileSync(path.join(SRC, '10j_post.js'), 'utf8') +
-    '\nthis.X = { GFXQ, GFX_MENU, POST, postSavedKey, postResolve, postQuality, postLight, postTime };' +
+    '\nthis.X = { GFXQ, GFX_MENU, POST, postSavedKey, postResolve, postQuality, postLight, postTime, ppNoCast };' +
     '\npostAlloc = function () { allocs++; };', ctx);
+  ctx.THREE = ctx.THREE || vm.runInContext('THREE', ctx);
   ctx.tick = (ms) => { now += ms; ctx.X.postTime(); };
   return ctx;
 }
@@ -75,4 +76,17 @@ test('dynamic resolution steps down when frames run long, and back when that bou
   assert.ok(Q.scale > 0.85, `a step that buys nothing is undone (scale ${Q.scale})`);
   // Ultra never scales
   const u = load(); u.X.POST.ready = true; u.X.postQuality('ultra'); for (let i = 0; i < 400; i++) u.tick(40); assert.strictEqual(u.X.POST.scale, 1);
+});
+
+test('glass, decals, glows and tiny parts stop casting shadows; bodies and cut-out foliage keep theirs', () => {
+  const c = load(); const T = c.THREE;
+  const r = c.X.ppNoCast;
+  const mesh = (mat, size = 1, inst) => { const g = new T.BoxGeometry(size, size, size); const o = inst ? new T.InstancedMesh(g, mat, 2) : new T.Mesh(g, mat); o.castShadow = true; return o; };
+  assert.strictEqual(r(mesh(new T.MeshStandardMaterial())), false, 'a body');
+  assert.strictEqual(r(mesh(new T.MeshStandardMaterial({ transparent: true, opacity: 0.3 }))), true, 'glass');
+  assert.strictEqual(r(mesh(new T.MeshStandardMaterial({ transparent: true, alphaTest: 0.35, depthWrite: false }))), true, 'a decal');
+  assert.strictEqual(r(mesh(new T.MeshLambertMaterial({ alphaTest: 0.5 }))), false, 'cut-out leaves');
+  assert.strictEqual(r(mesh(new T.MeshBasicMaterial(), 0.3)), true, 'a lens');
+  assert.strictEqual(r(mesh(new T.MeshStandardMaterial(), 0.04)), true, 'a bolt');
+  assert.strictEqual(r(mesh(new T.MeshStandardMaterial({ transparent: true }), 1, true)), false, 'instanced is left alone');
 });

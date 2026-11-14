@@ -48,6 +48,7 @@ async function loadWorld() {
     if (k % (WORLD.lazy ? 24 : 3) === 0) { prog(0.08 + 0.42 * k / tot, WORLD.mtn ? `Raising the mountains… ${k}/${tot}` : `Shaping farm country… ${k}/${tot}`); await frame(); }
   }
   WORLD.hgrid.ready = true;
+  terrainLoMerge(scene);
   buildFarTerrain(scene); if (!WORLD.custom) buildWater(scene);
   prog(0.52, WORLD.custom ? `Laying ${fmtMi(ROUTE.mainLen)} of track on ${PLAY_LAYOUT.name || 'your layout'}…` : `Laying ${(ROUTE.mainLen / MILE).toFixed(1)} miles of jointed rail…`); await frame();
   buildTrack(scene); buildTrackHash();

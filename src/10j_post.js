@@ -206,9 +206,31 @@ function postTime() {
   else if (room && POST.scale < 1) { POST.lastScale = POST.scale; POST.scale = Math.min(1, POST.scale / 0.92); POST.hold = 4; postAlloc(); }
   else POST.hold = 1;
 }
+/* Shadow casters that can't throw a shadow anyone would see: glass, decals and lettering (see-through, and
+   lying on a body that already casts), glowing lenses and screens, and parts a few centimetres across.
+   Each new piece of the scene (a train, a streamed tile) is swept once as it appears; it saves the shadow
+   passes a few hundred draws, and sunlight now comes in through coach and cab windows. */
+const _ppR = new THREE.Vector3();
+function ppNoCast(o) {
+  if (!o.isMesh || !o.castShadow || o.customDepthMaterial || o.isInstancedMesh) return false;
+  const m = Array.isArray(o.material) ? o.material[0] : o.material; if (!m) return false;
+  if (m.userData.noShadow || (m.transparent && (!m.alphaTest || m.depthWrite === false))) return true;
+  const g = o.geometry; if (!g.boundingSphere) g.computeBoundingSphere();
+  const r = g.boundingSphere ? g.boundingSphere.radius * o.getWorldScale(_ppR).x : 1;
+  return (m.isMeshBasicMaterial && r < 0.6) || r < 0.05;
+}
+function ppCasterSweep(root) {
+  POST.swept = POST.swept || new WeakSet(); let n = 0;
+  for (const c of root.children) {
+    if (POST.swept.has(c)) continue; POST.swept.add(c);
+    c.traverse(o => { if (ppNoCast(o)) { o.castShadow = false; n++; } });
+  }
+  POST.unCast = (POST.unCast || 0) + n;
+}
 const _ppV = new THREE.Vector3(), _ppDb = new THREE.Vector2();
 /* draw a frame: straight to the screen on Low, through the chain otherwise */
 function postRender(renderer, scene, camera) {
+  if (((POST.frame = (POST.frame || 0) + 1) % 30) === 1) ppCasterSweep(scene);
   if (!POST.on || !POST.rt) { renderer.render(scene, camera); return; }
   postTime();
   const ac = renderer.autoClear;

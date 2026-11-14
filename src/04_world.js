@@ -464,6 +464,39 @@ function tileHi(t, scene) {
   mh.receiveShadow = true; scene.add(mh); t.hi = mh;
   if (WORLD.portalHoles) WORLD.portalHoles(t);
 }
+/* Far terrain: every 1.5 km tile had its own coarse mesh, a draw each out to the horizon. They are merged
+   4 x 4 into 6 km blocks; a tile whose detailed mesh is showing hides its share of the block in the vertex
+   shader (its corners all fold to one point off screen), looked up in a one-texel-per-tile mask. */
+function terrainLoMerge(scene) {
+  const T = WORLD.tiles; if (!T.length || !renderer.capabilities.maxVertexTextures) return;
+  const S = T[0].size, nx = Math.max(1, Math.round((INNER.x1 - INNER.x0) / S)), nn = Math.max(1, Math.round((INNER.n1 - INNER.n0) / S));
+  const mask = new Uint8Array(nx * nn * 4).fill(255);
+  const tex = new THREE.DataTexture(mask, nx, nn, THREE.RGBAFormat); tex.magFilter = tex.minFilter = THREE.NearestFilter; tex.generateMipmaps = false; tex.needsUpdate = true;
+  WORLD.hiMask = { value: tex }; WORLD.hiMaskData = mask;
+  MAT.groundLo = MAT.ground.clone(); MAT.groundLo.extensions = MAT.ground.extensions;
+  MAT.groundLo.onBeforeCompile = sh => {
+    MAT.ground.onBeforeCompile(sh);
+    sh.uniforms.uHiMask = WORLD.hiMask;
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute vec2 aTile; uniform sampler2D uHiMask;')
+      .replace('#include <fog_vertex>', '#include <fog_vertex>\n if (texture2D(uHiMask, aTile).r > 0.5) gl_Position = vec4(0.0, 0.0, -2.0, 1.0);');
+  };
+  MAT.groundLo.customProgramCacheKey = () => 'groundLo';
+  const blocks = new Map();
+  for (const t of T) {
+    const ix = Math.round((t.x0 - INNER.x0) / S), jn = Math.round((t.n0 - INNER.n0) / S);
+    if (ix < 0 || jn < 0 || ix >= nx || jn >= nn) continue;
+    t.mi = (jn * nx + ix) * 4;
+    const g = t.lo.geometry, c = g.attributes.position.count, at = new Float32Array(c * 2);
+    for (let i = 0; i < c; i++) { at[i * 2] = (ix + 0.5) / nx; at[i * 2 + 1] = (jn + 0.5) / nn; }
+    g.setAttribute('aTile', new THREE.BufferAttribute(at, 2));
+    const key = (ix >> 2) + ',' + (jn >> 2); let b = blocks.get(key); if (!b) blocks.set(key, b = []); b.push(t);
+  }
+  for (const list of blocks.values()) {
+    const g = trackJoin(list.map(t => t.lo.geometry)); if (!g) continue;
+    const m = new THREE.Mesh(g, MAT.groundLo); m.receiveShadow = false; scene.add(m);
+    for (const t of list) { scene.remove(t.lo); t.lo.geometry.dispose(); t.lo = null; t.merged = true; }
+  }
+}
 function tileDrop(t) { scene.remove(t.hi); t.hi.geometry.dispose(); t.hi = null; }
 function terrainGeo(x0, n0, size, step) {
   const n = Math.round(size / step) + 1;
@@ -805,8 +838,45 @@ function buildTrack(scene) {
       WORLD.pieces.push(grp);
     }
   }
+  trackMerge(scene);
   buildSwitches(scene);
   buildBumpers(scene);
+}
+/* Rails and ballast are drawn as far as the haze allows, and each 400 m piece was its own pair of draws:
+   hundreds a frame on a long view. They are merged here into one rail mesh and one ballast mesh per
+   1.6 km square (the ties, which fade by distance, stay in their pieces). */
+function trackMerge(scene) {
+  const B = 1600, buckets = new Map();
+  for (const p of WORLD.pieces) {
+    const c = p.userData.sphere.center, key = Math.floor(c.x / B) + ',' + Math.floor(c.z / B);
+    let b = buckets.get(key); if (!b) buckets.set(key, b = { rail: [], bal: [] });
+    for (const m of p.children) if (m.isMesh && !m.isInstancedMesh) { if (m.material === MAT.rail) b.rail.push(m); else if (m.material === MAT.ballast) b.bal.push(m); }
+  }
+  let n = 0;
+  for (const b of buckets.values()) for (const [list, mat] of [[b.rail, MAT.rail], [b.bal, MAT.ballast]]) {
+    if (list.length < 2) continue;
+    const g = trackJoin(list.map(m => m.geometry)); if (!g) continue;
+    const mm = new THREE.Mesh(g, mat); mm.castShadow = list[0].castShadow; mm.receiveShadow = true; mm.userData.trackMerged = list.length;
+    scene.add(mm); n += list.length - 1;
+    for (const m of list) { m.parent.remove(m); m.geometry.dispose(); }
+  }
+  WORLD.trackMerged = n;
+}
+/* join indexed geometries that carry the same attributes into one */
+function trackJoin(geos) {
+  const names = Object.keys(geos[0].attributes);
+  if (geos.some(g => !g.index || Object.keys(g.attributes).length !== names.length || names.some(k => !g.attributes[k] || g.attributes[k].itemSize !== geos[0].attributes[k].itemSize))) return null;
+  const total = geos.reduce((a, g) => a + g.attributes.position.count, 0), out = new THREE.BufferGeometry();
+  for (const k of names) {
+    const sz = geos[0].attributes[k].itemSize, arr = new Float32Array(total * sz); let o = 0;
+    for (const g of geos) { arr.set(g.attributes[k].array, o); o += g.attributes[k].count * sz; }
+    out.setAttribute(k, new THREE.BufferAttribute(arr, sz));
+  }
+  const nIdx = geos.reduce((a, g) => a + g.index.count, 0), idx = total > 65535 ? new Uint32Array(nIdx) : new Uint16Array(nIdx);
+  let io = 0, vo = 0;
+  for (const g of geos) { const src = g.index.array; for (let i = 0; i < src.length; i++) idx[io + i] = src[i] + vo; io += src.length; vo += g.attributes.position.count; }
+  out.setIndex(new THREE.BufferAttribute(idx, 1)); out.computeBoundingSphere();
+  return out;
 }
 
 function buildSwitches(scene) {
@@ -948,7 +1018,9 @@ function updateTrackLOD(cam) {
     const d = t.c.distanceTo(cp) - t.r; let near = d < 2300;
     if (near && !t.hi) { if (hiBudget-- > 0) tileHi(t, scene); else near = false; }
     else if (!near && t.hi && WORLD.lazy && d > 3800) tileDrop(t);
-    if (t.hi) t.hi.visible = near; t.lo.visible = !near;
+    if (t.hi) t.hi.visible = near;
+    if (t.lo) t.lo.visible = !near;
+    else if (t.merged) { const v = near ? 255 : 0; if (WORLD.hiMaskData[t.mi] !== v) { WORLD.hiMaskData[t.mi] = v; WORLD.hiMask.value.needsUpdate = true; } }
   }
   const tN = LOD.treeNear.value, tF = LOD.treeFar.value;
   tF.w = fogFar(7000); tF.z = tF.w * 0.65;
