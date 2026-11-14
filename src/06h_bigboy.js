@@ -35,7 +35,8 @@ const bxR = a => BB.refR - a, bxF = a => BB.refF - a;
 const BBW = (() => {
   const mk = aD => {
     const aX = aD[2] - BB.Lm;                            // crosshead at mid stroke
-    return { aD, aX, cyl: [aX - 2.30, aX - 1.10], aLink: aX + 0.92, yLink: 1.74, rl: 0.42, dMax: 0.30, e: 0.21, Lrr: 1.62, yR: BB.yV - 0.14, a: 0.14, b: 0.80, Lu: 0.72 };
+    return { aD, aX, cyl: [aX - 2.30, aX - 1.10], aLink: aX + 0.92, yLink: 1.78, rl: 0.42, dMax: 0.26, e: 0.21, Lrr: 1.50, yR: BB.yV - 0.14, a: 0.14, b: 0.80, Lu: 0.60,
+      aS: aX + 0.92 + 0.30, yS: 2.21, rS: 0.66, Ll: 0.46, qL: 0.30 }   // reverse shaft stub, its arm, the lifting link, where that takes the radius rod;
   };
   return { f: mk(BB.aDf), r: mk(BB.aDr) };
 })();
@@ -70,7 +71,7 @@ function bbEngineUnit(gb, bx, W, front) {
       gb.box('dark', 0.34, 0.5, 0.2, xd, BB.rD + 0.02, s * 0.58);                     // driving box
       for (const d of [-0.22, 0.22]) gb.box('dark', 0.08, 0.62, 0.17, xd + d, 1.05, s * 0.58);
       for (let k = 0; k < 5; k++) gb.box('dark', 0.9 - k * 0.12, 0.035, 0.14, xd, 1.47 + k * 0.035, s * 0.6);   // spring
-      gb.box('dark', 0.14, 0.42, 0.18, xd + 0.95, 0.62, s * 0.75); gb.box('dark', 0.05, 0.62, 0.05, xd + 1.0, 1.1, s * 0.62);   // brake shoe & hanger
+      brakeShoe(gb, xd, BB.rD, s); gb.box('dark', 0.05, 0.9, 0.05, xd + 0.98, 0.95, s * 0.62);   // brake shoe & hanger
     }
   }
   for (const a of front ? [1.55, aD[0] - 0.9, (aD[1] + aD[2]) / 2, aD[3] + 0.6] : [W.cyl[1] + 0.5, (aD[1] + aD[2]) / 2, aD[3] + 0.7]) gb.box('dark', 0.24, 0.4, 0.98, bx(a), 1.22, 0);   // cross ties
@@ -84,14 +85,17 @@ function bbEngineUnit(gb, bx, W, front) {
     gb.cylX('black', 0.30, 0.30, cL + 0.1, 20, bx(cA), BB.yV, s * BB.zV);           // valve chest
     for (const a of [cA - (cL + 0.1) / 2, cA + (cL + 0.1) / 2]) gb.cylX('graphite', 0.32, 0.32, 0.06, 20, bx(a), BB.yV, s * BB.zV);
     gb.box('black', cL - 0.1, BB.yV - BB.yC, 0.34, bx(cA), (BB.yV + BB.yC) / 2, s * 1.16);
-    gb.box('black', 0.5, 0.18, 0.18, bx(W.cyl[1] + 0.3), BB.yV, s * BB.zV);           // valve stem guide
+    gb.box('black', 0.25, 0.18, 0.18, bx(W.cyl[1] + 0.175), BB.yV, s * BB.zV);           // valve stem guide
     for (const a of [W.cyl[0] + 0.15, W.cyl[1] - 0.15]) gb.add('dark', new THREE.CylinderGeometry(0.025, 0.025, 0.35, 6), M(bx(a), BB.yC - BB.cylR - 0.1, z));   // drain cocks
-    for (const dy of [-0.19, 0.19]) gb.box('rod', W.aLink - 0.1 - W.cyl[1], 0.06, 0.14, bx((W.cyl[1] + W.aLink - 0.1) / 2), BB.yC + dy, z);   // crosshead guides
-    gb.box('black', 0.16, 1.01, 0.42, bx(W.aLink - 0.1), 1.795, s * 0.98);                      // guide yoke, above the wheel, up to the link bridge
+    for (const dy of [-0.19, 0.19]) gb.box('rod', W.aLink - 0.2 - W.cyl[1], 0.06, 0.14, bx((W.cyl[1] + W.aLink - 0.2) / 2), BB.yC + dy, z);   // crosshead guides, ending short of the link's foot
+    // guide yoke: a beam over the tyres and the side rods up to the link bridge, with a thin leg down inside the guides
+    gb.box('black', 0.16, 2.45 - 1.44, 0.42, bx(W.aLink - 0.12), (2.45 + 1.44) / 2, s * 0.98);
+    gb.box('black', 0.16, 1.46 - 0.88, 0.04, bx(W.aLink - 0.12), (1.46 + 0.88) / 2, s * 1.17);
     // link bracket: a plate standing outboard of the link, carrying its trunnions, bridged over the link's top to the yoke
-    gb.box('black', 0.62, 0.86, 0.04, bx(W.aLink), W.yLink + 0.17, s * 1.47);
-    gb.box('black', 0.3, 0.1, 0.53, bx(W.aLink - 0.05), 2.25, s * 1.215);
-    gb.cylZ('dark', 0.06, 0.12, 12, bx(W.aLink), W.yLink, s * 1.43);
+    gb.box('black', 0.80, 0.93, 0.04, bx(W.aLink + 0.09), 2.45 - 0.465, s * 1.50);
+    gb.box('black', 0.2, 0.08, 0.56, bx(W.aLink + 0.05), 2.41, s * 1.23);   // bridge over the link and the reverse arm
+    gb.cylZ('dark', 0.045, 0.12, 12, bx(W.aS), W.yS, s * 1.46);   // reverse shaft stub in the plate; its arm swings just inside
+    gb.cylZ('dark', 0.06, 0.16, 12, bx(W.aLink), W.yLink, s * 1.44);
   }
   gb.box('black', cL - 0.05, (front ? 2.05 : 2.30) - BB.yV + 0.25, 2.0, bx(cA), ((front ? 2.05 : 2.30) + BB.yV - 0.25) / 2, 0);   // saddle
   return cA;
@@ -138,7 +142,7 @@ function buildBigBoy(key, trim = '') {
   // steam pipes: out of the flexible joint at the back of the saddle down into each valve chest
   for (const s of [-1, 1]) gf.tube('black', [[bxF(cylF + 0.1), 2.0, s * 0.5], [bxF(cylF), 2.02, s * 0.9], [bxF(cylF), BB.yV + 0.25, s * BB.zV]], 0.14, 12, 12);
   // sand pipes to the front drivers from the sand box (on the boiler) through a flexible hose at the frame
-  for (const s of [-1, 1]) for (let i = 0; i < 4; i++) { const xd = bxF(BB.aDf[i]); gf.add('dark', barGeo(0.022, [xd + 0.95, 1.6, s * 1.0], [xd + 0.9, 0.18, s * 0.78], 5)); }
+  for (const s of [-1, 1]) for (let i = 0; i < 4; i++) { const xd = bxF(BB.aDf[i]); gf.tube('dark', [[xd + 0.78, 1.42, s * 0.6], [xd + 0.88, 1.62, s * 0.7], [xd + 0.927, 1.5, s * 0.79], [xd + 0.927, 1.1, s * 0.79], [xd + 0.927, 0.45, s * 0.78], [xd + 0.91, 0.14, s * 0.77]], 0.022, 24, 5); }
 
   /* ===================== rear engine (main frame) ===================== */
   const cylR = bbEngineUnit(gb, bxR, BBW.r, false);
@@ -306,7 +310,7 @@ function buildBigBoy(key, trim = '') {
   for (const s of [-1, 1]) for (let i = 0; i < 4; i++) {
     const xd = ax(BB.aDr[i]), as = 9.9, xs = ax(as), y0 = BBOIL.top(as) - 0.1, z0 = BBOIL.half(as, y0) - 0.03;
     const y2 = RB.y + 0.2, z2 = BBOIL.half(as, y2) + 0.03;
-    gb.tube('dark', [[xs, y0, s * z0], [xs - 0.05, BBOIL.bY(as), s * (BBOIL.half(as, BBOIL.bY(as)) + 0.03)], [xs - 0.1, y2, s * z2], [lerp(xs, xd + 1.0, 0.6), RB.y - 0.3, s * 1.12], [xd + 1.0, 1.7, s * 1.08], [xd + 0.95, 0.45, s * 0.82], [xd + 0.88, 0.16, s * 0.76]], 0.024, 48, 5);
+    gb.tube('dark', [[xs, y0, s * z0], [xs - 0.05, BBOIL.bY(as), s * (BBOIL.half(as, BBOIL.bY(as)) + 0.03)], [xs - 0.1, y2, s * z2], [lerp(xs, xd + 1.0, 0.6), RB.y - 0.3, s * 1.12], [xd + 1.0, 1.85, s * 1.1], [xd + 0.927, 1.6, s * 0.80], [xd + 0.927, 1.1, s * 0.79], [xd + 0.927, 0.45, s * 0.78], [xd + 0.91, 0.14, s * 0.77]], 0.022, 56, 5);   // in above the rods, down between the tyres
   }
   // injector and feed lines, engineer's side; Worthington feedwater pump on the fireman's side
   gb.cylX('brass', 0.1, 0.1, 0.4, 10, ax(C.a0 - 0.6), 1.85, 1.44);
@@ -319,7 +323,7 @@ function buildBigBoy(key, trim = '') {
   // power reverse, engineer's side, with reach rods to both engines' reverse shafts
   gb.cylX('black', 0.17, 0.17, 1.1, 16, ax(21.4), 2.35, 1.38);
   gb.box('dark', 0.14, RB.y - RB.t - 2.35, 0.14, ax(21.4), (RB.y - RB.t + 2.35) / 2, 1.38);
-  bar('black', 0.024, [ax(20.85), 2.35, 1.38], [ax(BBW.r.aLink + 0.3), 2.1, 1.38], 6);
+  bar('black', 0.024, [ax(20.85), 2.35, 1.38], [ax(BBW.r.aS), BBW.r.yS + 0.05, 1.40], 6);
 
   /* ---- cab ---- */
   let cab;
@@ -382,15 +386,15 @@ function buildBigBoy(key, trim = '') {
   /* ---- trailing truck: cast frame outside the wheels, pivoted ahead of the firebox ---- */
   for (const s of [-1, 1]) {
     const z = s * 1.02, [t0, t1] = BB.aT;
-    gb.box('dark', t1 - t0 + 0.9, 0.3, 0.15, ax((t0 + t1) / 2), 0.9, z);
+    gb.box('dark', t1 - t0 + 1.2, 0.3, 0.15, ax((t0 + t1) / 2 - 0.15), 0.9, z);
     for (const a of BB.aT) { gb.box('dark', 0.36, 0.48, 0.26, ax(a), BB.rT, z); gb.box('dark', 0.24, 0.3, 0.03, ax(a), BB.rT, s * 1.17); }
     gb.box('dark', 0.14, 0.3, 0.17, ax((t0 + t1) / 2), 1.18, z);
     for (let k = 0; k < 6; k++) gb.box('dark', 1.6 - 0.22 * k, 0.026, 0.12, ax((t0 + t1) / 2), 1.27 - 0.028 * k, z);
     bar('dark', 0.07, [ax(t0 - 0.4), 1.0, z], [ax(21.6), 1.3, s * 0.4], 8);
-    for (const a of BB.aT) gb.box('dark', 0.08, 0.3, 0.13, ax(a - BB.rT - 0.04), BB.rT, s * 0.76);
+    for (const a of BB.aT) { gb.box('dark', 0.08, 0.3, 0.13, ax(a - BB.rT - 0.09), BB.rT, s * 0.76); gb.box('dark', 0.04, 0.3, 0.04, ax(a - BB.rT - 0.09), 0.64, s * 0.97); }   // shoes, and hangers from the side frame to the beam
   }
-  for (const a of BB.aT) bar('dark', 0.03, [ax(a - BB.rT - 0.04), BB.rT, -1.0], [ax(a - BB.rT - 0.04), BB.rT, 1.0], 6);   // brake beams out to the side frames
-  gb.box('dark', 0.3, 0.3, 2.1, ax(BB.aT[0] - 0.45), 1.0, 0);
+  for (const a of BB.aT) bar('dark', 0.03, [ax(a - BB.rT - 0.09), BB.rT, -1.0], [ax(a - BB.rT - 0.09), BB.rT, 1.0], 6);   // brake beams out to the side frames
+  gb.box('dark', 0.3, 0.3, 2.1, ax(BB.aT[0] - 0.72), 1.0, 0);
   gb.box('dark', 0.3, 0.3, 2.1, ax(BB.aT[1] + 0.55), 1.1, 0);
   gb.box('dark', 0.5, 0.36, 0.9, ax(21.6), 1.4, 0);
   for (const s of [-1, 1]) gb.box('dark', 0.4, (C.bottom - 0.1) - 1.25, 0.2, ax(BB.aT[1] + 0.55), ((C.bottom - 0.1) + 1.25) / 2, s * 0.9);
@@ -429,7 +433,7 @@ function buildBigBoy(key, trim = '') {
       E.rods[s] = {
         side: [0, 1, 2].map(i => add(new THREE.Mesh(rodGeo(W.aD[i + 1] - W.aD[i], 0.17, 0.17, 0.075, 0.135, 0.135), R))),
         main: add(new THREE.Mesh(rodGeo(BB.Lm, 0.27, 0.16, 0.09, 0.2, 0.13), R)),
-        cross: (() => { const g = new GeoBin(); g.box('rod', 0.52, 0.3, 0.2, 0, 0, 0); g.box('dark', 0.12, 0.42, 0.1, 0.05, -0.32, 0); return add(g.build(RMAT)); })(),
+        cross: (() => { const g = new GeoBin(); g.box('rod', 0.52, 0.3, 0.2, 0, 0, 0); g.box('dark', 0.12, 0.42, 0.1, 0.05, -0.32, s * 0.13); return add(g.build(RMAT)); })(),
         piston: add(new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 2.0, 10).rotateZ(Math.PI / 2).translate(1.0, 0, 0), R)),
         ecc: add(new THREE.Mesh(rodGeo(W.e, 0.12, 0.1, 0.06, 0.1, 0.07), R)),
         eccRod: add(new THREE.Mesh(rodGeo(W.Lecc, 0.1, 0.085, 0.05, 0.065, 0.06), R)),
@@ -438,8 +442,10 @@ function buildBigBoy(key, trim = '') {
         rrod: add(new THREE.Mesh(rodGeo(W.Lrr, 0.08, 0.07, 0.045, 0.05, 0.05), R)),
         comb: add(new THREE.Mesh(new THREE.BoxGeometry(0.08, W.a + W.b + 0.1, 0.05).translate(0, -(W.a + W.b) / 2, 0), R)),
         union: add(new THREE.Mesh(rodGeo(W.Lu, 0.07, 0.07, 0.04, 0.045, 0.045), R)),
-        vstem: (() => { const g = new GeoBin(); g.add('rod', new THREE.CylinderGeometry(0.035, 0.035, 1.0, 8).rotateZ(Math.PI / 2).translate(0.5, 0, 0)); g.box('rod', 0.18, 0.14, 0.3, 0, 0, s * 0.11); return add(g.build(RMAT)); })(),
-        lifter: add(new THREE.Mesh(rodGeo(0.55, 0.06, 0.05, 0.03, 0.04, 0.04), RMAT.black)),
+        vstem: (() => { const g = new GeoBin(); g.add('rod', new THREE.CylinderGeometry(0.035, 0.035, 1.0, 8).rotateZ(Math.PI / 2).translate(0.5, 0, 0)); g.box('rod', 0.18, 0.1, 0.3, 0, 0, s * 0.11); return add(g.build(RMAT)); })(),
+        // the lifting link hangs from the reverse shaft arm, outside the link, and holds the radius rod by a pin
+        lifter: (() => { const g = new GeoBin(); g.add('black', rodGeo(W.Ll, 0.06, 0.05, 0.02, 0.04, 0.04)); g.cylZ('black', 0.02, 0.1, 8, 0, 0, -s * 0.05); return add(g.build(RMAT)); })(),
+        rarm: add(new THREE.Mesh(rodGeo(W.rS, 0.08, 0.06, 0.02, 0.06, 0.04), RMAT.black)),
       };
     }
     return E;
@@ -501,8 +507,13 @@ function bbGear(E, P, phi, rev, s) {
   const d = -rev * W.dMax, D = [Lk[0] + ux * d, Lk[1] + uy * d];
   const Cx = D[0] + Math.sqrt(Math.max(0, W.Lrr * W.Lrr - (W.yR - D[1]) ** 2)), Cy = W.yR;
   P.rrod.position.set(D[0], D[1], z * 1.36); P.rrod.rotation.z = Math.atan2(Cy - D[1], Cx - D[0]);
-  P.lifter.position.set(D[0] + 0.05, D[1] + 0.05, z * 1.42); P.lifter.rotation.z = Math.PI / 2 - 0.15;
-  const By = BB.yV - W.a - W.b, Ux = wx + 0.1, Uy = By - 0.02, Bx = Ux + W.Lu;
+  // the reverse shaft arm holds the lifting link, which carries the radius rod a little ahead of the die block
+  const rr = Math.atan2(Cy - D[1], Cx - D[0]), Q = [D[0] + W.qL * Math.cos(rr), D[1] + W.qL * Math.sin(rr)], S = [bx(W.aS), W.yS];
+  const T = (() => { const dx = Q[0] - S[0], dy = Q[1] - S[1], d = Math.hypot(dx, dy), a = (W.rS * W.rS - W.Ll * W.Ll + d * d) / (2 * d), h = Math.sqrt(Math.max(0, W.rS * W.rS - a * a));
+    return [S[0] + (a * dx - h * dy) / d, S[1] + (a * dy + h * dx) / d]; })();   // where the arm's circle meets the link's, ahead and above
+  P.lifter.position.set(Q[0], Q[1], z * 1.452); P.lifter.rotation.z = Math.atan2(T[1] - Q[1], T[0] - Q[0]);
+  P.rarm.position.set(S[0], S[1], z * 1.452); P.rarm.rotation.z = Math.atan2(T[1] - S[1], T[0] - S[0]);
+  const By = BB.yV - W.a - W.b, Ux = wx - 0.02, Uy = By - 0.02, Bx = Ux + W.Lu;
   P.union.position.set(Ux, Uy, z * 1.36); P.union.rotation.z = Math.atan2(By - Uy, Bx - Ux);
   const Tvx = Cx + (Cx - Bx) * (W.a / W.b), Tvy = BB.yV;
   P.comb.position.set(Tvx, Tvy, z * 1.36); P.comb.rotation.z = Math.atan2(Bx - Tvx, -(By - Tvy));
@@ -553,18 +564,18 @@ function buildBigBoyTender(key, trim = '') {
   gb.box('dark', D.t1 - 0.4, 0.3, 0.9, tx((0.4 + D.t1) / 2), D.yBot - 0.15, 0);
   for (const s of [-1, 1]) {
     gb.box('dark', D.t1 - D.t0, 0.2, 0.12, tx((D.t0 + D.t1) / 2), D.yBot - 0.1, s * (hw - 0.08));
-    gb.box('dark', D.rigid[4] - D.rigid[0] + 0.8, 0.26, 0.14, tx((D.rigid[0] + D.rigid[4]) / 2), 1.02, s * 1.0);   // side frame over the boxes
+    gb.box('dark', D.rigid[4] - D.rigid[0] + 1.15, 0.26, 0.14, tx((D.rigid[0] + D.rigid[4]) / 2 - 0.175), 1.02, s * 1.0);   // side frame over the boxes
     for (const a of D.rigid) {
       gb.box('dark', 0.34, 0.42, 0.24, tx(a), D.R, s * 1.0);
       gb.box('dark', 0.24, 0.28, 0.03, tx(a), D.R, s * 1.13);
       for (const d of [-0.2, 0.2]) gb.box('dark', 0.06, 1.02 - D.R + 0.1, 0.16, tx(a) + d, (1.02 + D.R) / 2, s * 1.0);
-      gb.box('dark', 0.08, 0.3, 0.12, tx(a - D.R - 0.04), D.R, s * 0.76);           // brake shoe
+      gb.box('dark', 0.08, 0.3, 0.12, tx(a - D.R - 0.09), D.R, s * 0.76);           // brake shoe
     }
     for (let i = 0; i < 4; i++) { const am = (D.rigid[i] + D.rigid[i + 1]) / 2; for (let k = 0; k < 4; k++) gb.box('dark', 0.9 - 0.15 * k, 0.025, 0.12, tx(am), 1.2 - 0.025 * k, s * 1.0); }
   }
   // cross bolsters from the side frames up under the tank, and brake beams across to the shoes
   for (let i = 0; i < 4; i++) gb.box('dark', 0.3, D.yBot - 1.12, 2.14, tx((D.rigid[i] + D.rigid[i + 1]) / 2 + 0.25), (D.yBot + 1.12) / 2, 0);
-  for (const a of D.rigid) bar('dark', 0.03, [tx(a - D.R - 0.04), D.R, -0.8], [tx(a - D.R - 0.04), D.R, 0.8], 6);
+  for (const a of D.rigid) { bar('dark', 0.03, [tx(a - D.R - 0.09), D.R, -0.96], [tx(a - D.R - 0.09), D.R, 0.96], 6); for (const s of [-1, 1]) gb.box('dark', 0.04, 0.42, 0.04, tx(a - D.R - 0.09), 0.71, s * 0.95); }   // beams, hung from the side frames
   gb.box('dark', 0.7, D.yBot - 0.955, 2.4, tx(D.truck), (D.yBot + 0.955) / 2, 0);          // bolster down onto the front truck's centre plate
   gb.box('dark', 0.3, 0.4, 2.9, tx(D.t1 + 0.15), 1.08, 0);                               // rear end sill
   // tank and bunker sides from one profile

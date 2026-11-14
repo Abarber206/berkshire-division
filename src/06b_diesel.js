@@ -372,7 +372,7 @@ function buildDiesel(opts) {
       tg.box('dUnder', Math.abs(tx - nx) + 0.1, 0.16, 0.3, (tx + nx) / 2, 0.78, 0);
     }
     for (const x of [-1.0, 1.0]) tg.box('dUnder', 0.25, 0.16, 2.1, x, 0.88, 0);   // transoms between the sideframes
-    tg.box('dUnder', 0.8, 0.22, 2.1, 0, 1.0, 0);
+    tg.box('dUnder', 2.1, 0.22, 1.2, 0, 1.0, 0);   // bolster on the transoms, between the middle wheels
     grp.add(tg.build(RMAT));
     for (const x of [-DG.axle, 0, DG.axle]) {
       const wg = new THREE.Group(); wg.position.set(x, DG.rW, 0);

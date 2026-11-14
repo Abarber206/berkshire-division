@@ -128,7 +128,7 @@ function gtTruck(wheels) {
     tg.add('dark', new THREE.CylinderGeometry(0.4, 0.4, 0.96, 14).rotateX(Math.PI / 2), M(cx, 0.55, 0));      // traction motors on their axles
   }
   for (const x of [-A / 2, A / 2]) tg.box('dark', 0.25, 0.16, 2.1, x, 0.9, 0);
-  tg.box('dark', 0.9, 0.22, 2.1, 0, 1.0, 0);                 // the floating bolster
+  tg.box('dark', A + 0.25, 0.22, 1.2, 0, 1.0, 0);            // the floating bolster on the transoms, between the middle wheels
   grp.add(tg.build(RMAT));
   for (const x of [-A, 0, A]) {
     const wg = new THREE.Group(); wg.position.set(x, R, 0);
