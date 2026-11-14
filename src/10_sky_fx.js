@@ -303,31 +303,97 @@ function makeEnvCube(top, hor, sun, sunC, gray, ground) {
 
 /* ----------------------- particles ----------------------- */
 const FX = { light: new THREE.Color(1, 1, 1) };
+/* Smoke and steam: one pool of point sprites. Each puff is a billow from a small atlas of four, turned to
+   its own angle and slowly spinning, and lit like a volume: a rounded body with the atlas's bumps on it,
+   bright on the sun side, shaded underneath and away from the sun, and glowing at its thin edges when the
+   sun is behind it. Puffs fade out as they reach the camera so they never smear across a cab window. */
+function smokeAtlas() {
+  const C = 128, S = C * 2, data = new Uint8Array(S * S * 4), r = rng(77);
+  const den = new Float32Array(C * C);
+  for (let cell = 0; cell < 4; cell++) {
+    den.fill(0);
+    const blobs = [];
+    for (let i = 0; i < 13; i++) { const a = r() * TAU, d = Math.sqrt(r()) * 0.46; blobs.push([Math.cos(a) * d, Math.sin(a) * d, 0.2 + r() * 0.22, 0.55 + r() * 0.45]); }
+    const ox = r() * 50, oy = r() * 50;
+    for (let y = 0; y < C; y++) for (let x = 0; x < C; x++) {
+      const u = (x + 0.5) / C * 2 - 1, v = (y + 0.5) / C * 2 - 1;
+      let d = 0; for (const b of blobs) { const dx = u - b[0], dy = v - b[1]; d += b[3] * Math.exp(-(dx * dx + dy * dy) / (b[2] * b[2])); }
+      // fine wisps: a few octaves of value noise eat into the body
+      let n = 0, amp = 0.5, f = 3; for (let o = 0; o < 4; o++) { n += amp * vnoise2(u * f + ox, v * f + oy); amp *= 0.5; f *= 2.1; }
+      const edge = smooth(1.0, 0.72, Math.hypot(u, v));
+      den[y * C + x] = Math.max(0, Math.min(1, (d * 0.75) * (0.55 + 0.9 * n) - 0.08)) * edge;
+    }
+    const cx = (cell % 2) * C, cy = (cell >> 1) * C;
+    for (let y = 0; y < C; y++) for (let x = 0; x < C; x++) {
+      const at = (xx, yy) => den[Math.min(C - 1, Math.max(0, yy)) * C + Math.min(C - 1, Math.max(0, xx))];
+      const gx = at(x + 1, y) - at(x - 1, y), gy = at(x, y + 1) - at(x, y - 1);
+      const k = 5, nl = Math.hypot(gx * k, gy * k, 1);
+      const o = ((cy + y) * S + cx + x) * 4;
+      data[o] = Math.round((-gx * k / nl * 0.5 + 0.5) * 255);
+      data[o + 1] = Math.round((gy * k / nl * 0.5 + 0.5) * 255);   // texture rows run down, the sprite's y runs up
+      data[o + 2] = 255;
+      data[o + 3] = Math.round(den[y * C + x] * 255);
+    }
+  }
+  const t = new THREE.DataTexture(data, S, S, THREE.RGBAFormat);
+  t.minFilter = THREE.LinearMipmapLinearFilter; t.magFilter = THREE.LinearFilter; t.generateMipmaps = true; t.needsUpdate = true;
+  return t;
+}
+/* smooth 2D value noise for the atlas */
+function vnoise2(x, y) {
+  const h = (i, j) => { const s = Math.sin(i * 127.1 + j * 311.7) * 43758.5453; return s - Math.floor(s); };
+  const i = Math.floor(x), j = Math.floor(y), fx = x - i, fy = y - j, ux = fx * fx * (3 - 2 * fx), uy = fy * fy * (3 - 2 * fy);
+  return lerp(lerp(h(i, j), h(i + 1, j), ux), lerp(h(i, j + 1), h(i + 1, j + 1), ux), uy);
+}
 function buildFX(scene) {
   const N = 2400;
   const g = new THREE.BufferGeometry();
-  const pos = new Float32Array(N * 3), size = new Float32Array(N), alpha = new Float32Array(N), col = new Float32Array(N * 3);
+  const pos = new Float32Array(N * 3), size = new Float32Array(N), alpha = new Float32Array(N), col = new Float32Array(N * 3), seed = new Float32Array(N);
+  for (let i = 0; i < N; i++) seed[i] = Math.random();
   g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('aSize', new THREE.BufferAttribute(size, 1)); g.setAttribute('aAlpha', new THREE.BufferAttribute(alpha, 1)); g.setAttribute('aColor', new THREE.BufferAttribute(col, 3));
-  const tex = canvasTex(64, 64, (c) => { const gr = c.createRadialGradient(32, 32, 2, 32, 32, 31); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.45, 'rgba(255,255,255,0.55)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); c.fillStyle = gr; c.fillRect(0, 0, 64, 64); }, { srgb: false });
+  g.setAttribute('aSeed', new THREE.BufferAttribute(seed, 1));
+  const tex = smokeAtlas();
+  const gl = renderer.getContext(), ptMax = gl.getParameter(gl.ALIASED_POINT_SIZE_RANGE)[1] || 256;
   const mat = new THREE.ShaderMaterial({
-    uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { uTex: { value: tex }, uScale: { value: 800 } }]),
+    uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { uTex: { value: tex }, uScale: { value: 800 }, uMax: { value: Math.min(900, ptMax) }, uSunV: { value: new THREE.Vector3(0, 1, 0) }, uSunK: { value: 1 }, uSunC: { value: new THREE.Color(1, 0.95, 0.85) }, uTime: { value: 0 } }]),
     vertexShader: `#include <common>
       #include <fog_pars_vertex>
       #include <logdepthbuf_pars_vertex>
-      attribute float aSize; attribute float aAlpha; attribute vec3 aColor; uniform float uScale; varying float vA; varying vec3 vC;
-      void main(){ vA = aAlpha; vC = aColor; vec4 mvPosition = modelViewMatrix * vec4(position,1.0);
-        gl_PointSize = min(900.0, aSize * uScale / max(0.2, -mvPosition.z)); gl_Position = projectionMatrix * mvPosition;
+      attribute float aSize; attribute float aAlpha; attribute vec3 aColor; attribute float aSeed;
+      uniform float uScale; uniform float uMax; varying float vA; varying vec3 vC; varying float vSeed;
+      void main(){ vC = aColor; vSeed = aSeed; vec4 mvPosition = modelViewMatrix * vec4(position,1.0);
+        float px = aSize * uScale / max(0.2, -mvPosition.z);
+        // fade out as a puff reaches the camera, and as it outgrows the largest sprite the GPU will draw
+        vA = aAlpha * smoothstep(0.6, 3.5, -mvPosition.z) * (1.0 - smoothstep(uMax * 0.8, uMax * 1.6, px));
+        gl_PointSize = min(uMax, px); gl_Position = projectionMatrix * mvPosition;
         #include <logdepthbuf_vertex>
         #include <fog_vertex>
       }`,
     fragmentShader: `#include <common>
       #include <fog_pars_fragment>
       #include <logdepthbuf_pars_fragment>
-      uniform sampler2D uTex; varying float vA; varying vec3 vC;
+      uniform sampler2D uTex; uniform vec3 uSunV; uniform float uSunK; uniform vec3 uSunC; uniform float uTime;
+      varying float vA; varying vec3 vC; varying float vSeed;
       void main(){
         #include <logdepthbuf_fragment>
-        vec4 t = texture2D(uTex, gl_PointCoord); if (t.a * vA < 0.004) discard;
-        gl_FragColor = vec4(vC, t.a * vA);
+        vec2 q = gl_PointCoord * 2.0 - 1.0; q.y = -q.y;
+        float ang = vSeed * 6.2832 + uTime * (vSeed - 0.5) * 0.5, cs = cos(ang), sn = sin(ang);
+        vec2 rq = vec2(cs * q.x - sn * q.y, sn * q.x + cs * q.y);
+        if (max(abs(rq.x), abs(rq.y)) > 0.97) discard;
+        float cell = floor(vSeed * 4.0);
+        vec2 uv = (vec2(rq.x, -rq.y) * 0.5 + 0.5) * 0.5 + vec2(mod(cell, 2.0), floor(cell / 2.0)) * 0.5;
+        vec4 t = texture2D(uTex, uv);
+        float a = t.a * vA; if (a < 0.004) discard;
+        // the billow's bumps, turned back to the screen, on a rounded body
+        vec2 nt = t.rg * 2.0 - 1.0; nt = vec2(cs * nt.x + sn * nt.y, -sn * nt.x + cs * nt.y);
+        vec3 n = normalize(vec3(q * 0.75 + nt * 0.9, sqrt(max(0.0, 1.0 - dot(q, q))) + 0.25));
+        float lit = dot(n, uSunV) * 0.5 + 0.5;
+        float shade = mix(0.68, 1.15, lit * lit) * mix(1.0, 0.88, t.a);    // thick middles a touch darker
+        vec3 c = vC * mix(1.0, shade, uSunK) * mix(vec3(1.0), uSunC, uSunK * lit * 0.35);
+        // the sun behind the smoke lights up its thin edges
+        float back = pow(max(0.0, -uSunV.z), 3.0) * (1.0 - t.a) * uSunK;
+        c += vC * uSunC * back * 0.9;
+        gl_FragColor = vec4(c, a);
         #include <fog_fragment>
       }`,
     transparent: true, depthWrite: false, fog: true,
@@ -359,5 +425,11 @@ function updateFX(dt, cam) {
     FX.age[i] = age + dt;
   }
   FX.g.attributes.position.needsUpdate = true; FX.g.attributes.aSize.needsUpdate = true; FX.g.attributes.aAlpha.needsUpdate = true; FX.g.attributes.aColor.needsUpdate = true;
-  FX.mat.uniforms.uScale.value = innerHeight * ppPx() * 0.5 / Math.tan(cam.fov * Math.PI / 360);
+  const U = FX.mat.uniforms;
+  U.uScale.value = innerHeight * ppPx() * 0.5 / Math.tan(cam.fov * Math.PI / 360);
+  // the key light in view space, how strong it is through the weather, and its colour
+  cam.updateMatrixWorld(); U.uSunV.value.copy(SKY.keyDir).transformDirection(cam.matrixWorldInverse);
+  U.uSunK.value = clamp((SKY.sun.intensity || 0) / 2.2, 0, 1) * (1 - 0.8 * (SKY.gray || 0)) * (1 - 0.7 * (SKY.dark || 0));
+  U.uSunC.value.copy(SKY.sun.color);
+  U.uTime.value += dt;
 }
