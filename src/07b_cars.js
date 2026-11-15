@@ -425,7 +425,7 @@ CARS.canCut = function (T, j) {
   const grp = v => v.helper ? v.helper.g : '';
   return !(isPower(V[j - 1]) && isPower(V[j]) && grp(V[j - 1]) === grp(V[j]));
 };
-CARS.uncouple = function (j, c0) {
+CARS.uncouple = function (j, c0, why) {
   const T = c0 || GAME.train;
   if (!T || !CARS.canCut(T, j)) return;
   if (!CARS.geo) CARS.geo = carGeos();
@@ -440,8 +440,13 @@ CARS.uncouple = function (j, c0) {
   c.v = vT; c.home = T.home;
   // the cut lever lifts the lock on the car being cut off; its knuckle swings open as the cars part
   setKn(endCoupler(c, behind ? 'front' : 'rear'), KN_LIFTED);
-  const kick = Math.abs(vT) > 0.6;
-  if (!ours) {
+  const kick = Math.abs(vT) > 0.6, broke = why === 'broke';
+  if (broke) {
+    // a knuckle broke (08b_slack.js): nothing left there to couple to, and the hoses pulled apart, so emergency
+    setKn(endCoupler(c, behind ? 'front' : 'rear'), KN_CLOSED);
+    c.rolling = Math.abs(vT) > 0.005; c.vented = true;
+    for (const v of off) { v.brake.BP = 0; v.brake.emerg = true; v.hb = false; }
+  } else if (!ours) {
     // splitting a standing or rolling cut: both halves keep their brakes as they were
     c.rolling = T.rolling; c.vented = T.vented;
     for (const v of off) v.hb = v.hb && !c.rolling;
@@ -454,9 +459,11 @@ CARS.uncouple = function (j, c0) {
   CARS.cuts.push(c); CARS.cutFrom = c; CARS.cutAt = performance.now(); CARS.gen++;
   c.update(0);
   if (ours) T.update(0, S.theta, S.reverser); else T.update(0);
-  sndPin(1 / (1 + Math.pow(off[0].pos.distanceTo(camera.position) / 30, 1.3)), ours && !kick);
-  const n = off.length, what = `${n} car${n > 1 ? 's' : ''}`;
-  if (!ours) toast(`Pin pulled: the cut is split, ${what} on the far side.`, 'good', 3200, 'split');
+  const n = off.length, what = `${n} car${n > 1 ? 's' : ''}`, near = 1 / (1 + Math.pow(off[0].pos.distanceTo(camera.position) / 30, 1.3));
+  if (broke) { sndClunk(1.4 * near, 0); sndClunk(0.9 * near, 0.07); toast(`A knuckle broke ${behind ? 'behind' : 'ahead of'} car ${j}: the train parted and went into emergency. ${what} came loose.`, 'bad', 6000, 'knuckle'); }
+  else sndPin(near, ours && !kick);
+  if (broke) { /* said above */ }
+  else if (!ours) toast(`Pin pulled: the cut is split, ${what} on the far side.`, 'good', 3200, 'split');
   else if (kick) toast(`Pin pulled: ${what} rolling free at ${Math.round(Math.abs(vT) / MPH)} mph. Brake to let them run.`, 'warn', 4200, 'kick');
   else toast(`Cut off ${what}. Their air is dumped and the brakeman ties them down.`, 'good', 4000, 'setout');
   if (CARS.onChange) CARS.onChange();

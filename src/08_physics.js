@@ -192,6 +192,8 @@ function physicsStep(dt, train) {
   const disc = 1 - 0.3 * smooth(20, 90, Math.abs(S.v));   // disc brakes, held back at speed to what the rail will take
   let motorBrake = 0, slid = 0;
   let gradeLead = 0, limit = 99;
+  const sk = typeof slkState === 'function' ? slkState(train) : null;   // each car's own share, for the slack between them (08b_slack.js)
+  let Mpow = 0;
   for (let i = 0; i < V.length; i++) {
     const v = V[i];
     const mass = v.kind === 'tender' && !v.helper ? (train.turb ? turbineTenderMass(train) : train.tenderEmpty + S.water + S.coal) : v.mass;
@@ -219,6 +221,7 @@ function physicsStep(dt, train) {
     if (v.slide) slid++;
     const fb = v.slide ? mass * 9.81 * slideMu(Math.abs(S.v)) : mass * v.brakeA * (bc / 64) * (v.disc ? disc : shoe);
     Fbrake += fb + (isLoco && DSL && !train.elec ? S.DBF : 0);
+    if (sk) { sk.M[i] = Math.max(mass, 8000); sk.F[i] = -mass * 9.81 * f.y - (Math.abs(S.v) < 0.03 ? 0 : Math.sign(S.v) * (R * LBF + fb + (isLoco && DSL && !train.elec ? S.DBF : 0))); if (isLoco) Mpow += mass; }
     if (v.motor) motorBrake += fb;
     for (const p of [v.fp[0], v.fp[1]]) limit = Math.min(limit, spec.hs ? hsLimit(p.tp, spec) : p.tp.e.limit);
   }
@@ -246,6 +249,12 @@ function physicsStep(dt, train) {
   }
   S.v += a * dt;
   S.accel = a;
+  if (sk) {
+    // the engines (and helpers) pull; the cars behind only follow
+    for (let i = 0; i < V.length; i++) { const v = V[i]; if ((v.kind === 'loco' || v.kind === 'loco2') && Mpow > 0) sk.F[i] += Frail * sk.M[i] / Mpow; }
+    if (!Mpow) for (let i = 0; i < V.length; i++) sk.F[i] += Frail * sk.M[i] / M;
+    slackStep(dt, train, a);
+  }
   if (S.slide) S.vw = 0; else if (!S.slip) S.vw = S.v;
   S.theta -= S.vw * dt / (DSL ? LG.rD : SK.rD);
   S.M = M;
