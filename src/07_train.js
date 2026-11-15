@@ -131,7 +131,7 @@ class Consist {
       const roll = this.dist * (v.flip ? -1 : 1) + (v.roll || 0), wAng6 = -roll / 0.457, wAng4 = -roll / 0.419;
       for (let k = 0; k < v.trucks.length; k++) {
         const t = v.trucks[k], Fp = v.tp[k].F;
-        if (D) _tm.multiplyMatrices(D, v.rb.t0[k]);
+        if (D) { const tb = v.rb.tk && v.rb.tk[k]; if (tb) _tm.copy(tb.W); else _tm.multiplyMatrices(D, v.rb.t0[k]); }   // knocked out from under, a truck goes its own way
         else { frameMatrix(Fp, _tm); if (v.flip) _tm.multiply(_m4.makeRotationY(Math.PI)); }
         if (t.type === 'six' || t.type === 'buck') {
           if (t.type === 'six') this.tSix.setMatrixAt(i6++, _tm); else this.tBuck.setMatrixAt(iB++, _tm);
@@ -174,6 +174,7 @@ class Consist {
   /* Take the train off the rails around a point of impact (see WreckSim): spec = { a: metres back from
      the front coupler, side: ±1, seed, k: 0..1 how hard, v0: m/s, hit }. null puts every car back on. */
   wreck(spec) {
+    if (this.rb && typeof wfxRestore === 'function') wfxRestore(this);   // dented bodies back to their shared geometry
     for (const v of this.vehicles) v.rb = null;
     this.wk = spec || null;
     this.rb = spec ? new WreckSim(this, spec) : null;
@@ -363,7 +364,8 @@ class Train extends Consist {
     for (const l of [this.fireLight, this.cabLight]) if (l && l.parent) l.parent.remove(l);
     this.head = this.fireLight = this.cabLight = null;
   }
-  worldOf(local, out = new THREE.Vector3()) { return out.copy(local).applyMatrix4(this.loco.root.matrixWorld); }
+  /* a point on the engine in the world, where it is this frame (its matrixWorld would otherwise wait for the render) */
+  worldOf(local, out = new THREE.Vector3()) { const r = this.loco.root; if (r.matrixWorldNeedsUpdate || r.matrixAutoUpdate) r.updateWorldMatrix(true, false); return out.copy(local).applyMatrix4(r.matrixWorld); }
   unitWorld(m, local, out = new THREE.Vector3()) { return out.copy(local).applyMatrix4(m.root.matrixWorld); }
   /* the steam engine's pieces that ride in the scene on their own: lead truck, articulated front engine, tender truck */
   steamExtras() { return this.diesel ? [] : [this.loco.leadTruck, ...(this.loco.extras || []), ...(this.tender && this.tender.extras || [])]; }
@@ -375,6 +377,7 @@ class Train extends Consist {
   }
   /* free GPU memory for a train that is going away for good (another player's) */
   disposeDeep() {
+    if (this.rb && typeof wfxRestore === 'function') wfxRestore(this);
     this.dispose();
     freeObjects(trainRoots(this));
   }

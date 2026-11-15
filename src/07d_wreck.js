@@ -22,6 +22,10 @@ const WK = {
   CPL_FOLD: Math.cos(70 * Math.PI / 180),   // folded further than this, the knuckle or the shank tears off
   LV: 0.55, LIFT: 0.35,       // coupler pull sideways (L/V) or up, over the car's weight, that takes a car on the rails off them
   SPIN: 5,                    // rad/s, the most a wrecked car tumbles
+  SPARK_V: 2.5,               // m/s of steel sliding on steel or ballast that strikes sparks
+  DENT_V: 3, DENT_G: 6,       // closing speed (m/s) that dents a car body hitting another car, or the ground
+  TRUCK_V: 5, TRUCK_G: 4, TRUCK_TIP: 0.8,   // a hit, a slam down onto the ground, or a tilt (cos) that knocks the trucks out from under
+  NSPK: 10, NDENT: 6, DENT_MAX: 0.4, FRAME_Y: 0.85,   // sparks kept per frame, dents per car, deepest dent (m), underframe over the rail (m)
   RAM: 2.5,                   // closing speed (m/s) at which a car on the rails ramming the pile comes off
   EMERG: 1.3, EMERG_F: 0.75,  // brakes in emergency on the cars still on the rails, m/s²: a passenger train, a freight
 };
@@ -104,7 +108,7 @@ class WreckSim {
   }
   /* take vehicle i off the rails: a rigid body with the speed the train had (times keep) */
   derail(i, keep = 1) {
-    const v = this.T.vehicles[i]; if (!v || v.rb || this.bodies.length >= WK.MAXB) return null;
+    const v = this.T.vehicles[i]; if (!v || v.rb || this.bodies.length - (this.nTruck || 0) >= WK.MAXB) return null;
     // part way through a step the train has run on kx metres from where it is drawn: it comes off from there
     const kx = this.kx || 0, sh = new THREE.Matrix4();
     if (kx) { sh.makeTranslation(...new THREE.Vector3().setFromMatrixColumn(v.root.matrix, 0).normalize().multiplyScalar(WreckSim.sF(v) * kx).toArray()); v.root.matrix.premultiply(sh); }
@@ -134,10 +138,60 @@ class WreckSim {
     if (v.kind === 'loco' && U && U.front) b.f0 = U.front.matrix.clone();
     if (v.model && v.model.truck) b.s0 = v.model.truck.matrix.clone();
     if (kx) for (const m4 of [...b.t0, ...(b.u0 || []), b.l0, b.f0, b.s0]) if (m4) m4.premultiply(sh);
+    // its own trucks (the instanced ones under freight cars, coaches and tenders): with it until knocked out from under
+    b.tk = v.trucks && v.trucks.length ? v.trucks.map(() => null) : null;
+    b.dents = [];
     v.rb = b; this.bodies.push(b);
     this.pose(b);
     if (typeof sndClunk === 'function' && AU.on) sndClunk(clamp(Math.abs(sp) / 8, 0.4, 1.5), 0);
     return b;
+  }
+  /* steel scraping at P with velocity v (speed sp along the surface): the fastest few this frame strike sparks */
+  spark(P, v, sp, b) {
+    const L = this.spk || (this.spk = []);
+    let i = this.nSpk;
+    if (i >= WK.NSPK) { i = 0; for (let k = 1; k < WK.NSPK; k++) if (L[k].sp < L[i].sp) i = k; if (L[i].sp >= sp) return; }
+    else this.nSpk++;
+    const o = L[i] || (L[i] = { P: new THREE.Vector3(), v: new THREE.Vector3(), sp: 0 });
+    o.P.copy(P); o.v.copy(v); o.sp = sp; o.b = b;
+  }
+  /* a dent in car body b at world point P, pushed in along n, from a hit at closing speed vn (the effects file presses it) */
+  dent(b, P, n, vn) {
+    if (!b || !b.v || !b.dents) return;
+    const p = _wkch.subVectors(P, b.p).applyQuaternion(_wq.copy(b.q).invert()).add(b.c);   // into the car's own coordinates
+    const d = Math.min(WK.DENT_MAX, 0.035 * (vn - WK.DENT_V * 0.5));
+    if (d < 0.03) return;
+    for (const o of b.dents) if (o.p.distanceToSquared(p) < 1.2) { if (d > o.d + 0.02) { o.d = d; o.done = false; } return; }
+    if (b.dents.length >= WK.NDENT) return;
+    b.dents.push({ p: p.clone(), n: n.clone().applyQuaternion(_wq), d, done: false });
+  }
+  /* the trucks sit on the body's centre plates on nothing but their weight and a pin: knocked hard, or the body tipped
+     over, they come out from under and go their own way */
+  loseTrucks(b) {
+    if (!b.tk || !b.v) return;
+    const v = b.v;
+    for (let k = 0; k < b.tk.length; k++) {
+      if (b.tk[k]) continue;
+      const t = v.trucks[k], six = t.type === 'six' || t.type === 'buck';
+      const Mt = new THREE.Matrix4().multiplyMatrices(b.D, b.t0[k]);
+      const h = new THREE.Vector3(six ? 2.5 : 1.45, 0.5, 1.35), c = new THREE.Vector3(0, 0.5, 0), m = six ? 9500 : 4800;
+      const p = c.clone().applyMatrix4(Mt), q = new THREE.Quaternion().setFromRotationMatrix(Mt);
+      const r = _wkch.subVectors(p, b.p);
+      const tb = {
+        truck: true, m, h, c, p, q, ax: [0, 1, 2].map(j => new THREE.Vector3().setFromMatrixColumn(Mt, j).normalize()), M0: new THREE.Matrix4(),
+        lv: b.av.clone().cross(r).add(b.lv), av: b.av.clone().multiplyScalar(0.5).add(new THREE.Vector3((this.r() - 0.5) * 2, (this.r() - 0.5) * 2, (this.r() - 0.5) * 2)),
+        pv: new THREE.Vector3(), pw: new THREE.Vector3(),
+        I: new THREE.Vector3(m / 3 * (h.y * h.y + h.z * h.z), m / 3 * (h.x * h.x + h.z * h.z), m / 3 * (h.x * h.x + h.y * h.y)),
+        pts: [], bed: b.bed, W: new THREE.Matrix4(), D: new THREE.Matrix4(),
+      };
+      for (const x of [-1, 1]) for (const y of [-1, 1]) for (const z of [-1, 1]) tb.pts.push(new THREE.Vector3(x * h.x, y * h.y, z * h.z));
+      tb.pts.push(new THREE.Vector3(0, -h.y, 0));
+      b.tk[k] = tb; this.bodies.push(tb); this.nTruck = (this.nTruck || 0) + 1;
+      this.pose(tb);
+    }
+    // the body comes down on its underframe, the height of the trucks lower than its box went
+    for (const s of b.pts) if (s.y < 0) s.y = Math.max(s.y, -b.h.y + WK.FRAME_Y);
+    b.tkGone = true;
   }
   /* speed of the cars still on the rails, along the train */
   kinV() { return this.kin ? this.kin.v : 0; }
@@ -201,7 +255,7 @@ class WreckSim {
   contact(A, B, kv, P, n, pen, mu, e) {
     const C = this.C, c = C[this.nc] || (C[this.nc] = { P: new THREE.Vector3(), n: new THREE.Vector3(), rA: new THREE.Vector3(), rB: new THREE.Vector3(), dk: new THREE.Vector3(), jt: new THREE.Vector3(), v0: new THREE.Vector3() });
     this.nc++;
-    c.A = A; c.B = B; c.kv = kv; c.P.copy(P); c.n.copy(n); c.pen = pen; c.mu = mu; c.e = e; c.jn = 0; c.jt.set(0, 0, 0);
+    c.A = A; c.B = B; c.kv = kv; c.bed = false; c.P.copy(P); c.n.copy(n); c.pen = pen; c.mu = mu; c.e = e; c.jn = 0; c.jt.set(0, 0, 0);
     c.rA.subVectors(P, A.p); if (B) c.rB.subVectors(P, B.p);
     if (kv) c.dk.setFromMatrixColumn(kv.root.matrix, 0).normalize().multiplyScalar(WreckSim.sF(kv));
     // something hitting a car at rest wakes it
@@ -226,6 +280,7 @@ class WreckSim {
     const T = this.T, V = T.vehicles;
     if (!this.C) this.C = [];
     for (const b of this.bodies) b.dgS = 0;   // hardest dig-in this frame, for the dirt and gouges (10h_dig.js)
+    this.nSpk = 0;   // steel scraping on steel or stone this frame, for the sparks and the screech (10l_wreckfx.js)
     this.acc = Math.min(this.acc + dt, 0.06);
     while (this.acc >= WK.H) {
       this.acc -= WK.H; this.t += WK.H;
@@ -239,10 +294,16 @@ class WreckSim {
           const P = _wa.copy(s).applyQuaternion(b.q).add(b.p);
           const pen = this.ground(b, P) - P.y; if (pen <= 0) continue;
           // a car skidding sideways digs its edge in (into dirt most of all) and trips: friction grows with how sideways it goes
-          const c = this.contact(b, null, null, P, _wb.set(0, 1, 0), pen, WK.MU, WK.E_G);
+          const c = this.contact(b, null, null, P, _wb.set(0, 1, 0), pen, WK.MU, WK.E_G); c.bed = this.onBed;
           const vh = Math.hypot(c.v0.x, c.v0.z);
           if (vh > 0.3) c.mu = WK.MU + WK.TRIP * (this.onBed ? 0.5 : 1) * Math.abs(c.v0.x * b.ax[2].x + c.v0.z * b.ax[2].z) / vh;
         }
+      }
+      // trucks knocked out from under are squeezed out from beneath the body that drops onto them
+      for (const b of this.bodies) {
+        if (!b.tkGone) continue;
+        const hb = _wkcy.set(b.h.x, b.h.y - WK.FRAME_Y / 2, b.h.z), pb = _wkcx.copy(b.p).addScaledVector(b.ax[1], WK.FRAME_Y / 2);
+        for (const tb of b.tk) if (tb && !(tb.sleep && b.sleep)) this.inside(tb, pb, b.q, hb, b.sleep ? null : b, null, true, true);
       }
       for (let x = 0; x < V.length; x++) {
         const A = V[x]; if (!A.rb) continue;
@@ -297,12 +358,20 @@ class WreckSim {
           if (c.B) WreckSim.push(c.B, c.rB, j.negate(), true);
         }
       }
-      // what the contacts did: dirt thrown where a car dug in, and cars on the rails forced off by the pile
+      // what the contacts did: dirt thrown where a car dug in, sparks where steel scraped, dents where it hit hard,
+      // trucks knocked out from under, and cars on the rails forced off by the pile
       for (let k = 0; k < n; k++) {
         const c = C[k];
+        const vn0 = c.v0.dot(c.n), vt0 = Math.sqrt(Math.max(0, c.v0.lengthSq() - vn0 * vn0));
+        if (c.jn > 0 && (c.B || c.kv || c.bed) && vt0 > WK.SPARK_V) this.spark(c.P, c.v0, vt0, !c.B && !c.kv ? c.A : null);
+        if (c.B || c.kv) {
+          if (-vn0 > WK.DENT_V) { this.dent(c.A, c.P, c.n, -vn0); if (c.B) this.dent(c.B, c.P, _wkcj.copy(c.n).negate(), -vn0); }
+          if (-vn0 > WK.TRUCK_V) { this.loseTrucks(c.A); if (c.B) this.loseTrucks(c.B); }
+        } else if (-vn0 > WK.DENT_G && c.A.v) this.dent(c.A, c.P, c.n, -vn0 * 0.6);
         if (!c.B && !c.kv) {
           const b = c.A, vp = c.v0, fn = c.jn / h, sp = Math.hypot(vp.x, vp.z);
           const im = Math.max(sp, -vp.y * 1.5);
+          if (-vp.y > WK.TRUCK_G) this.loseTrucks(b);
           if (im > 1.2 && im * fn > b.dgS) { b.dgS = im * fn; b.dgI = im; b.dgN = Math.min(2, fn / (WK.G * b.m)); (b.dgP || (b.dgP = new THREE.Vector3())).copy(c.P); (b.dgV || (b.dgV = new THREE.Vector3())).copy(vp); }
         } else if (c.kv) {
           // rammed hard, or shoved sideways harder than the flanges hold (L/V), it comes off too
@@ -325,6 +394,7 @@ class WreckSim {
         const w = b.pw.add(b.av); _wq.set(w.x * h * 0.5, w.y * h * 0.5, w.z * h * 0.5, 0).multiply(b.q);
         b.q.set(b.q.x + _wq.x, b.q.y + _wq.y, b.q.z + _wq.z, b.q.w + _wq.w).normalize();
         this.pose(b); b.pv.set(0, 0, 0); b.pw.set(0, 0, 0);
+        if (b.tk && b.ax[1].y < WK.TRUCK_TIP) this.loseTrucks(b);
         // settled: slow for half a second puts it to sleep
         if (b.lv.lengthSq() < 0.04 && b.av.lengthSq() < 0.04) { if ((b.restT = (b.restT || 0) + h) > 0.5) { b.sleep = true; b.lv.set(0, 0, 0); b.av.set(0, 0, 0); continue; } }
         else b.restT = 0;
@@ -338,8 +408,9 @@ class WreckSim {
       this.kx += kin.v * h; kin.dx += kin.v * h;
       if (!moving && Math.abs(kin.v) < 0.05) { this.still += h; if (this.still > 1) { this.asleep = true; break; } } else this.still = 0;
     }
-    for (const b of this.bodies) { b.v.pos.copy(b.p); b.v.fwd.copy(b.ax[0]).multiplyScalar(WreckSim.sF(b.v)); }
+    for (const b of this.bodies) if (b.v) { b.v.pos.copy(b.p); b.v.fwd.copy(b.ax[0]).multiplyScalar(WreckSim.sF(b.v)); }
     if (typeof digWreck === 'function') digWreck(this, dt);
+    if (typeof wfxWreck === 'function') wfxWreck(this, dt);
   }
   /* The couplers: a knuckle is a ball joint at the coupler faces that lets the cars swing about it but not part. A car
      on the rails is pulled off when the wreck drags its coupler sideways or lifts it harder than the flanges hold (L/V);
@@ -439,14 +510,14 @@ class WreckSim {
   }
   /* points of body src inside the box (pO, qO, hO) of body o (or car kv on the rails); ends false leaves out pushes
      through the box's ends */
-  inside(src, pO, qO, hO, o, kv, ends = true) {
+  inside(src, pO, qO, hO, o, kv, ends = true, flat = false) {
     const qi = _wqi2.copy(qO).invert(), n = _wkci;
     for (const s of src.pts) {
       const P = _wa.copy(s).applyQuaternion(src.q).add(src.p);
       const u = _wb.subVectors(P, pO).applyQuaternion(qi);
       const dx = hO.x - Math.abs(u.x), dy = hO.y - Math.abs(u.y), dz = hO.z - Math.abs(u.z);
       if (dx <= 0 || dy <= 0 || dz <= 0) continue;
-      const pen = Math.min(dx, dy, dz);
+      const pen = flat ? Math.min(dx, dz) : Math.min(dx, dy, dz);   // flat: only out the sides or ends, never down into the ground
       if (pen === dx) { if (!ends) continue; n.set(Math.sign(u.x) || 1, 0, 0); } else if (pen === dy) n.set(0, Math.sign(u.y) || 1, 0); else n.set(0, 0, Math.sign(u.z) || 1);
       n.applyQuaternion(qO);
       this.contact(src, o, kv, P, n, pen, WK.MU_C, WK.E_C);

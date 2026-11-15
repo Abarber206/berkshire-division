@@ -35,7 +35,7 @@ function makeTrain(W, kinds, gap = 0) {
     const root = new THREE.Group(); root.matrixAutoUpdate = false;
     const box = new THREE.Mesh(new THREE.BoxGeometry(len + 0.4, 3.4, 3.1), new THREE.MeshBasicMaterial());
     box.position.y = 2.6; root.add(box); box.updateMatrix();
-    const v = { kind, len, mass, a0: a, root, ptsAll: [], model: {}, trucks: [], tp: [], flip: false };
+    const v = { kind, len, mass, a0: a, root, ptsAll: [], model: {}, trucks: kind === 'loco' ? [] : [{ type: 'four' }, { type: 'four' }], tp: [], flip: false };
     v._cf = new THREE.Vector3(len / 2 - gap / 2, 0.88, 0); v._cr = new THREE.Vector3(-len / 2 + gap / 2, 0.88, 0); v._sF = 1;
     T.vehicles.push(v); a += len;
   }
@@ -68,7 +68,7 @@ function runWreck(W, T, v0, secs, spec = {}, onFrame) {
     T.x += kin.dx !== undefined ? kin.dx : kin.v * dt; T.place();
     const st = { t: (f + 1) * dt, kv: kin.v, bodies: R.bodies.map(b => {
       let lo = Infinity; for (const s of b.pts) { const P = s.clone().applyQuaternion(b.q).add(b.p); lo = Math.min(lo, P.y - R.ground(b, P)); }
-      return { i: b.i, sp: b.lv.length(), y: b.p.y, lo, up: b.ax[1].y, sleep: !!b.sleep };
+      return { i: b.i, truck: !!b.truck, sp: b.lv.length(), y: b.p.y, lo, up: b.ax[1].y, sleep: !!b.sleep };
     }), broken: R.broken.size, asleep: R.asleep };
     out.push(st); if (onFrame) onFrame(st, R);
     if (R.asleep && Math.abs(kin.v) < 0.05) break;

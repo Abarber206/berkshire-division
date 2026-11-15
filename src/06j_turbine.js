@@ -689,14 +689,18 @@ function turbineShimmer(B) {
   B.body.add(m);
   return m;
 }
-let gtPuff = 0, gtNotch = 0, gtLit = false, gtT = 0, gtAuxT = 0, gtCrankT = 0, gtPumpT = 0;
+let gtPuff = 0, gtNotch = 0, gtNotchT = 0, gtPuffT = 0, gtLit = false, gtT = 0, gtAuxT = 0, gtCrankT = 0, gtPumpT = 0;
 function turbineFX(dt, T, tv) {
   const A = T.units[0], B = T.units[1], ex = B.exhaust;
   const lit = S.tOn || (S.tStart > 0 && S.tspd >= GTE.lite);
   if (lit && !gtLit && S.tStart > 0) gtPuff = 4;          // light-off: a black cloud of unburnt fuel
   gtLit = lit;
-  if (S.notch > gtNotch && lit) gtPuff = Math.min(2.5, gtPuff + 0.45);
-  gtNotch = S.notch; gtPuff = Math.max(0, gtPuff - dt);
+  // opening up past the highest notch of the last few seconds smokes once, not every time a slider or the
+  // cruise control nudges the throttle across a notch and back (that kept the puff topped up into a black column)
+  if (S.notch > gtNotch && lit && gtPuffT <= 0) { gtPuff = Math.min(1.6, gtPuff + 0.45); gtPuffT = 1.5; }
+  gtPuffT -= dt;
+  if (S.notch >= gtNotch) { gtNotch = S.notch; gtNotchT = 3; } else if ((gtNotchT -= dt) <= 0) gtNotch = S.notch;
+  gtPuff = Math.max(0, gtPuff - dt);
   const burn = lit ? 0.3 + 0.7 * clamp(Math.abs(S.TE * S.v) / GTP.P, 0, 1) : 0;
   const near = T.unitWorld(B, B.enginePos).distanceTo(camera.position);
   gtT += dt;
@@ -706,7 +710,7 @@ function turbineFX(dt, T, tv) {
     const a = (lit ? 0.025 + 0.045 * burn : 0.015) + 0.55 * dark;   // a clean-burning turbine leaves only a thin haze
     for (let n = dark > 0.2 ? 3 : 1; n > 0; n--) {
       const p = T.unitWorld(B, new THREE.Vector3(B.len / 2 - lerp(ex.a0, ex.a1, Math.random()), ex.y, (Math.random() - 0.5) * ex.w));
-      emit(p, new THREE.Vector3(tv.x + (Math.random() - 0.5) * 1.2, 9 + 14 * burn * S.tspd + 4 * dark, tv.z + (Math.random() - 0.5) * 1.2), 1.4 + Math.random() + dark * 2.5, 1.2, 4 + 4 * burn + 4 * dark, a, [gv, gv, gv * 1.03], 1.3, 1.15);
+      emit(p, new THREE.Vector3(tv.x + (Math.random() - 0.5) * 1.2, (9 + 14 * burn * S.tspd + 4 * dark) / (1 + Math.abs(S.v) / 14), tv.z + (Math.random() - 0.5) * 1.2), 1.4 + Math.random() + dark * 2.5, 1.2, 4 + 4 * burn + 4 * dark, a, [gv, gv, gv * 1.03], 1.3, 1.15);
     }
   }
   // the auxiliary diesel's stack on the cab unit

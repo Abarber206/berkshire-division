@@ -459,10 +459,12 @@ function buildBerkshire(key, trim = '') {
     gb.add('black', new THREE.LatheGeometry(prof.map(p => new THREE.Vector2(p[1], p[0])), 36).rotateZ(-Math.PI / 2).translate(x0, y, 0));
     gb.add(rim, new THREE.TorusGeometry(R - 0.028, 0.018, 8, 36).rotateY(Math.PI / 2).translate(ax(aF + 0.01), y, 0));   // door rim
     gb.add('black', new THREE.TorusGeometry(R + 0.006, 0.014, 6, 36).rotateY(Math.PI / 2).translate(ax(aB - 0.15), y, 0));   // rolled bead round the case
-    // visor: an arched hood over the top of the door
-    { const s = new THREE.Shape(), r0 = R + 0.005, r1 = R + 0.03, t0 = 0.3, t1 = Math.PI - 0.3;
+    // visor: an arched hood over the top of the door, standing well out ahead of the glass to shade it
+    { const s = new THREE.Shape(), r0 = R + 0.006, r1 = R + 0.036, t0 = 0.22, t1 = Math.PI - 0.22, L = 0.3;
       s.absarc(0, 0, r1, t0, t1, false); s.lineTo(r0 * Math.cos(t1), r0 * Math.sin(t1)); s.absarc(0, 0, r0, t1, t0, true); s.lineTo(r1 * Math.cos(t0), r1 * Math.sin(t0));
-      gb.add('black', new THREE.ExtrudeGeometry(s, { depth: 0.13, bevelEnabled: false, curveSegments: 16 }).rotateY(Math.PI / 2).translate(ax(aF + 0.06), y, 0)); }
+      gb.add('black', new THREE.ExtrudeGeometry(s, { depth: L, bevelEnabled: false, curveSegments: 18 }).rotateY(Math.PI / 2).translate(ax(aF + 0.05), y, 0));
+      // a rolled lip along its front edge
+      gb.add('black', new THREE.TorusGeometry((r0 + r1) / 2, 0.018, 6, 24, t1 - t0).rotateZ(t0).rotateY(Math.PI / 2).translate(ax(aF + 0.05 - L), y, 0)); }
     // ventilator cap on top, back of the case
     gb.cyl('black', 0.05, 0.055, 0.1, 14, ax(aB - 0.13), y + R + 0.03, 0); gb.cyl('black', 0.085, 0.085, 0.025, 16, ax(aB - 0.13), y + R + 0.09, 0);
     gb.cyl('black', 0.03, 0.03, 0.03, 10, ax(aB - 0.13), y + R + 0.115, 0);
@@ -502,9 +504,9 @@ function buildBerkshire(key, trim = '') {
     if (trim) addWreath(gb, 0.34, 0.075, M(ax(door.a - 0.015), yB - 0.48, 0, 0, Math.PI / 2, 0));
   } else {
     // round lamp in the door centre with a brass rim, the bell up on top of the smokebox front, number plate beside the lamp
-    { const ln = headlamp(door.a - 0.44, yB + 0.05, 0.3, 0.46, 'brass'); hlPos = [ax(ln.a), yB + 0.05]; hlR = ln.r; lensA = ln.a; }
+    { const ln = headlamp(door.a - 0.4, yB + 0.05, 0.26, 0.42, 'brass'); hlPos = [ax(ln.a), yB + 0.05]; hlR = ln.r; lensA = ln.a; }
     // holiday: a wreath round the lamp drum, hugging the case just ahead of the number board
-    if (trim) addWreath(gb, 0.41, 0.09, M(ax(door.a - 0.05), yB + 0.05, 0, 0, Math.PI / 2, 0));
+    if (trim) addWreath(gb, 0.37, 0.09, M(ax(door.a - 0.05), yB + 0.05, 0, 0, Math.PI / 2, 0));
     gb.box('black', 0.3, 0.3, 0.3, ax(door.a - 0.05), yB - 0.18, 0);                         // lamp bracket on the door
     gb.box('black', 0.08, 0.24, 0.42, ax(door.a - 0.01), yB - 0.1, 0.55);
     gb.add('num' + key, new THREE.PlaneGeometry(0.34, 0.18), M(ax(door.a - 0.052), yB - 0.1, 0.55, 0, Math.PI / 2, 0));

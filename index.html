@@ -7377,10 +7377,12 @@ function buildBerkshire(key, trim = '') {
     gb.add('black', new THREE.LatheGeometry(prof.map(p => new THREE.Vector2(p[1], p[0])), 36).rotateZ(-Math.PI / 2).translate(x0, y, 0));
     gb.add(rim, new THREE.TorusGeometry(R - 0.028, 0.018, 8, 36).rotateY(Math.PI / 2).translate(ax(aF + 0.01), y, 0));   // door rim
     gb.add('black', new THREE.TorusGeometry(R + 0.006, 0.014, 6, 36).rotateY(Math.PI / 2).translate(ax(aB - 0.15), y, 0));   // rolled bead round the case
-    // visor: an arched hood over the top of the door
-    { const s = new THREE.Shape(), r0 = R + 0.005, r1 = R + 0.03, t0 = 0.3, t1 = Math.PI - 0.3;
+    // visor: an arched hood over the top of the door, standing well out ahead of the glass to shade it
+    { const s = new THREE.Shape(), r0 = R + 0.006, r1 = R + 0.036, t0 = 0.22, t1 = Math.PI - 0.22, L = 0.3;
       s.absarc(0, 0, r1, t0, t1, false); s.lineTo(r0 * Math.cos(t1), r0 * Math.sin(t1)); s.absarc(0, 0, r0, t1, t0, true); s.lineTo(r1 * Math.cos(t0), r1 * Math.sin(t0));
-      gb.add('black', new THREE.ExtrudeGeometry(s, { depth: 0.13, bevelEnabled: false, curveSegments: 16 }).rotateY(Math.PI / 2).translate(ax(aF + 0.06), y, 0)); }
+      gb.add('black', new THREE.ExtrudeGeometry(s, { depth: L, bevelEnabled: false, curveSegments: 18 }).rotateY(Math.PI / 2).translate(ax(aF + 0.05), y, 0));
+      // a rolled lip along its front edge
+      gb.add('black', new THREE.TorusGeometry((r0 + r1) / 2, 0.018, 6, 24, t1 - t0).rotateZ(t0).rotateY(Math.PI / 2).translate(ax(aF + 0.05 - L), y, 0)); }
     // ventilator cap on top, back of the case
     gb.cyl('black', 0.05, 0.055, 0.1, 14, ax(aB - 0.13), y + R + 0.03, 0); gb.cyl('black', 0.085, 0.085, 0.025, 16, ax(aB - 0.13), y + R + 0.09, 0);
     gb.cyl('black', 0.03, 0.03, 0.03, 10, ax(aB - 0.13), y + R + 0.115, 0);
@@ -7420,9 +7422,9 @@ function buildBerkshire(key, trim = '') {
     if (trim) addWreath(gb, 0.34, 0.075, M(ax(door.a - 0.015), yB - 0.48, 0, 0, Math.PI / 2, 0));
   } else {
     // round lamp in the door centre with a brass rim, the bell up on top of the smokebox front, number plate beside the lamp
-    { const ln = headlamp(door.a - 0.44, yB + 0.05, 0.3, 0.46, 'brass'); hlPos = [ax(ln.a), yB + 0.05]; hlR = ln.r; lensA = ln.a; }
+    { const ln = headlamp(door.a - 0.4, yB + 0.05, 0.26, 0.42, 'brass'); hlPos = [ax(ln.a), yB + 0.05]; hlR = ln.r; lensA = ln.a; }
     // holiday: a wreath round the lamp drum, hugging the case just ahead of the number board
-    if (trim) addWreath(gb, 0.41, 0.09, M(ax(door.a - 0.05), yB + 0.05, 0, 0, Math.PI / 2, 0));
+    if (trim) addWreath(gb, 0.37, 0.09, M(ax(door.a - 0.05), yB + 0.05, 0, 0, Math.PI / 2, 0));
     gb.box('black', 0.3, 0.3, 0.3, ax(door.a - 0.05), yB - 0.18, 0);                         // lamp bracket on the door
     gb.box('black', 0.08, 0.24, 0.42, ax(door.a - 0.01), yB - 0.1, 0.55);
     gb.add('num' + key, new THREE.PlaneGeometry(0.34, 0.18), M(ax(door.a - 0.052), yB - 0.1, 0.55, 0, Math.PI / 2, 0));
@@ -14550,14 +14552,18 @@ function turbineShimmer(B) {
   B.body.add(m);
   return m;
 }
-let gtPuff = 0, gtNotch = 0, gtLit = false, gtT = 0, gtAuxT = 0, gtCrankT = 0, gtPumpT = 0;
+let gtPuff = 0, gtNotch = 0, gtNotchT = 0, gtPuffT = 0, gtLit = false, gtT = 0, gtAuxT = 0, gtCrankT = 0, gtPumpT = 0;
 function turbineFX(dt, T, tv) {
   const A = T.units[0], B = T.units[1], ex = B.exhaust;
   const lit = S.tOn || (S.tStart > 0 && S.tspd >= GTE.lite);
   if (lit && !gtLit && S.tStart > 0) gtPuff = 4;          // light-off: a black cloud of unburnt fuel
   gtLit = lit;
-  if (S.notch > gtNotch && lit) gtPuff = Math.min(2.5, gtPuff + 0.45);
-  gtNotch = S.notch; gtPuff = Math.max(0, gtPuff - dt);
+  // opening up past the highest notch of the last few seconds smokes once, not every time a slider or the
+  // cruise control nudges the throttle across a notch and back (that kept the puff topped up into a black column)
+  if (S.notch > gtNotch && lit && gtPuffT <= 0) { gtPuff = Math.min(1.6, gtPuff + 0.45); gtPuffT = 1.5; }
+  gtPuffT -= dt;
+  if (S.notch >= gtNotch) { gtNotch = S.notch; gtNotchT = 3; } else if ((gtNotchT -= dt) <= 0) gtNotch = S.notch;
+  gtPuff = Math.max(0, gtPuff - dt);
   const burn = lit ? 0.3 + 0.7 * clamp(Math.abs(S.TE * S.v) / GTP.P, 0, 1) : 0;
   const near = T.unitWorld(B, B.enginePos).distanceTo(camera.position);
   gtT += dt;
@@ -14567,7 +14573,7 @@ function turbineFX(dt, T, tv) {
     const a = (lit ? 0.025 + 0.045 * burn : 0.015) + 0.55 * dark;   // a clean-burning turbine leaves only a thin haze
     for (let n = dark > 0.2 ? 3 : 1; n > 0; n--) {
       const p = T.unitWorld(B, new THREE.Vector3(B.len / 2 - lerp(ex.a0, ex.a1, Math.random()), ex.y, (Math.random() - 0.5) * ex.w));
-      emit(p, new THREE.Vector3(tv.x + (Math.random() - 0.5) * 1.2, 9 + 14 * burn * S.tspd + 4 * dark, tv.z + (Math.random() - 0.5) * 1.2), 1.4 + Math.random() + dark * 2.5, 1.2, 4 + 4 * burn + 4 * dark, a, [gv, gv, gv * 1.03], 1.3, 1.15);
+      emit(p, new THREE.Vector3(tv.x + (Math.random() - 0.5) * 1.2, (9 + 14 * burn * S.tspd + 4 * dark) / (1 + Math.abs(S.v) / 14), tv.z + (Math.random() - 0.5) * 1.2), 1.4 + Math.random() + dark * 2.5, 1.2, 4 + 4 * burn + 4 * dark, a, [gv, gv, gv * 1.03], 1.3, 1.15);
     }
   }
   // the auxiliary diesel's stack on the cab unit
@@ -14722,7 +14728,7 @@ class Consist {
       const roll = this.dist * (v.flip ? -1 : 1) + (v.roll || 0), wAng6 = -roll / 0.457, wAng4 = -roll / 0.419;
       for (let k = 0; k < v.trucks.length; k++) {
         const t = v.trucks[k], Fp = v.tp[k].F;
-        if (D) _tm.multiplyMatrices(D, v.rb.t0[k]);
+        if (D) { const tb = v.rb.tk && v.rb.tk[k]; if (tb) _tm.copy(tb.W); else _tm.multiplyMatrices(D, v.rb.t0[k]); }   // knocked out from under, a truck goes its own way
         else { frameMatrix(Fp, _tm); if (v.flip) _tm.multiply(_m4.makeRotationY(Math.PI)); }
         if (t.type === 'six' || t.type === 'buck') {
           if (t.type === 'six') this.tSix.setMatrixAt(i6++, _tm); else this.tBuck.setMatrixAt(iB++, _tm);
@@ -14765,6 +14771,7 @@ class Consist {
   /* Take the train off the rails around a point of impact (see WreckSim): spec = { a: metres back from
      the front coupler, side: ±1, seed, k: 0..1 how hard, v0: m/s, hit }. null puts every car back on. */
   wreck(spec) {
+    if (this.rb && typeof wfxRestore === 'function') wfxRestore(this);   // dented bodies back to their shared geometry
     for (const v of this.vehicles) v.rb = null;
     this.wk = spec || null;
     this.rb = spec ? new WreckSim(this, spec) : null;
@@ -14954,7 +14961,8 @@ class Train extends Consist {
     for (const l of [this.fireLight, this.cabLight]) if (l && l.parent) l.parent.remove(l);
     this.head = this.fireLight = this.cabLight = null;
   }
-  worldOf(local, out = new THREE.Vector3()) { return out.copy(local).applyMatrix4(this.loco.root.matrixWorld); }
+  /* a point on the engine in the world, where it is this frame (its matrixWorld would otherwise wait for the render) */
+  worldOf(local, out = new THREE.Vector3()) { const r = this.loco.root; if (r.matrixWorldNeedsUpdate || r.matrixAutoUpdate) r.updateWorldMatrix(true, false); return out.copy(local).applyMatrix4(r.matrixWorld); }
   unitWorld(m, local, out = new THREE.Vector3()) { return out.copy(local).applyMatrix4(m.root.matrixWorld); }
   /* the steam engine's pieces that ride in the scene on their own: lead truck, articulated front engine, tender truck */
   steamExtras() { return this.diesel ? [] : [this.loco.leadTruck, ...(this.loco.extras || []), ...(this.tender && this.tender.extras || [])]; }
@@ -14966,6 +14974,7 @@ class Train extends Consist {
   }
   /* free GPU memory for a train that is going away for good (another player's) */
   disposeDeep() {
+    if (this.rb && typeof wfxRestore === 'function') wfxRestore(this);
     this.dispose();
     freeObjects(trainRoots(this));
   }
@@ -15753,6 +15762,10 @@ const WK = {
   CPL_FOLD: Math.cos(70 * Math.PI / 180),   // folded further than this, the knuckle or the shank tears off
   LV: 0.55, LIFT: 0.35,       // coupler pull sideways (L/V) or up, over the car's weight, that takes a car on the rails off them
   SPIN: 5,                    // rad/s, the most a wrecked car tumbles
+  SPARK_V: 2.5,               // m/s of steel sliding on steel or ballast that strikes sparks
+  DENT_V: 3, DENT_G: 6,       // closing speed (m/s) that dents a car body hitting another car, or the ground
+  TRUCK_V: 5, TRUCK_G: 4, TRUCK_TIP: 0.8,   // a hit, a slam down onto the ground, or a tilt (cos) that knocks the trucks out from under
+  NSPK: 10, NDENT: 6, DENT_MAX: 0.4, FRAME_Y: 0.85,   // sparks kept per frame, dents per car, deepest dent (m), underframe over the rail (m)
   RAM: 2.5,                   // closing speed (m/s) at which a car on the rails ramming the pile comes off
   EMERG: 1.3, EMERG_F: 0.75,  // brakes in emergency on the cars still on the rails, m/s²: a passenger train, a freight
 };
@@ -15835,7 +15848,7 @@ class WreckSim {
   }
   /* take vehicle i off the rails: a rigid body with the speed the train had (times keep) */
   derail(i, keep = 1) {
-    const v = this.T.vehicles[i]; if (!v || v.rb || this.bodies.length >= WK.MAXB) return null;
+    const v = this.T.vehicles[i]; if (!v || v.rb || this.bodies.length - (this.nTruck || 0) >= WK.MAXB) return null;
     // part way through a step the train has run on kx metres from where it is drawn: it comes off from there
     const kx = this.kx || 0, sh = new THREE.Matrix4();
     if (kx) { sh.makeTranslation(...new THREE.Vector3().setFromMatrixColumn(v.root.matrix, 0).normalize().multiplyScalar(WreckSim.sF(v) * kx).toArray()); v.root.matrix.premultiply(sh); }
@@ -15865,10 +15878,60 @@ class WreckSim {
     if (v.kind === 'loco' && U && U.front) b.f0 = U.front.matrix.clone();
     if (v.model && v.model.truck) b.s0 = v.model.truck.matrix.clone();
     if (kx) for (const m4 of [...b.t0, ...(b.u0 || []), b.l0, b.f0, b.s0]) if (m4) m4.premultiply(sh);
+    // its own trucks (the instanced ones under freight cars, coaches and tenders): with it until knocked out from under
+    b.tk = v.trucks && v.trucks.length ? v.trucks.map(() => null) : null;
+    b.dents = [];
     v.rb = b; this.bodies.push(b);
     this.pose(b);
     if (typeof sndClunk === 'function' && AU.on) sndClunk(clamp(Math.abs(sp) / 8, 0.4, 1.5), 0);
     return b;
+  }
+  /* steel scraping at P with velocity v (speed sp along the surface): the fastest few this frame strike sparks */
+  spark(P, v, sp, b) {
+    const L = this.spk || (this.spk = []);
+    let i = this.nSpk;
+    if (i >= WK.NSPK) { i = 0; for (let k = 1; k < WK.NSPK; k++) if (L[k].sp < L[i].sp) i = k; if (L[i].sp >= sp) return; }
+    else this.nSpk++;
+    const o = L[i] || (L[i] = { P: new THREE.Vector3(), v: new THREE.Vector3(), sp: 0 });
+    o.P.copy(P); o.v.copy(v); o.sp = sp; o.b = b;
+  }
+  /* a dent in car body b at world point P, pushed in along n, from a hit at closing speed vn (the effects file presses it) */
+  dent(b, P, n, vn) {
+    if (!b || !b.v || !b.dents) return;
+    const p = _wkch.subVectors(P, b.p).applyQuaternion(_wq.copy(b.q).invert()).add(b.c);   // into the car's own coordinates
+    const d = Math.min(WK.DENT_MAX, 0.035 * (vn - WK.DENT_V * 0.5));
+    if (d < 0.03) return;
+    for (const o of b.dents) if (o.p.distanceToSquared(p) < 1.2) { if (d > o.d + 0.02) { o.d = d; o.done = false; } return; }
+    if (b.dents.length >= WK.NDENT) return;
+    b.dents.push({ p: p.clone(), n: n.clone().applyQuaternion(_wq), d, done: false });
+  }
+  /* the trucks sit on the body's centre plates on nothing but their weight and a pin: knocked hard, or the body tipped
+     over, they come out from under and go their own way */
+  loseTrucks(b) {
+    if (!b.tk || !b.v) return;
+    const v = b.v;
+    for (let k = 0; k < b.tk.length; k++) {
+      if (b.tk[k]) continue;
+      const t = v.trucks[k], six = t.type === 'six' || t.type === 'buck';
+      const Mt = new THREE.Matrix4().multiplyMatrices(b.D, b.t0[k]);
+      const h = new THREE.Vector3(six ? 2.5 : 1.45, 0.5, 1.35), c = new THREE.Vector3(0, 0.5, 0), m = six ? 9500 : 4800;
+      const p = c.clone().applyMatrix4(Mt), q = new THREE.Quaternion().setFromRotationMatrix(Mt);
+      const r = _wkch.subVectors(p, b.p);
+      const tb = {
+        truck: true, m, h, c, p, q, ax: [0, 1, 2].map(j => new THREE.Vector3().setFromMatrixColumn(Mt, j).normalize()), M0: new THREE.Matrix4(),
+        lv: b.av.clone().cross(r).add(b.lv), av: b.av.clone().multiplyScalar(0.5).add(new THREE.Vector3((this.r() - 0.5) * 2, (this.r() - 0.5) * 2, (this.r() - 0.5) * 2)),
+        pv: new THREE.Vector3(), pw: new THREE.Vector3(),
+        I: new THREE.Vector3(m / 3 * (h.y * h.y + h.z * h.z), m / 3 * (h.x * h.x + h.z * h.z), m / 3 * (h.x * h.x + h.y * h.y)),
+        pts: [], bed: b.bed, W: new THREE.Matrix4(), D: new THREE.Matrix4(),
+      };
+      for (const x of [-1, 1]) for (const y of [-1, 1]) for (const z of [-1, 1]) tb.pts.push(new THREE.Vector3(x * h.x, y * h.y, z * h.z));
+      tb.pts.push(new THREE.Vector3(0, -h.y, 0));
+      b.tk[k] = tb; this.bodies.push(tb); this.nTruck = (this.nTruck || 0) + 1;
+      this.pose(tb);
+    }
+    // the body comes down on its underframe, the height of the trucks lower than its box went
+    for (const s of b.pts) if (s.y < 0) s.y = Math.max(s.y, -b.h.y + WK.FRAME_Y);
+    b.tkGone = true;
   }
   /* speed of the cars still on the rails, along the train */
   kinV() { return this.kin ? this.kin.v : 0; }
@@ -15932,7 +15995,7 @@ class WreckSim {
   contact(A, B, kv, P, n, pen, mu, e) {
     const C = this.C, c = C[this.nc] || (C[this.nc] = { P: new THREE.Vector3(), n: new THREE.Vector3(), rA: new THREE.Vector3(), rB: new THREE.Vector3(), dk: new THREE.Vector3(), jt: new THREE.Vector3(), v0: new THREE.Vector3() });
     this.nc++;
-    c.A = A; c.B = B; c.kv = kv; c.P.copy(P); c.n.copy(n); c.pen = pen; c.mu = mu; c.e = e; c.jn = 0; c.jt.set(0, 0, 0);
+    c.A = A; c.B = B; c.kv = kv; c.bed = false; c.P.copy(P); c.n.copy(n); c.pen = pen; c.mu = mu; c.e = e; c.jn = 0; c.jt.set(0, 0, 0);
     c.rA.subVectors(P, A.p); if (B) c.rB.subVectors(P, B.p);
     if (kv) c.dk.setFromMatrixColumn(kv.root.matrix, 0).normalize().multiplyScalar(WreckSim.sF(kv));
     // something hitting a car at rest wakes it
@@ -15957,6 +16020,7 @@ class WreckSim {
     const T = this.T, V = T.vehicles;
     if (!this.C) this.C = [];
     for (const b of this.bodies) b.dgS = 0;   // hardest dig-in this frame, for the dirt and gouges (10h_dig.js)
+    this.nSpk = 0;   // steel scraping on steel or stone this frame, for the sparks and the screech (10l_wreckfx.js)
     this.acc = Math.min(this.acc + dt, 0.06);
     while (this.acc >= WK.H) {
       this.acc -= WK.H; this.t += WK.H;
@@ -15970,10 +16034,16 @@ class WreckSim {
           const P = _wa.copy(s).applyQuaternion(b.q).add(b.p);
           const pen = this.ground(b, P) - P.y; if (pen <= 0) continue;
           // a car skidding sideways digs its edge in (into dirt most of all) and trips: friction grows with how sideways it goes
-          const c = this.contact(b, null, null, P, _wb.set(0, 1, 0), pen, WK.MU, WK.E_G);
+          const c = this.contact(b, null, null, P, _wb.set(0, 1, 0), pen, WK.MU, WK.E_G); c.bed = this.onBed;
           const vh = Math.hypot(c.v0.x, c.v0.z);
           if (vh > 0.3) c.mu = WK.MU + WK.TRIP * (this.onBed ? 0.5 : 1) * Math.abs(c.v0.x * b.ax[2].x + c.v0.z * b.ax[2].z) / vh;
         }
+      }
+      // trucks knocked out from under are squeezed out from beneath the body that drops onto them
+      for (const b of this.bodies) {
+        if (!b.tkGone) continue;
+        const hb = _wkcy.set(b.h.x, b.h.y - WK.FRAME_Y / 2, b.h.z), pb = _wkcx.copy(b.p).addScaledVector(b.ax[1], WK.FRAME_Y / 2);
+        for (const tb of b.tk) if (tb && !(tb.sleep && b.sleep)) this.inside(tb, pb, b.q, hb, b.sleep ? null : b, null, true, true);
       }
       for (let x = 0; x < V.length; x++) {
         const A = V[x]; if (!A.rb) continue;
@@ -16028,12 +16098,20 @@ class WreckSim {
           if (c.B) WreckSim.push(c.B, c.rB, j.negate(), true);
         }
       }
-      // what the contacts did: dirt thrown where a car dug in, and cars on the rails forced off by the pile
+      // what the contacts did: dirt thrown where a car dug in, sparks where steel scraped, dents where it hit hard,
+      // trucks knocked out from under, and cars on the rails forced off by the pile
       for (let k = 0; k < n; k++) {
         const c = C[k];
+        const vn0 = c.v0.dot(c.n), vt0 = Math.sqrt(Math.max(0, c.v0.lengthSq() - vn0 * vn0));
+        if (c.jn > 0 && (c.B || c.kv || c.bed) && vt0 > WK.SPARK_V) this.spark(c.P, c.v0, vt0, !c.B && !c.kv ? c.A : null);
+        if (c.B || c.kv) {
+          if (-vn0 > WK.DENT_V) { this.dent(c.A, c.P, c.n, -vn0); if (c.B) this.dent(c.B, c.P, _wkcj.copy(c.n).negate(), -vn0); }
+          if (-vn0 > WK.TRUCK_V) { this.loseTrucks(c.A); if (c.B) this.loseTrucks(c.B); }
+        } else if (-vn0 > WK.DENT_G && c.A.v) this.dent(c.A, c.P, c.n, -vn0 * 0.6);
         if (!c.B && !c.kv) {
           const b = c.A, vp = c.v0, fn = c.jn / h, sp = Math.hypot(vp.x, vp.z);
           const im = Math.max(sp, -vp.y * 1.5);
+          if (-vp.y > WK.TRUCK_G) this.loseTrucks(b);
           if (im > 1.2 && im * fn > b.dgS) { b.dgS = im * fn; b.dgI = im; b.dgN = Math.min(2, fn / (WK.G * b.m)); (b.dgP || (b.dgP = new THREE.Vector3())).copy(c.P); (b.dgV || (b.dgV = new THREE.Vector3())).copy(vp); }
         } else if (c.kv) {
           // rammed hard, or shoved sideways harder than the flanges hold (L/V), it comes off too
@@ -16056,6 +16134,7 @@ class WreckSim {
         const w = b.pw.add(b.av); _wq.set(w.x * h * 0.5, w.y * h * 0.5, w.z * h * 0.5, 0).multiply(b.q);
         b.q.set(b.q.x + _wq.x, b.q.y + _wq.y, b.q.z + _wq.z, b.q.w + _wq.w).normalize();
         this.pose(b); b.pv.set(0, 0, 0); b.pw.set(0, 0, 0);
+        if (b.tk && b.ax[1].y < WK.TRUCK_TIP) this.loseTrucks(b);
         // settled: slow for half a second puts it to sleep
         if (b.lv.lengthSq() < 0.04 && b.av.lengthSq() < 0.04) { if ((b.restT = (b.restT || 0) + h) > 0.5) { b.sleep = true; b.lv.set(0, 0, 0); b.av.set(0, 0, 0); continue; } }
         else b.restT = 0;
@@ -16069,8 +16148,9 @@ class WreckSim {
       this.kx += kin.v * h; kin.dx += kin.v * h;
       if (!moving && Math.abs(kin.v) < 0.05) { this.still += h; if (this.still > 1) { this.asleep = true; break; } } else this.still = 0;
     }
-    for (const b of this.bodies) { b.v.pos.copy(b.p); b.v.fwd.copy(b.ax[0]).multiplyScalar(WreckSim.sF(b.v)); }
+    for (const b of this.bodies) if (b.v) { b.v.pos.copy(b.p); b.v.fwd.copy(b.ax[0]).multiplyScalar(WreckSim.sF(b.v)); }
     if (typeof digWreck === 'function') digWreck(this, dt);
+    if (typeof wfxWreck === 'function') wfxWreck(this, dt);
   }
   /* The couplers: a knuckle is a ball joint at the coupler faces that lets the cars swing about it but not part. A car
      on the rails is pulled off when the wreck drags its coupler sideways or lifts it harder than the flanges hold (L/V);
@@ -16170,14 +16250,14 @@ class WreckSim {
   }
   /* points of body src inside the box (pO, qO, hO) of body o (or car kv on the rails); ends false leaves out pushes
      through the box's ends */
-  inside(src, pO, qO, hO, o, kv, ends = true) {
+  inside(src, pO, qO, hO, o, kv, ends = true, flat = false) {
     const qi = _wqi2.copy(qO).invert(), n = _wkci;
     for (const s of src.pts) {
       const P = _wa.copy(s).applyQuaternion(src.q).add(src.p);
       const u = _wb.subVectors(P, pO).applyQuaternion(qi);
       const dx = hO.x - Math.abs(u.x), dy = hO.y - Math.abs(u.y), dz = hO.z - Math.abs(u.z);
       if (dx <= 0 || dy <= 0 || dz <= 0) continue;
-      const pen = Math.min(dx, dy, dz);
+      const pen = flat ? Math.min(dx, dz) : Math.min(dx, dy, dz);   // flat: only out the sides or ends, never down into the ground
       if (pen === dx) { if (!ends) continue; n.set(Math.sign(u.x) || 1, 0, 0); } else if (pen === dy) n.set(0, Math.sign(u.y) || 1, 0); else n.set(0, 0, Math.sign(u.z) || 1);
       n.applyQuaternion(qO);
       this.contact(src, o, kv, P, n, pen, WK.MU_C, WK.E_C);
@@ -17994,7 +18074,7 @@ function updateFX(dt, cam) {
     FX.vel[j] += (w.x - FX.vel[j]) * k; FX.vel[j + 1] += (FX.buoy[i] * (1 - t) - FX.vel[j + 1] * 0.6) * dt; FX.vel[j + 2] += (w.z - FX.vel[j + 2]) * k;
     FX.pos[j] += FX.vel[j] * dt; FX.pos[j + 1] += FX.vel[j + 1] * dt; FX.pos[j + 2] += FX.vel[j + 2] * dt;
     FX.size[i] = lerp(FX.s0[i], FX.s1[i], 1 - (1 - t) * (1 - t));
-    FX.alpha[i] = FX.a0[i] * (1 - t) * (1 - t) * Math.min(1, age * 8);
+    FX.alpha[i] = FX.a0[i] * (1 - t) * (1 - t) * Math.min(1, age * 25);   // full strength almost as it leaves the stack, not a car length up
     FX.col[j] = FX.base[j] * L.r; FX.col[j + 1] = FX.base[j + 1] * L.g; FX.col[j + 2] = FX.base[j + 2] * L.b;
     FX.age[i] = age + dt;
   }
@@ -19795,6 +19875,169 @@ function digFrame(dt, cam) {
   DIG.U.uLight.value = lerp(1, 0.16, SKY.dark || 0);
   const h = Math.min(dt, 0.05);
   digPoolStep(DIG.clods, h, false); digPoolStep(DIG.dust, h, true);
+}
+
+/* ============================================================================
+   What a wreck looks and sounds like beyond the dirt (10h_dig.js): sparks where steel scrapes on steel or
+   on the ballast, the screech and crunch of it, car bodies dented and crumpled where they hit, coal and stone
+   spilling from cars that go over, and a wrecked steam engine venting its boiler in a roaring white cloud.
+   The physics (07d_wreck.js) says where steel scraped and where bodies hit; this turns that into effects.
+   A dented car gets its own copy of the geometry it shared with the others, given back when it is re-railed.
+   ========================================================================== */
+const WFX = { crunchT: 0, hiss: null, scr: null };
+const _wxa = new THREE.Vector3(), _wxb = new THREE.Vector3(), _wxc = new THREE.Vector3(), _wxm = new THREE.Matrix4(), _wxq = new THREE.Quaternion();
+
+/* called by WreckSim.step after each frame of physics: sparks from the steel scraping this frame, and the screech */
+function wfxWreck(R, dt) {
+  if (!(dt > 0)) return;
+  try {
+    const cam = typeof camera !== 'undefined' ? camera : null, cp = cam ? cam.position : null;
+    let loud = 0, at = null;
+    for (let i = 0; i < (R.nSpk || 0); i++) {
+      const o = R.spk[i], d = cp ? o.P.distanceTo(cp) : 0;
+      const k = Math.min(1, o.sp / 12);
+      if (k / (1 + d / 40) > loud) { loud = k / (1 + d / 40); at = o.P; }
+      if (!SPK.lines || d > 220) continue;
+      // a shower thrown along the way it is sliding, thickest close to the camera
+      const h = _wxa.set(o.v.x, 0, o.v.z), hs = h.length(); if (hs < 0.1) continue;
+      h.multiplyScalar(1 / hs); const side = _wxb.set(-h.z, 0, h.x);
+      let n = Math.floor(dt * 260 * k / (1 + (d / 45) ** 2) + Math.random());
+      while (n-- > 0) sparkEmit(o.P, h, side, o.sp);
+    }
+    // the screech of steel dragged along: the brake squeal pitched down to a grind
+    if (AU.on && typeof Loop === 'function') {
+      if (!WFX.scr && SND.has('squeal')) WFX.scr = new Loop('squeal', AU.world);
+      if (WFX.scr) WFX.scr.set(0.5 * Math.min(1, loud * 1.4) * (SND_GAIN.squeal || 1), 0.62 + 0.25 * loud, loud > WFX.scrL ? 0.04 : 0.25);
+      WFX.scrL = loud;
+    }
+    // metal crunching where cars slam into each other: the hardest new dent this frame
+    WFX.crunchT -= dt;
+    if (AU.on && WFX.crunchT <= 0) {
+      let hard = 0, P = null;
+      for (const b of R.bodies) if (b.dents) for (const o of b.dents) if (!o.heard) { o.heard = true; if (o.d > hard) { hard = o.d; P = b.p; } }
+      if (P) { const d = cp ? P.distanceTo(cp) : 30; sndClunk(clamp(hard * 5, 0.5, 1.6) / (1 + (d / 35) ** 1.2), 0); sndClunk(clamp(hard * 3, 0.3, 1.2) / (1 + (d / 35) ** 1.2), 0.05 + Math.random() * 0.06); WFX.crunchT = 0.07; }
+    }
+  } catch (e) { console.warn('wreckfx', e); }
+}
+
+/* every frame while a wreck is on the ground: dents pressed into the bodies, spilled loads, the boiler venting */
+function wfxFrame(dt, T) {
+  const R = T && T.rb;
+  if (!R) { wfxQuiet(); return; }
+  if (!(dt > 0)) return;
+  try {
+    R.fxT = (R.fxT || 0) + dt;
+    const steam = !T.diesel && !T.elec && !T.turb;
+    let vent = 0;
+    for (const b of R.bodies) {
+      if (!b.v) continue;
+      if (b.dents && b.dents.some(o => !o.done)) wfxDent(b);
+      const kind = b.v.kind;
+      // a hopper's coal or a gondola's stone pours out over the side once the car is on its side
+      if ((kind === 'hopper' || kind === 'gon') && b.ax[1].y < 0.55 && typeof digEmit === 'function' && DIG.clods) {
+        if (b.spill === undefined) b.spill = Math.round(140 * (DIG.q || 1));
+        const rate = Math.min(b.spill, Math.floor(dt * 90 + Math.random()));
+        const down = _wxc.set(b.ax[1].x, 0, b.ax[1].z).normalize();   // the open top faces this way along the ground
+        for (let i = 0; i < rate; i++) {
+          b.spill--;
+          const u = (Math.random() * 2 - 1) * b.h.x * 0.85;
+          _wxa.set(b.c.x + u, b.c.y + b.h.y * 0.95, b.c.z + (Math.random() - 0.5) * b.h.z * 1.6).applyMatrix4(b.W);
+          const coal = kind === 'hopper', sh = coal ? 0.07 + 0.05 * Math.random() : 0.4 + 0.12 * Math.random();
+          digEmit(DIG.clods, _wxa.x, _wxa.y, _wxa.z, down.x * (1 + 2.5 * Math.random()) + b.lv.x * 0.6, 0.5 + Math.random(), down.z * (1 + 2.5 * Math.random()) + b.lv.z * 0.6,
+            0.14 + 0.16 * Math.random(), 300 + 200 * Math.random(), sh, sh * (coal ? 1 : 0.97), sh * (coal ? 1.08 : 0.92), _wxa.y - 3, [R, b]);
+        }
+      }
+      // a steam engine torn off its wheels breaks its steam pipes: the boiler vents with a roar, dying away over a minute
+      if (steam && kind === 'loco' && !b.v.helper) {
+        vent = Math.exp(-R.fxT / 22) * Math.min(1, R.fxT * 3);
+        const cam = typeof camera !== 'undefined' ? camera : null;
+        if (cam && b.p.distanceTo(cam.position) > 900) continue;
+        let n = Math.floor(dt * 70 * vent + Math.random());
+        while (n-- > 0) {
+          const u = Math.random() * 2 - 1;
+          _wxa.set(b.c.x + u * b.h.x * 0.6, b.c.y + b.h.y * (0.2 + 0.4 * Math.random()), b.c.z + (Math.random() - 0.5) * b.h.z).applyMatrix4(b.W);
+          _wxb.set((Math.random() - 0.5) * 6, 0, (Math.random() - 0.5) * 6).addScaledVector(b.ax[1], 3 + 7 * vent * Math.random());
+          emit(_wxa, _wxb, 2.5 + 3 * Math.random(), 1.2, 6 + 8 * vent, 0.5 + 0.35 * vent, [0.96, 0.96, 0.98], 0.7, 1.3);
+        }
+      }
+    }
+    if (AU.on && typeof Loop === 'function') {
+      if (!WFX.hiss && vent > 0.02 && SND.has('safety')) WFX.hiss = new Loop('safety', AU.world);
+      if (WFX.hiss) {
+        const lead = T.lead && T.lead.rb, d = lead && camera ? lead.p.distanceTo(camera.position) : 40;
+        WFX.hiss.set(vent * 0.9 * (SND_GAIN.safety || 1) / (1 + (d / 40) ** 1.3), 0.85 + 0.15 * vent, 0.3);
+      }
+    }
+    if (WFX.scr && R.asleep) WFX.scr.set(0, WFX.scr.rate, 0.3);
+  } catch (e) { console.warn('wreckfx', e); }
+}
+function wfxQuiet() {
+  if (WFX.hiss) { WFX.hiss.kill(); WFX.hiss = null; }
+  if (WFX.scr) { WFX.scr.kill(); WFX.scr = null; }
+}
+
+/* the body meshes of a car (not its lamps' glows or beams), each given its own geometry the first time it is dented */
+function wfxMeshes(v) {
+  const out = [];
+  v.root.traverse(o => { if (o.isMesh && !o.isInstancedMesh && o.geometry && o.geometry.attributes.position && !(o.material && o.material.transparent)) out.push(o); });
+  return out;
+}
+/* press car b's new dents into its body: every vertex near a dent pushed in along it, most at the centre, a little
+   unevenly so it crumples rather than dishes; faces moved get their normals again */
+function wfxDent(b) {
+  const v = b.v; v.root.updateMatrixWorld(true);
+  const inv = _wxm.copy(v.root.matrixWorld).invert();
+  const todo = b.dents.filter(o => !o.done);
+  for (const o of todo) o.done = true;
+  for (const m of wfxMeshes(v)) {
+    const rel = new THREE.Matrix4().multiplyMatrices(inv, m.matrixWorld), ir = rel.clone().invert();
+    const geo = m.geometry;
+    if (!geo.boundingSphere) geo.computeBoundingSphere();
+    const bs = geo.boundingSphere, c = _wxa.copy(bs.center).applyMatrix4(rel);
+    const hits = todo.map(o => {
+      const R = 0.9 + o.d * 3;
+      if (c.distanceTo(o.p) > bs.radius + R) return null;
+      return { p: o.p.clone().applyMatrix4(ir), n: o.n.clone().transformDirection(ir), d: o.d - (o.pressed || 0), R };
+    }).filter(Boolean);
+    if (!hits.length) continue;
+    if (!m.userData.wfxG0) { m.userData.wfxG0 = m.geometry; m.geometry = m.geometry.clone(); (b.dented || (b.dented = [])).push(m); }
+    const g = m.geometry, pos = g.attributes.position, a = pos.array, N = pos.count;
+    const moved = new Uint8Array(N);
+    for (let i = 0; i < N; i++) {
+      const x = a[i * 3], y = a[i * 3 + 1], z = a[i * 3 + 2];
+      for (const h of hits) {
+        const dx = x - h.p.x, dy = y - h.p.y, dz = z - h.p.z, d2 = dx * dx + dy * dy + dz * dz;
+        if (d2 >= h.R * h.R) continue;
+        const w = (1 - d2 / (h.R * h.R)) ** 2, ru = 0.7 + 0.3 * Math.sin(x * 7.1 + y * 5.3 + z * 6.7);
+        const s = h.d * w * ru;
+        a[i * 3] += h.n.x * s; a[i * 3 + 1] += h.n.y * s; a[i * 3 + 2] += h.n.z * s; moved[i] = 1;
+      }
+    }
+    pos.needsUpdate = true;
+    if (!g.index && g.attributes.normal) {
+      const nr = g.attributes.normal.array;
+      for (let t = 0; t + 2 < N; t += 3) {
+        if (!moved[t] && !moved[t + 1] && !moved[t + 2]) continue;
+        _wxa.set(a[t * 3 + 3] - a[t * 3], a[t * 3 + 4] - a[t * 3 + 1], a[t * 3 + 5] - a[t * 3 + 2]);
+        _wxb.set(a[t * 3 + 6] - a[t * 3], a[t * 3 + 7] - a[t * 3 + 1], a[t * 3 + 8] - a[t * 3 + 2]);
+        _wxc.crossVectors(_wxa, _wxb).normalize();
+        for (let q = 0; q < 3; q++) { nr[(t + q) * 3] = _wxc.x; nr[(t + q) * 3 + 1] = _wxc.y; nr[(t + q) * 3 + 2] = _wxc.z; }
+      }
+      g.attributes.normal.needsUpdate = true;
+    } else if (g.attributes.normal) g.computeVertexNormals();
+    g.computeBoundingSphere();
+  }
+  for (const o of todo) o.pressed = o.d;
+}
+
+/* put a re-railed (or departing) train's cars back the way they were: shared geometry back, the dented copies freed */
+function wfxRestore(T) {
+  const R = T && T.rb; if (!R) return;
+  for (const b of R.bodies) if (b.dented) {
+    for (const m of b.dented) { const g0 = m.userData.wfxG0; if (!g0) continue; m.geometry.dispose(); m.geometry = g0; delete m.userData.wfxG0; }
+    b.dented = null;
+  }
+  if (T === GAME.train) wfxQuiet();
 }
 
 /* ============================================================================
@@ -24325,7 +24568,7 @@ function wreckOut(T) {
   const R = T.rb, W = GAME.wrecking; if (!R || !S.derailed) return null;
   return {
     spec: T.wk, broken: [...R.broken], title: W ? W.title : 'Derailed', why: W ? W.why : '',
-    bodies: R.bodies.map(b => ({ i: T.vehicles.indexOf(b.v), M0: m4Out(b.M0), t0: b.t0.map(m4Out), u0: b.u0 ? b.u0.map(m4Out) : null, l0: b.l0 ? m4Out(b.l0) : null, f0: b.f0 ? m4Out(b.f0) : null, s0: b.s0 ? m4Out(b.s0) : null, p: b.p.toArray().map(x => rnd(x)), q: b.q.toArray().map(x => rnd(x, 1e5)) })),
+    bodies: R.bodies.filter(b => b.v).map(b => ({ i: T.vehicles.indexOf(b.v), M0: m4Out(b.M0), t0: b.t0.map(m4Out), u0: b.u0 ? b.u0.map(m4Out) : null, l0: b.l0 ? m4Out(b.l0) : null, f0: b.f0 ? m4Out(b.f0) : null, s0: b.s0 ? m4Out(b.s0) : null, p: b.p.toArray().map(x => rnd(x)), q: b.q.toArray().map(x => rnd(x, 1e5)) })),
   };
 }
 /* the pile as it came to rest: each car off the rails where it lay, asleep until it is re-railed */
@@ -27477,6 +27720,7 @@ function nearbyService() {
 }
 
 /* ---------------- main loop ---------------- */
+const _fxStk = new THREE.Vector3();
 let chuffQ = 0, chuffQF = 0, pumpT = 0, bellT = 0, idleT = 0, prevV = 0, stopT = 0, tipT = 0;
 function loop() {
   requestAnimationFrame(loop);
@@ -27596,6 +27840,7 @@ function renderStep(dt, T) {
   updateFX(dt, camera); precipFrame(camera, dt); treeFxFrame(camera, dt); rainGlassFrame(dt); birdsFrame(dt, camera);
   updateSparks(dt, T, camera);
   digFrame(dt, camera);
+  wfxFrame(dt, T);
   if (GAME.running) { updateHUD(dt); FLEET.frame(dt); }
   cloudRender(renderer, camera, dt);
   postRender(renderer, scene, camera);
@@ -27635,7 +27880,10 @@ function steamFX(dt, T, tv) {
       if (working) {
         sndChuff(k, n, intensity * (0.6 + 0.4 * Math.min(1, n * 1.2)) * (S.priming ? 0.7 : 1) * (L.art ? 0.75 : 1));   // two engines' beats share the load
         const smokiness = clamp(0.25 + (S.stoker - S.fire * 0.75) * 1.4 + intensity * 0.2, 0.08, 0.85), gv = lerp(0.9, 0.24, smokiness);
-        for (let j = 0; j < 3; j++) emit(stack, new THREE.Vector3(tv.x + (Math.random() - 0.5) * 1.5, 7 + 13 * intensity + Math.random() * 3, tv.z + (Math.random() - 0.5) * 1.5), 4 + Math.random() * 3 + intensity * 2, 1.1, 7 + intensity * 7, 0.55 + 0.25 * intensity, [gv, gv * 0.98, gv * 0.95], 0.9, 1.1);
+        // beats that fell between this frame and the last leave the stack where it was then, so at speed the plume is
+        // one unbroken stream out of the stack; the faster the engine runs, the flatter the rushing air lays it back
+        const at = _fxStk.copy(stack).addScaledVector(tv, -dt * i / steps), up = (7 + 13 * intensity + Math.random() * 3) / (1 + Math.abs(S.v) / 14);
+        for (let j = 0; j < 3; j++) emit(at, new THREE.Vector3(tv.x + (Math.random() - 0.5) * 1.5, up, tv.z + (Math.random() - 0.5) * 1.5), 4 + Math.random() * 3 + intensity * 2, 1.5, 7 + intensity * 7, 0.55 + 0.25 * intensity, [gv, gv * 0.98, gv * 0.95], 0.9, 1.1);
         if (S.priming) emit(stack, new THREE.Vector3(tv.x, 9, tv.z), 2.5, 0.8, 5, 0.6, [0.95, 0.96, 0.98], 0.2, 1.2);
         if (S.cocks) for (const cp of L.cockPos) { const p = T.worldOf(cp); const side = new THREE.Vector3(0, 0, Math.sign(cp.z) * (4 + Math.random() * 3)).applyQuaternion(_cq.setFromRotationMatrix(_cm.extractRotation(L.root.matrixWorld))); emit(p, new THREE.Vector3(tv.x + side.x + T.lead.fwd.x * 3, -0.6, tv.z + side.z + T.lead.fwd.z * 3), 1.1 + Math.random() * 0.4, 0.4, 3.2, 0.7, [0.95, 0.95, 0.97], 0.4, 1.6); }
       } else if (k % 2 === 0 && n > 0.15) sndClank(n);

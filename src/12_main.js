@@ -718,6 +718,7 @@ function nearbyService() {
 }
 
 /* ---------------- main loop ---------------- */
+const _fxStk = new THREE.Vector3();
 let chuffQ = 0, chuffQF = 0, pumpT = 0, bellT = 0, idleT = 0, prevV = 0, stopT = 0, tipT = 0;
 function loop() {
   requestAnimationFrame(loop);
@@ -837,6 +838,7 @@ function renderStep(dt, T) {
   updateFX(dt, camera); precipFrame(camera, dt); treeFxFrame(camera, dt); rainGlassFrame(dt); birdsFrame(dt, camera);
   updateSparks(dt, T, camera);
   digFrame(dt, camera);
+  wfxFrame(dt, T);
   if (GAME.running) { updateHUD(dt); FLEET.frame(dt); }
   cloudRender(renderer, camera, dt);
   postRender(renderer, scene, camera);
@@ -876,7 +878,10 @@ function steamFX(dt, T, tv) {
       if (working) {
         sndChuff(k, n, intensity * (0.6 + 0.4 * Math.min(1, n * 1.2)) * (S.priming ? 0.7 : 1) * (L.art ? 0.75 : 1));   // two engines' beats share the load
         const smokiness = clamp(0.25 + (S.stoker - S.fire * 0.75) * 1.4 + intensity * 0.2, 0.08, 0.85), gv = lerp(0.9, 0.24, smokiness);
-        for (let j = 0; j < 3; j++) emit(stack, new THREE.Vector3(tv.x + (Math.random() - 0.5) * 1.5, 7 + 13 * intensity + Math.random() * 3, tv.z + (Math.random() - 0.5) * 1.5), 4 + Math.random() * 3 + intensity * 2, 1.1, 7 + intensity * 7, 0.55 + 0.25 * intensity, [gv, gv * 0.98, gv * 0.95], 0.9, 1.1);
+        // beats that fell between this frame and the last leave the stack where it was then, so at speed the plume is
+        // one unbroken stream out of the stack; the faster the engine runs, the flatter the rushing air lays it back
+        const at = _fxStk.copy(stack).addScaledVector(tv, -dt * i / steps), up = (7 + 13 * intensity + Math.random() * 3) / (1 + Math.abs(S.v) / 14);
+        for (let j = 0; j < 3; j++) emit(at, new THREE.Vector3(tv.x + (Math.random() - 0.5) * 1.5, up, tv.z + (Math.random() - 0.5) * 1.5), 4 + Math.random() * 3 + intensity * 2, 1.5, 7 + intensity * 7, 0.55 + 0.25 * intensity, [gv, gv * 0.98, gv * 0.95], 0.9, 1.1);
         if (S.priming) emit(stack, new THREE.Vector3(tv.x, 9, tv.z), 2.5, 0.8, 5, 0.6, [0.95, 0.96, 0.98], 0.2, 1.2);
         if (S.cocks) for (const cp of L.cockPos) { const p = T.worldOf(cp); const side = new THREE.Vector3(0, 0, Math.sign(cp.z) * (4 + Math.random() * 3)).applyQuaternion(_cq.setFromRotationMatrix(_cm.extractRotation(L.root.matrixWorld))); emit(p, new THREE.Vector3(tv.x + side.x + T.lead.fwd.x * 3, -0.6, tv.z + side.z + T.lead.fwd.z * 3), 1.1 + Math.random() * 0.4, 0.4, 3.2, 0.7, [0.95, 0.95, 0.97], 0.4, 1.6); }
       } else if (k % 2 === 0 && n > 0.15) sndClank(n);
