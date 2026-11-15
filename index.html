@@ -19237,6 +19237,45 @@ function railLamps() {
   }
 }
 
+/* ==========================================================================
+   Light off the trains (through the lamp shader, 10c_lamps.js)
+
+   The train you drive carries the only real lights in the scene (07_train.js). Every other train's
+   headlight used to be a glow and a beam in the air with nothing landing on the ground. Here each
+   headlight throws its pool down the rails ahead of the engine, and a steam engine's fire shows
+   under the ashpan on the ties, the trailing truck and the ballast, as it does at night.
+   ========================================================================== */
+LAMP_KINDS.head = { col: 0xffeccd, I: 9, r: 120, k: 0.0014 };
+LAMP_KINDS.fire = { col: 0xff6a22, I: 2.6, r: 4.2, k: 0.05 };
+const TL = { aim: 0.07, cos: 0.84, out: 1.2, fcos: 0.15 };   // how far the beam dips, the cosine at its edge, how far ahead of the lens it starts
+const _tlA = new THREE.Vector3();
+
+/* own: a record the caller keeps for one train ({} to start with). L: its engine. hl: headlight 0 off, 1 dim,
+   2 bright (pass 0 for a train whose headlight is a real light). fire: 0..1, how hot the fire is (0 for a
+   diesel). night: 0 by day, 1 at night. t: seconds, for the fire's flicker. */
+function trainLights(own, L, hl, fire, night, t = 0) {
+  if (!own.h) {
+    own.h = { kind: 'head', p: new THREE.Vector3(), dir: new THREE.Vector3(), cos: TL.cos, dyn: true, lv: 0 };
+    own.f = { kind: 'fire', p: new THREE.Vector3(), dir: new THREE.Vector3(0, -1, 0), cos: TL.fcos, dyn: true, lv: 0 };   // it shines down: the pan hides the fire from the side
+  }
+  if (!own.on) { LAMPS.lights.push(own.h, own.f); own.on = true; }
+  const dusk = smooth(0.12, 0.6, night);
+  own.h.lv = hl && L.headlightPos ? (hl === 2 ? 1 : 0.4) * dusk : 0;
+  if (own.h.lv > 0) {
+    const f = L.headFrame || L.root;
+    own.h.dir.set(1, -TL.aim, 0).normalize().transformDirection(f.matrixWorld);
+    own.h.p.copy(L.headlightPos).applyMatrix4(f.matrixWorld).addScaledVector(own.h.dir, TL.out);
+  }
+  own.f.lv = fire > 0 && L.ash ? fire * dusk * (0.8 + 0.2 * Math.sin(t * 23) * Math.sin(t * 7.3)) : 0;
+  if (own.f.lv > 0) own.f.p.copy(_tlA.copy(L.ash.position).setY(L.ash.position.y - 0.1)).applyMatrix4(L.ash.parent.matrixWorld);
+}
+/* the train is hidden or gone: its lamps go dark (drop: and leave the registry) */
+function trainLightsOff(own, drop = false) {
+  if (!own || !own.h) return;
+  own.h.lv = own.f.lv = 0;
+  if (drop && own.on) { for (const l of [own.h, own.f]) { const i = LAMPS.lights.indexOf(l); if (i >= 0) LAMPS.lights.splice(i, 1); } own.on = false; }
+}
+
 /* ============================================================================
    Post-processing and graphics quality
    The scene is drawn into an off-screen target (with its own 4x MSAA where WebGL2 allows), then one
@@ -20803,7 +20842,7 @@ class RemoteTrain {
     // the bell's strokes: the sound rings on them and the bell swings to them
     const bellP = bellVoice(st.lk).P; let struck = false;
     if (st.bl) { this.bellT += dt; if (this.bellT > bellP) { this.bellT = 0; struck = this.bellHit = true; } } else { this.bellT = 0.8; this.bellHit = false; }
-    if (!this.placed || !this.visible) return;
+    if (!this.placed || !this.visible) { trainLightsOff(this.tl); return; }
     const T = this.train, L = T.loco, night = SKY.dark;
     bellSwing(T, !!st.bl, this.bellT, bellP, struck, dt);
     if (!T.diesel) clsLampsShow(L.cls, !!st.cl);
@@ -20813,6 +20852,8 @@ class RemoteTrain {
     const hl = st.hl;
     L.beam.material.opacity = hl === 0 ? 0 : Math.max(night * (hl === 2 ? 0.075 : 0.035), wxBeam());
     L.halo.material.opacity = hl === 0 ? 0 : lerp(0.35, 1, night) * (hl === 2 ? 1 : 0.6) * lampFacing(L, cam);
+    // the headlight's pool on the rails ahead and the fire under the ashpan (10k_trainlight.js)
+    trainLights(this.tl || (this.tl = {}), L, d < 900 ? hl : 0, T.diesel || T.elec || d > 400 ? 0 : 1, night, performance.now() / 1000);
     if (L.ditch && L.ditch.length) {
       const ph = Math.floor(performance.now() / 385) % 2, flash = st.wh > 0.05 || st.bl, on = (T.diesel ? st.dl : 1) && hl > 0;
       L.ditch.forEach((dd, k) => { const b = !on ? 0.12 : (flash ? (ph === k ? 1 : 0.15) : 0.85); dd.lens.material.color.setScalar(0.25 + 0.75 * b); dd.halo.material.opacity = b * lerp(0.45, 1, night); });
@@ -20855,6 +20896,7 @@ class RemoteTrain {
     if (d < 160 && Math.abs(this.v) > 0.6) mpJoints(T, this.mem, this.v, cam);
   }
   dispose() {
+    trainLightsOff(this.tl, true);
     this.train.disposeDeep();
     if (this.bus) this.bus.kill(); if (this.wh) this.wh.kill(); this.bus = this.wh = null;
   }
@@ -26337,6 +26379,7 @@ function renderStep(dt, T) {
   // headlight & glows, brightening through dusk
   const night = SKY.dark, darkH = Math.max(night, smooth(0.3, 0.7, SKY.boreK || 0));   // in a tunnel the headlight works as it does at night
   T.head.intensity = S.light === 0 ? 0 : (S.light === 1 ? lerp(0.4, 5, darkH) : lerp(1.4, 16, darkH));
+  T.head.color.setHex(T.elec ? 0xf2f6ff : T.diesel ? 0xfff6e6 : 0xffe9c4);   // LED on the electrics, sealed beams on the diesels, a warm incandescent lamp on steam
   RMAT.lens.color.setScalar(S.light === 0 ? 0.25 : (S.light === 1 ? 0.75 : 1.0)); RMAT.hlLens.color.copy(RMAT.lens.color);
   const flick = 0.85 + 0.15 * Math.sin(S.time * 23) * Math.sin(S.time * 7.3);
   // ditch lights: the diesels' have their own switch, the Big Boy's pilot lamps come on with the headlight
@@ -26348,7 +26391,9 @@ function renderStep(dt, T) {
     T.loco.ditch.forEach((d, k) => { const b = lv(k); d.lens.material.color.setScalar(0.25 + 0.75 * b); d.halo.material.opacity = b * lerp(0.45, 1, night) * (T.diesel ? 1 : lampFacing(T.loco, camera)); });
   }
   if (T.diesel) T.fireLight.intensity = 0;
-  else T.fireLight.intensity = S.fire * lerp(0.18, 2.4, night) * flick * (CAM.mode === 'cab' ? 1 : 0.6);
+  else T.fireLight.intensity = S.fire * lerp(0.25, 4.2, night) * flick * (CAM.mode === 'cab' ? 1 : 0.85);
+  // the fire showing under the ashpan lights the ties and the trailing truck (the headlight is a real light already)
+  trainLights(LAMPS.own || (LAMPS.own = {}), T.loco, 0, T.diesel || T.elec ? 0 : S.fire, night, S.time);
   T.loco.beam.material.opacity = S.light === 0 ? 0 : Math.max(night * (S.light === 2 ? 0.075 : 0.035), wxBeam());
   T.loco.halo.material.opacity = S.light === 0 ? 0 : lerp(0.35, 1, night) * (S.light === 2 ? 1 : 0.6) * lampFacing(T.loco, camera);
   if (!T.diesel) {
