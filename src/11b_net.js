@@ -295,7 +295,7 @@ class RemoteTrain {
     this.updT = 0;
     for (const p of T.pts) { if (p.tp) p.tp.copy(this.tp); else p.tp = this.tp.clone(); const off = p.a - this.a0; if (off) p.tp.advance(-off, null); }
     // their wreck plays out here too, the cars still on the rails going at the speed they report
-    if (T.rb) { this.kin = this.kin || { v: 0, mass: 0, force: 0 }; this.kin.v = this.v; try { T.rb.step(dt, this.kin); } catch (e) { T.rb.asleep = true; } }
+    if (T.rb) { this.kin = this.kin || { v: 0, mass: 0, force: 0 }; this.kin.v = this.v; this.kin.x0 = -this.v * dt; try { T.rb.step(dt, this.kin); } catch (e) { T.rb.asleep = true; } }
     T.update(dt, this.theta, st.rv || 0);
     // polyline for contact tests: front coupler, every tracked point, rear coupler
     const n = T.pts.length + 2;

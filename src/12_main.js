@@ -523,13 +523,14 @@ GAME.derail = function (why, title = 'Derailed', wk, hit) {
 GAME.wreckStep = function (dt, T) {
   const W = GAME.wrecking; if (!W) return;
   const R = T.rb, kin = W.kin;
-  kin.v = S.v; kin.mass = 0; for (const v of T.vehicles) if (!v.rb) kin.mass += v.mass || 40000;
+  kin.v = S.v; kin.mass = 0; for (const v of T.vehicles) if (!v.rb) kin.mass += R ? R.massOf(v) : v.mass || 40000;
   // a fault in the wreck physics must never freeze the game: the pile just stays where it is
-  if (R && !R.asleep) { try { R.step(dt, kin); } catch (e) { console.warn('wreck', e); R.asleep = true; kin.v = 0; } }
+  const live = R && !R.asleep; kin.dx = undefined;
+  if (live) { try { R.step(dt, kin); } catch (e) { console.warn('wreck', e); R.asleep = true; kin.v = 0; kin.dx = undefined; } }
   S.v = S.vw = kin.mass > 0 ? kin.v : 0;
-  if (S.v !== 0) {
+  if (S.v !== 0 || kin.dx) {
     // the cars still on the rails run on
-    const d = S.v * dt, lim = CARS.limit(T, d);
+    const d = kin.mass > 0 && kin.dx !== undefined ? kin.dx : S.v * dt, lim = CARS.limit(T, d);
     const moved = T.move(lim.d, { onBlocked: () => { S.v = S.vw = 0; } });
     S.odo += Math.abs(moved);
     if (lim.hit) { S.v = S.vw = 0; sndClunk(1.2, 0); }   // ploughed into standing cars
