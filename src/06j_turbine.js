@@ -670,7 +670,11 @@ function turbineShimmer(B) {
   m.renderOrder = 20; m.frustumCulled = true; m.castShadow = false; m.receiveShadow = false; m.visible = false;
   m.userData.noCheck = true; m.raycast = () => {};
   const box = new THREE.Box3(), P = new THREE.Vector3(), sz = new THREE.Vector2(), at = new THREE.Vector2();
+  let bad = false, checked = false;
   m.onBeforeRender = (renderer, scene, camera) => {
+    // drawing into the post-processing target (multisampled or sRGB) the frame can't be copied: the texture would
+    // stay empty and the column draw as a black plume. Then there is no shimmer, and none at all once a copy fails.
+    if (bad || renderer.getRenderTarget()) { mat.uniforms.k.value = 0; return; }
     // the patch of the frame under the column, at most GT_SHIM pixels square
     renderer.getDrawingBufferSize(sz);
     m.geometry.computeBoundingBox(); box.copy(m.geometry.boundingBox).applyMatrix4(m.matrixWorld);
@@ -682,7 +686,10 @@ function turbineShimmer(B) {
     const big = Math.max(x1 - x0, y1 - y0);
     if (sz.x < GT_SHIM || sz.y < GT_SHIM || big > GT_SHIM * 1.6) { mat.uniforms.k.value = 0; return; }
     at.set(Math.round(clamp((x0 + x1) / 2 - GT_SHIM / 2, 0, sz.x - GT_SHIM)), Math.round(clamp((y0 + y1) / 2 - GT_SHIM / 2, 0, sz.y - GT_SHIM)));
+    const gl = renderer.getContext();
+    if (!checked) while (gl.getError() !== gl.NO_ERROR) { /* clear anything left from before */ }
     renderer.copyFramebufferToTexture(at, tex);
+    if (!checked) { checked = true; if (gl.getError() !== gl.NO_ERROR) { bad = true; mat.uniforms.k.value = 0; return; } }
     mat.uniforms.rect.value.set(at.x, at.y, GT_SHIM, GT_SHIM);
     mat.uniforms.amp.value = clamp(big / 40, 1.5, 9) * (big > GT_SHIM ? GT_SHIM * 1.6 / big - 0.6 : 1);
   };
