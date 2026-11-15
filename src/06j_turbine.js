@@ -106,7 +106,7 @@ function gtLoft(gb, key, dx, st, o = {}) {
 /* ---------------- C-C truck: 40 in wheels, 7 ft 3 in axle spacing, equalized side frames ---------------- */
 function gtTruck(wheels) {
   const grp = new THREE.Group(), tg = new GeoBin(), A = GT.axle, R = GT.rW, k = A / 2.0;
-  const ax = plainAxle(R, true, RAIL_OFF, 1.16);
+  const ax = plainAxle(R, true, RAIL_OFF, 1.16, 28);
   for (const s of [-1, 1]) {
     const sf = new THREE.Shape();
     sf.moveTo(-2.62 * k - 0.15, 0.78); sf.lineTo(-2.45 * k - 0.15, 0.98); sf.lineTo(2.45 * k + 0.15, 0.98); sf.lineTo(2.62 * k + 0.15, 0.78);
@@ -129,6 +129,7 @@ function gtTruck(wheels) {
   }
   for (const x of [-A / 2, A / 2]) tg.box('dark', 0.25, 0.16, 2.1, x, 0.9, 0);
   tg.box('dark', A + 0.25, 0.22, 1.2, 0, 1.0, 0);            // the floating bolster on the transoms, between the middle wheels
+  dieselTruckDetail(tg, A, R);   // brake shoes, bearing cap bolts, sand pipes (06b_diesel.js)
   grp.add(tg.build(RMAT));
   for (const x of [-A, 0, A]) {
     const wg = new THREE.Group(); wg.position.set(x, R, 0);
@@ -344,6 +345,7 @@ function buildTurbineUnit(opts) {
     gb.cylX('upGray', 0.15, 0.14, 0.12, 18, dx(E1) - 0.06, 4.15, 0);
     const bl = new THREE.Mesh(new THREE.CircleGeometry(0.11, 18), RMAT.lensOff); bl.position.set(dx(E1) - 0.125, 4.15, 0); bl.rotation.y = -Math.PI / 2; body.add(bl); out.backup = bl;
   }
+  gtDetail(gb, { box, dx, B, len, W, RF, Y0 });
   out.couplers = gtUnderframe(gb, body, len, dx, { front: B ? 'end' : 'nose' });
   // material keys added by uuid (the per-number decals) go in by their own material
   const mats = { ...RMAT }; for (const m of [RMAT.upShield, RMAT.upRoad1, RMAT.upRoad2, RMAT.upWings, upNumberMat(num, true), upNumberMat(num, false), upNumberMat(num + 'B', false)]) mats[m.uuid] = m;
@@ -354,6 +356,41 @@ function buildTurbineUnit(opts) {
   root.traverse(o => { if (o.isMesh && o.material !== RMAT.glassT && o.material !== RMAT.hit && !o.userData.cpl) { o.castShadow = true; o.receiveShadow = true; } });
   if (out.beam) out.beam.castShadow = false;
   return out;
+}
+
+/* ---------------- detail (2026-11): the carbody's seams and rivets, door hardware, roof fittings ----------------
+   Everything stands on the shell or on a part that is already there. */
+function gtDetail(gb, c) {
+  const { box, dx, B, len, W, RF, Y0 } = c, top = RF - GT.rr;
+  const doors = B ? [[2.0 * FT_, 3.8 * FT_], [19.4 * FT_, 23.1 * FT_], [59.0 * FT_, 61.0 * FT_]] : [[3.76, 4.39], [17.1, 17.73]];
+  const a0 = B ? 0.62 : 4.62, a1 = len - 0.62;
+  for (const s of [-1, 1]) {
+    // the side sheets' vertical battens, and a rivet row along the sill and under the roof
+    for (let a = a0; a < a1; a += 4 * FT_) box('upYel', a - 0.014, a + 0.014, Y0 + 0.02, top - 0.01, s * (W - 0.002), s * (W + 0.005));
+    for (const y of [Y0 + 0.06, top - 0.05]) gb.add('upYel', dtStuds(dtLine([dx(a0), y, s * W], [dx(a1), y, s * W], 0.15, [0, 0, s]), 0.012, 0.01, 5));
+    // doors: three hinges, a handle where there was none, a grab iron beside each
+    doors.forEach(([d0, d1], i) => {
+      for (const y of [1.85, 2.8, 3.75]) box('upSilver', d0 - 0.03, d0 + 0.05, y - 0.05, y + 0.05, s * (W - 0.002), s * (W + 0.018));
+      if (B || i > 0) box('upSilver', d1 - 0.13, d1 - 0.07, 2.78, 2.82, s * (W - 0.002), s * (W + 0.04));
+      const g = d1 + 0.14;
+      if (B || i > 0) {
+        gb.add('upSilver', barGeo(0.014, [dx(g), 1.7, s * (W + 0.055)], [dx(g), 3.3, s * (W + 0.055)], 6));
+        for (const y of [1.7, 3.3]) gb.add('upSilver', barGeo(0.012, [dx(g), y, s * (W - 0.01)], [dx(g), y, s * (W + 0.06)], 6));
+      }
+    });
+    // sand filler lids low on the side over each truck, lifting lugs along the roof
+    for (const a of B ? [1.5, 7.3, len - 7.3, len - 1.5] : [7.3, len - 7.3, len - 1.5]) { gb.cylZ('upSilver', 0.075, 0.03, 12, dx(a), Y0 + 0.26, s * (W + 0.01)); gb.cylZ('dark', 0.02, 0.02, 6, dx(a), Y0 + 0.26, s * (W + 0.03)); }
+    for (const a of B ? [1.0, 5.6, 11.6, 15.2, 18.4] : [4.6, 8.4, 12.2, 16.2, 20.2]) box('upGray', a - 0.07, a + 0.07, RF - 0.01, RF + 0.09, s * 1.09, s * 1.13);
+  }
+  if (!B) {
+    // a wire guard over the 72 in radiator fan
+    const a = 48.9 * FT_;
+    for (const r of [0.3, 0.6, 0.9]) gb.add('dSteel', new THREE.TorusGeometry(r, 0.009, 5, 32).rotateX(Math.PI / 2), M(dx(a), RF + 0.194, 0));
+    for (let i = 0; i < 4; i++) gb.box('dSteel', 1.82, 0.008, 0.022, dx(a), RF + 0.2, 0, 0, i * Math.PI / 4, 0);   // kept under the 16 ft the diagram allows
+    gb.cyl('dUnder', 0.12, 0.12, 0.014, 12, dx(a), RF + 0.2, 0);
+    // the fuel filler on the diesel tank, with its red cap
+    for (const s of [-1, 1]) { gb.cylZ('dSteel', 0.08, 0.06, 12, dx(11.5), 0.88, s * 1.32); gb.cylZ('red', 0.066, 0.03, 12, dx(11.5), 0.88, s * 1.36); }
+  }
 }
 
 /* ---------------- the 24,384 gallon fuel tender ---------------- */
