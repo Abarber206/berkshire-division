@@ -360,9 +360,9 @@ const CROP_GLSL = `
     vec2 fl = fxy - cell;
     float edgeM = min(min(fl.x, 1.0 - fl.x) * 420.0, min(fl.y, 1.0 - fl.y) * 260.0);
     vec3 crop = vec3(0.37, 0.49, 0.22); float rowSp = 0.0; float rowAmp = 0.0;
-    if (type < 0.5)      { crop = vec3(0.60, 0.53, 0.31); rowSp = 0.76; rowAmp = 0.35; }
-    else if (type < 1.5) { crop = vec3(0.50, 0.36, 0.20); rowSp = 0.38; rowAmp = 0.32; }
-    else if (type < 2.5) { crop = vec3(0.74, 0.64, 0.40); rowSp = 0.19; rowAmp = 0.25; }
+    if (type < 0.5)      { crop = vec3(0.54, 0.46, 0.29); rowSp = 0.76; rowAmp = 0.35; }
+    else if (type < 1.5) { crop = vec3(0.46, 0.35, 0.22); rowSp = 0.38; rowAmp = 0.32; }
+    else if (type < 2.5) { crop = vec3(0.66, 0.57, 0.37); rowSp = 0.19; rowAmp = 0.25; }
     else if (type < 3.5) { crop = vec3(0.35, 0.27, 0.19); rowSp = 0.36; rowAmp = 0.5; }
     else if (type < 4.5) { crop = vec3(0.36, 0.53, 0.23); }
     else if (type < 5.5) { crop = vec3(0.27, 0.50, 0.17); rowSp = 0.19; rowAmp = 0.5; }
@@ -370,6 +370,11 @@ const CROP_GLSL = `
     else if (fd.a > 0.5) { crop = (fl.x < 0.18 || fl.x > 0.82 || fl.y < 0.2 || fl.y > 0.78) ? vec3(0.40, 0.50, 0.24) : vec3(0.34, 0.34, 0.20); }
     else { crop = vec3(0.40, 0.50, 0.24); }
     crop *= 0.88 + 0.24 * fd.b;
+    // harvested ground shows its soil through the stubble in drifts: wetter, darker loam in the low parts
+    if (type < 2.5) {
+      float soilN = texture2D(uDetail, vWPos.xz * 0.0063 + fd.b).b * 0.7 + texture2D(uDetail, vWPos.xz * 0.029).g * 0.3;
+      crop = mix(crop, vec3(0.30, 0.23, 0.155), smoothstep(0.42, 0.72, soilN) * 0.55);
+    }
     if (rowSp > 0.0) {
       float across = fd.g > 0.5 ? vWPos.x : vWPos.z;
       float ph = across / rowSp;
@@ -382,6 +387,9 @@ const CROP_GLSL = `
     }
     float hedge = 1.0 - smoothstep(1.0, 4.5, edgeM);
     crop = mix(crop, vec3(0.33, 0.42, 0.19), hedge * 0.85);
+    // close up: clods, stalk butts and straw, sharpening as the camera comes near and gone before it would shimmer
+    { float fwc = fwidth(vWPos.x) + fwidth(vWPos.z), kc = 1.0 - smoothstep(0.03, 0.14, fwc);
+      crop *= mix(1.0, 0.55 + 0.9 * texture2D(uDetail, vWPos.xz * 1.9 + 0.3).r, kc * 0.65) * mix(1.0, 0.7 + 0.6 * texture2D(uDetail, vWPos.xz * 0.45).r, 1.0 - smoothstep(0.1, 0.5, fwc)); }
     float speck = texture2D(map, vWPos.xz * 0.27).r;
     float macro = texture2D(map, vWPos.xz * 0.0021 + 0.37).r;
     crop *= (0.8 + 0.3 * speck) * (0.85 + 0.3 * macro);

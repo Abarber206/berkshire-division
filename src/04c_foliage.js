@@ -137,22 +137,34 @@ const _rv = (r, out) => { const z = r() * 2 - 1, a = r() * TAU, s = Math.sqrt(1 
 
 /* a broad hardwood (maple, oak, ash): crown about 3.7 m in radius from 2.4 to 9.9 m, as the old blobs */
 function hardwoodGeo(seed, cards = 1) {
+  // each seed grows its own crown: a leaning trunk that forks, limbs out to eight to ten leaf masses of
+  // different sizes set round an uneven, wider-than-tall dome, with sky between them, not a ball of broccoli
   const r = rng(seed), A = folAcc();
-  const top = new THREE.Vector3(0, 3.9, 0);
-  folTube(A, new THREE.Vector3(0, -0.5, 0), top, 0.27, 0.17, 6);
-  const C = new THREE.Vector3(0, 6.4, 0);
-  const clumps = [[0, 7.5, 0, 2.5], [1.8, 6.0, 0.8, 2.1], [-1.6, 6.3, -1.1, 2.1], [0.5, 5.5, -1.9, 1.9], [-0.7, 5.6, 1.9, 1.9], [0.3, 8.9, 0.4, 1.5], [2.1, 7.6, -0.9, 1.5], [-2.0, 7.7, 0.9, 1.5]];
-  for (const q of clumps.slice(1, 6)) {   // limbs out to the clumps, seen through the gaps
-    const end = new THREE.Vector3(q[0] * 0.75, q[1] * 0.92, q[2] * 0.75);
-    folTube(A, top.clone().add(new THREE.Vector3(0, -0.3, 0)), end, 0.11, 0.045, 4, 0.5);
+  const lean = new THREE.Vector3((r() - 0.5) * 0.5, 0, (r() - 0.5) * 0.5), fork = 3.3 + r() * 1.0;
+  const top = new THREE.Vector3(0, fork, 0).add(lean);
+  folTube(A, new THREE.Vector3(0, -0.5, 0), top, 0.28, 0.18, 6);
+  const W = 3.0 + r() * 0.7, Hc = 2.3 + r() * 0.6, C = new THREE.Vector3(lean.x * 1.6, fork + Hc + 0.6, lean.z * 1.6);
+  const clumps = [[C.x + (r() - 0.5) * 0.8, C.y + Hc * 0.75, C.z + (r() - 0.5) * 0.8, 1.6 + r() * 0.5]];
+  const nC = 8 + (r() * 3 | 0), a0 = r() * TAU;
+  for (let k = 0; k < nC; k++) {
+    const a = a0 + k / nC * TAU + (r() - 0.5) * 0.7, low = k % 2 === 0;   // alternate a lower, wider ring and a higher, tighter one
+    const rad = W * (low ? 0.78 + r() * 0.3 : 0.45 + r() * 0.3), y = C.y + (low ? -Hc * (0.35 + r() * 0.3) : Hc * (0.15 + r() * 0.4));
+    clumps.push([C.x + Math.cos(a) * rad, y, C.z + Math.sin(a) * rad, (low ? 1.45 : 1.3) + r() * 0.75]);
   }
-  const ao = p => { const rad = Math.hypot(p.x, (p.y - C.y) * 1.05, p.z) / 3.9; return clamp(0.42 + 0.5 * rad + 0.12 * (p.y - 4) / 5, 0.38, 1.05); };
-  const u = new THREE.Vector3(), v = new THREE.Vector3(), n = new THREE.Vector3(), c = new THREE.Vector3();
+  for (const q of clumps.slice(1).filter((q, k) => k % 2 === 0 || k < 3).slice(0, 6)) {   // limbs out to the low masses, seen through the gaps
+    const end = new THREE.Vector3(q[0] * 0.8, q[1] - q[3] * 0.25, q[2] * 0.8);
+    folTube(A, top.clone().add(_fa.set(0, -0.2, 0)), end, 0.12, 0.045, 4, 0.5);
+  }
+  const ao = p => { const rad = Math.hypot(p.x - C.x, (p.y - C.y) * 1.1, p.z - C.z) / (W + 0.8); return clamp(0.4 + 0.55 * rad + 0.14 * (p.y - C.y) / Hc, 0.36, 1.05); };
+  const n = new THREE.Vector3(), c = new THREE.Vector3();
+  const vol = clumps.reduce((t, q) => t + q[3] * q[3], 0), budget = 62 * cards;
   for (const q of clumps) {
-    const n0 = Math.round((q[3] > 2 ? 10 : q[3] > 1.7 ? 7 : 5) * cards);
+    const n0 = Math.max(3, Math.round(budget * q[3] * q[3] / vol));
     for (let i = 0; i < n0; i++) {
-      _rv(r, n); c.set(q[0], q[1], q[2]).addScaledVector(n, q[3] * (0.35 + 0.6 * Math.sqrt(r())));
-      folBill(A, c, 1.0 + r() * 0.45, r() * TAU, C, ao, 0.3);
+      // cards on the outside of each mass, so its edge is broken leaves against the sky, and fewer underneath
+      _rv(r, n); if (n.y < -0.3 && r() < 0.5) n.y = -n.y;
+      c.set(q[0], q[1], q[2]).addScaledVector(n, q[3] * (0.5 + 0.5 * Math.sqrt(r())));
+      folBill(A, c, 0.95 + r() * 0.55, r() * TAU, C, ao, 0.3);
     }
   }
   return folGeo(A);
