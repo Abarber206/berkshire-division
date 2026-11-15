@@ -13,18 +13,30 @@ const GFX = { lite: typeof screen !== 'undefined' && Math.min(screen.width, scre
 /* atlas, 512 x 512: top left hardwood leaf clump, top right needle spray, bottom left bark, bottom right twigs */
 const FOL_UV = { leaf: [0, 0.5, 0.5, 1], needle: [0.5, 0.5, 1, 1], bark: [0, 0, 0.5, 0.5], twig: [0.5, 0, 1, 0.5] };
 function foliageTexture() {
-  const t = canvasTex(512, 512, (g) => {
+  const S = GFX.lite ? 512 : 1024;   // drawn in 512 units, sharper on bigger screens
+  const t = canvasTex(S, S, (g) => {
+    g.scale(S / 512, S / 512);
     const r = rng(77);
-    // ---- hardwood leaf clump (light greys; the instance colour gives the season)
+    // ---- hardwood leaf clump (light greys; the instance colour gives the season): a spray of twigs carrying five
+    // to seven lobes of leaves with sky between them, each leaf pointed with a darker midrib, lit from above
     g.save(); g.translate(128, 128);
-    for (let i = 0; i < 9; i++) { const a = r() * TAU; g.strokeStyle = 'rgba(70,60,50,0.9)'; g.lineWidth = 2; g.beginPath(); g.moveTo(0, 30); g.quadraticCurveTo(Math.cos(a) * 40, Math.sin(a) * 40, Math.cos(a) * 95, Math.sin(a) * 95); g.stroke(); }
-    for (let pass = 0; pass < 2; pass++) for (let i = 0; i < 520; i++) {
-      const a = r() * TAU, d = 116 * Math.pow(r(), 0.62), x = Math.cos(a) * d, y = Math.sin(a) * d * 0.92;
-      const sh = pass === 0 ? 0.42 + r() * 0.2 : 0.7 + r() * 0.3 - 0.18 * (y / 116);   // under-leaves darker, the top lighter
-      const v = Math.min(255, sh * 255) | 0;
-      g.fillStyle = `rgb(${v},${Math.min(255, v + 6)},${v * 0.9 | 0})`;
-      g.save(); g.translate(x, y); g.rotate(r() * TAU); g.beginPath(); g.ellipse(0, 0, 6 + r() * 6, 3 + r() * 2.6, 0, 0, TAU); g.fill();
-      g.fillStyle = 'rgba(255,255,255,0.18)'; g.beginPath(); g.ellipse(-1.5, -1, 3, 1.4, 0, 0, TAU); g.fill(); g.restore();
+    const lobes = []; for (let k = 0, n = 6; k < n; k++) { const a = k / n * TAU + (r() - 0.5) * 0.5, d = 44 + r() * 24; lobes.push([Math.cos(a) * d, Math.sin(a) * d * 0.9, 30 + r() * 16]); }
+    lobes.push([(r() - 0.5) * 20, (r() - 0.5) * 20, 40]);
+    for (const [lx, ly] of lobes) { g.strokeStyle = 'rgba(72,62,52,0.95)'; g.lineWidth = 2.4; g.beginPath(); g.moveTo(0, 34); g.quadraticCurveTo(lx * 0.3, ly * 0.5 + 14, lx, ly); g.stroke(); }
+    const leaf = (x, y, rot, L, W, v) => {
+      g.save(); g.translate(x, y); g.rotate(rot);
+      g.fillStyle = `rgb(${v},${Math.min(255, v + 7)},${v * 0.88 | 0})`;
+      g.beginPath(); g.moveTo(-L, 0); g.quadraticCurveTo(-L * 0.2, -W, L, 0); g.quadraticCurveTo(-L * 0.2, W, -L, 0); g.fill();
+      g.strokeStyle = `rgba(${v * 0.62 | 0},${v * 0.66 | 0},${v * 0.55 | 0},0.7)`; g.lineWidth = 0.8; g.beginPath(); g.moveTo(-L * 0.85, 0); g.lineTo(L * 0.8, 0); g.stroke();
+      g.fillStyle = 'rgba(255,255,255,0.16)'; g.beginPath(); g.ellipse(-L * 0.1, -W * 0.35, L * 0.45, W * 0.3, 0, 0, TAU); g.fill();
+      g.restore();
+    };
+    for (let pass = 0; pass < 2; pass++) for (const [lx, ly, lr] of lobes) for (let i = 0; i < 85; i++) {
+      // leaves thin out toward each lobe's edge, so the outline is ragged leaves, not a disc
+      const a = r() * TAU, d = lr * Math.pow(r(), 0.75), x = lx + Math.cos(a) * d, y = ly + Math.sin(a) * d * 0.9;
+      if (Math.hypot(x, y) > 118) continue;
+      const edge = d / lr, sh = pass === 0 ? 0.38 + r() * 0.2 : 0.66 + r() * 0.3 - 0.2 * (y / 116) - 0.1 * edge;
+      leaf(x, y, a + (r() - 0.5) * 1.6, 6 + r() * 3.5, 4 + r() * 2.5, Math.min(255, Math.max(40, sh * 255)) | 0);
     }
     g.restore();
     // ---- needle spray, base at the left (the trunk) and tip at the right
