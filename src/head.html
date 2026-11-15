@@ -680,6 +680,51 @@ details.keys kbd{color:var(--brass)}
   #edSel{top:auto;bottom:calc(env(safe-area-inset-bottom,0px) + 136px);right:10px;left:10px;width:auto}
   #edMsg{top:calc(env(safe-area-inset-top,0px) + 104px)}
 }
+
+/* ---------- menu, redesigned (2026-11): the railroad shows on the left and the settings dock on the right, their
+   sections down a rail; the engines are picked from cards with a side view of each. Narrow screens keep the wrapping
+   tab grid. ---------- */
+#menu{background:linear-gradient(90deg,rgba(5,8,10,.16) 0%,rgba(5,8,10,.36) 42%,rgba(5,8,10,.9) 78%),linear-gradient(0deg,rgba(5,8,10,.78),rgba(5,8,10,0) 44%)}
+#menu.mini{background:none}
+.form{background:linear-gradient(180deg,rgba(18,25,31,.96),rgba(10,14,17,.96));border-color:#33434e;border-radius:12px;box-shadow:0 18px 60px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,255,255,.04)}
+#menu.mini .form{box-shadow:0 6px 24px rgba(0,0,0,.5)}
+.eyebrow{display:flex;align-items:center;gap:10px}
+.eyebrow::before{content:"";flex:none;width:26px;height:2px;background:var(--brass)}
+h1{text-shadow:0 2px 0 #000,0 10px 40px rgba(0,0,0,.6)}
+.lede{text-shadow:0 1px 2px rgba(0,0,0,.8)}
+.specs{background:rgba(44,58,68,.7);border-radius:10px}
+.specs div{background:rgba(12,17,21,.84)}
+.seg button{border-radius:8px;padding:9px;transition:border-color .12s,background .12s,transform .12s}
+.seg button:hover{border-color:#4d6270;background:#1c2830}
+.seg button:active{transform:translateY(1px)}
+.seg button[aria-pressed="true"]{box-shadow:inset 0 0 0 1px rgba(207,166,81,.35),0 0 18px rgba(207,166,81,.12)}
+.seg.cards{grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:6px}
+.seg.cards svg{display:block;width:100%;height:30px;margin-bottom:6px;color:#6f808b;transition:color .12s}
+.seg.cards button:hover svg{color:#9fb0ba}
+.seg.cards button[aria-pressed="true"] svg{color:var(--brass)}
+.mtabs button{border-radius:7px;transition:color .12s,background .12s}
+.mpane{animation:paneIn .16s ease-out}
+@keyframes paneIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.mpane{animation:none}.seg button{transition:none}}
+#loadBar{height:4px;border-radius:3px;background:#070a0c}
+#loadBar i{background:linear-gradient(90deg,#8a6a28,#f0d38a);box-shadow:0 0 10px rgba(240,211,138,.5)}
+#btnStart{border-radius:9px;box-shadow:0 6px 22px rgba(184,140,53,.25),inset 0 1px 0 rgba(255,255,255,.35);transition:filter .15s,transform .1s}
+#btnStart:not(:disabled):hover{filter:brightness(1.08)}
+#btnStart:not(:disabled):active{transform:translateY(1px)}
+@media (min-width:900px) and (min-height:501px){
+  #menu:not(.mini){padding:18px;align-items:stretch;justify-content:stretch}
+  #menu:not(.mini) .sheet{width:100%;height:100%;max-height:none;grid-template-columns:minmax(0,1fr) minmax(430px,510px);gap:28px;align-items:stretch}
+  #menu:not(.mini) .brandmark{align-self:end;max-width:600px;padding:0 0 10px 14px}
+  #menu:not(.mini) .form{max-height:none;height:100%;box-sizing:border-box;display:grid;grid-template-columns:118px minmax(0,1fr);grid-template-rows:minmax(0,1fr) auto;gap:12px 14px;padding:14px}
+  #menu:not(.mini) .mtop{grid-row:1 / span 2;flex-direction:column;align-items:stretch;margin:0;padding-right:12px;border-right:1px solid var(--rule);gap:10px}
+  #menu:not(.mini) .mtabs{flex:none;grid-template-columns:1fr;gap:3px}
+  #menu:not(.mini) .mtabs button{text-align:left;padding:10px;font-size:11.5px;border:0;border-left:2px solid transparent;border-radius:0 7px 7px 0}
+  #menu:not(.mini) .mtabs button[aria-selected="true"]{border-left-color:var(--brass);background:linear-gradient(90deg,rgba(207,166,81,.2),rgba(207,166,81,0))}
+  #menu:not(.mini) .mmin{margin-top:auto;justify-content:center}
+  #menu:not(.mini) .mmin b{display:inline}
+  #menu:not(.mini) .mpanes{grid-column:2}
+  #menu:not(.mini) .mfoot{grid-column:2}
+}
 </style>
 
 <canvas id="gl" tabindex="0" aria-label="3D railway view"></canvas>
@@ -919,7 +964,7 @@ details.keys kbd{color:var(--brass)}
         <div class="fgroup" id="grpJob"><span class="lbl">Work</span><div class="seg jobs" id="optJob"></div><div id="jobBrief" hidden></div></div>
       </section>
       <section class="mpane" data-pane="train" role="tabpanel">
-        <div class="fgroup"><span class="lbl">Locomotive</span><div class="seg" id="optLoco"></div></div>
+        <div class="fgroup"><span class="lbl">Locomotive</span><div class="seg cards" id="optLoco"></div></div>
         <div class="fgroup" id="grpUnits" hidden><span class="lbl">Locomotives in the lashup</span><div class="seg" id="optUnits"></div></div>
         <div class="fgroup"><span class="lbl">Train</span><div class="seg" id="optTrain"></div></div>
       </section>

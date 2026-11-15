@@ -215,7 +215,7 @@ function grassWind(sh, amp, grass) {
 /* How dry the grass is here, from the same broad drifts the ground shader paints (TEX.detail blue channel), so a
    clump's colour matches the turf it stands in: 0 lush, 1 parched. */
 function grassDryAt(X, N) {
-  let D = DET.detailB;
+  let D = DET.detailB || (DET.detailB = TEX.detailBlue);
   if (!D) {
     const img = TEX.detail && TEX.detail.image; if (!img || !img.getContext) return 0.5;
     const d = img.getContext('2d').getImageData(0, 0, img.width, img.height).data, B = new Uint8Array(img.width * img.height);
