@@ -309,7 +309,7 @@ class RemoteTrain {
     // the bell's strokes: the sound rings on them and the bell swings to them
     const bellP = bellVoice(st.lk).P; let struck = false;
     if (st.bl) { this.bellT += dt; if (this.bellT > bellP) { this.bellT = 0; struck = this.bellHit = true; } } else { this.bellT = 0.8; this.bellHit = false; }
-    if (!this.placed || !this.visible) return;
+    if (!this.placed || !this.visible) { trainLightsOff(this.tl); return; }
     const T = this.train, L = T.loco, night = SKY.dark;
     bellSwing(T, !!st.bl, this.bellT, bellP, struck, dt);
     if (!T.diesel) clsLampsShow(L.cls, !!st.cl);
@@ -319,6 +319,8 @@ class RemoteTrain {
     const hl = st.hl;
     L.beam.material.opacity = hl === 0 ? 0 : Math.max(night * (hl === 2 ? 0.075 : 0.035), wxBeam());
     L.halo.material.opacity = hl === 0 ? 0 : lerp(0.35, 1, night) * (hl === 2 ? 1 : 0.6) * lampFacing(L, cam);
+    // the headlight's pool on the rails ahead and the fire under the ashpan (10k_trainlight.js)
+    trainLights(this.tl || (this.tl = {}), L, d < 900 ? hl : 0, T.diesel || T.elec || d > 400 ? 0 : 1, night, performance.now() / 1000);
     if (L.ditch && L.ditch.length) {
       const ph = Math.floor(performance.now() / 385) % 2, flash = st.wh > 0.05 || st.bl, on = (T.diesel ? st.dl : 1) && hl > 0;
       L.ditch.forEach((dd, k) => { const b = !on ? 0.12 : (flash ? (ph === k ? 1 : 0.15) : 0.85); dd.lens.material.color.setScalar(0.25 + 0.75 * b); dd.halo.material.opacity = b * lerp(0.45, 1, night); });
@@ -361,6 +363,7 @@ class RemoteTrain {
     if (d < 160 && Math.abs(this.v) > 0.6) mpJoints(T, this.mem, this.v, cam);
   }
   dispose() {
+    trainLightsOff(this.tl, true);
     this.train.disposeDeep();
     if (this.bus) this.bus.kill(); if (this.wh) this.wh.kill(); this.bus = this.wh = null;
   }

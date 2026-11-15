@@ -760,6 +760,7 @@ function renderStep(dt, T) {
   // headlight & glows, brightening through dusk
   const night = SKY.dark, darkH = Math.max(night, smooth(0.3, 0.7, SKY.boreK || 0));   // in a tunnel the headlight works as it does at night
   T.head.intensity = S.light === 0 ? 0 : (S.light === 1 ? lerp(0.4, 5, darkH) : lerp(1.4, 16, darkH));
+  T.head.color.setHex(T.elec ? 0xf2f6ff : T.diesel ? 0xfff6e6 : 0xffe9c4);   // LED on the electrics, sealed beams on the diesels, a warm incandescent lamp on steam
   RMAT.lens.color.setScalar(S.light === 0 ? 0.25 : (S.light === 1 ? 0.75 : 1.0)); RMAT.hlLens.color.copy(RMAT.lens.color);
   const flick = 0.85 + 0.15 * Math.sin(S.time * 23) * Math.sin(S.time * 7.3);
   // ditch lights: the diesels' have their own switch, the Big Boy's pilot lamps come on with the headlight
@@ -771,7 +772,9 @@ function renderStep(dt, T) {
     T.loco.ditch.forEach((d, k) => { const b = lv(k); d.lens.material.color.setScalar(0.25 + 0.75 * b); d.halo.material.opacity = b * lerp(0.45, 1, night) * (T.diesel ? 1 : lampFacing(T.loco, camera)); });
   }
   if (T.diesel) T.fireLight.intensity = 0;
-  else T.fireLight.intensity = S.fire * lerp(0.18, 2.4, night) * flick * (CAM.mode === 'cab' ? 1 : 0.6);
+  else T.fireLight.intensity = S.fire * lerp(0.25, 4.2, night) * flick * (CAM.mode === 'cab' ? 1 : 0.85);
+  // the fire showing under the ashpan lights the ties and the trailing truck (the headlight is a real light already)
+  trainLights(LAMPS.own || (LAMPS.own = {}), T.loco, 0, T.diesel || T.elec ? 0 : S.fire, night, S.time);
   T.loco.beam.material.opacity = S.light === 0 ? 0 : Math.max(night * (S.light === 2 ? 0.075 : 0.035), wxBeam());
   T.loco.halo.material.opacity = S.light === 0 ? 0 : lerp(0.35, 1, night) * (S.light === 2 ? 1 : 0.6) * lampFacing(T.loco, camera);
   if (!T.diesel) {
