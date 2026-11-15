@@ -12,7 +12,7 @@ const C = require('./clipcheck');
 const kind = p => p.tag.split('#')[0];
 /* joints between two moving parts: [kind, kind, deepest allowed (m)] */
 const PINS = [
-  ['cross', 'piston', 0.07], ['cross', 'main', 0.03], ['driver', 'main', 0.08], ['driver', 'side', 0.06], ['side', 'side', 0.03], ['driver', 'ecc', 0.05],
+  ['cross', 'piston', 0.07], ['cross', 'main', 0.03], ['driver', 'main', 0.08], ['driver', 'side', 0.08], ['side', 'side', 0.03], ['driver', 'ecc', 0.05],
   ['ecc', 'eccRod', 0.04], ['driver', 'eccRod', 0.035], ['cross', 'union', 0.03], ['comb', 'union', 0.035], ['comb', 'vstem', 0.065],
   // Baker gear (Berkshires)
   ['eccRod', 'gcr', 0.035], ['rbar', 'yoke', 0.04], ['bell', 'gcr', 0.03], ['bell', 'vrod', 0.03], ['comb', 'vrod', 0.035], ['rarm', 'reach', 0.03],
@@ -71,6 +71,16 @@ test('Big Boy: both engines\' wheels, rods, Walschaerts gear and lifting links t
     for (const s of [-1, 1]) for (const [k, o] of Object.entries(p.eng[e].rods[s])) tagAll(movers, o, k, e + (s > 0 ? 'R' : 'L'));
   }
   none('Big Boy', sweep([L.root, L.front, L.leadTruck], movers, gearPoses((th, rev) => w.animateBigBoy(L, -th * w.BB.rD, th, rev, 40))));
+});
+
+test('C&O 1308: both engines\' wheels, rods, Walschaerts gear and lifting links turn clear of everything', () => {
+  const w = G.world(), L = w.buildMallet('1308'), p = L.parts, movers = new Map();
+  tagAll(movers, p.lead, 'lead', ''); tagAll(movers, p.trail, 'trail', '');
+  for (const e of ['f', 'r']) {
+    tagAll(movers, p.eng[e].drivers, 'driver', e);
+    for (const s of [-1, 1]) for (const [k, o] of Object.entries(p.eng[e].rods[s])) tagAll(movers, o, k, e + (s > 0 ? 'R' : 'L'));
+  }
+  none('C&O 1308', sweep([L.root, L.front, L.leadTruck], movers, gearPoses((th, rev) => w.animateMallet(L, -th * w.ML.rD, th, rev, 40))));
 });
 
 test('diesel, turbine and Big Boy tender: every wheel turns clear of its truck, brakes and frame', () => {

@@ -66,7 +66,7 @@ function romanText(g, txt, x, y, size, color = '#efede4', spacing = 0.06) {
 }
 
 /* -------- wheel sets -------- */
-function driverWheel(R, main, rightCrankAngle, centre = boxpokCentre) {
+function driverWheel(R, main, rightCrankAngle, centre = boxpokCentre, cr = 0.432) {
   // geometry in wheel-local: xy = wheel face plane, +z outward (toward the rod side)
   const parts = { black: [], tire: [], rod: [], wall: [] };
   const tire = new THREE.LatheGeometry([new THREE.Vector2(R - 0.075, -0.07), new THREE.Vector2(R, -0.07), new THREE.Vector2(R, 0.065), new THREE.Vector2(R + 0.032, 0.07), new THREE.Vector2(R + 0.03, 0.09), new THREE.Vector2(R - 0.075, 0.09)].map(v => new THREE.Vector2(v.x, -v.y)), 40);
@@ -74,7 +74,6 @@ function driverWheel(R, main, rightCrankAngle, centre = boxpokCentre) {
   parts.wall = [new THREE.RingGeometry(R - 0.074, R + 0.001, 48).translate(0, 0, 0.0715)];
   centre(R, main, parts);
   // crank pin boss + pin
-  const cr = 0.432;
   parts.black.push(new THREE.CylinderGeometry(0.15, 0.17, 0.12, 16).rotateX(Math.PI / 2).translate(cr, 0, 0.1));
   parts.rod.push(new THREE.CylinderGeometry(0.075, 0.075, main ? 0.42 : 0.26, 12).rotateX(Math.PI / 2).translate(cr, 0, main ? 0.3 : 0.22));
   const out = {};
@@ -83,8 +82,8 @@ function driverWheel(R, main, rightCrankAngle, centre = boxpokCentre) {
   return out;
 }
 /* full axle: right wheel at +z with crank at 0, left wheel at -z with crank at +90° */
-function driverAxle(R, main, centre) {
-  const right = driverWheel(R, main, 0, centre), left = driverWheel(R, main, Math.PI / 2, centre);
+function driverAxle(R, main, centre, cr) {
+  const right = driverWheel(R, main, 0, centre, cr), left = driverWheel(R, main, Math.PI / 2, centre, cr);
   const res = {};
   for (const k of ['black', 'tire', 'rod', 'wall']) {
     const r = right[k].clone().translate(0, 0, RAIL_OFF);
@@ -269,12 +268,12 @@ function boxpokCentre(R, main, parts) {
 
 /* A driver brake shoe: a curved block standing just off the tread ahead of the wheel at (xd, rD), clear of the
    flange and of the sand pipe that comes down between the tyres, on a head that reaches inboard to its hanger. */
-function brakeShoe(gb, xd, rD, s) {
+function brakeShoe(gb, xd, rD, s, xh = 0.995) {   // xh: how far ahead of the axle the head reaches to its hanger
   const R0 = rD + 0.006, R1 = rD + 0.05, a0 = -0.72, a1 = -0.25, sh = new THREE.Shape();
   sh.absarc(0, 0, R1, a0, a1, false); sh.absarc(0, 0, R0, a1, a0, true); sh.closePath();
   gb.add('dark', new THREE.ExtrudeGeometry(sh, { depth: 0.11, bevelEnabled: false, curveSegments: 10 }).translate(xd, rD, s * 0.77 - 0.055));
   const xi = Math.sqrt((rD + 0.045) ** 2 - 0.26 * 0.26);                 // the head stays outside the flange's sweep
-  gb.box('dark', 0.995 - xi, 0.1, 0.14, xd + (0.995 + xi) / 2, rD - 0.31, s * 0.67);
+  gb.box('dark', xh - xi, 0.1, 0.14, xd + (xh + xi) / 2, rD - 0.31, s * 0.67);
 }
 function buildBerkshire(key, trim = '') {
   const spec = LOCO_SPEC[key], nkp = spec.front !== 'pm';
@@ -1039,9 +1038,10 @@ TD.ref = (TD.trucks[0] + TD.trucks[1]) / 2;
    tank top, rivet rows along the bottom and the tank-top seam. The extruded sides carry their shape's x, y as uv,
    so the texture is stretched over the whole side once. */
 function tenderSideMat(D, tx) {
-  if (RMAT.tSide) return;
+  const sk = D.sideKey || 'tSide';
+  if (RMAT[sk]) return;
   const t = canvasTex(1024, 256, (g, w, h) => {
-    const r = rng(765), yOf = y => h * (1 - (y - D.yBot) / (D.yBunk - D.yBot)), xOf = a => w * (tx(a) - tx(D.t1)) / (tx(D.t0) - tx(D.t1));
+    const r = rng(D.seed || 765), yOf = y => h * (1 - (y - D.yBot) / (D.yBunk - D.yBot)), xOf = a => w * (tx(a) - tx(D.t1)) / (tx(D.t0) - tx(D.t1));
     g.fillStyle = '#ffffff'; g.fillRect(0, 0, w, h);
     for (let i = 0; i < 30; i++) { const x = r() * w, y0 = yOf(D.yTank) + r() * 6, L = h * (0.15 + r() * 0.45), gr = g.createLinearGradient(0, y0, 0, y0 + L); gr.addColorStop(0, `rgba(190,190,180,${0.06 + r() * 0.08})`); gr.addColorStop(1, 'rgba(190,190,180,0)'); g.fillStyle = gr; g.fillRect(x, y0, 2 + r() * 8, L); }
     const top = g.createLinearGradient(0, 0, 0, h * 0.35); top.addColorStop(0, 'rgba(30,28,26,0.35)'); top.addColorStop(1, 'rgba(30,28,26,0)'); g.fillStyle = top; g.fillRect(0, 0, w, h);
@@ -1049,18 +1049,19 @@ function tenderSideMat(D, tx) {
     rivetRow(g, 4, h - 6, w - 4, h - 6, 160, 1.6); rivetRow(g, 4, yOf(D.yTank) + 5, xOf(D.bunk[2]), yOf(D.yTank) + 5, 70, 1.6);
   });
   t.repeat.set(1 / (tx(D.t0) - tx(D.t1)), 1 / (D.yBunk - D.yBot)); t.offset.set(-tx(D.t1) * t.repeat.x, -D.yBot * t.repeat.y);
-  RMAT.tSide = RMAT.black.clone(); RMAT.tSide.map = t; RMAT.tSide.side = THREE.DoubleSide;
+  RMAT[sk] = RMAT.black.clone(); RMAT[sk].map = t; RMAT[sk].side = THREE.DoubleSide;
 }
-function buildTender(key, trim = '') {
+function buildTender(key, trim = '', D = TD) {
   const spec = LOCO_SPEC[key], T = TRIM[trim];
   const root = new THREE.Group();
   const gb = new GeoBin();
-  const D = TD, tx = a => D.ref - a, hw = D.hw, Lt = D.len;
+  const tx = a => D.ref - a, hw = D.hw, Lt = D.len;
   const bar = (k, r, a, b, seg = 8) => gb.add(k, barGeo(r, a, b, seg));
   // cast underframe: centre sill, side sills, bolsters down onto the truck centre plates, end sills
   gb.box('dark', D.t1 - 0.3, 0.22, 0.9, tx((0.3 + D.t1) / 2), D.yBot - 0.11, 0);
   for (const s of [-1, 1]) gb.box('dark', D.t1 - D.t0, 0.16, 0.12, tx((D.t0 + D.t1) / 2), D.yBot - 0.08, s * (hw - 0.08));
-  for (const a of D.trucks) gb.box('dark', 0.6, D.yBot - 1.005, 2.6, tx(a), (D.yBot + 1.005) / 2, 0);
+  const yT = D.four ? TPY : 1.005;                                                             // top of the truck's centre plate
+  for (const a of D.trucks) gb.box('dark', 0.6, D.yBot - yT, 2.6, tx(a), (D.yBot + yT) / 2, 0);
   gb.box('dark', 0.3, 0.36, 2.9, tx(D.t1 + 0.12), 1.06, 0);                                   // rear end sill
   // tank & bunker sides: one profile, extruded across as two side sheets
   const prof = new THREE.Shape();
@@ -1068,7 +1069,7 @@ function buildTender(key, trim = '') {
   prof.lineTo(tx(D.bunk[1]), D.yBunk); prof.lineTo(tx(D.bunk[0]), D.yBunk);
   prof.quadraticCurveTo(tx(D.t0 + 0.1), D.yBunk - 0.05, tx(D.t0), D.yTank - 0.02); prof.lineTo(tx(D.t0), D.yBot);
   tenderSideMat(D, tx);
-  for (const s of [-1, 1]) gb.add('tSide', new THREE.ExtrudeGeometry(prof, { depth: 0.04, bevelEnabled: false, curveSegments: 10 }).translate(0, 0, s * (hw - 0.02) - 0.02));
+  for (const s of [-1, 1]) gb.add(D.sideKey || 'tSide', new THREE.ExtrudeGeometry(prof, { depth: 0.04, bevelEnabled: false, curveSegments: 10 }).translate(0, 0, s * (hw - 0.02) - 0.02));
   // bottom, rear, the tank top behind the bunker and the slope sheet up to the bunker
   gb.box('black', D.t1 - D.t0, 0.04, 2 * hw - 0.04, tx((D.t0 + D.t1) / 2), D.yBot + 0.02, 0);
   gb.box('black', 0.04, D.yTank - D.yBot, 2 * hw, tx(D.t1) - 0.02, (D.yTank + D.yBot) / 2, 0);
@@ -1087,7 +1088,7 @@ function buildTender(key, trim = '') {
   {
     const a0 = D.t0 + 0.34, a1 = D.bunk[2] - 0.2, La = a1 - a0, W = 2 * hw - 0.1;
     const g = new THREE.PlaneGeometry(La, W, 28, 12); g.rotateX(-Math.PI / 2);
-    const p = g.attributes.position, r = rng(55);
+    const p = g.attributes.position, r = rng(D.seed || 55);
     for (let i = 0; i < p.count; i++) {
       const x = p.getX(i), z = p.getZ(i), u = 1 - (x / (La / 2)) ** 2, v = 1 - (z / (W / 2)) ** 2, h = Math.max(0, u) ** 0.5 * Math.max(0, v) ** 0.6;
       const t = a0 + La / 2 - x, wallTop = t > D.bunk[1] ? lerp(D.yBunk, D.yTank, (t - D.bunk[1]) / (D.bunk[2] - D.bunk[1])) : D.yBunk;
@@ -1096,8 +1097,8 @@ function buildTender(key, trim = '') {
     g.computeVertexNormals(); g.translate(tx(a0 + La / 2), 0, 0); gb.add('coal', g);
   }
   // water hatch, back-up light, rear deck ladders and grab irons
-  gb.cyl('black', 0.42, 0.42, 0.24, 20, tx(11.0), D.yTank + 0.1, 0);
-  gb.cyl('black', 0.47, 0.47, 0.05, 20, tx(11.0), D.yTank + 0.24, 0);
+  gb.cyl('black', 0.42, 0.42, 0.24, 20, tx(D.hatch || 11.0), D.yTank + 0.1, 0);
+  gb.cyl('black', 0.47, 0.47, 0.05, 20, tx(D.hatch || 11.0), D.yTank + 0.24, 0);
   gb.box('black', 0.5, 0.45, 0.5, tx(D.t1 - 0.3), D.yTank + 0.225, 0);
   const bl = new THREE.Mesh(new THREE.CircleGeometry(0.15, 18), RMAT.lensOff); bl.position.set(tx(D.t1 - 0.05) - 0.003, D.yTank + 0.24, 0); bl.rotation.y = -Math.PI / 2;
   for (const s of [-1, 1]) {
@@ -1116,9 +1117,9 @@ function buildTender(key, trim = '') {
   }
   const coupler = addCoupler(gb, root, { x: tx(Lt), out: -1, sx: tx(D.t1 + 0.27) - tx(Lt), sb: 0.88, ly: 1.12, zh: 1.3, yp: 0.86, housing: true, hl: 0.3 });
   // lettering, centred on the tank side below the bunker line
-  const rk = 'road' + key + trim, rt = T ? T.road : spec.road;
+  const rk = 'road' + key + trim, rt = T ? T.road : spec.road, LT = D.letter || [9.6, 1.2, 6.9, 2.45];
   RMAT[rk] = decalMat(1024, 128, (g, w, h) => romanText(g, rt, w / 2, h / 2 + 6, rt.length > 15 ? 84 : 92, T ? T.gold : '#ecE9de', 0.1));
-  for (const s of [-1, 1]) gb.add(rk, new THREE.PlaneGeometry(9.6, 1.2), M(tx(6.9), 2.45, s * (hw + 0.008), 0, s > 0 ? 0 : Math.PI, 0));
+  for (const s of [-1, 1]) gb.add(rk, new THREE.PlaneGeometry(LT[0], LT[1]), M(tx(LT[2]), LT[3], s * (hw + 0.008), 0, s > 0 ? 0 : Math.PI, 0));
   if (T) {
     // snow on the tank top behind the bunker and a dusting over the coal; garland swagged along the tank sides
     const pts = []; for (let i = 0; i <= 12; i++) pts.push([-hw + i / 12 * 2 * hw, D.yTank]);
@@ -1131,7 +1132,7 @@ function buildTender(key, trim = '') {
   const statics = gb.build(RMAT);
   root.add(statics); root.add(bl);
   root.traverse(o => { if (o.isMesh && !o.userData.cpl) { o.castShadow = true; o.receiveShadow = true; } });
-  return { root, len: Lt, ref0: D.ref, trucks: D.trucks.map(a => ({ a, type: 'buck', R: 0.457, sp: D.sp })), frame: D.trucks.slice(), backup: bl, waterHatchA: 11.0, couplers: [null, coupler] };
+  return { root, len: Lt, ref0: D.ref, trucks: D.trucks.map(a => D.four ? { a, type: 'four', R: 0.419 } : { a, type: 'buck', R: 0.457, sp: D.sp }), frame: D.trucks.slice(), backup: bl, waterHatchA: D.hatch || 11.0, couplers: [null, coupler] };
 }
 
 /* =================== CARS =================== */

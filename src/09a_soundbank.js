@@ -61,6 +61,7 @@ const WHISTLE_REC = {
   // rate: played this much lower. No PD recording of NKP 765's own whistle exists, so it blows a deep multi-chime
   // recorded at the Grand Canyon Railway (another engine than the 1225's), lowered to sit between the 1225 and the Big Boy
   nkp6: { quill: 0.05, attack: 0.05, release: 0.12, on: 1.2, xf: 0.03, rate: 0.86 },
+  co3: { take: 'deep6', quill: 0.05, attack: 0.05, release: 0.12, on: 1.2, rate: 1.19 },   // C&O 1308: no PD recording of an H-6, so the deep chime played higher and shorter
   chime6: { quill: 0.05, attack: 0.05, release: 0.12, on: 1.2, xf: 0.03 },
   k5: { quill: 0, attack: 0.02, release: 0.08, on: 1.2 },
   s5t: { quill: 0, attack: 0.03, release: 0.1, on: 0.7 },   // Leslie S-5T-R, the gas turbine's horn
@@ -73,6 +74,7 @@ const WHISTLE_REC = {
 const BELL_VOICE = {
   '1225': { take: 'bell_st', rate: 0.64, P: 0.86, gain: 1, f: 620 },     // Pere Marquette: bright polished brass
   '765': { take: 'bell_st', rate: 0.5, P: 0.98, gain: 1.05, f: 495 },     // Nickel Plate: bigger and darker
+  '1308': { take: 'bell_st', rate: 0.57, P: 0.92, gain: 1, f: 540 },      // C&O Mallet: a big brass bell over the smokebox front
   '4014': { take: 'bell', rate: 0.47, P: 1.14, gain: 1.1, f: 380 },       // Big Boy: the biggest, a slow heavy swing
   diesel: { take: 'bell', rate: 0.82, P: 0.7, gain: 0.85, f: 760 },      // AC44: small steel bell on an air ringer
   '18': { take: 'bell_st', rate: 0.8, P: 0.78, gain: 0.9, f: 790 },      // UP gas turbine: a small bell under the frame

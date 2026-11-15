@@ -29,6 +29,16 @@ const HUD_THEMES = {
       acc: '#c3d0da', dim: '#8fa0b2', txt: '#e4eaf0', cap: '#56626c', glass: '#0b131d' },
     cur: { fill: '#0c1420', edge: '#d6e0e7', lamp: '#bfe3ff' },
   },
+  // Chesapeake & Ohio 1308: the road's enchantment blue with federal yellow
+  co: {
+    name: 'Chesapeake & Ohio blue and yellow',
+    css: { steel: '#0b1226', 'steel-2': '#131d3a', rule: '#2b3a66', ink: '#eceef4', 'ink-dim': '#939bb4', brass: '#f4c430', 'brass-deep': '#8c6a0c',
+      panel: 'rgba(11,18,38,.78)', radius: '5px', knob: 'linear-gradient(#ffe07a,#f4c430 50%,#a67c0e)', 'knob-edge': '#5c4406',
+      key: 'linear-gradient(#1b2748,#10182f)', 'key-edge': '#33457a', 'key-on': 'linear-gradient(#ffe07a,#e6b21a)', 'key-on-ink': '#0b1226' },
+    g: { bezel: ['#fff0b0', '#d9aa2a', '#6e520c'], face: '#f1eee2', tick: '#141a2c', label: '#2f3a5c', needle: '#10162a', needle2: '#c0281e', hub: '#141a2c',
+      acc: '#f4c430', dim: '#939bb4', txt: '#eceef4', cap: '#6e520c', glass: '#0a1020' },
+    cur: { fill: '#0b1226', edge: '#f4c430', lamp: '#ffe9a8' },
+  },
   // Union Pacific 4014: graphite and black iron with Armour Yellow and a scarlet line, like the road's shields
   up: {
     name: 'Union Pacific Armour Yellow',
@@ -83,9 +93,10 @@ const HUD_THEMES = {
 
 /* which theme an engine wears: the holiday finish only dresses the steam engines */
 function hudThemeKey(loco, finish) {
-  const steam = loco === '765' || loco === '1225' || loco === '4014';
+  const steam = loco === '765' || loco === '1225' || loco === '4014' || loco === '1308';
   if (steam && finish === 'polar') return 'polar';
   if (loco === '1225') return 'pm';
+  if (loco === '1308') return 'co';
   if (loco === '4014' || loco === '18') return 'up';   // Union Pacific: the Big Boy and the gas turbine
   if (loco === 'diesel' || loco === 'e5' || loco === 'acela') return loco;
   return 'nkp';
@@ -97,7 +108,7 @@ function hudPlate(loco, finish, number) {
   if (loco === 'e5') return 'E5 · Shinkansen';
   if (loco === 'acela') return 'Acela Express';
   if (loco === '18') return 'UP 18 · Gas turbine';
-  const n = loco === '1225' ? 'PM 1225' : loco === '4014' ? 'UP 4014 · Big Boy' : 'NKP 765';
+  const n = loco === '1225' ? 'PM 1225' : loco === '4014' ? 'UP 4014 · Big Boy' : loco === '1308' ? 'C&O 1308 · Mallet' : 'NKP 765';
   return finish === 'polar' ? n + ' · Polar' : n;
 }
 
