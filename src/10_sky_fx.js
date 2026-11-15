@@ -21,7 +21,7 @@ const SKY = { hour: 6 + 40 / 60, weather: 'clear', dark: 0, night: false, look: 
     float fogD = fogDensity * mix( 1.0, 0.4 + 0.6 * exp( - fogH / max( fogHaze.y, 1.0 ) ), fogHaze.z );
     float fogFactor = 1.0 - exp( - fogD * fogD * fogDepth * fogDepth );
     float fogS = max( dot( normalize( vFogWorld ), fogSunDir ), 0.0 );
-    vec3 fogC = fogColor + fogSunColor * ( pow( fogS, 10.0 ) * 0.55 + pow( fogS, 2.5 ) * 0.14 );
+    vec3 fogC = fogColor + fogSunColor * ( pow( fogS, 12.0 ) * 0.3 + pow( fogS, 3.0 ) * 0.07 );
     gl_FragColor.rgb = mix( gl_FragColor.rgb, fogC, fogFactor );
   #else
     float fogFactor = smoothstep( fogNear, fogFar, fogDepth );
@@ -71,7 +71,10 @@ function buildSky(scene, renderer) {
         vec3 c = mix(uHor, uTop, pow(h, 0.55));
         c = mix(c, uHor*0.55, smoothstep(0.0,-0.25,d.y));
         float s = max(dot(d, normalize(uSun)), 0.0), up = smoothstep(-0.01, 0.006, d.y);
-        c += uSunC * (pow(s, 900.0)*6.0*(1.0-uGray)*up + pow(s, 12.0)*0.35*(1.0-uGray*0.7) + pow(s,3.0)*0.12);
+        // a small hot disc (the real sun is half a degree across), a tight corona round it and a soft
+        // aureole in the haze; the old wide glow washed a third of the sky out to white
+        float disc = smoothstep(0.99993, 0.99997, s);
+        c += uSunC * ((disc*14.0 + pow(s, 2500.0)*2.0)*(1.0-uGray)*up + pow(s, 40.0)*0.22*(1.0-uGray*0.7) + pow(s, 8.0)*0.07);
         float m = max(dot(d, normalize(uMoon)), 0.0);
         c += uMoonC * (pow(m, 900.0)*6.0*(1.0-uGray) + pow(m, 12.0)*0.35*(1.0-uGray*0.7) + pow(m,3.0)*0.12);
         vec3 g = vec3(dot(c, vec3(0.3,0.5,0.2)));
@@ -207,7 +210,7 @@ function skyLight(force) {
   // haze
   _skC.setHex(L.fog); if (W.gray > 0.005) _skC.lerp(_skC2.setHex(mixHex(mixHex(0xb3b8bc, 0x8e9498, W.dark * 0.4), 0x0d1218, dark)), W.gray);
   if (fl > 0) _skC.addScalar(fl * 0.25);
-  scene.fog.color.copy(_skC).convertSRGBToLinear(); scene.fog.density = L.fogD * W.fogK;
+  scene.fog.color.copy(_skC).convertSRGBToLinear(); scene.fog.density = L.fogD * W.fogK * 0.8;   // clear-day haze lets the far tree lines and towns show
   // in thick fog the sky itself is the fog: the dome and the clouds fade into it
   const fogSky = smooth(3, 40, W.fogK); SKY.fogSky = fogSky;
   if (fogSky > 0) { u.uTop.value.lerp(_skC, fogSky); u.uHor.value.lerp(_skC, fogSky); u.uGray.value = Math.max(u.uGray.value, fogSky); }
