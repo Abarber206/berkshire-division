@@ -163,3 +163,13 @@ function linearizeObject(root) {
     }
   });
 }
+
+/* Go to another railroad or layout (a new page load). The world being left holds hundreds of megabytes of
+   graphics memory; a phone has room for one world, not two, and Safari kills the tab ("A problem repeatedly
+   occurred") when the next one starts building before this one is gone. So give the GPU memory back first. */
+function leavePage(url) {
+  try { if (typeof renderer !== 'undefined' && renderer) { renderer.dispose(); renderer.forceContextLoss(); } } catch (e) {}
+  location.href = url;
+}
+/* a page brought back from the back-forward cache has lost its graphics context: load it fresh */
+if (typeof addEventListener === 'function') addEventListener('pageshow', e => { if (e.persisted) location.reload(); });

@@ -268,7 +268,7 @@ SAVE.load = function (slot) {
     if (!d.route.startsWith('route:') && !LAYOUTS.get(d.route)) { toast('That layout has been deleted, so this run cannot be loaded.', 'bad', 4000, 'load'); return false; }
     try { sessionStorage.setItem('bd_resume', slot); } catch (e) {}
     try { if (d.route.startsWith('route:')) localStorage.setItem('bd_route', d.route.slice(6)); } catch (e) {}
-    location.href = location.pathname + (d.route.startsWith('route:') ? '?route=' + d.route.slice(6) : '?layout=' + encodeURIComponent(d.route));
+    leavePage(location.pathname + (d.route.startsWith('route:') ? '?route=' + d.route.slice(6) : '?layout=' + encodeURIComponent(d.route)));
     return true;
   }
   if (PLACE.on) PLACE.exit();

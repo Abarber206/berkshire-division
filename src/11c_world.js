@@ -78,7 +78,7 @@ MP.adoptWorld = function (r) {
   MP.say(`This room runs on ${name}. Loading it…`); toast(`This room runs on ${name}. Loading it…`, '', 4000);
   // a room on a built-in railroad names it, so a browser that last drove the other one doesn't load that
   const q = new URLSearchParams(); if (id) q.set('layout', id); else q.set('route', route || 'ohio'); q.set('room', MP.code);
-  setTimeout(() => { location.href = location.pathname + '?' + q.toString(); }, 1200);
+  setTimeout(() => leavePage(location.pathname + '?' + q.toString()), 1200);
 };
 
 /* a free stretch of a custom layout for a new train in a room */

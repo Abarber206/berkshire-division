@@ -58,6 +58,36 @@ function freeVehicle(v) {
   const seen = new Set();
   v.root.traverse(o => { if (o.geometry && !seen.has(o.geometry)) { seen.add(o.geometry); o.geometry.dispose(); } });
 }
+/* Free the graphics memory of things that have left the scene for good: their geometry, and the materials and
+   lettering textures that nothing still in the scene, and no shared material in RMAT, uses. Until a geometry is
+   disposed the renderer keeps its buffers (and the arrays behind them) alive, so an engine dropped without
+   this stays in memory: a phone runs out after a few engine changes. Call it after anything new is in the
+   scene, so what the new train shares with the old is kept. Only canvas textures (decals, gauges, lettering)
+   are freed; maps that are render targets or shared images are left alone. */
+function freeObjects(roots) {
+  const geos = new Set(), mats = new Set();
+  for (const r of roots) if (r && r.traverse) r.traverse(o => { if (o.geometry) geos.add(o.geometry); if (o.material) for (const m of [].concat(o.material)) if (m) mats.add(m); });
+  if (!geos.size && !mats.size) return;
+  const liveG = new Set(), liveM = new Set(), liveT = new Set();
+  const texOf = (m, f) => { for (const k in m) { const t = m[k]; if (t && t.isTexture) f(t); } if (m.uniforms) for (const k in m.uniforms) { const t = m.uniforms[k] && m.uniforms[k].value; if (t && t.isTexture) f(t); } };
+  const mark = m => { if (m && !liveM.has(m)) { liveM.add(m); texOf(m, t => liveT.add(t)); } };
+  scene.traverse(o => { if (o.geometry) liveG.add(o.geometry); if (o.material) [].concat(o.material).forEach(mark); });
+  // RMAT keeps the shared materials; the ones made for one cab or one car (a diesel cab's screens, a coach's
+  // drumhead, a freight car's reporting marks and graffiti) are let go with it when nothing in the scene still uses them
+  for (const k in RMAT) { const m = RMAT[k]; if (!m || !m.isMaterial) continue; if (mats.has(m) && !liveM.has(m) && /^(scr[LR]\d|hsScr\w+\d|drumhead|fm_|gf_)/.test(k)) delete RMAT[k]; else mark(m); }
+  for (const g of geos) if (!liveG.has(g)) g.dispose();
+  const canvas = t => typeof HTMLCanvasElement !== 'undefined' && t.image instanceof HTMLCanvasElement;
+  for (const m of mats) if (!liveM.has(m)) { texOf(m, t => { if (!liveT.has(t) && canvas(t)) { liveT.add(t); t.dispose(); } }); m.dispose(); }
+  if (SCN.winMats) SCN.winMats = SCN.winMats.filter(m => liveM.has(m) || !mats.has(m));   // lit windows the lamps no longer need to drive
+}
+/* everything a train brings into the scene, for freeObjects: its vehicles, the engine's trucks and articulated
+   parts, its instanced trucks */
+function trainRoots(t) {
+  const out = t.vehicles.map(v => v.root);
+  if (t.diesel && t.units) t.units.forEach(m => out.push(...(m.trucks || [])));
+  else if (t.steamExtras && t.loco) out.push(...t.steamExtras());
+  return out.concat(t.inst || []);
+}
 
 /* ---------------- making up the yard ---------------- */
 CARS.clear = function (oldTrain, all, keepTrains) {
@@ -65,8 +95,10 @@ CARS.clear = function (oldTrain, all, keepTrains) {
   if (MP.on && !all) { if (oldTrain) for (const v of oldTrain.vehicles) if (v.yard) freeVehicle(v); return; }
   // keepTrains: the other trains you have made up stay where they stand (only the cars are made up again)
   const kept = keepTrains ? CARS.cuts.filter(c => c.parkS) : [];
-  for (const c of CARS.cuts) if (!kept.includes(c)) { c.dispose(); c.vehicles.forEach(freeVehicle); }
-  if (oldTrain) for (const v of oldTrain.vehicles) if (v.yard) freeVehicle(v);
+  const gone = [];
+  for (const c of CARS.cuts) if (!kept.includes(c)) { c.dispose(); gone.push(...c.vehicles.map(v => v.root)); }
+  if (oldTrain) for (const v of oldTrain.vehicles) if (v.yard) gone.push(v.root);
+  freeObjects(gone);
   CARS.cuts = kept; CARS.gen++;
 };
 CARS.setup = function () {
