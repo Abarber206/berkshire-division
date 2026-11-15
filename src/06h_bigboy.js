@@ -489,14 +489,14 @@ function buildBigBoy(key, trim = '') {
 
 /* Walschaerts gear for one side of one engine. phi: this side's crank angle. */
 function bbGear(E, P, phi, rev, s) {
-  const W = E.W, bx = E.bx, cr = BB.cr, rD = BB.rD, z = s;
+  const W = E.W, bx = E.bx, K = E.K || BB, mi = K.mi === undefined ? 2 : K.mi, cr = K.cr, rD = K.rD, z = s;
   const pins = W.aD.map(a => [bx(a) + cr * Math.cos(phi), rD + cr * Math.sin(phi)]);
-  for (let i = 0; i < 3; i++) { const a = pins[i + 1], b = pins[i]; P.side[i].position.set(a[0], a[1], z * 0.99); P.side[i].rotation.z = Math.atan2(b[1] - a[1], b[0] - a[0]); }
-  const pin = pins[2], wy = BB.yC, wx = pin[0] + Math.sqrt(BB.Lm * BB.Lm - (wy - pin[1]) ** 2);
+  for (let i = 0; i < pins.length - 1; i++) { const a = pins[i + 1], b = pins[i]; P.side[i].position.set(a[0], a[1], z * 0.99); P.side[i].rotation.z = Math.atan2(b[1] - a[1], b[0] - a[0]); }
+  const pin = pins[mi], wy = K.yC, wx = pin[0] + Math.sqrt(K.Lm * K.Lm - (wy - pin[1]) ** 2);
   P.main.position.set(pin[0], pin[1], z * 1.1); P.main.rotation.z = Math.atan2(wy - pin[1], wx - pin[0]);
-  P.cross.position.set(wx, wy, z * BB.zC); P.piston.position.set(wx, wy, z * BB.zC);
+  P.cross.position.set(wx, wy, z * K.zC); P.piston.position.set(wx, wy, z * K.zC);
   // return crank on the main pin, its centre a quarter turn behind the crank in forward running (inside admission)
-  const C3 = [bx(W.aD[2]), rD], Ec = [C3[0] + W.e * Math.cos(phi + Math.PI / 2), C3[1] + W.e * Math.sin(phi + Math.PI / 2)];
+  const C3 = [bx(W.aD[mi]), rD], Ec = [C3[0] + W.e * Math.cos(phi + Math.PI / 2), C3[1] + W.e * Math.sin(phi + Math.PI / 2)];
   P.ecc.position.set(pin[0], pin[1], z * 1.22); P.ecc.rotation.z = Math.atan2(Ec[1] - pin[1], Ec[0] - pin[0]);
   P.ecc.scale.x = Math.hypot(Ec[0] - pin[0], Ec[1] - pin[1]) / W.e;
   // the link swings on its trunnion; its foot is where the eccentric rod reaches
@@ -514,12 +514,12 @@ function bbGear(E, P, phi, rev, s) {
     return [S[0] + (a * dx - h * dy) / d, S[1] + (a * dy + h * dx) / d]; })();   // where the arm's circle meets the link's, ahead and above
   P.lifter.position.set(Q[0], Q[1], z * 1.452); P.lifter.rotation.z = Math.atan2(T[1] - Q[1], T[0] - Q[0]);
   P.rarm.position.set(S[0], S[1], z * 1.452); P.rarm.rotation.z = Math.atan2(T[1] - S[1], T[0] - S[0]);
-  const By = BB.yV - W.b, Ux = wx - 0.02, Uy = By - 0.02, Bx = Ux + W.Lu;
+  const By = K.yV - W.b, Ux = wx - 0.02, Uy = By - 0.02, Bx = Ux + W.Lu;
   P.union.position.set(Ux, Uy, z * 1.36); P.union.rotation.z = Math.atan2(By - Uy, Bx - Ux);
   // the lever hangs from the radius rod; the valve stem takes its motion a little below, the crosshead swings its foot
-  const Tvx = Cx + (Bx - Cx) * W.a / (W.a + W.b), Tvy = BB.yV;
+  const Tvx = Cx + (Bx - Cx) * W.a / (W.a + W.b), Tvy = K.yV;
   P.comb.position.set(Cx, Cy, z * 1.36); P.comb.rotation.z = Math.atan2(Bx - Cx, -(By - Cy));
-  P.vstem.position.set(Tvx, Tvy, z * BB.zV);
+  P.vstem.position.set(Tvx, Tvy, z * K.zV);
 }
 /* wheels and gear for both engines. The front engine runs a little out of step with the rear (bbDrift). */
 function animateBigBoy(L, roll, theta, rev, odo = 0) {
@@ -539,15 +539,17 @@ function artFront(v, L, D) {
   const g = L.front; g.matrixAutoUpdate = false;
   if (D && v.rb.f0) { g.matrix.multiplyMatrices(D, v.rb.f0); g.matrixWorldNeedsUpdate = true; return; }
   const F = v.artPt.F;
-  _afH.set(bxR(BB.aH), 0, 0).applyMatrix4(v.root.matrix);
+  const hg = L.hinge || [bxR(BB.aH), bxF(BB.aH)];
+  _afH.set(hg[0], 0, 0).applyMatrix4(v.root.matrix);
   _afX.subVectors(F.p, _afH).normalize();
   _afR.crossVectors(_afX, F.u).normalize(); _afU.crossVectors(_afR, _afX).normalize();
-  g.matrix.makeBasis(_afX, _afU, _afR).setPosition(_afH.addScaledVector(_afX, -bxF(BB.aH)));
+  g.matrix.makeBasis(_afX, _afU, _afR).setPosition(_afH.addScaledVector(_afX, -hg[1]));
   g.matrixWorldNeedsUpdate = true;
 }
 /* how far the front engine stands out from under the boiler at the pilot, metres (for the tests and the camera) */
 function artSwing(L) {
-  const p = new THREE.Vector3(bxF(0.5), 0, 0).applyMatrix4(L.front.matrix), q = new THREE.Vector3(bxR(0.5), 0, 0).applyMatrix4(L.root.matrix);
+  const n = L.nose || [bxR(0.5), bxF(0.5)];
+  const p = new THREE.Vector3(n[1], 0, 0).applyMatrix4(L.front.matrix), q = new THREE.Vector3(n[0], 0, 0).applyMatrix4(L.root.matrix);
   return p.distanceTo(q);
 }
 

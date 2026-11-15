@@ -33,7 +33,7 @@ class Consist {
     const m = v.model || {};
     if (v.kind === 'loco' && !this.diesel) v.leadPt = pt(m.leadA !== undefined ? m.leadA : LG.aL); else if (v.kind === 'loco') v.leadPt = v.fp[0];
     v.extraPts = [];
-    if (m.art) v.extraPts.push(v.artPt = pt(BB.refF));                  // the articulated front engine's middle
+    if (m.art) v.extraPts.push(v.artPt = pt(m.artA !== undefined ? m.artA : BB.refF));                  // the articulated front engine's middle
     if (m.swivelA !== undefined) v.extraPts.push(v.swPt = pt(m.swivelA));   // a tender's swivelling truck
     v.ptsAll = [...v.fp, ...v.tp, ...v.extraPts]; if (v.leadPt && !v.ptsAll.includes(v.leadPt)) v.ptsAll.push(v.leadPt);
   }
@@ -282,10 +282,10 @@ class Train extends Consist {
     } else {
       // a holiday trim (see TRIM) is built into a steam train and the coaches it brings
       this.trim = TRIM[opts.trim] ? opts.trim : '';
-      L = spec.art ? buildBigBoy(locoKey, this.trim) : buildBerkshire(locoKey, this.trim);
+      L = spec.mallet ? buildMallet(locoKey, this.trim) : spec.art ? buildBigBoy(locoKey, this.trim) : buildBerkshire(locoKey, this.trim);
       scene.add(L.root); scene.add(L.leadTruck); if (L.front) scene.add(L.front);
       this.vehicles.push({ kind: 'loco', model: L, root: L.root, len: L.len || LG.len, frame: L.frame || [LG.aD[0], LG.aD[3]], trucks: [], mass: engMass, axles: spec.axles || 10, area: 125, brakeA: 0.55, cpl: L.couplers });
-      const T = spec.art ? buildBigBoyTender(locoKey, this.trim) : buildTender(locoKey, this.trim);
+      const T = spec.mallet ? buildMalletTender(locoKey, this.trim) : spec.art ? buildBigBoyTender(locoKey, this.trim) : buildTender(locoKey, this.trim);
       if (T.truck) scene.add(T.truck);
       scene.add(T.root);
       this.tender = T;

@@ -199,7 +199,7 @@ function mpOpts(st) {
 function mpLocoLabel(st) {
   if (st && st.other) return 'On another railroad';
   if (!st || st.e < 0) return 'In the menu';
-  const loco = HSR[st.lk] ? HSR[st.lk].name : st.lk === 'diesel' ? (st.lv === 'custom' ? 'Custom' : LIVERIES[st.lv].init) + ' diesel' + (st.u > 1 ? ' ×' + st.u : '') : (st.lk === '765' ? 'NKP 765' : st.lk === '4014' ? 'UP 4014 Big Boy' : st.lk === '18' ? 'UP 18 gas turbine' : 'PM 1225');
+  const loco = HSR[st.lk] ? HSR[st.lk].name : st.lk === 'diesel' ? (st.lv === 'custom' ? 'Custom' : LIVERIES[st.lv].init) + ' diesel' + (st.u > 1 ? ' ×' + st.u : '') : (st.lk === '765' ? 'NKP 765' : st.lk === '4014' ? 'UP 4014 Big Boy' : st.lk === '1308' ? 'C&O 1308' : st.lk === '18' ? 'UP 18 gas turbine' : 'PM 1225');
   return HSR[st.lk] ? loco : loco + ' · ' + CONSISTS[st.ck].name;
 }
 function mpJoints(T, mem, speed, cp) {

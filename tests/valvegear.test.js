@@ -41,3 +41,8 @@ test('Big Boy Walschaerts gear: the valves lead the pistons on both engines, for
   const w = G.world(), L = w.buildBigBoy('4014');
   for (const e of ['f', 'r']) for (const s of [1, -1]) timed(`4014 ${e === 'f' ? 'front' : 'rear'} engine ${s > 0 ? 'right' : 'left'}`, (th, rev) => w.animateBigBoy(L, 0, th, rev, 0), L.parts.eng[e].rods[s]);
 });
+
+test('C&O 1308 Walschaerts gear: the valves lead the pistons on both engines, forward and back', () => {
+  const w = G.world(), L = w.buildMallet('1308');
+  for (const e of ['f', 'r']) for (const s of [1, -1]) timed(`1308 ${e === 'f' ? 'low-pressure' : 'high-pressure'} engine ${s > 0 ? 'right' : 'left'}`, (th, rev) => w.animateMallet(L, 0, th, rev, 0), L.parts.eng[e].rods[s]);
+});
