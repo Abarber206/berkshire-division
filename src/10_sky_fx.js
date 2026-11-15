@@ -423,7 +423,7 @@ function updateFX(dt, cam) {
     FX.vel[j] += (w.x - FX.vel[j]) * k; FX.vel[j + 1] += (FX.buoy[i] * (1 - t) - FX.vel[j + 1] * 0.6) * dt; FX.vel[j + 2] += (w.z - FX.vel[j + 2]) * k;
     FX.pos[j] += FX.vel[j] * dt; FX.pos[j + 1] += FX.vel[j + 1] * dt; FX.pos[j + 2] += FX.vel[j + 2] * dt;
     FX.size[i] = lerp(FX.s0[i], FX.s1[i], 1 - (1 - t) * (1 - t));
-    FX.alpha[i] = FX.a0[i] * (1 - t) * (1 - t) * Math.min(1, age * 8);
+    FX.alpha[i] = FX.a0[i] * (1 - t) * (1 - t) * Math.min(1, age * 25);   // full strength almost as it leaves the stack, not a car length up
     FX.col[j] = FX.base[j] * L.r; FX.col[j + 1] = FX.base[j + 1] * L.g; FX.col[j + 2] = FX.base[j + 2] * L.b;
     FX.age[i] = age + dt;
   }

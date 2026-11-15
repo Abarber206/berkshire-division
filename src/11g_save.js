@@ -81,7 +81,7 @@ function wreckOut(T) {
   const R = T.rb, W = GAME.wrecking; if (!R || !S.derailed) return null;
   return {
     spec: T.wk, broken: [...R.broken], title: W ? W.title : 'Derailed', why: W ? W.why : '',
-    bodies: R.bodies.map(b => ({ i: T.vehicles.indexOf(b.v), M0: m4Out(b.M0), t0: b.t0.map(m4Out), u0: b.u0 ? b.u0.map(m4Out) : null, l0: b.l0 ? m4Out(b.l0) : null, f0: b.f0 ? m4Out(b.f0) : null, s0: b.s0 ? m4Out(b.s0) : null, p: b.p.toArray().map(x => rnd(x)), q: b.q.toArray().map(x => rnd(x, 1e5)) })),
+    bodies: R.bodies.filter(b => b.v).map(b => ({ i: T.vehicles.indexOf(b.v), M0: m4Out(b.M0), t0: b.t0.map(m4Out), u0: b.u0 ? b.u0.map(m4Out) : null, l0: b.l0 ? m4Out(b.l0) : null, f0: b.f0 ? m4Out(b.f0) : null, s0: b.s0 ? m4Out(b.s0) : null, p: b.p.toArray().map(x => rnd(x)), q: b.q.toArray().map(x => rnd(x, 1e5)) })),
   };
 }
 /* the pile as it came to rest: each car off the rails where it lay, asleep until it is re-railed */

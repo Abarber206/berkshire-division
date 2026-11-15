@@ -64,3 +64,25 @@ test('coupler faces left a little apart or overlapping on the track do not fling
     assert.ok(r.maxSp < 25 * MPH + 2, `gap ${gap}: a car reached ${r.maxSp.toFixed(1)} m/s`);
   }
 });
+
+test('trucks: stay under a slow derailment, get knocked loose in a fast one, and never sink into the ground', (t) => {
+  if (!fs.existsSync(THREE_JS)) return t.skip('tests/vendor/three.min.js missing');
+  const slow = wreck(PASSENGER, 25, {});
+  assert.equal(slow.R.bodies.filter(b => b.truck).length, 0, 'trucks came loose at 25 mph');
+  const fast = wreck(FREIGHT, 70, {});
+  const loose = fast.R.bodies.filter(b => b.truck);
+  assert.ok(loose.length >= 4, `only ${loose.length} trucks came loose at 70 mph`);
+  for (const b of loose) {
+    let lo = Infinity; for (const s of b.pts) { const P = s.clone().applyQuaternion(b.q).add(b.p); lo = Math.min(lo, P.y - fast.R.ground(b, P)); }
+    assert.ok(lo > -0.15 && lo < 1.5, `a loose truck ended ${lo.toFixed(2)} m from the ground`);
+  }
+  assert.ok(fast.minLo > -0.3, `something sank ${(-fast.minLo).toFixed(2)} m`);
+});
+
+test('a fast collision dents the cars that hit, never deeper than DENT_MAX', (t) => {
+  if (!fs.existsSync(THREE_JS)) return t.skip('tests/vendor/three.min.js missing');
+  const r = wreck(FREIGHT, 70, { hit: true });
+  const dents = r.R.bodies.flatMap(b => b.dents || []);
+  assert.ok(dents.length >= 5, `${dents.length} dents`);
+  for (const d of dents) assert.ok(d.d > 0 && d.d <= 0.4 + 1e-9, `dent ${d.d}`);
+});
