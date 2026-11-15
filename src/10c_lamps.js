@@ -55,7 +55,7 @@ ${DECL}
       if ( d2 >= r2 ) continue;
       float d = sqrt( d2 ); lv /= max( d, 0.001 );
       float fall = 1.0 - d2 / r2; fall *= fall;
-      float cone = smoothstep( lampD[ i ].w, lampD[ i ].w + 0.22, dot( - lv, lampD[ i ].xyz ) );
+      float cone = smoothstep( lampD[ i ].w, lampD[ i ].w + min( 0.22, ( 1.0 - lampD[ i ].w ) * 0.85 ), dot( - lv, lampD[ i ].xyz ) );   // a narrow beam gets a narrow soft edge
       // a little light wraps round the edge of a surface, as it does off the ground and the walls nearby
       float nl = max( dot( lampNrm, lv ) * 0.85 + 0.15, 0.0 );
       lampSum += lampC[ i ].rgb * ( nl * cone * fall / ( 1.0 + d2 * lampC[ i ].w ) );
