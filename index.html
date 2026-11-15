@@ -15420,7 +15420,7 @@ CARS.canCut = function (T, j) {
   const grp = v => v.helper ? v.helper.g : '';
   return !(isPower(V[j - 1]) && isPower(V[j]) && grp(V[j - 1]) === grp(V[j]));
 };
-CARS.uncouple = function (j, c0) {
+CARS.uncouple = function (j, c0, why) {
   const T = c0 || GAME.train;
   if (!T || !CARS.canCut(T, j)) return;
   if (!CARS.geo) CARS.geo = carGeos();
@@ -15435,8 +15435,13 @@ CARS.uncouple = function (j, c0) {
   c.v = vT; c.home = T.home;
   // the cut lever lifts the lock on the car being cut off; its knuckle swings open as the cars part
   setKn(endCoupler(c, behind ? 'front' : 'rear'), KN_LIFTED);
-  const kick = Math.abs(vT) > 0.6;
-  if (!ours) {
+  const kick = Math.abs(vT) > 0.6, broke = why === 'broke';
+  if (broke) {
+    // a knuckle broke (08b_slack.js): nothing left there to couple to, and the hoses pulled apart, so emergency
+    setKn(endCoupler(c, behind ? 'front' : 'rear'), KN_CLOSED);
+    c.rolling = Math.abs(vT) > 0.005; c.vented = true;
+    for (const v of off) { v.brake.BP = 0; v.brake.emerg = true; v.hb = false; }
+  } else if (!ours) {
     // splitting a standing or rolling cut: both halves keep their brakes as they were
     c.rolling = T.rolling; c.vented = T.vented;
     for (const v of off) v.hb = v.hb && !c.rolling;
@@ -15449,9 +15454,11 @@ CARS.uncouple = function (j, c0) {
   CARS.cuts.push(c); CARS.cutFrom = c; CARS.cutAt = performance.now(); CARS.gen++;
   c.update(0);
   if (ours) T.update(0, S.theta, S.reverser); else T.update(0);
-  sndPin(1 / (1 + Math.pow(off[0].pos.distanceTo(camera.position) / 30, 1.3)), ours && !kick);
-  const n = off.length, what = `${n} car${n > 1 ? 's' : ''}`;
-  if (!ours) toast(`Pin pulled: the cut is split, ${what} on the far side.`, 'good', 3200, 'split');
+  const n = off.length, what = `${n} car${n > 1 ? 's' : ''}`, near = 1 / (1 + Math.pow(off[0].pos.distanceTo(camera.position) / 30, 1.3));
+  if (broke) { sndClunk(1.4 * near, 0); sndClunk(0.9 * near, 0.07); toast(`A knuckle broke ${behind ? 'behind' : 'ahead of'} car ${j}: the train parted and went into emergency. ${what} came loose.`, 'bad', 6000, 'knuckle'); }
+  else sndPin(near, ours && !kick);
+  if (broke) { /* said above */ }
+  else if (!ours) toast(`Pin pulled: the cut is split, ${what} on the far side.`, 'good', 3200, 'split');
   else if (kick) toast(`Pin pulled: ${what} rolling free at ${Math.round(Math.abs(vT) / MPH)} mph. Brake to let them run.`, 'warn', 4200, 'kick');
   else toast(`Cut off ${what}. Their air is dumped and the brakeman ties them down.`, 'good', 4000, 'setout');
   if (CARS.onChange) CARS.onChange();
@@ -16462,6 +16469,8 @@ function physicsStep(dt, train) {
   const disc = 1 - 0.3 * smooth(20, 90, Math.abs(S.v));   // disc brakes, held back at speed to what the rail will take
   let motorBrake = 0, slid = 0;
   let gradeLead = 0, limit = 99;
+  const sk = typeof slkState === 'function' ? slkState(train) : null;   // each car's own share, for the slack between them (08b_slack.js)
+  let Mpow = 0;
   for (let i = 0; i < V.length; i++) {
     const v = V[i];
     const mass = v.kind === 'tender' && !v.helper ? (train.turb ? turbineTenderMass(train) : train.tenderEmpty + S.water + S.coal) : v.mass;
@@ -16489,6 +16498,7 @@ function physicsStep(dt, train) {
     if (v.slide) slid++;
     const fb = v.slide ? mass * 9.81 * slideMu(Math.abs(S.v)) : mass * v.brakeA * (bc / 64) * (v.disc ? disc : shoe);
     Fbrake += fb + (isLoco && DSL && !train.elec ? S.DBF : 0);
+    if (sk) { sk.M[i] = Math.max(mass, 8000); sk.F[i] = -mass * 9.81 * f.y - (Math.abs(S.v) < 0.03 ? 0 : Math.sign(S.v) * (R * LBF + fb + (isLoco && DSL && !train.elec ? S.DBF : 0))); if (isLoco) Mpow += mass; }
     if (v.motor) motorBrake += fb;
     for (const p of [v.fp[0], v.fp[1]]) limit = Math.min(limit, spec.hs ? hsLimit(p.tp, spec) : p.tp.e.limit);
   }
@@ -16516,6 +16526,12 @@ function physicsStep(dt, train) {
   }
   S.v += a * dt;
   S.accel = a;
+  if (sk) {
+    // the engines (and helpers) pull; the cars behind only follow
+    for (let i = 0; i < V.length; i++) { const v = V[i]; if ((v.kind === 'loco' || v.kind === 'loco2') && Mpow > 0) sk.F[i] += Frail * sk.M[i] / Mpow; }
+    if (!Mpow) for (let i = 0; i < V.length; i++) sk.F[i] += Frail * sk.M[i] / M;
+    slackStep(dt, train, a);
+  }
   if (S.slide) S.vw = 0; else if (!S.slip) S.vw = S.v;
   S.theta -= S.vw * dt / (DSL ? LG.rD : SK.rD);
   S.M = M;
@@ -16641,6 +16657,115 @@ function electricPower(dt, spec) {
   S.amps = TE / spec.TEmax * 1000 - S.DBF / spec.RBmax * 800;
   S.Psc = 0; S.cut = 0; S.use = 0; S.turbo = 0;
   return dir * TE;
+}
+
+/* ============================================================================
+   Slack action. The physics (08_physics.js) moves the train as one body; this rides on top of it and lets
+   every car run a little ahead of or behind where that body puts it, held to its neighbours by its couplers.
+   Each joint has some free slack (the knuckles' play and the draft gear's give) and then a draft gear: a soft
+   spring for the first couple of inches, then solid, and a friction gear gives back only part of what it took.
+   So when the engine opens up, the slack comes out one car at a time; when the brakes go on at the head end
+   first (the brake pipe empties from the front), the cars behind run in on it. Bangs where the slack closes
+   hard, the lurch in the cab, and a knuckle that breaks under too much pull parts the train, which then goes
+   into emergency like a real one does when its brake hoses pull apart.
+   ========================================================================== */
+const SLK = {
+  K1: 8e6,        // draft gear, first stage (N/m)
+  SOFT: 0.065,    // ...for its first 2-1/2 in of travel
+  K2: 8e7,        // then it goes solid
+  C: 1.2e5,       // damping while the gear is working (N s/m)
+  UNLOAD: 0.35,   // a friction draft gear gives back about a third of what went in
+  BREAK: 2.2e6,   // a knuckle gives at about 500,000 lbf of pull
+  CLANK: 0.12,    // slack closing faster than this (m/s) is heard
+  HZ: 240,        // substeps a second
+  on: true,
+};
+/* free slack at a joint (m): tight-lock passenger couplers and the engine's drawbar have little, freight a lot more */
+function slkGap(a, b) {
+  const tight = v => v.kind === 'coach' || v.kind === 'loco' || v.kind === 'loco2' || v.kind === 'tender' || v.emu;
+  return tight(a) && tight(b) ? 0.012 : 0.04;
+}
+function slkState(T) {
+  const V = T.vehicles, n = V.length;
+  let s = T.slk;
+  if (!s || s.V !== V || s.n !== n) {
+    s = T.slk = { V, n, x: new Float64Array(n), u: new Float64Array(n), acc: new Float64Array(n), F: new Float64Array(n), M: new Float64Array(n),
+      t: new Float64Array(Math.max(0, n - 1)), d: new Float64Array(Math.max(0, n - 1)), g: new Float64Array(Math.max(0, n - 1)), maxT: 0, minT: 0, accL: 0 };
+    for (let j = 0; j < n - 1; j++) s.g[j] = slkGap(V[j], V[j + 1]);
+  }
+  return s;
+}
+/* the force a joint carries (tension positive) from its stretch dl and how fast that is changing */
+function slkForce(dl, dv, half) {
+  const e = Math.abs(dl) - half; if (e <= 0) return 0;
+  const sp = e < SLK.SOFT ? SLK.K1 * e : SLK.K1 * SLK.SOFT + SLK.K2 * (e - SLK.SOFT), sg = Math.sign(dl);
+  const load = sg * dv > 0;
+  return sg * sp * (load ? 1 : SLK.UNLOAD) + SLK.C * dv;
+}
+/* after the physics step: s.F holds each car's own force along the train (traction, grade, resistance,
+   brakes) and s.M its mass; a is the whole train's acceleration */
+function slackStep(dt, T, a) {
+  const s = T.slk; if (!s || !SLK.on) return;
+  const n = s.n, x = s.x, u = s.u, F = s.F, M = s.M, t = s.t, g = s.g, acc = s.acc;
+  if (n < 2 || !(dt > 0) || S.derailed) { s.accL = 0; return; }
+  const held = Math.abs(S.v) < 0.03, uL0 = u[T.li] || 0;
+  let Mt = 0; for (let i = 0; i < n; i++) Mt += M[i];
+  const N = Math.max(1, Math.ceil(dt * SLK.HZ)), h = dt / N, hold = Math.exp(-6 * h);
+  s.maxT = 0; s.minT = 0;
+  const clank = [];
+  for (let k = 0; k < N; k++) {
+    for (let j = 0; j < n - 1; j++) {
+      const dl = x[j] - x[j + 1], dv = u[j] - u[j + 1], half = g[j] / 2;
+      const was = Math.abs(s.d[j]) > half;
+      t[j] = slkForce(dl, dv, half);
+      // the slack running in or out and closing up: the bang of it
+      if (!was && Math.abs(dl) > half && Math.abs(dv) > SLK.CLANK) clank.push([j, Math.abs(dv)]);
+      s.d[j] = dl;
+      if (t[j] > s.maxT) s.maxT = t[j]; if (t[j] < s.minT) s.minT = t[j];
+    }
+    let am = 0;
+    for (let i = 0; i < n; i++) {
+      const own = held ? 0 : F[i] - M[i] * a;
+      acc[i] = (own + (i > 0 ? t[i - 1] : 0) - (i < n - 1 ? t[i] : 0)) / M[i];
+      am += M[i] * acc[i];
+    }
+    am /= Mt;   // the train as a whole goes where the physics put it; only the cars' share among themselves is left
+    for (let i = 0; i < n; i++) { acc[i] -= am; u[i] += acc[i] * h; if (held) u[i] *= hold; x[i] += u[i] * h; }
+  }
+  let xm = 0, um = 0;
+  for (let i = 0; i < n; i++) { xm += M[i] * x[i]; um += M[i] * u[i]; }
+  xm /= Mt; um /= Mt;
+  for (let i = 0; i < n; i++) { x[i] -= xm; u[i] -= um; }
+  s.accL = acc[T.li] || 0;
+  // the jolt the engine took this step: the cab lurches the other way (10b_slide.js)
+  if (T === GAME.train && typeof SLIDE !== 'undefined') SLIDE.surgeV -= clamp((u[T.li] || 0) - uL0, -0.5, 0.5) * 0.35;
+  if (clank.length) slkClank(T, clank);
+  // too much pull for a knuckle: it breaks and the train comes apart there
+  if (T === GAME.train && s.maxT > SLK.BREAK) {
+    for (let j = 0; j < n - 1; j++) if (t[j] > SLK.BREAK && CARS.canCut(T, j + 1)) { slkPart(T, j + 1); break; }
+  }
+}
+/* the bangs, loudest for the hardest and nearest */
+function slkClank(T, list) {
+  const cam = typeof camera !== 'undefined' && camera ? camera.position : null, V = T.vehicles;
+  list.sort((p, q) => q[1] - p[1]);
+  const seen = new Set();
+  let n = 0;
+  for (const [j, dv] of list) {
+    if (seen.has(j) || n >= 6) continue; seen.add(j); n++;
+    const v = V[j], d = cam && v.pos ? v.pos.distanceTo(cam) : 40;
+    if (typeof sndClunk === 'function') sndClunk(clamp(0.25 + dv * 0.9, 0.25, 1.3) / (1 + (d / 25) ** 1.3), Math.random() * 0.03);
+  }
+}
+/* a knuckle let go at joint j (between vehicles j-1 and j): the cars come apart and both halves' brake
+   pipes, open to the air where the hoses parted, put them into emergency */
+function slkPart(T, j) {
+  const n0 = T.vehicles.length;
+  CARS.uncouple(j, T, 'broke');
+  if (T.vehicles.length === n0) return;
+  for (const v of T.vehicles) { v.brake.BP = 0; v.brake.emerg = true; }
+  S.brakeH = Math.max(S.brakeH, 0.95);
+  if (typeof GAME.event === 'function') GAME.event('knuckle');
 }
 
 /* ============================================================================
