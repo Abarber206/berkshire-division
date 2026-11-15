@@ -260,6 +260,8 @@ function winMaterial(m) {
         vec3 tint = mix( vec3( 1.0, 0.86, 0.66 ), vec3( 1.0, 1.04, 1.12 ), c * 0.6 );
         totalEmissiveRadiance *= tint * lit * ( 0.45 + 0.55 * e ) * mix( 1.0, tv * 0.55, step( 0.93, c ) );
         totalEmissiveRadiance = mix( totalEmissiveRadiance, totalEmissiveRadiance.bgr * vec3( 0.7, 0.9, 1.4 ), step( 0.93, c ) * 0.6 );
+        // by day the glass gives back the sky, some panes brighter where the curtains are drawn behind them
+        totalEmissiveRadiance += vec3( 0.045, 0.056, 0.072 ) * ( 1.0 - smoothstep( 0.05, 0.3, dark ) ) * ( 0.55 + 0.9 * e * e );
       }`);
   };
   m.customProgramCacheKey = () => 'win';

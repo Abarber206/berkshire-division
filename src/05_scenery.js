@@ -177,9 +177,21 @@ function winSeed(geo, m) {
   return geo;
 }
 const WIN_SETS = ['win', 'win', 'win2', 'win2', 'win3'];
-function windowsRow(gb, base, x0, x1, y, z, w, h, n, face = 1) {
+function windowsRow(gb, base, x0, x1, y, z, w, h, n, face = 1, opt) {
   const e = base.elements, seed = Math.abs(Math.round(e[12] * 7.3 + e[14] * 3.1 + y * 11 + z * 5));
-  for (let i = 0; i < n; i++) { const x = n === 1 ? (x0 + x1) / 2 : lerp(x0, x1, i / (n - 1)); { const m = P(base, x, y, z + face * 0.03); gb.add(WIN_SETS[(seed + i * 3) % 5], winSeed(new THREE.BoxGeometry(w, h, 0.06), m), m); } gb.add('trim', new THREE.BoxGeometry(w + 0.16, 0.1, 0.1), P(base, x, y - h / 2 - 0.05, z + face * 0.05)); }
+  const fr = opt && opt.frame, sh = opt && opt.shut, vc = (c, g) => colorize(g, c);
+  for (let i = 0; i < n; i++) {
+    const x = n === 1 ? (x0 + x1) / 2 : lerp(x0, x1, i / (n - 1));
+    { const m = P(base, x, y, z + face * 0.03); gb.add(WIN_SETS[(seed + i * 3) % 5], winSeed(new THREE.BoxGeometry(w, h, 0.06), m), m); }
+    gb.add('trim', new THREE.BoxGeometry(w + 0.16, 0.1, 0.1), P(base, x, y - h / 2 - 0.05, z + face * 0.05));
+    if (fr) {
+      // casing round the opening and the sashes' meeting rail across the glass: a double-hung window, not a hole
+      gb.add('vc', vc(fr, new THREE.BoxGeometry(w + 0.28, 0.13, 0.08)), P(base, x, y + h / 2 + 0.06, z + face * 0.04));
+      for (const s of [-1, 1]) gb.add('vc', vc(fr, new THREE.BoxGeometry(0.1, h, 0.08)), P(base, x + s * (w / 2 + 0.05), y, z + face * 0.04));
+      gb.add('vc', vc(fr, new THREE.BoxGeometry(w, 0.06, 0.03)), P(base, x, y + h * 0.04, z + face * 0.075));
+    }
+    if (sh) for (const s of [-1, 1]) gb.add('vc', vc(sh, new THREE.BoxGeometry(w * 0.42, h + 0.04, 0.05)), P(base, x + s * (w / 2 + 0.1 + w * 0.21), y, z + face * 0.035));
+  }
 }
 
 /* -------- buildings -------- */
@@ -610,6 +622,18 @@ function interlockingTower(pl, label) {
   doorLamp(gb, base, -1.6, 3.0, 2.25);
   keep(pl.X, pl.N, 7);
 }
+/* a three-board white fence on posts, base-local from (x0, z0) to (x1, z1); every post on its own ground, the boards following */
+function boardFence(gb, base, x0, z0, x1, z1) {
+  const len = Math.hypot(x1 - x0, z1 - z0), n = Math.max(1, Math.round(len / 2.4)), col = [0.92, 0.91, 0.87];
+  const pts = []; for (let i = 0; i <= n; i++) { const t = i / n, c = new THREE.Vector3(lerp(x0, x1, t), 0, lerp(z0, z1, t)).applyMatrix4(base); pts.push([c.x, groundAt(c.x, -c.z), c.z]); }
+  for (let i = 0; i <= n; i++) { const [x, y, z] = pts[i]; gb.add('vc', colorize(new THREE.BoxGeometry(0.12, 1.55, 0.12), col), new THREE.Matrix4().makeTranslation(x, y + 0.6, z)); }
+  for (let i = 0; i < n; i++) {
+    const A = new THREE.Vector3(...pts[i]), B = new THREE.Vector3(...pts[i + 1]), L = A.distanceTo(B), xa = B.clone().sub(A).normalize(), za = xa.clone().cross(_yAx).normalize(), ya = za.clone().cross(xa);
+    for (const h of [0.45, 0.85, 1.25]) gb.add('vc', colorize(new THREE.BoxGeometry(L + 0.1, 0.14, 0.03), col), new THREE.Matrix4().makeBasis(xa, ya, za).setPosition(A.clone().add(B).multiplyScalar(0.5).add(_v3.set(0, h, 0)).addScaledVector(za, 0.075)));
+  }
+  foot(base, (x0 + x1) / 2, (z0 + z1) / 2, Math.abs(x1 - x0) + 0.3, Math.abs(z1 - z0) + 0.3);   // runs along x or z: trees keep off it
+  walkWall(pts[0][0], pts[0][2], pts[n][0], pts[n][2], Math.min(pts[0][1], pts[n][1]), Math.max(pts[0][1], pts[n][1]) + 1.4);
+}
 function farmstead(X, N, yaw, r) {
   const y = groundAt(X, N);
   const base = baseM(X, y, N, yaw);
@@ -623,8 +647,14 @@ function farmstead(X, N, yaw, r) {
   gb.add('slate', gableRoof(9, 7, 3.0, 0.45), P(base, 0, h0 + 6.2, 0));
   gb.add('white', boxT(6, 3, 4), P(base, -6.5, h0 + 1.5, 1.5)); fnd(-6.5, 1.5, 6, 4, h0);
   gb.add('slate', gableRoof(6, 4, 1.4, 0.3), P(base, -6.5, h0 + 3, 1.5));
-  windowsRow(gb, base, -3, 3, h0 + 1.8, 3.5, 0.9, 1.4, 3); windowsRow(gb, base, -3, 3, h0 + 4.6, 3.5, 0.9, 1.3, 3);
-  windowsRow(gb, base, -3, 3, h0 + 1.8, -3.5, 0.9, 1.4, 3, -1); windowsRow(gb, base, -3, 3, h0 + 4.6, -3.5, 0.9, 1.3, 3, -1);
+  const wo = { frame: [0.95, 0.94, 0.9], shut: r() < 0.7 ? [[0.09, 0.17, 0.11], [0.07, 0.07, 0.08], [0.33, 0.08, 0.07]][(r() * 3) | 0] : null };
+  windowsRow(gb, base, -3, 3, h0 + 1.8, 3.5, 0.9, 1.4, 3, 1, wo); windowsRow(gb, base, -3, 3, h0 + 4.6, 3.5, 0.9, 1.3, 3, 1, wo);
+  windowsRow(gb, base, -3, 3, h0 + 1.8, -3.5, 0.9, 1.4, 3, -1, wo); windowsRow(gb, base, -3, 3, h0 + 4.6, -3.5, 0.9, 1.3, 3, -1, wo);
+  { const sb = base.clone().multiply(new THREE.Matrix4().makeRotationY(Math.PI / 2)); windowsRow(gb, sb, -1.5, 1.5, h0 + 1.8, 4.5, 0.9, 1.4, 2, 1, wo); windowsRow(gb, sb, -1.5, 1.5, h0 + 4.6, 4.5, 0.9, 1.3, 2, 1, wo); }
+  // front door, foundation shrubs, and a white board fence along the front of the yard with a gap for the walk
+  gb.add('trim', new THREE.BoxGeometry(1.0, 2.2, 0.08), P(base, 0, h0 + 1.25, 3.52));
+  for (const x of [-4.2, -3.0, 3.0, 4.2]) shrub(gb, base, x, 6.55, 0.5 + r() * 0.25, r);
+  boardFence(gb, base, -13, 15, -1.2, 15); boardFence(gb, base, 1.2, 15, 11, 15);
   gb.add('trim', new THREE.BoxGeometry(9.2, 0.12, 2.4), P(base, 0, h0 + 2.9, 4.6));
   gb.add('wood', boxT(9.0, 0.3, 2.3), P(base, 0, h0 + 0.15, 4.65)); fnd(0, 4.65, 9.0, 2.3, h0 - 0.05);
   for (const px of [-4.4, -1.5, 1.5, 4.4]) gb.add('white', boxT(0.14, 2.56, 0.14), P(base, px, h0 + 1.58, 5.65));
@@ -643,6 +673,11 @@ function farmstead(X, N, yaw, r) {
     gb.add('tin', new THREE.SphereGeometry(2.65, 16, 8, 0, TAU, 0, Math.PI / 2), P(base, sx, s0 + tall, bz - 2));
     fnd(sx, bz - 2, 5.4, 5.4, s0); foot(base, sx, bz - 2, 5.4, 5.4);
   }
+  // round bales stacked by the barn for winter
+  { const n = 3 + (r() * 5 | 0), ax = bx - bL / 2 - 4, az = bz + bW / 2 + 3; foot(base, ax - 2.6, az + 0.95, 7.4, 4.4);
+    for (let i = 0; i < n; i++) { const x = ax - (i % 4) * 1.75, z = az + Math.floor(i / 4) * 1.9, c = new THREE.Vector3(x, 0, z).applyMatrix4(base);
+      gb.add('hay', colorize(new THREE.CylinderGeometry(0.78, 0.78, 1.5, 16), [0.95, 0.9, 0.82]), new THREE.Matrix4().compose(_v1.set(c.x, groundAt(c.x, -c.z) + 0.7, c.z), _q.setFromEuler(_e.set(Math.PI / 2, Math.atan2(base.elements[8], base.elements[10]) + (r() - 0.5) * 0.3, 0, 'YXZ')), _v2.set(1, 1, 1)));
+      walkPost(base, x, z, 0.8, 1.5); } }
   // corn crib / shed
   const c0 = site(8, -30, 10, 4); foot(base, 8, -30, 10.6, 4.6);
   gb.add('wood', boxT(10, 3.4, 4), P(base, 8, c0 + 1.7, -30)); fnd(8, -30, 10, 4, c0);
