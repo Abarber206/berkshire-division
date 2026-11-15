@@ -361,25 +361,25 @@ function buildE5Car(def, idx) {
     for (const s of [-1, 1]) gb.add(ck, new THREE.PlaneGeometry(0.22, 0.22), M(x(door1 + (s > 0 ? 0.85 : -0.85)), 2.34, s * (HW + 0.006), 0, s > 0 ? 0 : Math.PI, 0));
   }
 
-  /* ---- the cab: windscreen over the canopy, headlights low on the nose ---- */
+  /* ---- the cab: windscreen over the canopy, headlights at the top of the cab ---- */
   let lens = null, lenses = [], beam = null, halo = null;
   if (nose) {
-    // headlights: a slim lamp each side on the white just under the line, about 3 m back from the tip
+    // headlights: a lamp cluster each side at the top of the cab, hugging the back of the canopy, where the E5 carries them
     for (const s of [-1, 1]) {
-      const a0 = 2.3, a1 = 4.1, la = newMesh(), st2 = [];
+      const a0 = 10.55, a1 = 11.5, la = newMesh(), st2 = [];
       for (let k = 0; k <= 8; k++) {
-        const a = lerp(a0, a1, k / 8), R0 = hsRing(sect(a), E5.CUT), yl = e5Line(a) - 0.16, hgt = 0.11 * Math.sin(Math.PI * k / 8) ** 0.5 + 0.004, R = [];
-        for (const y of [yl - hgt, yl, yl + hgt * 0.6]) R.push([s * (ringZ(R0, y) + 0.004), y]);
+        const a = lerp(a0, a1, k / 8), p = sect(a), th1 = Math.min(canopy.th0(a) - 0.07, 1.0), w = 0.26 * Math.sin(Math.PI * k / 8) ** 0.5 + 0.01, R = [];
+        for (const th of [th1 - w, th1 - w / 2, th1]) { const q = hsSup(p, th); R.push([s * (q[0] + 0.005 * Math.cos(th)), q[1] + 0.005 * Math.sin(th)]); }
         st2.push({ a, R });
       }
       loftInto(la, st2, s > 0 ? [0, 1, 2] : [2, 1, 0], ref, 1, 1);
       const m = new THREE.Mesh(meshGeo(la), RMAT.lens); body.add(m); lenses.push(m);
     }
     lens = lenses[0];
-    const hy = 1.3;
-    beam = headBeam(x(0.5), hy); body.add(beam);
+    const hy = hsSup(sect(10.9), 0.6)[1];
+    beam = headBeam(x(7.6), hsSup(sect(7.6), Math.PI / 2)[1] + 0.3); body.add(beam);   // the beam shows from ahead of the windscreen, clear of the driver's view
     halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: haloTex(), color: 0xffffff, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0 }));
-    halo.position.set(x(0.2), 0.95, 0); halo.scale.set(2.2, 1.4, 1); body.add(halo);
+    halo.position.set(x(10.5), hy + 0.05, 0); halo.scale.set(3.6, 1.3, 1); body.add(halo);
     // obstacle deflector (snow plough) under the tip
     gb.add('hsUnder', plowGeo(x(0.5), x(2.4), 1.15, 0.16, 0.8));
   }
@@ -473,7 +473,7 @@ function hsBogie(o) {
     tg.box('hsBogie', x1 - x0, 0.3, 0.9, s * (x0 + x1) / 2, R + 0.1, 0);
   }
   grp.add(tg.build(RMAT));
-  const ax = plainAxle(R), wheels = [];
+  const ax = plainAxle(R, true, RAIL_OFF, 0, 28), wheels = [];
   for (const x of [-h, h]) {
     const wg = new THREE.Group(); wg.position.set(x, R, 0);
     wg.add(new THREE.Mesh(ax.black, RMAT.black), new THREE.Mesh(ax.tire, RMAT.tire));
@@ -697,6 +697,19 @@ function buildAcelaCar(def, idx) {
     const roofAt = z => ringTop(hsRing(sect(15), cut), z);
     pans.push(hsPantograph(gb, body, { a: 12.6, ref, roofAt, roof: AC.PROOF, w: 1.95, L1: 1.25, L2: 1.35, raised: false, rise: HSR.acela.wireH }));
     pans.push(hsPantograph(gb, body, { a: 16.6, ref, roofAt, roof: AC.PROOF, w: 1.95, L1: 1.25, L2: 1.35, raised: true, rise: HSR.acela.wireH }));
+    // roof equipment: the dynamic brake resistors' hatch ahead of the pantographs and the transformer's cooling hatch behind them, each slatted
+    for (const [a0, a1, hw] of [[6.0, 10.2, 0.78], [18.3, 20.2, 0.7]]) {
+      const yb = roofAt(hw + 0.02) - 0.02, yt = AC.PROOF + 0.07;
+      gb.box('hsUnder', a1 - a0, yt - yb, 2 * hw, x((a0 + a1) / 2), (yb + yt) / 2, 0);
+      for (let a = a0 + 0.12; a < a1 - 0.1; a += 0.14) gb.box('hsSeam', 0.05, 0.014, 2 * hw - 0.14, x(a), yt + 0.004, 0);
+    }
+    // the high-voltage bus between the pantographs on its insulators, and the main breaker beside it
+    for (const a of [13.8, 14.6, 15.4]) {
+      gb.add('hsIns', new THREE.CylinderGeometry(0.05, 0.07, 0.24, 10), M(x(a), AC.PROOF + 0.11, 0));
+      for (let k = 0; k < 3; k++) gb.add('hsIns', new THREE.CylinderGeometry(0.09, 0.09, 0.02, 12), M(x(a), AC.PROOF + 0.05 + k * 0.07, 0));
+    }
+    gb.add('hsPan', barGeo(0.02, [x(13.7), AC.PROOF + 0.25, 0], [x(15.5), AC.PROOF + 0.25, 0], 8));
+    { const yb = roofAt(0.78) - 0.02, yt = AC.PROOF + 0.2; gb.box('hsBogie', 0.5, yt - yb, 0.4, x(14.6), (yb + yt) / 2, -0.56); gb.add('hsPan', barGeo(0.015, [x(14.6), yt - 0.02, -0.42], [x(14.6), AC.PROOF + 0.25, 0], 6)); }
   }
   const trucks = [], wheels = [];
   for (const ta of [t0, t1]) { const B = hsBogie({ wb: power ? AC.PWB : AC.CWB, R: power ? AC.PR : AC.CR, motor: power, top: cut, w: 1.03 }); trucks.push(B.grp); wheels.push(...B.wheels); }
