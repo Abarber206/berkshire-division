@@ -1214,11 +1214,12 @@ function buildTrees(scene) {
         if (planted > spots * 0.4) WORLD.fieldTex.plant(i, j);
       }
       // fence-row trees along some field edges
-      if (Noise.hash(i * 3 + 1, j * 7 + 2) < 0.22) {
-        for (let x = 0; x < FIELD.w; x += 18 + r() * 30) { const X = X0 + x, N = N0 + (r() - 0.5) * 3; if (ok(X, N, 6) && r() < 0.6) { if (r() < 0.12) put(X, N, 'con', 0.6 + r() * 0.3, cedar(r)); else put(X, N, 'dec', 0.8 + r() * 0.5, autumn(r)); } }
+      // (Ohio's fence rows are thick: a line of trees with gaps, not the odd lone tree, and they frame the fields)
+      if (Noise.hash(i * 3 + 1, j * 7 + 2) < 0.34) {
+        for (let x = 0; x < FIELD.w; x += 10 + r() * 18) { const X = X0 + x, N = N0 + (r() - 0.5) * 3; if (ok(X, N, 6) && r() < 0.72) { if (r() < 0.12) put(X, N, 'con', 0.6 + r() * 0.3, cedar(r)); else put(X, N, 'dec', 0.8 + r() * 0.5, autumn(r)); } }
       }
-      if (Noise.hash(i * 5 + 3, j * 11 + 1) < 0.16) {
-        for (let y = 0; y < FIELD.h; y += 18 + r() * 30) { const X = X0 + (r() - 0.5) * 3, N = N0 + y; if (ok(X, N, 6) && r() < 0.6) put(X, N, 'dec', 0.8 + r() * 0.5, autumn(r)); }
+      if (Noise.hash(i * 5 + 3, j * 11 + 1) < 0.26) {
+        for (let y = 0; y < FIELD.h; y += 10 + r() * 18) { const X = X0 + (r() - 0.5) * 3, N = N0 + y; if (ok(X, N, 6) && r() < 0.72) put(X, N, 'dec', 0.8 + r() * 0.5, autumn(r)); }
       }
     }
   // riverbank trees

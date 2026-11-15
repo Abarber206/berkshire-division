@@ -375,9 +375,10 @@ const CROP_GLSL = `
       float ph = across / rowSp;
       float fw = fwidth(ph);
       float stripe = 0.5 + 0.5 * cos(ph * 6.2831853);
-      float aa = 1.0 - smoothstep(0.25, 0.8, fw);
-      if (type > 4.5 && type < 5.5) crop = mix(crop, vec3(0.33, 0.25, 0.17), (1.0 - stripe) * 0.6 * aa + 0.25 * (1.0 - aa));
-      else crop *= mix(1.0, 1.0 - rowAmp + rowAmp * 1.5 * stripe, aa);
+      // rows fade out well before two pixels a row, so far fields never beat into moire bands
+      float aa = 1.0 - smoothstep(0.12, 0.38, fw);
+      if (type > 4.5 && type < 5.5) crop = mix(crop, vec3(0.33, 0.25, 0.17), (1.0 - stripe) * 0.45 * aa + 0.2 * (1.0 - aa));
+      else crop *= mix(1.0, 1.0 - rowAmp * 0.7 + rowAmp * 1.0 * stripe, aa);
     }
     float hedge = 1.0 - smoothstep(1.0, 4.5, edgeM);
     crop = mix(crop, vec3(0.33, 0.42, 0.19), hedge * 0.85);
@@ -401,7 +402,7 @@ const GROUND_GLSL = `
     float g1 = texture2D(uDetail, xz * 0.031).g, g2 = texture2D(uDetail, xz * 0.13 + 0.5).g;
     // dry and lush drifts, darker in the damp low spots
     float dry = smoothstep(0.38, 0.66, b1 * 0.65 + b2 * 0.35);
-    vec3 tint = mix(vec3(0.72, 1.0, 0.8), vec3(1.45, 1.05, 0.55), dry);
+    vec3 tint = mix(vec3(0.74, 1.0, 0.78), vec3(1.22, 0.98, 0.62), dry);
     float grassy = smoothstep(0.004, 0.03, base.g - base.r * 1.05);   // only living grass drifts green or straw; leaf litter keeps its brown
     base = mix(base, base * tint, wild * 0.9 * grassy);
     base *= 0.62 + 0.76 * g1 * g1 + 0.0 * g1;

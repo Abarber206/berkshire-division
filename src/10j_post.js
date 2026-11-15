@@ -269,7 +269,7 @@ function postRender(renderer, scene, camera) {
 function postLight(dark, golden, gray, fogK) {
   // lamps, headlights and windows glow more at night; by day only the sky and hot glints do
   POST.bloomK = lerp(0.28, 0.85, dark) * (1 - 0.25 * gray);
-  POST.knee = lerp(0.74, 0.5, dark);
+  POST.knee = lerp(0.86, 0.5, dark);   // by day only the sun itself and hot glints bloom, not the whole bright sky
   POST.shaftK = 1.6 * (1 - gray) * (1 - smooth(0.2, 0.6, dark)) * lerp(0.55, 1.25, golden) / Math.max(1, fogK * 0.6);
   POST.sat = lerp(1.07, 1.0, dark) - 0.04 * gray;
   POST.con = lerp(1.035, 1.0, dark);
