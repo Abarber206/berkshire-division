@@ -476,9 +476,9 @@ function dieselDetail(gb, c) {
 }
 /* one truck's fittings: a brake shoe on every wheel hung from the side frame with a beam across, bolted bearing
    caps, and sand pipes down to the rail ahead of the outer wheels */
-function dieselTruckDetail(tg) {
-  const R = DG.rW, th = 0.2, rs = R + 0.047;
-  for (const [xa, d] of [[-DG.axle, -1], [0, 1], [DG.axle, 1]]) {      // each shoe on the side away from its axle's motor
+function dieselTruckDetail(tg, A = DG.axle, R = DG.rW) {
+  const th = 0.2, rs = R + 0.047;
+  for (const [xa, d] of [[-A, -1], [0, 1], [A, 1]]) {      // each shoe on the side away from its axle's motor
     const cx = xa + d * rs * Math.cos(th), cy = R - rs * Math.sin(th);
     for (const s of [-1, 1]) {
       tg.add('dark', new THREE.BoxGeometry(0.05, 0.34, 0.09).rotateZ(-d * th), M(cx, cy, s * RAIL_OFF));
@@ -488,10 +488,10 @@ function dieselTruckDetail(tg) {
     tg.add('dark', barGeo(0.03, [cx + d * 0.075, cy, -RAIL_OFF], [cx + d * 0.075, cy, RAIL_OFF], 6));
   }
   for (const s of [-1, 1]) {
-    for (const x of [-DG.axle, 0, DG.axle]) {
+    for (const x of [-A, 0, A]) {
       tg.cylZ('dUnder', 0.07, 0.03, 10, x, R, s * 1.22);
       for (let i = 0; i < 3; i++) tg.cylZ('dUnder', 0.02, 0.02, 6, x + 0.105 * Math.cos(i * TAU / 3 + 0.5), R + 0.105 * Math.sin(i * TAU / 3 + 0.5), s * 1.215);
     }
-    tg.tube('dSteel', [[s * 2.64, 0.74, s * 0.92], [s * 2.64, 0.45, s * 0.8], [s * 2.62, 0.13, s * RAIL_OFF]], 0.015, 10, 5);
+    tg.tube('dSteel', [[s * (A + 0.64), 0.74, s * 0.92], [s * (A + 0.64), 0.45, s * 0.8], [s * (A + 0.62), 0.13, s * RAIL_OFF]], 0.015, 10, 5);
   }
 }
