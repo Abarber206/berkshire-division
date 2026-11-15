@@ -107,7 +107,7 @@ function detailTextures() {
     if (grass) m.alphaToCoverage = true;
     const amp = grass ? 1 : k === 'fern' ? 0.45 : 0.6;
     m.onBeforeCompile = sh => grassWind(sh, amp, grass); m.customProgramCacheKey = () => 'wind' + amp + grass;
-    fadeByDistance(m, grass || k === 'fern' ? LOD.grass : LOD.flowers, true);
+    fadeByDistance(m, grass || k === 'fern' ? LOD.grass : LOD.flowers, true, true);
     SMAT['g_' + k] = m; DET.grassMats.push(m);
   }
 }
@@ -132,7 +132,9 @@ function coverShadow(im, k) {
    tips gone to straw, and a few timothy and foxtail seed heads standing above. Light greys: the instance
    colour gives green, gold or straw. */
 function grassTexture() {
-  return canvasTex(256, 256, (g, w, h) => {
+  const S = GFX.lite ? 256 : 512;   // drawn in 256 units; sharper blades on bigger screens
+  return canvasTex(S, S, (g) => {
+    g.scale(S / 256, S / 256); const w = 256, h = 256;
     const r = rng(21);
     const blade = (x0, top, lean, bw, c0, c1) => {
       const tx = x0 + lean, mx = x0 + lean * 0.3, my = (h + top) / 2;

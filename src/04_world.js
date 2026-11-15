@@ -92,13 +92,16 @@ const LOD = {
 /* Screen-door fade by distance from the camera. Each instance fades as a whole; the near version of a
    pair uses the mirrored dither pattern so near and far fill exactly the pixels the other leaves.
    Distance comes from the view-space position: three r128 only feeds cameraPosition to some materials. */
-function fadeByDistance(mat, band, mirror = false) {
+function fadeByDistance(mat, band, mirror = false, shrink = false) {
   const prev = mat.onBeforeCompile, key = mat.customProgramCacheKey();
   mat.onBeforeCompile = (sh, r) => {
     prev.call(mat, sh, r);
     sh.uniforms.uFade = band; sh.uniforms.uFadeMirror = { value: mirror ? 1 : 0 };
-    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying float vFadeD;')
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\n#ifdef USE_INSTANCING\n vFadeD = length((modelViewMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz);\n#else\n vFadeD = length((modelViewMatrix * vec4(transformed, 1.0)).xyz);\n#endif');
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying float vFadeD;' + (shrink ? ' uniform vec4 uFade;' : ''))
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\n#ifdef USE_INSTANCING\n vFadeD = length((modelViewMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz);\n#else\n vFadeD = length((modelViewMatrix * vec4(transformed, 1.0)).xyz);\n#endif' +
+        // grass and flowers settle into the ground over the far half of their band, so the dither at the end of it
+        // takes away only stubble and nothing pops
+        (shrink ? '\n transformed.y *= 1.0 - 0.85 * smoothstep(uFade.z * 0.5, uFade.w, vFadeD);' : ''));
     sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform vec4 uFade; uniform float uFadeMirror; varying float vFadeD;')
       .replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>
         {
@@ -108,7 +111,7 @@ function fadeByDistance(mat, band, mirror = false) {
           if (dn >= keep) discard;
         }`);
   };
-  mat.customProgramCacheKey = () => key + '|fade';
+  mat.customProgramCacheKey = () => key + '|fade' + (shrink ? 's' : '');
   return mat;
 }
 /* fog-matched draw distance: where exponential-squared fog has all but swallowed the scene */
@@ -410,7 +413,7 @@ const GROUND_GLSL = `
     float g1 = texture2D(uDetail, xz * 0.031).g, g2 = texture2D(uDetail, xz * 0.13 + 0.5).g;
     // dry and lush drifts, darker in the damp low spots
     float dry = smoothstep(0.38, 0.66, b1 * 0.65 + b2 * 0.35);
-    vec3 tint = mix(vec3(0.74, 1.0, 0.78), vec3(1.22, 0.98, 0.62), dry);
+    vec3 tint = mix(vec3(0.74, 1.0, 0.78), vec3(1.14, 0.96, 0.62), dry);
     float grassy = smoothstep(0.004, 0.03, base.g - base.r * 1.05);   // only living grass drifts green or straw; leaf litter keeps its brown
     base = mix(base, base * tint, wild * 0.9 * grassy);
     base *= 0.62 + 0.76 * g1 * g1 + 0.0 * g1;
@@ -420,6 +423,8 @@ const GROUND_GLSL = `
     float f1 = texture2D(uDetail, xz * 0.37).r, f2 = texture2D(uDetail, xz * 1.6 + 0.2).r;
     base *= mix(1.0, 0.5 + 1.0 * f1, k1 * 0.8) * mix(1.0, 0.55 + 0.9 * f2, k2 * 0.7);
     base *= 0.72 + 0.56 * g2;
+    // close up, the meadow floor between the tufts is a mat of old thatch in the tufts' shade, not bare light soil
+    base = mix(base, base * vec3(0.42, 0.5, 0.33), wild * (1.0 - 0.6 * uMtn) * k1 * (0.62 + 0.33 * smoothstep(0.35, 0.7, f1)));
     // fallen leaves on the forest floor: scattered red, orange and gold, close up
     float litter = (1.0 - grassy) * wild * (0.4 + 0.6 * uMtn);
     vec3 leafC = mix(vec3(0.42, 0.10, 0.03), vec3(0.55, 0.32, 0.04), g2);
