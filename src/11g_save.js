@@ -87,7 +87,7 @@ function wreckOut(T) {
 /* the pile as it came to rest: each car off the rails where it lay, asleep until it is re-railed */
 function wreckIn(T, w) {
   const R = Object.create(WreckSim.prototype);
-  Object.assign(R, { T, spec: w.spec, r: rng((w.spec && w.spec.seed) || 1), bodies: [], t: 0, still: 0, asleep: true, acc: 0, kin: { v: 0, mass: 0, force: 0 }, broken: new Set(w.broken || []) });
+  Object.assign(R, { T, spec: w.spec, r: rng((w.spec && w.spec.seed) || 1), bodies: [], t: 0, emerg: WK.EMERG_F, still: 0, asleep: true, acc: 0, kin: { v: 0, mass: 0, force: 0 }, broken: new Set(w.broken || []) });
   T.wk = w.spec; T.rb = R;
   WreckSim.couplers(T);
   const au = AU.on; AU.on = false;   // no clunks for a pile that fell long ago
