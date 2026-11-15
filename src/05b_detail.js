@@ -295,7 +295,40 @@ function inTown(X, N) {
   }
   return false;
 }
+const SHUT = [[0.09, 0.17, 0.11], [0.07, 0.07, 0.08], [0.33, 0.08, 0.07], [0.09, 0.13, 0.24], [0.2, 0.22, 0.2]];
+const _rotY = s => new THREE.Matrix4().makeRotationY(s * Math.PI / 2);   // a building's side wall: local +z out of its x = s * w/2 face
+/* a clipped yew or boxwood by a foundation: sits on the real ground at its spot, a little sunk in, never floating */
+function shrub(gb, base, x, z, s, r) {
+  const c = new THREE.Vector3(x, 0, z).applyMatrix4(base), y = groundAt(c.x, -c.z);
+  const k = 0.75 + r() * 0.35, col = [0.1 * k, 0.2 * k, 0.09 * k];
+  gb.add('vc', colorize(new THREE.IcosahedronGeometry(1, 1), col), new THREE.Matrix4().compose(new THREE.Vector3(c.x, y + s * 0.5, c.z), new THREE.Quaternion().setFromAxisAngle(_yAx, r() * TAU), new THREE.Vector3(s * 1.1, s * 0.75, s * 1.1)));
+}
+const _yAx = new THREE.Vector3(0, 1, 0);
+/* a sidewalk slab from world plan point a to b, laid on the ground at both ends */
+function walkSlab(gb, X0, N0, X1, N1, wd) {
+  const g0 = groundAt(X0, N0), g1 = groundAt(X1, N1), A = new THREE.Vector3(X0, g0, -N0), B = new THREE.Vector3(X1, g1, -N1);
+  const len = A.distanceTo(B); if (len < 0.5) return;
+  const xa = B.clone().sub(A).normalize(), za = xa.clone().cross(_yAx).normalize(), ya = za.clone().cross(xa);
+  const m = new THREE.Matrix4().makeBasis(xa, ya, za).setPosition(A.add(B).multiplyScalar(0.5).add(_v1.set(0, 0.04, 0)));
+  gb.add('concrete', new THREE.BoxGeometry(len + 0.06, 0.24, wd), m);
+}
 function buildTowns(scene) {
+  // faded adverts painted on the side walls of the business blocks, four to a sheet
+  if (!SMAT.ghost) {
+    const ads = [['FEED · SEED', 'FARM SUPPLY'], ['HARDWARE', 'TOOLS · PAINT'], ['DRY GOODS', 'NOTIONS'], ['5¢ CIGARS', 'SOLD HERE']];
+    SMAT.ghost = new THREE.MeshLambertMaterial({ transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, map: canvasTex(1024, 512, (g, w, h) => {
+      const r = rng(61);
+      ads.forEach(([a, b], k) => { const x0 = (k & 1) * 512, y0 = (1 - (k >> 1)) * 256;
+        g.fillStyle = ['rgba(52,58,66,0.62)', 'rgba(110,40,30,0.55)', 'rgba(40,66,50,0.58)', 'rgba(70,52,34,0.6)'][k]; g.fillRect(x0 + 8, y0 + 8, 496, 240);
+        g.fillStyle = 'rgba(236,228,206,0.82)'; g.textAlign = 'center'; g.textBaseline = 'middle';
+        g.font = 'bold 82px Georgia, serif'; g.fillText(a, x0 + 256, y0 + 104, 470); g.font = 'bold 44px Georgia, serif'; g.fillText(b, x0 + 256, y0 + 190, 440);
+        g.strokeStyle = 'rgba(236,228,206,0.6)'; g.lineWidth = 6; g.strokeRect(x0 + 22, y0 + 22, 468, 212); });
+      // weathered: the paint has flaked off in patches and the mortar shows through
+      g.globalCompositeOperation = 'destination-out';
+      for (let i = 0; i < 2600; i++) { g.fillStyle = `rgba(0,0,0,${0.25 + r() * 0.6})`; g.fillRect(r() * w, r() * h, 2 + r() * 14, 1 + r() * 4); }
+    }) });
+    SMAT.ghost.userData.noShadow = true;
+  }
   const SID = [0xf1eee4, 0xe9dfb8, 0xc9d3d6, 0xb7c4a6, 0xd8c3a0, 0xe8e4dc, 0xa9b9c9, 0xcfb79a];
   const ROOF = [0x55585c, 0x4a3c33, 0x3b4a40, 0x5e4a3e, 0x6b6e70];
   const BRICK = [0x9c4a35, 0x8a3f2e, 0xb0745a, 0xc9a77f, 0x7d3a2b];
@@ -352,7 +385,22 @@ function buildTowns(scene) {
         gb.add('trim', new THREE.BoxGeometry(1.0, 2.4, 0.1), P(base, L.w / 2 - 0.9, 1.25, L.d / 2 + 0.03));
         const ac = hex3(AWN[(r() * AWN.length) | 0]);
         gb.add('awning', colorize(new THREE.PlaneGeometry(L.w - 0.6, 1.6), ac), P(base, 0, 3.15, L.d / 2 + 0.65, -1.05, 0, 0));
-        for (let s = 2; s <= L.stories; s++) windowsRow(gb, base, -L.w / 2 + 1.6, L.w / 2 - 1.6, 1.0 + (s - 1) * 3.6 + 1.2, L.d / 2, 0.9, 1.6, Math.max(2, Math.round(L.w / 3)));
+        const so = { frame: [0.8, 0.75, 0.64] };   // limestone lintels and casings
+        for (let s = 2; s <= L.stories; s++) windowsRow(gb, base, -L.w / 2 + 1.6, L.w / 2 - 1.6, 1.0 + (s - 1) * 3.6 + 1.2, L.d / 2, 0.9, 1.6, Math.max(2, Math.round(L.w / 3)), 1, so);
+        // the back: upper windows over a plain back door; the sides: windows upstairs, or a faded painted advert
+        for (let s = 2; s <= L.stories; s++) windowsRow(gb, base, -L.w / 2 + 1.6, L.w / 2 - 1.6, 1.0 + (s - 1) * 3.6 + 1.2, -L.d / 2, 0.9, 1.6, Math.max(2, Math.round(L.w / 3.5)), -1, so);
+        gb.add('trim', new THREE.BoxGeometry(1.0, 2.2, 0.1), P(base, L.w / 2 - 1.6, 1.1, -L.d / 2 - 0.03));
+        const adSide = L.stories >= 2 && L.d > 7 && r() < 0.5 ? (r() < 0.5 ? -1 : 1) : 0;
+        for (const sd of [-1, 1]) {
+          const sb = base.clone().multiply(_rotY(sd));
+          if (sd === adSide) { const ad = (r() * 4) | 0, aw = Math.min(L.d - 2.4, 9), ah = Math.min(H - 4.6, 4.2), g = new THREE.PlaneGeometry(aw, ah), uv = g.attributes.uv;
+            for (let i = 0; i < uv.count; i++) uv.setXY(i, ((ad & 1) + uv.getX(i)) / 2, ((ad >> 1) + uv.getY(i)) / 2);
+            gb.add('ghost', g, P(sb, 0, H - 1.0 - ah / 2, L.w / 2 + 0.025)); }
+          else for (let s = 2; s <= L.stories; s++) windowsRow(gb, sb, -L.d / 2 + 1.8, L.d / 2 - 1.8, 1.0 + (s - 1) * 3.6 + 1.2, L.w / 2, 0.9, 1.6, Math.max(1, Math.round(L.d / 4)), 1, so);
+        }
+        // on the roof: a chimney and a ventilator, the parapet's cap round it
+        gb.add('brick', boxT(0.7, 1.6, 0.7), P(base, -L.w / 2 + 1.0, H + 1.1, -L.d / 2 + 1.4));
+        gb.add('silver', new THREE.BoxGeometry(1.6, 0.9, 1.2), P(base, (r() - 0.5) * (L.w - 4), H + 0.75, (r() - 0.5) * (L.d - 4)));
       } else if (L.kind === 'house') {
         const base = sited(yaw + (L.face > 0 ? Math.PI : 0), 0, 1.0, L.w, L.d + 2.0); foot(base, 0, 1.0, L.w + 0.9, L.d + 2.9);
         const H = L.stories === 2 ? 5.8 : 3.2, col = hex3(SID[(r() * SID.length) | 0]), rc = hex3(ROOF[(r() * ROOF.length) | 0]);
@@ -364,11 +412,19 @@ function buildTowns(scene) {
         fnd(base, 0, L.d / 2 + 1.0, L.w * 0.7 - 0.2, 1.8, 0.34);
         for (const px of [-L.w * 0.33, L.w * 0.33]) gb.add('vc', colorize(new THREE.BoxGeometry(0.14, 2.4, 0.14), [0.95, 0.94, 0.9]), P(base, px, 1.7, L.d / 2 + 1.9));
         gb.add('trim', new THREE.BoxGeometry(0.95, 2.1, 0.08), P(base, 0, 1.45, L.d / 2 + 0.02));
-        windowsRow(gb, base, -L.w / 2 + 1.4, L.w / 2 - 1.4, 1.9, L.d / 2, 0.85, 1.3, 2);
-        if (L.stories === 2) windowsRow(gb, base, -L.w / 2 + 1.4, L.w / 2 - 1.4, 4.6, L.d / 2, 0.85, 1.2, 3);
-        windowsRow(gb, base, -L.w / 2 + 1.4, L.w / 2 - 1.4, 1.9, -L.d / 2, 0.85, 1.3, 2, -1);
+        const wo = { frame: [0.93, 0.92, 0.88], shut: r() < 0.6 ? SHUT[(r() * SHUT.length) | 0] : null };
+        windowsRow(gb, base, -L.w / 2 + 1.4, L.w / 2 - 1.4, 1.9, L.d / 2, 0.85, 1.3, 2, 1, wo);
+        if (L.stories === 2) windowsRow(gb, base, -L.w / 2 + 1.4, L.w / 2 - 1.4, 4.6, L.d / 2, 0.85, 1.2, 3, 1, wo);
+        windowsRow(gb, base, -L.w / 2 + 1.4, L.w / 2 - 1.4, 1.9, -L.d / 2, 0.85, 1.3, 2, -1, wo);
+        // the gable ends get a window a floor, so no wall is blank (not behind the side wing, if there is one)
+        const wing = r() < 0.35;
+        for (const sd of [-1, 1]) { const sb = base.clone().multiply(_rotY(sd)); if (!(wing && sd > 0)) windowsRow(gb, sb, 0, 0, 1.9, L.w / 2, 0.85, 1.3, 1, 1, wo); if (L.stories === 2) windowsRow(gb, sb, 0, 0, 4.6, L.w / 2, 0.85, 1.2, 1, 1, wo); }
+        // door casing, and foundation shrubs along the front either side of the porch
+        for (const s of [-1, 1]) gb.add('vc', colorize(new THREE.BoxGeometry(0.1, 2.2, 0.08), wo.frame), P(base, s * 0.53, 1.5, L.d / 2 + 0.04));
+        gb.add('vc', colorize(new THREE.BoxGeometry(1.26, 0.14, 0.08), wo.frame), P(base, 0, 2.6, L.d / 2 + 0.04));
+        for (const s of [-1, 1]) for (let k = 0; k < 2; k++) if (r() < 0.8) shrub(gb, base, s * (L.w * 0.35 + 1.05 + k * 1.5), L.d / 2 + 0.95, 0.55 + r() * 0.3, r);
         gb.add('brick', boxT(0.6, 3.0, 0.6), P(base, L.w * 0.28, H + 1.9, -0.6));
-        if (r() < 0.35) { gb.add('sidingVC', colorize(boxT(3.6, 2.8, 6), col), P(base, L.w / 2 + 2.6, 1.4, -1.0)); gb.add('roofVC', colorize(gableRoof(3.6, 6, 1.0, 0.25), rc), P(base, L.w / 2 + 2.6, 2.8, -1.0)); fnd(base, L.w / 2 + 2.6, -1.0, 3.7, 6.1, 0.06); foot(base, L.w / 2 + 2.6, -1.0, 3.7, 6.1); }
+        if (wing) { gb.add('sidingVC', colorize(boxT(3.6, 2.8, 6), col), P(base, L.w / 2 + 2.6, 1.4, -1.0)); gb.add('roofVC', colorize(gableRoof(3.6, 6, 1.0, 0.25), rc), P(base, L.w / 2 + 2.6, 2.8, -1.0)); fnd(base, L.w / 2 + 2.6, -1.0, 3.7, 6.1, 0.06); foot(base, L.w / 2 + 2.6, -1.0, 3.7, 6.1); }
         for (let t = 0; t < 2; t++) if (r() < 0.75) { const [tx, tn] = T.at(L.u + (r() - 0.5) * 14, L.v + L.face * (-8 - r() * 4)); (SCN.extraTrees || (SCN.extraTrees = [])).push([tx, tn, 0.9 + r() * 0.6, null]); }
       } else if (L.kind === 'church') {
         const base = sited(yaw, 0, 2.05, 12, 26.1); foot(base, 0, 2.05, 13, 27);
@@ -393,6 +449,21 @@ function buildTowns(scene) {
         gb.add('silver', new THREE.ConeGeometry(2.2, 2.2, 16), P(base, 0, 39.8, 0));
         const k = 'twr_' + T.name; SMAT[k] = new THREE.MeshLambertMaterial({ map: canvasTex(512, 128, (g, w, h) => { g.fillStyle = '#c8ccd0'; g.fillRect(0, 0, w, h); g.fillStyle = '#23405e'; g.font = 'bold 84px "Arial Narrow", Arial'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(T.name.toUpperCase(), w / 2, h / 2 + 4); }) });
         tank(k, 6, 2, Math.PI / 4, Math.PI / 2, 6 * RW, 2 * RW);
+      }
+    }
+    // sidewalks both sides of every street, broken at the cross streets, the railroad, the river and any building
+    const nearStreet = (u, v, self) => T.streets.some(st => { if (st === self) return false; const [a, b, w] = st;
+      return a[0] === b[0] ? Math.abs(u - a[0]) < w / 2 + 2.2 && v > Math.min(a[1], b[1]) - 2.2 && v < Math.max(a[1], b[1]) + 2.2
+        : Math.abs(v - a[1]) < w / 2 + 2.2 && u > Math.min(a[0], b[0]) - 2.2 && u < Math.max(a[0], b[0]) + 2.2; });
+    for (const st of T.streets) {
+      const [a, b, w] = st, len = Math.hypot(b[0] - a[0], b[1] - a[1]), du = (b[0] - a[0]) / len, dv = (b[1] - a[1]) / len, n = Math.ceil(len / 6);
+      for (const side of [-1, 1]) for (let i = 0; i < n; i++) {
+        const off = side * (w / 2 + 1.1), pt = t => { const u = lerp(a[0], b[0], t) - dv * off, v = lerp(a[1], b[1], t) + du * off; return [u, v, ...T.at(u, v)]; };
+        const p0 = pt(i / n), p1 = pt((i + 1) / n), pm = pt((i + 0.5) / n);
+        if (nearStreet(p0[0], p0[1], st) || nearStreet(p1[0], p1[1], st)) continue;
+        const lat = latticeAt(pm[2], pm[3]);
+        if ((lat && lat.d < 14) || riverDist(pm[2], pm[3]) < 42 || inFoot(p0[2], p0[3], 0.3) || inFoot(p1[2], p1[3], 0.3) || inFoot(pm[2], pm[3], 0.3)) continue;
+        walkSlab(binAt(pm[2], pm[3]), p0[2], p0[3], p1[2], p1[3], 1.6);
       }
     }
     // street trees
