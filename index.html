@@ -16310,6 +16310,7 @@ function brakeZone(h) {
 /* Wheels sliding. A steam-era train has no wheel slide protection: an emergency application at speed locks the
    wheels and they skid on the rail until the train stops or the brakes come off. A locked wheel is held by the
    rail's sliding friction instead of the shoe, steel on steel, which falls off as the contact heats at speed. */
+const FRT_BRAKE = 12e3, FRT_KIND = { box: 1, hopper: 1, tank: 1, gon: 1, caboose: 1, flat: 1, reefer: 1, stock: 1 };   // N of shoe force at 64 psi
 const SLIDE_ON = 2.0, SLIDE_BC = 45, SLIDE_OFF_BC = 25;   // m/s to start a slide; cylinder psi to lock / to roll again
 const slideMu = v => 0.065 + 0.055 * (1 - smooth(0, 25, v));
 function brakeLabel(h) { const z = brakeZone(h); if (z === 'SRV') return '−' + Math.round(6 + 20 * (h - 0.28) / 0.62) + ' psi'; return { REL: 'REL', RUN: 'RUN', LAP: 'LAP', EMG: 'EMERG' }[z]; }
@@ -16490,13 +16491,16 @@ function physicsStep(dt, train) {
     Fres += R * LBF;
     const isLoco = v.kind === 'loco' || v.kind === 'loco2';
     const bc = isLoco ? S.BCloco : v.brake.BC;
-    if (!DSL) {
+    // only the engine and its tender lock up: their brakes are rigged near the rail's grip, a car's are not
+    if (!DSL && (isLoco || v.kind === 'tender')) {
       const emg = (isLoco ? lb.emerg : v.brake.emerg) || z === 'EMG';
       if (!v.slide && emg && bc > SLIDE_BC && Math.abs(S.v) > SLIDE_ON) v.slide = true;
       else if (v.slide && (bc < SLIDE_OFF_BC || Math.abs(S.v) < 0.05)) v.slide = false;
     } else v.slide = false;
     if (v.slide) slid++;
-    const fb = v.slide ? mass * 9.81 * slideMu(Math.abs(S.v)) : mass * v.brakeA * (bc / 64) * (v.disc ? disc : shoe);
+    // a freight car's brake rigging gives the same shoe force loaded or empty (about a fifth of an empty car's
+    // weight, a twelfth of a loaded one's), so a loaded drag takes most of a mile to stop and empties stop short
+    const fb = v.slide ? mass * 9.81 * slideMu(Math.abs(S.v)) : (FRT_KIND[v.kind] ? FRT_BRAKE : mass * v.brakeA) * (bc / 64) * (v.disc ? disc : shoe);
     Fbrake += fb + (isLoco && DSL && !train.elec ? S.DBF : 0);
     if (sk) { sk.M[i] = Math.max(mass, 8000); sk.F[i] = -mass * 9.81 * f.y - (Math.abs(S.v) < 0.03 ? 0 : Math.sign(S.v) * (R * LBF + fb + (isLoco && DSL && !train.elec ? S.DBF : 0))); if (isLoco) Mpow += mass; }
     if (v.motor) motorBrake += fb;
