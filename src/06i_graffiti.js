@@ -215,7 +215,7 @@ function gfDraw(g, W, H, r, kind) {
 }
 function graffitiMat(key, w, h, r, kind) {
   const W = Math.round(Math.min(1024, Math.max(96, w * GRAFFITI.pxm))), H = Math.round(Math.max(48, W * h / w));
-  const m = new THREE.MeshStandardMaterial({ map: canvasTex(W, H, (g, W, H) => gfDraw(g, W, H, r, kind)), transparent: true, alphaTest: 0.04,
+  const m = new THREE.MeshStandardMaterial({ map: uploadOnce(canvasTex(W, H, (g, W, H) => gfDraw(g, W, H, r, kind))), transparent: true, alphaTest: 0.04,
     metalness: 0.05, roughness: 0.62, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
   m.userData.noCast = true; m.userData.graffiti = kind;
   RMAT[key] = m; return m;

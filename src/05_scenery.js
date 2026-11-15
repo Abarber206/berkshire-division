@@ -1320,4 +1320,32 @@ function finalizeScenery(scene) {
     grp.userData = { c: sp.center.clone(), r: sp.radius };
     scene.add(grp); WORLD.binGroups.push(grp);
   }
+  roofGrid();
+}
+/* The camera and the walker need each building's roof height. Instead of casting rays into the merged meshes (which
+   needs their vertex arrays kept in memory for ever, and took seconds), every vertex of the scenery bins goes once
+   into a 2 m grid of highest points; after that the arrays are let go as soon as the GPU has them. */
+const ROOF_CELL = 2;
+function roofGrid() {
+  const H = WORLD.roofH = new Map();
+  for (const grp of WORLD.binGroups) for (const m of grp.children) {
+    const g = m.geometry, a = g.attributes.position && g.attributes.position.array; if (!a) continue;
+    for (let i = 0; i < a.length; i += 3) { const k = Math.floor(a[i] / ROOF_CELL) * 65536 + Math.floor(a[i + 2] / ROOF_CELL); const y = a[i + 1], h = H.get(k); if (h === undefined || y > h) H.set(k, y); }
+    if (!g.boundingSphere) g.computeBoundingSphere(); if (!g.boundingBox) g.computeBoundingBox();
+    for (const k in g.attributes) g.attributes[k].onUpload(dropArray);
+  }
+}
+function dropArray() { this.array = null; }
+/* the highest point of the scenery over a footprint: a flat roof has vertices only at its corners, so the cells
+   reach 1.5 m past the edge to take them in (a lamp or fence just beside it can only raise the answer a little) */
+function roofAt(f) {
+  const H = WORLD.roofH; let top = -Infinity;
+  const r = Math.max(f[6], f[7]) + ROOF_CELL;
+  for (let x = Math.floor((f[0] - r) / ROOF_CELL); x <= Math.floor((f[0] + r) / ROOF_CELL); x++)
+    for (let z = Math.floor((f[1] - r) / ROOF_CELL); z <= Math.floor((f[1] + r) / ROOF_CELL); z++) {
+      const cx = (x + 0.5) * ROOF_CELL - f[0], cz = (z + 0.5) * ROOF_CELL - f[1];
+      if (Math.abs(cx * f[2] + cz * f[3]) > f[6] + 1.5 || Math.abs(cx * f[4] + cz * f[5]) > f[7] + 1.5) continue;
+      const h = H.get(x * 65536 + z); if (h !== undefined && h > top) top = h;
+    }
+  return top;
 }

@@ -15,6 +15,7 @@ const camK = (rate, dt) => 1 - Math.exp(-rate * dt);
 /* roof height over a building footprint, found once by looking down on it */
 function footTop(f) {
   if (f[8] !== undefined) return f[8];
+  if (WORLD.roofH) { const top = roofAt(f), g = groundAt(f[0], -f[1]); return (f[8] = isFinite(top) && top > g + 0.5 ? top : g + 6); }
   let top = -Infinity;
   const groups = (WORLD.binGroups || []).filter(g => Math.hypot(g.userData.c.x - f[0], g.userData.c.z - f[1]) < g.userData.r + 30);
   for (const [u, w] of [[0, 0], [0.6, 0.6], [-0.6, 0.6], [0.6, -0.6], [-0.6, -0.6]]) {

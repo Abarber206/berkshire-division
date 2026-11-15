@@ -58,7 +58,10 @@ function rollingMaterials() {
   wear(RMAT.black); wear(RMAT.blackMatte, 0.6, 21); wear(RMAT.graphite, 0.35, 22); wear(RMAT.dark, 0.5, 23); wear(RMAT.rod); wear(RMAT.steel, 0.35, 24);
   wear(RMAT.tire, 0.7, 25); wear(RMAT.backhead, 0.6, 26); wear(RMAT.rbEdge); wear(RMAT.dWall); wear(RMAT.roof, 0.5, 27); wear(RMAT.tank); wear(RMAT.green); wear(RMAT.caboose); wear(RMAT.oxide); wear(RMAT.oxide2);
 }
-function decalMat(w, h, draw) { return new THREE.MeshStandardMaterial({ map: canvasTex(w, h, draw), transparent: true, alphaTest: 0.35, metalness: 0.2, roughness: 0.55, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }); }
+/* a canvas texture that is drawn once: after its upload the canvas is shrunk to nothing, so the picture lives only
+   on the GPU and not twice over (iOS also caps the memory all canvases together may hold) */
+function uploadOnce(t) { t.onUpdate = tt => { const c = tt.image; if (c && c.getContext && c.width > 1) { c.width = 1; c.height = 1; } tt.onUpdate = null; }; return t; }
+function decalMat(w, h, draw) { return new THREE.MeshStandardMaterial({ map: uploadOnce(canvasTex(w, h, draw)), transparent: true, alphaTest: 0.35, metalness: 0.2, roughness: 0.55, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }); }
 function romanText(g, txt, x, y, size, color = '#efede4', spacing = 0.06) {
   g.font = `600 ${size}px "Times New Roman", Georgia, serif`; g.fillStyle = color; g.textAlign = 'center'; g.textBaseline = 'middle';
   if (g.letterSpacing !== undefined) g.letterSpacing = (size * spacing) + 'px';
@@ -1426,6 +1429,28 @@ function carFrame(gb, o) {
 }
 
 /* ======== freight cars ======== */
+/* Cars of a type come out of the builder with the same shapes, only their numbers and paint differ (those are
+   materials), so each merged shape is kept once and every car of that type draws the same geometry: a yard of
+   ninety box cars holds one box car's worth of vertices instead of ninety, which is what keeps phones alive. */
+const CARGEO = new Map();
+function geoHash(g) {
+  const a = g.attributes.position.array, u = new Uint32Array(a.buffer, a.byteOffset, a.length);
+  let h = 2166136261 ^ a.length; for (let i = 0; i < u.length; i++) h = Math.imul(h ^ u[i], 16777619);
+  return Object.keys(g.attributes).sort().join() + ':' + a.length + ':' + (h >>> 0);
+}
+function sameGeo(a, b) {
+  for (const k in a.attributes) { const x = a.attributes[k].array, y = b.attributes[k] && b.attributes[k].array; if (!y || x.length !== y.length) return false; for (let i = 0; i < x.length; i++) if (x[i] !== y[i]) return false; }
+  return true;
+}
+function shareCarGeos(grp) {
+  for (const m of grp.children) {
+    if (!m.geometry || !m.geometry.attributes.position) continue;
+    const k = geoHash(m.geometry), had = CARGEO.get(k);
+    if (had && had !== m.geometry && sameGeo(m.geometry, had)) { m.geometry.dispose(); m.geometry = had; }
+    else if (!had) CARGEO.set(k, m.geometry);
+  }
+  return grp;
+}
 function freightModel(type, num, r) {
   carMaterials();
   const root = new THREE.Group(); const gb = new GeoBin();
@@ -1726,7 +1751,7 @@ function freightModel(type, num, r) {
     root.userData.markers = [new THREE.Vector3(-(xw + 0.203), 3.2, -(hw + 0.06)), new THREE.Vector3(-(xw + 0.203), 3.2, hw + 0.06)];
   }
   const couplers = carCouplers(gb, root, L, -0.51, 0.95, 1.12);
-  root.add(gb.build(RMAT));
+  root.add(shareCarGeos(gb.build(RMAT)));
   root.traverse(o => { if (o.isMesh && !o.userData.cpl) { o.castShadow = !(o.material && o.material.userData && o.material.userData.noCast); o.receiveShadow = true; } });
   const trucks = [{ a: ta, type: 'four', R: 0.419 }, { a: L - ta, type: 'four', R: 0.419 }];
   return { root, len: L, trucks, frame: [ta, L - ta], weight, kind: type, axles: 4, area: 105, couplers, graffiti: gfN };
@@ -1928,7 +1953,7 @@ function coachModel(spec, num, observation, trim = '') {
     }
   }
   const couplers = carCouplers(gb, root, L, -0.55, 0.955, 1.08);
-  root.add(gb.build(RMAT));
+  root.add(shareCarGeos(gb.build(RMAT)));
   root.traverse(o => { if (o.isMesh && !o.userData.cpl) { o.castShadow = true; o.receiveShadow = true; } });
   const ib = new GeoBin(); coachInterior(ib, { observation, trim: T });
   const inner = ib.build(RMAT, { cast: false }); inner.traverse(o => { if (o.isMesh) o.receiveShadow = true; }); root.add(inner);
