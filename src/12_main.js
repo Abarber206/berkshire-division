@@ -108,9 +108,11 @@ function makeTrain() {
   const others = FLEET.parked().length, keep = others > 0 && !MP.on && !JOB.wanted();
   CARS.clear(GAME.train, false, keep);
   if (others && !keep && !MP.on) toast(`Your other ${others > 1 ? others + ' trains were' : 'train was'} put away: a job is worked with one train.`, 'warn', 5200, 'fleet');
-  if (GAME.train) GAME.train.dispose();
+  const was = GAME.train;
+  if (was) was.dispose();
   const t = new Train(scene, GAME.settings.loco, JOB.consist(), dieselOpts());
   GAME.train = t;
+  if (was) freeObjects(trainRoots(was));   // the old engine and cars are gone for good: give their memory back
   if (WORLD.custom) { placeOnLayout(t); return; }
   let line = ROUTE.startLine, sFront = line.len - 175, o = 1;
   GAME.spawnName = WORLD.mtn ? 'Riverton 2, Riverton Yard' : 'Yard 2, Bellevue';
@@ -223,6 +225,9 @@ GAME.swapLive = function () {
   // build the new train out of the old one
   for (const v of built) if (!plan.vehicles.includes(v)) scene.remove(v.root);
   const kept = plan.vehicles.filter(v => old.vehicles.includes(v)), lb = old.lead.brake;
+  const dropped = old.vehicles.filter(v => !kept.includes(v)), oldEngineGone = !kept.includes(old.vehicles[0]) && !kept.some(v => v.model === old.loco);
+  const gone = [...dropped.map(v => v.root), ...built.filter(v => !plan.vehicles.includes(v)).map(v => v.root), ...old.inst];
+  if (oldEngineGone) gone.push(...(old.diesel ? old.units.flatMap(m => m.trucks || []) : old.steamExtras()));
   old.dispose();
   for (const v of kept) { scene.add(v.root); old.release(v); }
   for (const v of plan.vehicles) {
@@ -235,6 +240,7 @@ GAME.swapLive = function () {
   t.layout(); t.buildInstances();
   t.place(front);
   prepareTrain(t, true);
+  freeObjects(gone);   // the engine and cars that went: their memory back, now the new ones are in the scene
   GAME.train = t; t.fid = old.fid;   // the same train in the Trains list
   if (old.diesel !== t.diesel || !!old.turb !== !!t.turb) carryOver();
   else if (old.locoKey !== t.locoKey) {

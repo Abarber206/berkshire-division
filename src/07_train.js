@@ -376,10 +376,7 @@ class Train extends Consist {
   /* free GPU memory for a train that is going away for good (another player's) */
   disposeDeep() {
     this.dispose();
-    const seen = new Set(), roots = [...this.vehicles.map(v => v.root), ...this.inst];
-    if (this.diesel) this.units.forEach(m => roots.push(...m.trucks)); else roots.push(...this.steamExtras());
-    for (const r of roots) if (r) r.traverse(o => { if (o.geometry && !seen.has(o.geometry)) { seen.add(o.geometry); o.geometry.dispose(); } });
-    if (this.diesel) for (const m of this.units) for (const k in m.skin) { const mt = m.skin[k]; if (mt.map) mt.map.dispose(); mt.dispose(); }
+    freeObjects(trainRoots(this));
   }
   setVisible(v) {
     super.setVisible(v);

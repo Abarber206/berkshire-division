@@ -736,7 +736,7 @@ function edDrive() {
   if (bad && !ED.warned) { ED.warned = true; edMsg(`${bad} problem${bad === 1 ? ' is' : 's are'} marked in red. Tap Drive it again to drive anyway.`, 'bad'); return; }
   edSave();
   // building together: everyone driving this version of the layout meets in the same room
-  location.href = location.pathname + '?layout=' + encodeURIComponent(ED.map.id) + (BT.on ? '&room=' + driveCode(BT.code, ED.map) : '');
+  leavePage(location.pathname + '?layout=' + encodeURIComponent(ED.map.id) + (BT.on ? '&room=' + driveCode(BT.code, ED.map) : ''));
 }
 function railMenu() {
   const host = $('optRail'); if (!host) return;
@@ -751,9 +751,9 @@ function railMenu() {
     if (changed) b.lastChild.textContent = 'Edited · tap to reload';
     b.addEventListener('click', () => {
       if (id === cur && !changed) return;
-      if (id.startsWith('route:')) { const k = id.slice(6); try { localStorage.setItem('bd_route', k); } catch (e) {} location.href = location.pathname + '?route=' + k; return; }
+      if (id.startsWith('route:')) { const k = id.slice(6); try { localStorage.setItem('bd_route', k); } catch (e) {} leavePage(location.pathname + '?route=' + k); return; }
       if (!((LAYOUTS.get(id) || {}).pieces || []).length) return;
-      location.href = location.pathname + '?layout=' + encodeURIComponent(id);
+      leavePage(location.pathname + '?layout=' + encodeURIComponent(id));
     });
     host.appendChild(b);
   }
