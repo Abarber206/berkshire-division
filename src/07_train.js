@@ -314,7 +314,7 @@ class Train extends Consist {
     this.remote = !!opts.remote;
     if (!this.remote && !opts.dark) {
       this.head = new THREE.SpotLight(0xfff0d0, 0, 480, 0.3, 0.65, 1.1);
-      this.head.castShadow = false;
+      this.head.castShadow = false; this.head.visible = false;   // kept for its position only: the beam is drawn per pixel through the lamp shader (ownHeadlight)
       scene.add(this.head); scene.add(this.head.target);
       this.fireLight = new THREE.PointLight(0xff7a2a, 0, 7, 2);
       L.body.add(this.fireLight); if (L.fireLightPos) this.fireLight.position.copy(L.fireLightPos); else this.fireLight.position.set(CABDIM.bh - 0.3, CABDIM.fl + 0.5, 0.1);

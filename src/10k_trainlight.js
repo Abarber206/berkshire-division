@@ -8,6 +8,7 @@
    ========================================================================== */
 LAMP_KINDS.head = { col: 0xffeccd, I: 9, r: 120, k: 0.0014 };
 LAMP_KINDS.fire = { col: 0xff6a22, I: 2.6, r: 4.2, k: 0.05 };
+LAMP_KINDS.headOwn = { col: 0xfff0d0, I: 11, r: 480, k: 0 };   // the train you drive: the old spotlight's reach and spread, lit per pixel
 const TL = { aim: 0.07, cos: 0.84, out: 1.2, fcos: 0.15 };   // how far the beam dips, the cosine at its edge, how far ahead of the lens it starts
 const _tlA = new THREE.Vector3();
 
@@ -35,4 +36,20 @@ function trainLightsOff(own, drop = false) {
   if (!own || !own.h) return;
   own.h.lv = own.f.lv = 0;
   if (drop && own.on) { for (const l of [own.h, own.f]) { const i = LAMPS.lights.indexOf(l); if (i >= 0) LAMPS.lights.splice(i, 1); } own.on = false; }
+}
+
+/* The headlight of the train you drive. It used to be a three.js SpotLight, but most of the ground, ballast and
+   ties are Lambert materials, which light per vertex: the pool filled in square by square across the terrain grid.
+   Through the lamp shader it is worked out per pixel instead, with the same reach, aim and soft edge.
+   I: brightness on the old spotlight's scale (0 off, up to 16), col: hex colour. */
+const _tlB = new THREE.Vector3();
+function ownHeadlight(own, L, I, col) {
+  if (!own.o) { own.o = { kind: 'headOwn', p: new THREE.Vector3(), dir: new THREE.Vector3(), cos: Math.cos(0.34), dyn: true, lv: 0, col }; LAMPS.lights.push(own.o); }
+  const o = own.o; o.col = col; o.lv = L.headlightPos ? I / 16 : 0;   // per pixel and without the spotlight's decay it lands brighter, so the kind is a little dimmer
+  if (!(o.lv > 0)) return;
+  const f = L.headFrame || L.root;
+  o.p.copy(L.headlightPos).applyMatrix4(f.matrixWorld);
+  // aimed down the rails, meeting them about 70 m out
+  _tlB.copy(L.headlightPos).add(_tlA.set(70, -L.headlightPos.y + 0.6, 0)).applyMatrix4(f.matrixWorld);
+  o.dir.subVectors(_tlB, o.p).normalize();
 }
