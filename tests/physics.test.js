@@ -121,8 +121,9 @@ test('stopping 36 cars from 40 mph: emergency stops in about half the distance o
     return d;
   };
   const service = stop(0.89), emergency = stop(1);
-  between(service, 300, 700, 'full service stopping distance (m)');
-  between(emergency, 150, 400, 'emergency stopping distance (m)');
+  // a loaded freight car's shoes hold back about a twelfth of its weight: a quarter to half a mile from 40 mph
+  between(service, 500, 1000, 'full service stopping distance (m)');
+  between(emergency, 300, 600, 'emergency stopping distance (m)');
   assert.ok(emergency < service * 0.7);
 });
 
@@ -156,7 +157,7 @@ test('on a 1.9% climb the 765 lifts 10 loaded cars and settles at a steady speed
   assert.ok(heavy.S.v < 0.1, `14 cars should stall on the grade (${(heavy.S.v / heavy.MPH).toFixed(1)} mph)`);
 });
 
-test('down a 1.9% grade a train runs away with the brakes off and a service application holds it back', () => {
+test('down a 1.9% grade a train runs away with the brakes off, a light application only slows the run, and a heavier one holds it back', () => {
   const speed = brakeH => {
     const sim = h.load(), T = h.train(sim, 20, { grade: -0.019 }), S = sim.S;
     Object.assign(S, { throttle: 0, indH: 0, brakeH, v: 25 * sim.MPH });
@@ -164,7 +165,8 @@ test('down a 1.9% grade a train runs away with the brakes off and a service appl
     return S.v / sim.MPH;
   };
   between(speed(0), 50, 70, 'speed after two minutes drifting from 25 mph (mph)');
-  between(speed(0.35), 12, 25, 'speed after two minutes under a light service application (mph)');
+  between(speed(0.35), 30, 50, 'speed after two minutes under a light service application (mph)');
+  between(speed(0.55), 10, 25, 'speed after two minutes under a heavier service application (mph)');
 });
 
 test('the independent brake alone holds a light engine on the grade', () => {
@@ -417,7 +419,7 @@ test('shoving cars with nothing behind, the engine\'s front coupler is the joint
 });
 
 /* ---------------------------------------------------------- sliding */
-test('an emergency at speed locks a steam train\'s wheels: the drivers stop turning and every car skids', () => {
+test('an emergency at speed locks a steam engine\'s wheels: the drivers and tender skid, the cars keep rolling', () => {
   const sim = h.load(), T = h.train(sim, 20), S = sim.S;
   S.indH = 0; S.v = 50 * sim.MPH;
   h.run(sim, T, 3);
@@ -425,7 +427,7 @@ test('an emergency at speed locks a steam train\'s wheels: the drivers stop turn
   S.brakeH = 1;
   h.run(sim, T, 4);
   assert.ok(S.slide, 'the engine should be sliding');
-  assert.equal(S.slideN, T.vehicles.length, 'every vehicle should be sliding');
+  assert.equal(S.slideN, 2, 'the engine and tender slide; a car\'s brakes are rigged well under the rail\'s grip');
   const theta = S.theta;
   h.run(sim, T, 1);
   assert.equal(S.vw, 0); assert.equal(S.theta, theta, 'drivers, rods and valve gear hold still');
