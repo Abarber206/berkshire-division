@@ -335,6 +335,7 @@ function buildDiesel(opts) {
     for (const s of [-1, 1]) { gb.add('dSteel', new THREE.CylinderGeometry(0.09, 0.09, 0.06, 12).rotateX(Math.PI / 2), M(dx(9.2), 0.98, s * 1.4)); box('white', 12.6, 12.85, 0.72, 0.98, s * 1.378, s * 1.386); box('dSteel', 10.4, 10.55, 0.6, 1.1, s * 1.375, s * 1.4); }
   }
   for (const a of DG.trucks) box('dUnder', a - 0.45, a + 0.45, 1.08, 1.18, -1.0, 1.0);   // body bolsters on the trucks
+  dieselDetail(gb, { box, rod, W, HZ, D, N0, NF, yF, CAB0, CAB1, ROOF, DBH, DB1, HOOD, RADH, RAD0, RAD1, WING });
   const statics = gb.build({ ...RMAT, ...skin });
   body.add(statics);
   // headlight beam & halo
@@ -344,7 +345,7 @@ function buildDiesel(opts) {
   halo.position.set(dx(N0 - 0.08), hlY, 0); halo.scale.set(2.0, 2.6, 1); body.add(halo);
   /* ---- Hi-Ad style trucks (swivel; placed by the train) ---- */
   const trucks = [], wheels = [];
-  const ax = plainAxle(DG.rW, true, RAIL_OFF, 1.16);
+  const ax = plainAxle(DG.rW, true, RAIL_OFF, 1.16, 28);
   for (let t = 0; t < 2; t++) {
     const grp = new THREE.Group(), tg = new GeoBin();
     for (const s of [-1, 1]) {
@@ -373,6 +374,7 @@ function buildDiesel(opts) {
     }
     for (const x of [-1.0, 1.0]) tg.box('dUnder', 0.25, 0.16, 2.1, x, 0.88, 0);   // transoms between the sideframes
     tg.box('dUnder', 2.1, 0.22, 1.2, 0, 1.0, 0);   // bolster on the transoms, between the middle wheels
+    dieselTruckDetail(tg);
     grp.add(tg.build(RMAT));
     for (const x of [-DG.axle, 0, DG.axle]) {
       const wg = new THREE.Group(); wg.position.set(x, DG.rW, 0);
@@ -395,4 +397,101 @@ function buildDiesel(opts) {
 let _louverTex = null;
 function louverTex() {
   return _louverTex || (_louverTex = canvasTex(64, 64, (g, w, h) => { g.fillStyle = '#d6d6d6'; g.fillRect(0, 0, w, h); for (let y = 0; y < h; y += 6) { g.fillStyle = '#3c3c3c'; g.fillRect(0, y, w, 2); g.fillStyle = '#f2f2f2'; g.fillRect(0, y + 2, w, 1); } g.fillStyle = '#5a5a5a'; g.fillRect(0, 0, 2, h); g.fillRect(w - 2, 0, 2, h); }));
+}
+
+/* ---------------- detail (2026-11) ----------------
+   The fittings a GE road unit carries that the plain carbody lacked. Everything here stands on or reaches into
+   a part that is already there, so nothing floats. c: the builder's own helpers and dimensions. */
+function dieselDetail(gb, c) {
+  const { box, rod, W, HZ, D, N0, NF, yF, CAB1, ROOF, DBH, HOOD, RADH, RAD0, RAD1, WING } = c;
+  // a grab iron: a bar standing `o` off a surface on two legs
+  const grab = (k, p, q, o, r = 0.012) => { const P = p.map((v, i) => v + o[i]), Q = q.map((v, i) => v + o[i]); rod(k, r, p.map((v, i) => v - o[i] * 0.2), P, 5); rod(k, r, P, Q, 5); rod(k, r, Q, q.map((v, i) => v - o[i] * 0.2), 5); };
+  for (const s of [-1, 1]) {
+    // engine room doors: seams along the top and bottom, three hinges on every post
+    for (const y of [1.85, 3.92]) box('dUnder', 7.25, 15.3, y - 0.008, y + 0.008, s * (HZ - 0.002), s * (HZ + 0.006));
+    for (let a = 7.25; a < 15.3; a += 0.94) for (const y of [2.12, 2.6, 3.66]) box('dSteel', a - 0.03, a + 0.055, y - 0.05, y + 0.05, s * (HZ - 0.002), s * (HZ + 0.016));
+    // lifting lugs along the roof edges
+    for (const [a, y] of [[5.9, DBH], [8.6, DBH], [10.5, DBH], [11.4, HOOD], [13.2, HOOD], [15.0, HOOD], [16.0, RADH], [21.2, RADH]]) box('dUnder', a - 0.07, a + 0.07, y + 0.01, y + 0.1, s * (HZ - 0.16), s * (HZ - 0.12));
+    // mirror and wind deflector ahead of the cab window
+    box('dUnder', 3.10, 3.125, 3.56, 4.16, s * (W - 0.01), s * (W + 0.19));
+    box('dSteel', 3.124, 3.13, 3.6, 4.12, s * (W + 0.03), s * (W + 0.18));
+    // emergency fuel cut-off on the sill, a red cap on the fuel filler
+    box('red', 6.86, 6.98, 1.56, 1.67, s * (W - 0.002), s * (W + 0.02));
+    gb.cylZ('red', 0.075, 0.035, 12, dx(9.2), 0.98, s * 1.446);
+    // sand fillers high on the rear wall and on the nose shoulders
+    box('dUnder', RAD1 + 0.01, RAD1 + 0.05, 3.62, 3.86, s * 1.08, s * 1.32);
+    box('dSteel', RAD1 + 0.045, RAD1 + 0.06, 3.71, 3.77, s * 1.14, s * 1.26);
+  }
+  // roof hatch seams
+  for (const [a, y] of [[7.1, DBH], [8.85, DBH], [12.6, HOOD], [14.2, HOOD]]) box('dUnder', a - 0.012, a + 0.012, y + 0.02, y + 0.042, -HZ, HZ);
+  // exhaust stack: an open rectangular stack standing on the silencer
+  {
+    const y0 = HOOD + 0.25, y1 = HOOD + 0.4;
+    for (const z of [-0.27, 0.27]) box('dUnder', 11.32, 11.68, y0, y1, z - 0.015, z + 0.015);
+    for (const a of [11.335, 11.665]) box('dUnder', a - 0.015, a + 0.015, y0, y1, -0.27, 0.27);
+    box('black', 11.35, 11.65, y0, y0 + 0.03, -0.255, 0.255);
+  }
+  // radiator fans: a wire guard over each one
+  for (const a of [16.8, 18.75]) {
+    for (const r of [0.26, 0.52, 0.79]) gb.add('dSteel', new THREE.TorusGeometry(r, 0.013, 5, 30).rotateX(Math.PI / 2), M(dx(a), RADH + 0.142, 0));
+    for (let i = 0; i < 4; i++) gb.box('dSteel', 1.6, 0.016, 0.022, dx(a), RADH + 0.15, 0, 0, i * Math.PI / 4, 0);
+    gb.cyl('dUnder', 0.11, 0.11, 0.05, 12, dx(a), RADH + 0.15, 0);
+  }
+  // satellite and radio antenna domes on the cab roof
+  gb.cyl('white', 0.11, 0.13, 0.09, 14, dx(4.9), ROOF + 0.11, 0);
+  gb.cyl('white', 0.07, 0.09, 0.07, 12, dx(4.9), ROOF + 0.1, 0.45);
+  // handbrake wheel on the hood behind the cab, engineer's side
+  {
+    const a = 6.25, y = 2.95, z = HZ + 0.075;
+    box('dUnder', a - 0.13, a + 0.13, y - 0.42, y + 0.12, HZ - 0.002, HZ + 0.045);
+    gb.cylZ('dUnder', 0.035, 0.09, 8, dx(a), y, HZ + 0.04);
+    gb.add('dSteel', new THREE.TorusGeometry(0.2, 0.016, 6, 24), M(dx(a), y, z));
+    for (let i = 0; i < 3; i++) gb.box('dSteel', 0.4, 0.02, 0.014, dx(a), y, z, 0, 0, i * Math.PI / 3);
+  }
+  // nose door (conductor's side of the headlights): frame, hinges and handle; grab irons up the engineer's side
+  {
+    const y0 = D + 0.1, y1 = yF - 0.08, z0 = -NF + 0.06, z1 = -0.24, a0 = N0 - 0.008, a1 = N0 + 0.004;
+    for (const z of [z0, z1]) box('dUnder', a0, a1, y0, y1, z - 0.008, z + 0.008);
+    box('dUnder', a0, a1, y1 - 0.008, y1 + 0.008, z0, z1);
+    for (const y of [y0 + 0.2, y1 - 0.2]) box('dSteel', N0 - 0.02, a1, y - 0.05, y + 0.05, z0 - 0.03, z0 + 0.03);
+    box('dSteel', N0 - 0.035, a1, 2.5, 2.54, z1 - 0.16, z1 - 0.04);
+    for (const y of [2.1, 2.45, 2.8, 3.1]) grab('dSafety', [dx(N0), y, 0.3], [dx(N0), y, 0.72], [0.06, 0, 0]);
+  }
+  // rear hood door, and grab irons up the wall beside it
+  {
+    const xw = RAD1 + 0.02, a0 = xw - 0.004, a1 = xw + 0.008;
+    for (const z of [-0.62, 0.02]) box('dUnder', a0, a1, D + 0.04, 3.7, z - 0.008, z + 0.008);
+    box('dUnder', a0, a1, 3.692, 3.708, -0.62, 0.02);
+    for (const y of [2.1, 3.4]) box('dSteel', a0, xw + 0.02, y - 0.05, y + 0.05, -0.65, -0.59);
+    box('dSteel', a0, xw + 0.035, 2.72, 2.76, -0.16, -0.04);
+    for (let y = 2.1; y < 4.15; y += 0.4) grab('dSafety', [dx(xw), y, 0.42], [dx(xw), y, 0.84], [-0.06, 0, 0]);
+  }
+  // uncoupling levers across both pilots, in brackets on the end plate
+  for (const e of [0, 1]) {
+    const A = e ? DG.len : 0, sg = e ? -1 : 1, x = dx(A + sg * 0.385), y = 1.34;
+    rod('dSteel', 0.012, [x, y, -1.0], [x, y, 1.0], 5);
+    for (const s of [-1, 1]) { rod('dSteel', 0.012, [x, y, s * 1.0], [x, y - 0.14, s * 1.04], 5); box('dUnder', A + sg * 0.36, A + sg * 0.425, y - 0.03, y + 0.03, s * 0.5 - 0.02, s * 0.5 + 0.02); }
+    rod('dSteel', 0.012, [x, y, 0.12], [x, y - 0.2, 0.05], 5);
+  }
+}
+/* one truck's fittings: a brake shoe on every wheel hung from the side frame with a beam across, bolted bearing
+   caps, and sand pipes down to the rail ahead of the outer wheels */
+function dieselTruckDetail(tg) {
+  const R = DG.rW, th = 0.2, rs = R + 0.047;
+  for (const [xa, d] of [[-DG.axle, -1], [0, 1], [DG.axle, 1]]) {      // each shoe on the side away from its axle's motor
+    const cx = xa + d * rs * Math.cos(th), cy = R - rs * Math.sin(th);
+    for (const s of [-1, 1]) {
+      tg.add('dark', new THREE.BoxGeometry(0.05, 0.34, 0.09).rotateZ(-d * th), M(cx, cy, s * RAIL_OFF));
+      tg.box('dark', 0.07, 0.16, 0.12, cx + d * 0.05, cy, s * (RAIL_OFF - 0.01));
+      tg.add('dark', barGeo(0.018, [cx + d * 0.06, cy, s * (RAIL_OFF + 0.04)], [xa + d * 0.5, 0.84, s * 0.985], 5));
+    }
+    tg.add('dark', barGeo(0.03, [cx + d * 0.075, cy, -RAIL_OFF], [cx + d * 0.075, cy, RAIL_OFF], 6));
+  }
+  for (const s of [-1, 1]) {
+    for (const x of [-DG.axle, 0, DG.axle]) {
+      tg.cylZ('dUnder', 0.07, 0.03, 10, x, R, s * 1.22);
+      for (let i = 0; i < 3; i++) tg.cylZ('dUnder', 0.02, 0.02, 6, x + 0.105 * Math.cos(i * TAU / 3 + 0.5), R + 0.105 * Math.sin(i * TAU / 3 + 0.5), s * 1.215);
+    }
+    tg.tube('dSteel', [[s * 2.64, 0.74, s * 0.92], [s * 2.64, 0.45, s * 0.8], [s * 2.62, 0.13, s * RAIL_OFF]], 0.015, 10, 5);
+  }
 }

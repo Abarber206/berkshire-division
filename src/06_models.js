@@ -100,10 +100,10 @@ function flipWinding(g) {
   else { const p = g.attributes.position, n = g.attributes.normal; for (let i = 0; i < p.count; i += 3) { for (const att of [p, n, g.attributes.uv].filter(Boolean)) { const sz = att.itemSize; for (let c = 0; c < sz; c++) { const t = att.array[(i + 1) * sz + c]; att.array[(i + 1) * sz + c] = att.array[(i + 2) * sz + c]; att.array[(i + 2) * sz + c] = t; } } } }
   if (g.attributes.normal) { const n = g.attributes.normal; for (let i = 0; i < n.count; i++) n.setZ(i, -n.getZ(i)); }
 }
-function plainAxle(R, disc = true, tread = RAIL_OFF, jz = 0) {
+function plainAxle(R, disc = true, tread = RAIL_OFF, jz = 0, seg = 16) {
   const parts = { black: [], tire: [] };
   for (const s of [-1, 1]) {
-    const lathe = new THREE.LatheGeometry([new THREE.Vector2(0.12, 0.06), new THREE.Vector2(R - 0.05, 0.05), new THREE.Vector2(R, 0.065), new THREE.Vector2(R, -0.065), new THREE.Vector2(R + 0.028, -0.07), new THREE.Vector2(R + 0.026, -0.09), new THREE.Vector2(R - 0.07, -0.09), new THREE.Vector2(R * 0.55, -0.04), new THREE.Vector2(0.14, -0.08)], 16);
+    const lathe = new THREE.LatheGeometry([new THREE.Vector2(0.12, 0.06), new THREE.Vector2(R - 0.05, 0.05), new THREE.Vector2(R, 0.065), new THREE.Vector2(R, -0.065), new THREE.Vector2(R + 0.028, -0.07), new THREE.Vector2(R + 0.026, -0.09), new THREE.Vector2(R - 0.07, -0.09), new THREE.Vector2(R * 0.55, -0.04), new THREE.Vector2(0.14, -0.08)], seg);
     lathe.rotateX(s * Math.PI / 2); lathe.translate(0, 0, s * tread);
     if (s < 0) {}
     parts.tire.push(lathe);
