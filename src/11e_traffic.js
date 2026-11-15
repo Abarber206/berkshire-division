@@ -520,14 +520,28 @@ AI.gone = function (a, T, memo) {
 AI.enabled = () => !MP.on && !WORLD.custom && GAME.settings.traffic !== 'off';
 AI.clear = function () {
   for (const a of AI.trains) a.dispose();
-  AI.trains = []; IX.clear();
+  AI.trains = []; IX.clear(); AI.pending = null;
 };
 /* make up the trains for free running or for a job, each where its timetable has it */
 AI.setup = function () {
   AI.clear();
   if (!AI.enabled()) return;
   const job = JOB.wanted(), list = job ? job.traffic || [] : WORLD.mtn ? MTN_TRAFFIC : FREE_TRAFFIC;
+  // while the game is still loading the trains are made up one at a time after the menu is ready (AI.lazy, set by
+  // loadWorld), so the menu is not kept waiting for them; AI.flush() finishes the job at once when you start
+  if (AI.lazy) { AI.pending = list.slice(); AI.drip(); return; }
   for (const [id, s] of list) AI.spawn(id, s);
+};
+AI.drip = function () {
+  setTimeout(() => {
+    if (!AI.pending) return;
+    const n = AI.pending.shift(); if (n) AI.spawn(n[0], n[1]);
+    if (AI.pending.length) AI.drip(); else AI.pending = null;
+  }, 120);
+};
+AI.flush = function () {
+  const list = AI.pending; AI.pending = null;
+  if (list && AI.enabled()) for (const [id, s] of list) AI.spawn(id, s);
 };
 AI.spawn = function (id, sMain) {
   const def = TRAFFIC[id]; if (!def) return null;

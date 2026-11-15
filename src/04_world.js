@@ -51,6 +51,9 @@ function makeTextures() {
     const R = tileNoise(w, [[64, 0.5], [128, 0.3], [256, 0.2]], 5), G = tileNoise(w, [[8, 0.5], [16, 0.3], [32, 0.2]], 6), B = tileNoise(w, [[4, 0.6], [8, 0.3], [16, 0.1]], 7);
     for (let i = 0; i < w * h; i++) { d[i * 4] = R[i] * 255; d[i * 4 + 1] = G[i] * 255; d[i * 4 + 2] = B[i] * 255; d[i * 4 + 3] = 255; }
     g.putImageData(id, 0, 0);
+    // the broad patches are kept on the CPU too: the grass reads them for its colour, and reading a canvas back once it is on
+    // the GPU stalls the first frame
+    TEX.detailBlue = { B: Uint8Array.from(B, v => v * 255), w, h };
     // tufts and blade strokes on top of the red channel only
     const r = rng(41); g.globalCompositeOperation = 'lighter';
     for (let i = 0; i < 900; i++) { const x = r() * w, y = r() * h, a = -Math.PI / 2 + (r() - 0.5) * 1.4, L = 2 + r() * 5, v = 30 + r() * 50 | 0; g.strokeStyle = `rgb(${v},0,0)`; g.lineWidth = 1; for (const ox of [0, -w, w]) for (const oy of [0, -h, h]) { g.beginPath(); g.moveTo(x + ox, y + oy); g.lineTo(x + ox + Math.cos(a) * L, y + oy + Math.sin(a) * L); g.stroke(); } }
