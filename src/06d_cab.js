@@ -68,6 +68,11 @@ const DIALS = {
   load: { max: 1500, major: 300, minor: 50, label: 'LOAD', small: true, unit: 'AMPERES', red: 1250 },
   tspd: { max: 120, major: 20, minor: 5, label: 'TURBINE', small: true, unit: 'PER CENT SPEED', red: 104 },
   egt: { max: 1000, major: 200, minor: 50, label: 'EXHAUST', small: true, unit: 'DEG F', red: 850 },
+  // the fireman's gauges on the steam engines
+  stokerP: { max: 100, major: 20, minor: 5, label: 'STOKER', small: true },
+  feed: { max: 400, major: 100, minor: 20, label: 'FEED PUMP', small: true },
+  inj: { max: 400, major: 100, minor: 20, label: 'INJECTOR', small: true },
+  heat: { max: 160, major: 40, minor: 10, label: 'STEAM HEAT', small: true },
 };
 function dialMaterial(kind) {
   const key = 'dial_' + kind; if (RMAT[key]) return RMAT[key];
@@ -190,6 +195,7 @@ function steamCab(gb, body, d) {
     for (let y = ffl + 0.12; y < cy + FB.r - 0.05; y += 0.15) for (let z = -1.2; z <= 1.2; z += 0.15) {
       const zz = z + ((Math.round((y - ffl) / 0.15) % 2) ? 0.075 : 0);
       if (Math.abs(zz) > half(y) - 0.06) continue;
+      if (Math.abs(zz) < 0.34 && Math.abs(y - (ffl + 0.68)) < 0.28) continue;          // none under the firedoor's frame
       gb.add('backhead', new THREE.CylinderGeometry(0.007, 0.008, 0.01, 6).rotateZ(Math.PI / 2).translate(F - 0.003, y, zz));
     }
     // washout plugs low at the corners and high on the shoulders
@@ -202,15 +208,32 @@ function steamCab(gb, body, d) {
     const s = rrect(new THREE.Shape(), -0.31, fy - 0.25, 0.31, fy + 0.25, 0.06);
     s.holes.push(rrect(new THREE.Path(), -0.22, fy - 0.16, 0.22, fy + 0.16, 0.035));
     onFace('dark', s, 0.05);
+    // the two butterfly leaves swing open on their outer hinges, back toward the crew (a toggle: tap a leaf or the pedal)
+    const leaves = [];
     for (const sd of [-1, 1]) {
-      gb.box('dark', 0.03, 0.34, 0.2, F - 0.065, fy, sd * 0.12);                     // door leaf, 4 cm apart in the middle
-      gb.box('steel', 0.02, 0.04, 0.05, F - 0.09, fy, sd * 0.06);                    // its handle
-      gb.cyl('dark', 0.018, 0.018, 0.36, 8, F - 0.065, fy, sd * 0.235);              // hinge
+      gb.cyl('dark', 0.018, 0.018, 0.36, 8, F - 0.065, fy, sd * 0.235);              // hinge pin
+      for (const dy of [-0.13, 0.13]) gb.box('dark', 0.03, 0.04, 0.05, F - 0.04, fy + dy, sd * 0.25);   // hinge lugs off the frame
+      const pt = K.part(V(F - 0.065, fy, sd * 0.235));
+      pt.gb.box('dark', 0.03, 0.34, 0.2, 0, 0, -sd * 0.115);                          // door leaf, 4 cm apart in the middle when shut
+      pt.gb.box('dark', 0.012, 0.3, 0.16, -0.019, 0, -sd * 0.115);                    // its stiffening panel
+      pt.gb.box('steel', 0.02, 0.04, 0.05, -0.025, 0, -sd * 0.175);                   // handle
+      pt.gb.cyl('dark', 0.024, 0.024, 0.06, 8, 0, 0, 0);                              // knuckle round the pin
+      K.done(pt); leaves.push([pt, sd]);
     }
+    const doorCtl = { id: 'firedoor', name: 'Firedoor', kind: 'toggle', part: leaves[1][0].inner, outer: leaves[1][0].outer, grip: V(-0.025, 0, -0.175),
+      show: () => S.fdoor ? 1 : 0, pose: p => { for (const [pt, sd] of leaves) pt.inner.rotation.y = sd * p * 1.25; },
+      tap: () => { S.fdoor = !S.fdoor; }, label: () => 'Firedoor · ' + (S.fdoor ? 'open: cold air over the fire' : 'shut') };
+    K.ctl(doorCtl);
+    for (const [pt, sd] of leaves) K.hit(pt, doorCtl, 0.06, 0.34, 0.2, 0, 0, -sd * 0.115);
     gb.cylZ('dark', 0.035, 0.42, 12, F - 0.075, fy + 0.3, 0);                          // door engine
     for (const z of [-0.17, 0.17]) gb.box('dark', 0.075, 0.05, 0.04, F - 0.037, fy + 0.3, z);
     gb.box('dark', 0.08, 0.03, 0.1, F - 0.28, ffl + 0.025, -0.3);                      // pedal block on the deck
-    gb.box('steel', 0.16, 0.02, 0.09, F - 0.29, ffl + 0.06, -0.3, 0, 0, -0.18);       // pedal
+    const pp = K.part(V(F - 0.28, ffl + 0.045, -0.3));                                  // the pedal works the door engine's air valve
+    pp.gb.box('steel', 0.16, 0.02, 0.09, -0.01, 0.015, 0); pp.gb.box('dark', 0.02, 0.025, 0.09, -0.085, 0.024, 0);
+    K.done(pp);
+    const pedal = K.ctl(Object.assign({}, doorCtl, { part: pp.inner, outer: pp.outer, grip: V(-0.05, 0.02, 0),
+      pose: p => { pp.inner.rotation.z = -0.18 + 0.12 * p; } }));
+    K.hit(pp, pedal, 0.18, 0.06, 0.11, -0.01, 0.015, 0);
   }
   const firePos = V(F - 0.003, fy, 0), fireSize = [0.44, 0.32];
 
@@ -221,7 +244,27 @@ function steamCab(gb, body, d) {
   gb.box('steel', 0.13, 0.08, 0.12, F - 0.06, ty, 0);                                 // the turret's feed from the dome
   const valveZ = [-0.3, -0.1, 0.1, 0.3];
   for (const z of valveZ) { gb.cyl('steel', 0.026, 0.032, 0.08, 10, tx, ty + 0.1, z); gb.cyl('rod', 0.008, 0.008, 0.06, 6, tx, ty + 0.16, z); }
-  for (const z of [-0.3, 0.1]) { const g = new GeoBin(); handwheel(g, 'black', 0.05); for (const k in g.bins) for (const geo of g.bins[k]) gb.add('black', geo, M(tx, ty + 0.19, z, Math.PI / 2, 0, 0)); }
+  const worth = !!(d.spec && d.spec.fw === 'Worthington');
+  // fireman's end: the Worthington feedwater pump's throttle (or, on an engine with injectors only, the fireman's injector)
+  {
+    const pt = K.part(V(tx, ty + 0.19, -0.3)); handwheel(pt.gb, 'red', 0.05, 4);
+    for (const k in pt.gb.bins) pt.gb.bins[k].forEach(g => g.rotateX(Math.PI / 2));
+    K.done(pt);
+    const nm = worth ? 'Feedwater pump' : 'Fireman\'s injector';
+    const c = K.ctl({ id: 'feedpump', name: nm, kind: 'toggle', part: pt.inner, outer: pt.outer, grip: V(0, 0, 0.05),
+      show: () => S.injector ? 1 : 0, pose: p => { pt.inner.rotation.y = -p * 3.4; },
+      tap: () => { GAME.manualFire('injector'); S.injector = !S.injector; },
+      label: () => nm + ' · ' + (S.injector ? (worth ? 'running: hot water into the boiler' : 'on: feeding the boiler') : 'shut') });
+    K.hit(pt, c, 0.13, 0.06, 0.13);
+  }
+  // the air pump's steam throttle: the governor works it, so it only tells you what the pump is doing
+  {
+    const pt = K.part(V(tx, ty + 0.19, 0.1)); handwheel(pt.gb, 'black', 0.05);
+    for (const k in pt.gb.bins) pt.gb.bins[k].forEach(g => g.rotateX(Math.PI / 2));
+    K.done(pt);
+    const c = K.ctl({ id: 'airpump', kind: 'info', part: pt.inner, outer: pt.outer, label: () => `Air pump throttle · ${S.pumping ? 'pumping' : 'governor has it idle'} · main reservoir ${Math.round(S.MR)} psi` });
+    K.hit(pt, c, 0.13, 0.06, 0.13);
+  }
   // blower: a handwheel turned open
   {
     const pt = K.part(V(tx, ty + 0.19, -0.1)); handwheel(pt.gb, 'brass', 0.055); pt.inner.rotation.order = 'YXZ';
@@ -441,7 +484,7 @@ function steamCab(gb, body, d) {
     gb.box('cabInt', 0.52, 0.06, 0.13, xm + 0.05, seatTop + 0.3, sd * (wallZ - 0.065));        // padded armrest on the window sill
   }
   // the deck: oak boards laid fore and aft over the steel floor, from the seat boxes forward to the backhead
-  { const xa = F - 0.06, xb = eye.x - 0.6, n = 13, w = 2 * wallZ / n;
+  if (d.key !== '4014') { const xa = F - 0.06, xb = eye.x - 0.6, n = 13, w = 2 * wallZ / n;
     for (let i = 0; i < n; i++) gb.box(i % 3 ? 'cabWood' : 'cabWood2', xa - xb, 0.012, w - 0.008, (xa + xb) / 2, ffl + 0.006, -wallZ + w * (i + 0.5)); }
   /* ---- the working cab's clutter: steel carlines under the roof, the injector steam lines down each side of the
      backhead, gauge siphons up to the turret, gauge lamps, an oil can shelf and a hung lantern on the fireman's side ---- */
@@ -480,7 +523,155 @@ function steamCab(gb, body, d) {
   // cab lamp in the middle of the roof
   { const xl = F - 0.9, yt = d.ceil(0) + 0.01; gb.cyl('dark', 0.05, 0.05, 0.05, 12, xl, yt - 0.025, 0); gb.add('white', new THREE.SphereGeometry(0.045, 12, 6, 0, TAU, Math.PI / 2, Math.PI / 2).translate(xl, yt - 0.05, 0)); }
 
-  return K.out(eye, { firePos, fireSize, look: [{ yaw: 0.06, pitch: -0.04 }, { yaw: 0.75, pitch: -0.32 }] });
+  steamCabMore(gb, body, K, { d, F, ffl, wallZ, cy, half, eye, tx, ty, worth, fy, V });
+  return K.out(eye, { firePos, fireSize, look: [{ yaw: 0.06, pitch: -0.04 }, { yaw: 0.75, pitch: -0.32 }, { yaw: -0.55, pitch: -0.3 }] });
+}
+
+/* The rest of a working steam cab, as the crews knew it on these engines: the fireman's gauges (stoker, feedwater
+   pump, steam heat), the blowdown valve, grate shaker posts, the squirt hose, a lined and riveted cab in cab green
+   with wooden window frames, the roof hatch, gauge lamps that light at dusk, a glowing fire bed behind the doors,
+   and per engine: the Big Boy's ribbed steel deck, the Mallet's simpling (intercepting) valve. */
+function steamCabMore(gb, body, K, o) {
+  const { d, F, ffl, wallZ, cy, half, eye, tx, ty, worth, fy, V } = o, sp = d.spec || {}, back = V(-1, 0, 0);
+  if (!RMAT.cabBulb) {
+    RMAT.cabBulb = new THREE.MeshStandardMaterial({ color: 0xfff1d6, metalness: 0, roughness: 0.3, emissive: 0xffc777, emissiveIntensity: 0 });
+    CAB.bulbs = [RMAT.cabBulb];
+    RMAT.fireBed = new THREE.MeshBasicMaterial({ map: fireBedTex(), color: 0xffffff, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+    RMAT.fireBed.userData.noShadow = true;
+  }
+  const lamp = (x, y, z, dz) => {                                // a hooded gauge lamp: shade, bulb under it, lead off to the side
+    gb.box('dark', 0.1, 0.02, 0.1, x, y, z + dz); gb.box('dark', 0.04, 0.04, 0.03, x + 0.03, y, z + dz);
+    gb.add('cabBulb', new THREE.SphereGeometry(0.016, 8, 6).translate(x - 0.005, y - 0.022, z + dz));
+  };
+
+  /* ---- the fireman's gauges: stoker engine steam, feedwater pump discharge (or the injector delivery), steam heat ---- */
+  const isPax = () => !!(GAME.train && GAME.train.vehicles && GAME.train.vehicles.some(v => v.kind === 'coach'));
+  const fdials = [
+    { kind: 'stokerP', p: V(F, cy + 0.5, -0.43), r: 0.075, hands: [[() => S.stoker * 42 + (S.stoker > 0.02 ? 6 : 0)]], read: () => `Stoker engine steam · ${Math.round(S.stoker * 42 + (S.stoker > 0.02 ? 6 : 0))} psi` },
+    { kind: worth ? 'feed' : 'inj', p: V(F, cy + 0.42, -0.68), r: 0.075, hands: [[() => S.injector ? S.P + 28 : 0]], read: () => (worth ? 'Feedwater pump discharge · ' : 'Injector delivery · ') + (S.injector ? Math.round(S.P + 28) + ' psi' : 'shut') },
+    { kind: 'heat', p: V(F, cy + 0.2, -0.93), r: 0.068, hands: [[() => isPax() ? 55 + 3 * Math.sin(S.time * 0.2) : 0]], read: () => 'Steam heat to the train · ' + (isPax() ? '55 psi' : 'off (no coaches)') },
+  ];
+  for (const g of fdials) {
+    g.p.z = -Math.min(-g.p.z, half(g.p.y) - g.r - 0.06);
+    K.dial(Object.assign({ n: back }, g));
+    const z0 = g.p.z, zt = Math.max(z0, -0.38);
+    gb.tube('copper', [[F - 0.02, g.p.y + g.r + 0.005, z0], [F - 0.03, g.p.y + g.r + 0.06, z0], [tx + 0.01, ty - 0.12, (z0 + zt) / 2], [tx, ty - 0.05, zt]], 0.006, 16, 5);
+    lamp(F - 0.05, g.p.y + g.r + 0.035, z0, -0.07);
+  }
+  // and a bulb under each of the engineer's gauge hoods (the hoods are drawn with the gauges)
+  for (const [y, z, r] of [[cy + 0.52, -0.05, 0.14], [cy + 0.48, 0.3, 0.095], [cy + 0.56, 0.58, 0.095], [cy + 0.34, 0.82, 0.095]])
+    gb.add('cabBulb', new THREE.SphereGeometry(0.016, 8, 6).translate(F - 0.055, y + r + 0.013, z + (z > 0 ? 0.08 : -0.08)));
+
+  /* ---- blowdown: the Wilson blow-off valve's lever, low on the fireman's side. Hold it down to blow the boiler down. ---- */
+  {
+    const p = V(F - 0.05, ffl + 0.42, -Math.min(0.78, half(ffl + 0.42) - 0.12));
+    gb.box('dark', 0.06, 0.09, 0.07, F - 0.025, p.y, p.z);
+    const pt = K.part(p);
+    pt.gb.cyl('steel', 0.016, 0.016, 0.05, 8, 0, 0, 0, Math.PI / 2, 0, 0); pt.gb.box('handle', 0.018, 0.22, 0.016, -0.01, 0.11, 0); pt.gb.cyl('knob', 0.018, 0.018, 0.05, 8, -0.01, 0.22, 0, Math.PI / 2, 0, 0);
+    K.done(pt);
+    const c = K.ctl({ id: 'blowdown', name: 'Blowdown', kind: 'hold', part: pt.inner, outer: pt.outer, grip: V(-0.01, 0.22, 0),
+      show: () => S.blowdown ? 1 : 0, p: () => S.blowdown ? 1 : 0, setP: () => {}, pose: p => { pt.inner.rotation.z = p * 0.75; },
+      press: () => { S.blowdown = true; }, release: () => { S.blowdown = false; }, label: () => 'Blowdown valve · hold to blow down the boiler (water ' + Math.round(glassLevel(S.W) * 100) + '%)' });
+    K.hit(pt, c, 0.07, 0.26, 0.07, -0.01, 0.12, 0);
+    gb.tube('steel', [[F - 0.02, p.y - 0.04, p.z], [F - 0.03, ffl + 0.12, p.z - 0.03], [F - 0.02, ffl - 0.04, p.z - 0.05]], 0.02, 8, 6);
+  }
+
+  /* ---- grate shaker posts on the deck either side of the door, and the power shaker's valve ---- */
+  for (const z of [-0.62, -0.46, 0.46, 0.62]) {
+    gb.box('dark', 0.1, 0.06, 0.1, F - 0.12, ffl + 0.03, z);
+    gb.box('dark', 0.06, 0.08, 0.06, F - 0.12, ffl + 0.1, z);
+    gb.box('steel', 0.035, 0.012, 0.035, F - 0.12, ffl + 0.146, z);
+  }
+  /* ---- squirt hose: its valve off the backhead's corner and the hose coiled on a hook on the fireman's wall ---- */
+  {
+    const yv = ffl + 0.28, zv = -Math.min(1.08, half(yv) - 0.05), xw = F - 0.42, yh = ffl + 0.95, zw = -(wallZ - 0.04);
+    gb.cylX('brass', 0.022, 0.022, 0.06, 8, F - 0.03, yv, zv);
+    gb.cyl('rod', 0.007, 0.007, 0.05, 6, F - 0.06, yv + 0.03, zv); gb.add('black', new THREE.TorusGeometry(0.03, 0.006, 4, 12).rotateX(Math.PI / 2).translate(F - 0.06, yv + 0.055, zv));
+    gb.tube('black', [[F - 0.06, yv, zv], [F - 0.2, ffl + 0.08, zv - 0.05], [xw + 0.05, ffl + 0.06, zw + 0.02], [xw + 0.12, yh - 0.25, zw], [xw + 0.12, yh - 0.12, zw]], 0.016, 16, 6);
+    gb.add('black', barGeo(0.008, [xw, yh + 0.12, -wallZ], [xw, yh + 0.12, zw + 0.02], 5));
+    for (let i = 0; i < 3; i++) gb.add('black', new THREE.TorusGeometry(0.13 - i * 0.012, 0.016, 6, 22).scale(1, 1.15, 1).translate(xw, yh - 0.02, zw + 0.012 + i * 0.012));
+    gb.cylZ('brass', 0.02, 0.07, 8, xw - 0.13, yh - 0.2, zw + 0.02);                     // the nozzle, hung down
+  }
+
+  /* ---- the cab lined in cab green with rows of rivets: a wainscot under the windows, the piers and the header ---- */
+  const AX = d.ax, w = d.side;
+  if (AX && w) {
+    const xa = AX(w.a1), xb = AX(w.a0), x0 = d.x0 - 0.03, x1 = d.x1 + 0.04, top = d.ceil(wallZ) - 0.04;
+    for (const s of [-1, 1]) {
+      const z = s * (wallZ - 0.007), zr = s * (wallZ - 0.016);
+      gb.box('cabInt', x0 - x1, w.y0 - 0.02 - ffl, 0.012, (x0 + x1) / 2, (w.y0 - 0.02 + ffl) / 2, z);                 // wainscot
+      gb.box('cabInt', x0 - xb - 0.04, top - w.y0 + 0.02, 0.012, (x0 + xb + 0.04) / 2, (top + w.y0 - 0.02) / 2, z);   // front pier
+      gb.box('cabInt', xb + 0.04 - xa + 0.04, top - w.y1 - 0.04, 0.012, (xa + xb) / 2, (top + w.y1 + 0.04) / 2, z);  // header
+      // wooden window frames round the two sashes, the middle post and the sill
+      const mid = (w.a0 + w.a1) / 2;
+      for (const [a0, a1] of [[w.a0, mid - 0.04], [mid + 0.04, w.a1]]) {
+        const fx0 = AX(a1), fx1 = AX(a0), hy = w.y1 - w.y0;
+        gb.box('cabWood', fx1 - fx0 + 0.08, 0.04, 0.03, (fx0 + fx1) / 2, w.y1 + 0.02, zr);
+        gb.box('cabWood', 0.04, hy + 0.08, 0.03, fx0 - 0.02, (w.y0 + w.y1) / 2, zr);
+        gb.box('cabWood', 0.04, hy + 0.08, 0.03, fx1 + 0.02, (w.y0 + w.y1) / 2, zr);
+        gb.box('steel', 0.05, 0.04, 0.02, (fx0 + fx1) / 2, w.y0 + 0.013, s * (wallZ - 0.03));                        // sash lift, on the sill
+      }
+      gb.box('cabWood2', xb - xa + 0.1, 0.03, 0.06, (xa + xb) / 2, w.y0 - 0.02, s * (wallZ - 0.035));                  // sill board
+      // rivets along the wainscot's top and bottom, and up the front pier's seam
+      const n = [0, 0, -s];
+      gb.add('dark', dtStuds([...dtLine([x1 + 0.06, w.y0 - 0.06, z - s * 0.006], [x0 - 0.06, w.y0 - 0.06, z - s * 0.006], 0.12, n),
+        ...dtLine([x1 + 0.06, ffl + 0.08, z - s * 0.006], [x0 - 0.06, ffl + 0.08, z - s * 0.006], 0.12, n),
+        ...dtLine([xb + 0.1, w.y0 + 0.06, z - s * 0.006], [xb + 0.1, top - 0.06, z - s * 0.006], 0.12, n)], 0.008, 0.006, 5));
+    }
+    // inside the front windows: wooden frames and a hinged glare shield over each
+    const fw = d.fwin;
+    for (const s of [-1, 1]) {
+      const zc = s * (fw.zi + fw.zo) / 2, wz = fw.zo - fw.zi, xf = d.x0 - 0.045;
+      gb.box('cabWood', 0.03, 0.04, wz + 0.08, xf, fw.y1 + 0.02, zc); gb.box('cabWood', 0.03, 0.04, wz + 0.08, xf, fw.y0 - 0.02, zc);
+      gb.box('cabWood', 0.03, fw.y1 - fw.y0, 0.04, xf, (fw.y0 + fw.y1) / 2, s * (fw.zi - 0.02)); gb.box('cabWood', 0.03, fw.y1 - fw.y0, 0.04, xf, (fw.y0 + fw.y1) / 2, s * (fw.zo + 0.02));
+      gb.cylZ('dark', 0.01, wz, 6, xf - 0.02, fw.y1 + 0.05, zc);                                                       // shield hinge rod
+      gb.box('dark', 0.16, 0.008, wz - 0.02, xf - 0.1, fw.y1 + 0.03, zc, 0, 0, 0.25);                                   // the shield, tipped up
+    }
+    // the roof hatch from inside: its frame under the crown and the lever that props it
+    { const xm = (d.x0 + d.x1) / 2, yc = d.ceil(0) - 0.01;
+      for (const s of [-1, 1]) { gb.box('dark', 0.92, 0.05, 0.04, xm, yc - 0.025, s * 0.42); gb.box('dark', 0.04, 0.05, 0.84, xm + s * 0.46, yc - 0.025, 0); }
+      gb.add('steel', barGeo(0.008, [xm - 0.44, yc - 0.05, 0.3], [xm - 0.2, yc - 0.32, 0.3], 5)); gb.cyl('knob', 0.016, 0.016, 0.05, 8, xm - 0.2, yc - 0.34, 0.3); }
+  }
+
+  /* ---- the deck: the Big Boy stands its crew on ribbed steel plate; the others on oak boards (drawn in steamCab) ---- */
+  if (d.key === '4014') {
+    const xa = F - 0.06, xb = eye.x - 0.6;
+    gb.box('steel', xa - xb, 0.012, 2 * wallZ - 0.02, (xa + xb) / 2, ffl + 0.006, 0);
+    for (let a = xb + 0.05; a < xa - 0.03; a += 0.06) gb.box('steel', 0.012, 0.006, 2 * wallZ - 0.1, a, ffl + 0.014, 0);
+    gb.box('handle', 0.5, 0.004, 0.3, (xa + xb) / 2 + 0.2, ffl + 0.019, 0);                  // the stainless access plate over the air and fuel lines
+  }
+
+  /* ---- the Mallet's simpling valve: live steam to the low pressure engine for a start, shut once she's rolling ---- */
+  if (sp.mallet) {
+    const p = V(F - 0.05, cy - 0.34, Math.min(0.47, half(cy - 0.34) - 0.2));
+    gb.box('dark', 0.07, 0.1, 0.08, F - 0.03, p.y, p.z);
+    const pt = K.part(p);
+    pt.gb.cyl('steel', 0.016, 0.016, 0.04, 8, 0, 0, 0, 0, 0, Math.PI / 2); pt.gb.box('handle', 0.016, 0.17, 0.018, -0.01, -0.085, 0); pt.gb.cyl('redKnob', 0.02, 0.02, 0.05, 8, -0.01, -0.17, 0, Math.PI / 2, 0, 0);
+    K.done(pt);
+    const c = K.ctl({ id: 'simple', name: 'Simpling valve', kind: 'toggle', part: pt.inner, outer: pt.outer, grip: V(-0.01, -0.17, 0),
+      show: () => S.simple ? 1 : 0, pose: p => { pt.inner.rotation.x = (p - 0.5) * 0.8; },
+      tap: () => { S.simple = !S.simple; }, label: () => 'Simpling valve · ' + (S.simple ? 'SIMPLE: live steam to all four cylinders, for starting' : 'compound') });
+    K.hit(pt, c, 0.07, 0.22, 0.08, -0.01, -0.09, 0);
+  }
+
+  /* ---- the fire bed seen between the doors: a flickering sheet of coals in front of the glow ---- */
+  {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(0.42, 0.3), RMAT.fireBed); m.position.set(F - 0.006, fy - 0.01, 0); m.rotation.y = -Math.PI / 2; m.castShadow = false; m.renderOrder = 2; body.add(m);
+  }
+}
+/* a sheet of glowing coals for the fire bed: hot yellow at the heart of the bed, orange and red toward the edges */
+function fireBedTex() {
+  return canvasTex(128, 96, (g, w, h) => {
+    g.fillStyle = '#000'; g.fillRect(0, 0, w, h);
+    let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    for (let i = 0; i < 260; i++) {
+      const x = rnd() * w, y = h * (0.35 + 0.65 * rnd()), r = 3 + rnd() * 7, hot = (y / h) * (1 - Math.abs(x / w - 0.5));
+      const gr = g.createRadialGradient(x, y, 0, x, y, r);
+      gr.addColorStop(0, hot > 0.45 ? '#ffe9a0' : hot > 0.3 ? '#ffb040' : '#e2541c'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+      g.fillStyle = gr; g.beginPath(); g.arc(x, y, r, 0, TAU); g.fill();
+    }
+    for (let i = 0; i < 14; i++) { const x = rnd() * w, y = h * 0.4 * rnd(); g.fillStyle = 'rgba(255,170,60,0.25)'; g.beginPath(); g.ellipse(x, y + 10, 3, 12, 0, 0, TAU); g.fill(); }   // flames licking up
+  });
 }
 
 /* a cab chair on a pedestal: the column and its foot, the seat pan, a cushion with a rolled front edge, a back
@@ -849,6 +1040,15 @@ CAB.frame = function (dt, T) {
   for (const gl of cab.glasses) gl.mesh.scale.y = Math.max(0.001, gl.h * clamp(lvl + bob, 0, 1));
   const lamp = smooth(0.2, 0.6, SKY.dark) * 0.55;
   for (const m of CAB.lamps) m.emissiveIntensity = lamp;
+  if (CAB.bulbs) for (const m of CAB.bulbs) m.emissiveIntensity = lamp * 2;
+  // the firedoor's leaves, as far open as they stand, let the fire light the cab; the coals flicker
+  const dc = cab.ctls.find(c => c.id === 'firedoor'); CAB.fdoor = dc ? dc.cur : 0;
+  if (RMAT.fireBed && !T.diesel) {
+    const f = clamp(S.fire, 0, 1.2), fl = 0.8 + 0.2 * Math.sin(S.time * 17) * Math.sin(S.time * 5.3);
+    RMAT.fireBed.color.setRGB(f * fl, f * fl * (0.75 + 0.25 * fl), f * fl * 0.7);
+    RMAT.fireBed.map.offset.set(Math.sin(S.time * 0.7) * 0.02, Math.sin(S.time * 1.3) * 0.015);
+  }
+  if (S.blowdown && GAME.running && !S.paused && !T.diesel) { S.W -= dt * 0.012; S.P -= dt * 0.6; }
   if (CAB.lookTo) {
     const lk = CAB.lookTo, a = 1 - Math.exp(-dt * 6);
     CAM.cabYaw += (lk.yaw - CAM.cabYaw) * a; CAM.cabPitch += (lk.pitch - CAM.cabPitch) * a;

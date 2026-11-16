@@ -386,7 +386,7 @@ function soundMix(dt, T, fx, tv) {
   duo(Vv.injector, AU.injector, !DSL && S.injector ? 0.1 : 0, !DSL && S.injector ? 0.55 : 0, 1, 0.2);
   const cocksSt = !DSL && S.cocks && v < 0.5 && S.throttle > 0.02 ? S.throttle : 0;
   duo(Vv.cocks, AU.cocks, 0.25 * cocksSt, 0.8 * cocksSt);
-  duo(Vv.fire, AU.firedoor, !DSL && inCab ? 0.14 * S.fire : 0, !DSL && inCab ? 0.5 * S.fire : 0);
+  duo(Vv.fire, AU.firedoor, !DSL && inCab ? 0.14 * S.fire * (1 + 1.5 * (CAB.fdoor || 0)) : 0, !DSL && inCab ? 0.5 * S.fire * (1 + 1.2 * (CAB.fdoor || 0)) : 0);
   setG(AU.drift.g, !DSL && !working && v > 1 && !Vv.roll.ok ? 0.08 * Math.min(1, v / 12) : 0);
   // rolling: the recorded take is sped up with the train
   duo(Vv.roll, AU.roar, 0.32 * Math.min(1, v / 22), Math.min(1, v / 18) ** 1.2 * (inCab ? 0.7 : 1), clamp(0.55 + v / 30, 0.6, 1.6), 0.2);

@@ -381,7 +381,7 @@ function buildBigBoy(key, trim = '') {
     const cabNum = decalMat(256, 128, (g, w, h) => romanText(g, spec.num, w / 2, h / 2 + 4, 104, '#ebe8dd', 0.02));
     RMAT['cab' + key] = cabNum;
     for (const s of [-1, 1]) gb.add('cab' + key, new THREE.PlaneGeometry(1.1, 0.55), M(ax(23.8), 2.62, s * (hw + 0.026), 0, s > 0 ? 0 : Math.PI, 0));
-    cab = steamCab(gb, body, { x0: C.x0, x1: C.x1, fl: C.fl, floor: C.fl, hw: C.hw, bh: C.bh, FB: C.FB, ceil: C.ceil, fwin: C.front, side: C.side, eyeY: 3.92 });
+    cab = steamCab(gb, body, { x0: C.x0, x1: C.x1, fl: C.fl, floor: C.fl, hw: C.hw, bh: C.bh, FB: C.FB, ceil: C.ceil, fwin: C.front, side: C.side, eyeY: 3.92, key, spec, ax });
   }
   /* ---- trailing truck: cast frame outside the wheels, pivoted ahead of the firebox ---- */
   for (const s of [-1, 1]) {

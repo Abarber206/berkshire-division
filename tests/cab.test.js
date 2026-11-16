@@ -94,3 +94,27 @@ test('pointing at a gauge reads it out', () => {
   assert.equal(s.CAB_READ.mreq(), 'Main reservoir 140 · equalizing 90 psi');
   assert.equal(s.CAB_READ.glass(), 'Water glass · 60%');
 });
+
+test('the Mallet worked simple pulls harder at a start and burns more steam; the easy crew shuts it once rolling', () => {
+  const pull = simple => {
+    const sim = h.load(), T = h.train(sim, 36, { loco: '1308' }), S = sim.S;
+    Object.assign(S, { cocks: false, throttle: 0.35, reverser: 1, indH: 0, sander: true, simple, autoCut: false });
+    for (let i = 0; i < 90; i++) { S.v = 0; S.vw = 0; sim.physicsStep(1 / 30, T); }
+    return { te: Math.abs(S.TE), use: S.use, S, sim, T };
+  };
+  const c = pull(false), s = pull(true);
+  assert.ok(s.te > c.te * 1.1, `simple ${s.te} vs compound ${c.te}`);
+  // a Berkshire has no simpling valve: the flag does nothing
+  const b0 = h.load(), b1 = h.load();
+  for (const [sim, simple] of [[b0, false], [b1, true]]) { const T = h.train(sim, 36); Object.assign(sim.S, { cocks: false, throttle: 0.35, reverser: 1, indH: 0, sander: true, simple }); for (let i = 0; i < 90; i++) { sim.S.v = 0; sim.S.vw = 0; sim.physicsStep(1 / 30, T); } }
+  near(b1.S.TE, b0.S.TE, 1e-6);
+  // rolling with the easy crew: the valve is shut for you
+  s.S.autoCut = true; s.S.v = 6; s.S.vw = 6; s.sim.physicsStep(1 / 30, s.T);
+  assert.equal(s.S.simple, false);
+});
+
+test('an open firedoor costs a little steam', () => {
+  const gen = fdoor => { const sim = h.load(), T = h.train(sim, 0); Object.assign(sim.S, { fdoor, fire: 0.8, stoker: 0.7 }); sim.physicsStep(1 / 30, T); return sim.S.gen; };
+  const shut = gen(false), open = gen(true);
+  assert.ok(open < shut * 0.95 && open > shut * 0.8, `open ${open} shut ${shut}`);
+});
