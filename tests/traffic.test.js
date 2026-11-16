@@ -107,3 +107,25 @@ test('a route walk follows the switches as they lie to the end of track', () => 
   assert.deepEqual(seen, [L.a, L.c]);
   assert.equal(Math.round(w.d), Math.round(600 + L.c.len));
 });
+
+test('each AI train gets an engine from its roster, and about one free-running crew in four is reckless', () => {
+  const sim = h.load(), { AI, TRAFFIC, LOCO_SPEC } = sim;
+  const seen = new Set(); let reckless = 0, n = 0;
+  for (let i = 0; i < 400; i++) for (const id of ['no12', 'x2210']) {
+    const base = TRAFFIC[id], d = AI.vary(base, null, false); n++;
+    assert.ok(LOCO_SPEC[d.loco], `${d.loco} is an engine`);
+    seen.add(d.loco);
+    assert.notEqual(base, d, 'the timetable entry itself is left alone');
+    if (d.reckless) {
+      reckless++;
+      assert.ok(d.vmax > base.vmax && d.lim > 1 && d.accel > base.accel, 'a reckless crew runs faster than the track speed and pulls harder');
+    } else assert.ok(!d.lim, 'a careful crew keeps to the track speed');
+    if (d.loco === '1308') assert.ok(d.vmax <= 45 + (d.reckless ? 25 : 0));
+  }
+  assert.ok(seen.size >= 5, `only ${[...seen]} turned up`);
+  assert.ok(reckless > n * 0.15 && reckless < n * 0.35, `${reckless} of ${n} reckless`);
+  for (let i = 0; i < 200; i++) assert.ok(!AI.vary(TRAFFIC.no5, null, true).reckless, 'a job keeps to its timetable: no reckless crews');
+  // a save brings back the same engine and crew
+  const d = AI.vary(TRAFFIC.x2210, { loco: 'diesel', units: 3, livery: 'prr', reckless: 1 });
+  assert.equal(d.loco, 'diesel'); assert.equal(d.units, 3); assert.equal(d.livery, 'prr'); assert.ok(d.reckless);
+});
