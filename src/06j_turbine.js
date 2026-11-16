@@ -551,6 +551,10 @@ function turbineCab(gb, body, d) {
   // seats
   const seatTop = eye.y - 0.76;
   for (const sd of [-1, 1]) cabChair(gb, 'dSeat', dx(3.05), sd * 0.78, seatTop, FL);
+  // the room, as a 1960 crew had it: electrical locker, a coat on its hook, the wall radio, heaters, footrest, paperwork
+  cabFurnish(gb, K, { dx, FL, yC: d.RF - 0.26, zw: wallZ, aWall: d.CAB1 - 0.03, locker: [0.4, wallZ - 0.02, 0.2], hook: -0.75, heaters: [2.42, 2.74],
+    foot: [2.55, -0.78], clip: [1.86, yP + 0.2, -0.9], ceilA: [d.WS1 - 0.4, d.CAB1 - 0.03], speaker: [3.3, -0.6], era: '1960', wallRadio: -1.27,
+    lightSw: [d.CAB1 - 0.03, FL + 1.4, 0.325, 'fwd'] });
   return K.out(eye, { look: [{ yaw: 0.0, pitch: -0.12 }, { yaw: 0.42, pitch: -0.5 }] });
 }
 
