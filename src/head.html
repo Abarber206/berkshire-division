@@ -699,9 +699,9 @@ h1{text-shadow:0 2px 0 #000,0 10px 40px rgba(0,0,0,.6)}
 .seg button:active{transform:translateY(1px)}
 .seg button[aria-pressed="true"]{box-shadow:inset 0 0 0 1px rgba(207,166,81,.35),0 0 18px rgba(207,166,81,.12)}
 .seg.cards{grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:6px}
-.seg.cards svg{display:block;width:100%;height:30px;margin-bottom:6px;color:#6f808b;transition:color .12s}
-.seg.cards button:hover svg{color:#9fb0ba}
-.seg.cards button[aria-pressed="true"] svg{color:var(--brass)}
+.seg.cards .lart{display:block;width:100%;height:34px;margin-bottom:6px;background:#6f808b;transition:background-color .12s;-webkit-mask:var(--art) center bottom/contain no-repeat;mask:var(--art) center bottom/contain no-repeat}
+.seg.cards button:hover .lart{background:#9fb0ba}
+.seg.cards button[aria-pressed="true"] .lart{background:var(--brass)}
 .mtabs button{border-radius:7px;transition:color .12s,background .12s}
 .mpane{animation:paneIn .16s ease-out}
 @keyframes paneIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
@@ -1015,6 +1015,7 @@ h1{text-shadow:0 2px 0 #000,0 10px 40px rgba(0,0,0,.6)}
       <section class="mpane" data-pane="sound" role="tabpanel">
         <div class="fgroup"><span class="lbl">Volume</span><div class="vols" id="optVol"></div></div>
         <p class="help">Whistle &amp; horn sits well above the engine by default. Slide any of them from silent to 150%.</p>
+        <div class="fgroup"><span class="lbl">Steam whistles</span><div class="seg" id="optWhistles"></div></div>
       </section>
       <section class="mpane" data-pane="online" role="tabpanel">
         <div class="fgroup" id="grpMP"><span class="lbl">Multiplayer</span>

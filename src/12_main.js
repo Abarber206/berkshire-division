@@ -2,7 +2,7 @@
    Game: boot, world loading, main loop, rules, HUD
    ========================================================================== */
 const GAME = {
-  settings: { traffic: 'on', loco: '765', consist: 'passenger', time: 'morning', gfx: 'auto', cycle: 'x30', weather: 'changing', wxV: 1, fire: 'easy', fireV: 2, units: 1, livery: 'ss', mix: false, finish: 'standard', job: '', custom: { body: 0x2c5f8a, roof: 0x24384a, accent: 0xf0f0ea, letter: 0xf0f0ea, rail: 0xf0f0ea }, number: 4401, coach: 'road', coachV: 1, obsLamp: 'side', coachColor: 0x2a3a2a },
+  settings: { traffic: 'on', loco: '765', consist: 'passenger', time: 'morning', gfx: 'auto', cycle: 'x30', weather: 'changing', wxV: 1, fire: 'easy', fireV: 2, units: 1, livery: 'ss', mix: false, finish: 'standard', job: '', custom: { body: 0x2c5f8a, roof: 0x24384a, accent: 0xf0f0ea, letter: 0xf0f0ea, rail: 0xf0f0ea }, number: 4401, coach: 'road', coachV: 1, obsLamp: 'side', coachColor: 0x2a3a2a, whistles: 'new' },
   train: null, running: false, ready: false, stats: { runThrough: 0 },
   events: {}, stopped: 0, lastStation: null, filling: null,
 };
@@ -74,6 +74,7 @@ async function loadWorld() {
   if (ROUTE.coal) { const c = ROUTE.coal; c.edge.pose(c.s, FR); c.p = FR.p.clone(); }
   setupViewInput($('gl'), camera); PLACE.setup($('gl')); setupLevers(); setupButtons(); setupMap(); WALK.setup(); FLEET.setup();
   linearizeObject(scene);
+  sceneryUpload(renderer);
   AI.lazy = true; makeTrain(); AI.lazy = false;
   applyLook(GAME.settings.time, GAME.settings.weather, renderer, scene);
   prog(0.97, 'Raising steam…');
@@ -100,12 +101,14 @@ function resetState() {
   Object.assign(S, { pan: 1, panUp: true, vcb: true, vcbT: 0, kW: 0, kWh: 0, rbMax: 0, blend: 0 });   // a trainset comes with its pantograph up and the breaker in
   // the gas turbine comes up running at idle on Bunker C, the tender full, the aux diesel running beside it
   Object.assign(S, LOCO_SPEC[GAME.settings.loco].turb ? { tOn: true, tStart: 0, tspd: GTE.idle, oil: GTP.oilFull, egt: GTE.egtIdle, fuel: GTP.dslFull, rpm: 450 } : { tOn: false, tStart: 0, tspd: 0, oil: 0, egt: 90 });
+  S.fdoor = false; S.simple = false; S.blowdown = false;
   if (LOCO_SPEC[GAME.settings.loco].diesel) { S.cocks = false; S.light = SKY.night ? 2 : 2; }
   else { const k = steamK(LOCO_SPEC[GAME.settings.loco]); Object.assign(S, { P: k.PL - 7, water: k.water, coal: k.coal }); }   // a bigger engine comes with its own pressure and tender
 }
 function makeTrain() {
   // your other trains stay where they stand when you make up a new one; a job or a room starts with just the one
   const others = FLEET.parked().length, keep = others > 0 && !MP.on && !JOB.wanted();
+  KNOCK.clear();   // anything an old wreck knocked about goes back on the rails
   CARS.clear(GAME.train, false, keep);
   if (others && !keep && !MP.on) toast(`Your other ${others > 1 ? others + ' trains were' : 'train was'} put away: a job is worked with one train.`, 'warn', 5200, 'fleet');
   const was = GAME.train;
@@ -312,7 +315,7 @@ function setObsLamps(st) {
     if (v.lamps) { for (const o of [...v.lamps.meshes, ...v.lamps.glows]) { if (o.parent) o.parent.remove(o); if (o.geometry) o.geometry.dispose(); } v.lamps.mat.dispose(); v.lamps = null; }
   }
 }
-const SAVE_KEYS = ['job', 'traffic', 'loco', 'consist', 'time', 'cycle', 'weather', 'wxV', 'fire', 'fireV', 'units', 'livery', 'mix', 'finish', 'custom', 'number', 'coach', 'coachV', 'obsLamp', 'coachColor', 'gfx'];
+const SAVE_KEYS = ['job', 'traffic', 'loco', 'consist', 'time', 'cycle', 'weather', 'wxV', 'fire', 'fireV', 'units', 'livery', 'mix', 'finish', 'custom', 'number', 'coach', 'coachV', 'obsLamp', 'coachColor', 'gfx', 'whistles'];
 function saveSettings() { try { const o = {}; for (const k of SAVE_KEYS) o[k] = GAME.settings[k]; localStorage.setItem('bd_settings', JSON.stringify(o)); } catch (e) {} }
 function loadSettings() { try { const o = JSON.parse(localStorage.getItem('bd_settings') || 'null'); if (o) for (const k of SAVE_KEYS) if (o[k] !== undefined) GAME.settings[k] = o[k]; } catch (e) {}
   // easy steam came in as the default after 'auto' had been saved by everyone: move them up to it once
@@ -322,10 +325,11 @@ function loadSettings() { try { const o = JSON.parse(localStorage.getItem('bd_se
   // the coaches matching the engine's road came in as the default after Pullman green had been saved by everyone
   if (GAME.settings.coachV !== 1) { if (GAME.settings.coach === 'pullman') GAME.settings.coach = 'road'; GAME.settings.coachV = 1; }
   if (GAME.settings.obsLamp !== 'roof') GAME.settings.obsLamp = 'side';
+  if (GAME.settings.whistles !== 'classic') GAME.settings.whistles = 'new';
   if (!WEATHER[GAME.settings.weather]) GAME.settings.weather = 'changing';
   if (!['easy', 'auto', 'hand'].includes(GAME.settings.fire)) GAME.settings.fire = 'easy'; if (!LOCO_SPEC[GAME.settings.loco]) GAME.settings.loco = '765'; if (!LIVERIES[GAME.settings.livery]) GAME.settings.livery = 'ss'; if (!DN.starts[GAME.settings.time]) GAME.settings.time = 'morning'; if (!DN.rates[GAME.settings.cycle]) GAME.settings.cycle = 'x30'; if (!COACH_PAINT[GAME.settings.coach]) GAME.settings.coach = 'road'; if (!GFX_MENU[GAME.settings.gfx]) GAME.settings.gfx = 'auto'; }
 GAME.needNewTrain = function () { const t = GAME.train, g = GAME.settings, j = JOB.wanted(); return !t || MP.needSpawn || t.locoKey !== g.loco || (!t.elec && t.consistKey !== JOB.consist()) || (j ? j.id : '') !== JOB.activeId() || (t.diesel && !t.elec && t.nUnits !== (+g.units || 1)) || (!t.diesel && (t.trim || '') !== trimWanted()); };
-function buildWhistleIfReady() { if (!AU.on) return; buildWhistle(WHISTLES[LOCO_SPEC[GAME.settings.loco].whistle]); }
+function buildWhistleIfReady() { if (!AU.on) return; buildWhistle(WHISTLES[whistleKeyOf(GAME.settings.loco)]); }
 
 /* ---------------- menu ---------------- */
 function segButtons(id, opts, key, onPick) {
@@ -338,27 +342,11 @@ function segButtons(id, opts, key, onPick) {
     host.appendChild(b);
   }
 }
-/* a side view of each engine for its card in the menu: drawn as a few shapes, nothing to download or render.
-   body: SVG shapes in a 150 x 34 box standing on y = 30; wheels: [x, radius] */
+/* a side view of each engine for its card in the menu, drawn from its in-game model by tools/locoart.js
+   (src/12a_locoart.js): an alpha mask the card fills with its own colour, so a picked card turns brass */
 function locoGlyph(key) {
-  const W = (list, y = 30) => list.map(([x, r]) => `<circle cx="${x}" cy="${y - r}" r="${r}"/>`).join('');
-  const row = (x0, n, d, r) => Array.from({ length: n }, (_, i) => [x0 + i * d, r]);
-  const tender = '<rect x="3" y="11" width="33" height="13" rx="1.5"/>' + W([...row(8, 2, 7, 3), ...row(24, 2, 7, 3)]);
-  const art = {
-    steam: tender + '<rect x="40" y="3.5" width="15" height="18"/><rect x="55" y="7" width="62" height="11.5" rx="5.5"/><rect x="108" y="1.5" width="5" height="7"/><rect x="80" y="4" width="9" height="5" rx="2.5"/><rect x="40" y="18.5" width="82" height="2.4"/><path d="M119 22l11 8h-11z"/>'
-      + W([...row(66, 4, 11.4, 4.9), [122, 2.9], ...row(45, 2, 8, 3.1)]),
-    art: '<rect x="2" y="11" width="30" height="13" rx="1.5"/>' + W([...row(6, 4, 7, 2.8)]) + '<rect x="35" y="3.5" width="12" height="18"/><rect x="47" y="7.5" width="84" height="11.5" rx="5.5"/><rect x="122" y="2" width="5" height="7"/><rect x="35" y="19" width="102" height="2.4"/><path d="M135 22.5l11 7.5h-11z"/>'
-      + W([...row(53, 4, 8.8, 4), ...row(93, 4, 8.8, 4), ...row(131, 2, 6.4, 2.6), ...row(38, 2, 6.6, 2.8)]),
-    mallet: '<rect x="3" y="12" width="27" height="12" rx="1.5"/>' + W([...row(7, 2, 5.6, 2.7), ...row(20.5, 2, 5.6, 2.7)]) + '<rect x="33" y="5" width="12" height="17"/><rect x="45" y="8" width="80" height="11" rx="5.5"/><rect x="116" y="3" width="4.6" height="6"/><rect x="66" y="5" width="8" height="5" rx="2.5"/><rect x="92" y="5" width="8" height="5" rx="2.5"/><rect x="125" y="9" width="5" height="9" rx="1"/><rect x="33" y="19.5" width="98" height="2.2"/><rect x="116" y="20" width="11" height="7.5" rx="1.5"/><rect x="131" y="21" width="11" height="2.4"/><rect x="134" y="16" width="4" height="5" rx="2"/>'
-      + W([...row(52, 3, 8.2, 3.9), ...row(86, 3, 8.2, 3.9), [133, 2.4], [40, 3]]),
-    diesel: '<rect x="8" y="21" width="134" height="4"/><rect x="12" y="9" width="104" height="12"/><rect x="116" y="5.5" width="17" height="15.5"/><path d="M133 12h7l2 9h-9z"/><rect x="52" y="25" width="44" height="4.5" rx="2"/><rect x="14" y="7" width="26" height="2.5"/>'
-      + W([...row(20, 3, 8.5, 3.9), ...row(113, 3, 8.5, 3.9)]),
-    turb: '<path d="M144 25V14q-2-8-12-8H78v19z"/><rect x="6" y="6" width="69" height="19" rx="1.5"/><rect x="20" y="3.5" width="30" height="3"/>' + W([...row(12, 3, 7.5, 3.4), ...row(54, 3, 7.5, 3.4), ...row(84, 3, 7.5, 3.4), ...row(124, 3, 7.5, 3.4)], 30.5),
-    e5: '<path d="M148 27q-28-1-52-14-9-6-22-6H2v20z"/><rect x="6" y="12" width="56" height="3.5" rx="1.5" fill="#0c1115" opacity=".55"/>' + W([...row(12, 2, 8, 2.6), ...row(58, 2, 8, 2.6), ...row(104, 2, 8, 2.6)], 30.5),
-    acela: '<path d="M146 27l-3-9q-13-12-30-12H2v21z"/><rect x="6" y="11" width="92" height="4" rx="1.5" fill="#0c1115" opacity=".55"/><rect x="60" y="2.5" width="22" height="3.5"/>' + W([...row(14, 2, 9, 2.8), ...row(60, 2, 9, 2.8), ...row(112, 2, 9, 2.8)], 30.5),
-  };
-  const s = LOCO_SPEC[key], kind = s.set === 'e5' ? 'e5' : s.set === 'acela' ? 'acela' : s.turb ? 'turb' : s.diesel ? 'diesel' : s.mallet ? 'mallet' : s.art ? 'art' : 'steam';
-  return `<svg viewBox="0 0 150 34" aria-hidden="true"><g fill="currentColor">${art[kind]}</g></svg>`;
+  const art = LOCO_ART[key];
+  return art ? `<span class="lart" aria-hidden="true" style="--art:url(${art})"></span>` : '';
 }
 function buildMenu() {
   loadSettings();
@@ -379,6 +367,7 @@ function buildMenu() {
   const coachOpts = {}; for (const k in COACH_PAINT) coachOpts[k] = { name: COACH_PAINT[k].name, sub: COACH_PAINT[k].sub, swatch: coachSw(k) };
   segButtons('optCoach', coachOpts, 'coach', k => { applyCoachPaint(k, GAME.settings.coachColor); refreshMenuGroups(); saveSettings(); });
   segButtons('optObsLamp', { side: { name: 'Canopy corners', sub: 'A pair of markers' }, roof: { name: 'One on top', sub: 'A single red lamp, no lanterns' } }, 'obsLamp', k => { setObsLamps(k); saveSettings(); });
+  segButtons('optWhistles', { new: { name: 'Each engine its own', sub: 'New 1225, 765 and 1308 whistles' }, classic: { name: 'Original recordings', sub: 'The borrowed whistles from before' } }, 'whistles', () => { buildWhistleIfReady(); saveSettings(); });
   $('cCoach').value = hexCss(GAME.settings.coachColor);
   $('cCoach').addEventListener('input', () => {
     GAME.settings.coachColor = parseInt($('cCoach').value.slice(1), 16);
@@ -553,18 +542,17 @@ GAME.wreckStep = function (dt, T) {
   const W = GAME.wrecking; if (!W) return;
   const R = T.rb, kin = W.kin;
   kin.v = S.v; kin.mass = 0; for (const v of T.vehicles) if (!v.rb) kin.mass += R ? R.massOf(v) : v.mass || 40000;
-  // a fault in the wreck physics must never freeze the game: the pile just stays where it is
-  const live = R && !R.asleep; kin.dx = undefined;
-  if (live) { try { R.step(dt, kin); } catch (e) { console.warn('wreck', e); R.asleep = true; kin.v = 0; kin.dx = undefined; } }
+  // ours and every train it knocked about, together (07e_knock.js); a fault in the wreck physics never freezes the game
+  kin.dx = undefined;
+  KNOCK.step(dt, R || null, kin);
   S.v = S.vw = kin.mass > 0 ? kin.v : 0;
   if (S.v !== 0 || kin.dx) {
-    // the cars still on the rails run on
-    const d = kin.mass > 0 && kin.dx !== undefined ? kin.dx : S.v * dt, lim = CARS.limit(T, d);
-    const moved = T.move(lim.d, { onBlocked: () => { S.v = S.vw = 0; } });
+    // the cars still on the rails run on, into anything standing in the way (which is knocked about in turn)
+    const d = KNOCK.limit(T, kin.mass > 0 && kin.dx !== undefined ? kin.dx : S.v * dt);
+    const moved = T.move(d, { onBlocked: () => { S.v = S.vw = 0; } });
     S.odo += Math.abs(moved);
-    if (lim.hit) { S.v = S.vw = 0; sndClunk(1.2, 0); }   // ploughed into standing cars
   }
-  const moving = Math.abs(S.v) > 0.05 || (R && !R.asleep);
+  const moving = Math.abs(S.v) > 0.05 || (R && !R.asleep) || KNOCK.list.some(c => c.rb && !c.rb.asleep);
   if (moving) {
     CAM.shakeHit = Math.max(CAM.shakeHit, clamp(Math.abs(S.v) / 20, 0, 0.5));
     W.clunkT -= dt;
@@ -572,6 +560,8 @@ GAME.wreckStep = function (dt, T) {
   } else if (!W.done) {
     // the dust has settled: a job is over; otherwise offer to put it back on the rails
     W.done = true; S.v = S.vw = 0;
+    // a hard hit that put nothing on the ground (the cars took it): carry on
+    if (R && !R.bodies.length && !KNOCK.list.some(c => c.rb && c.rb.bodies.length)) { GAME.rerail(); toast(W.why.replace(/\.? *$/, '. Nothing came off the rails.'), 'bad', 4000, 'hardhit'); return; }
     if (!JOB.fail(W.title, W.why)) GAME.wreckBar();
   }
 };
@@ -584,6 +574,7 @@ GAME.wreckBar = function () {
 GAME.rerail = function () {
   $('bigMsg').hidden = true; $('bigMsg').classList.remove('wreck'); S.derailed = false; S.v = 0; S.vw = 0; S.brakeH = 0.12; MP.dirty = true;
   GAME.train.wreck(null); GAME.wrecking = null;
+  KNOCK.clear();
   if (S.dead) { S.dead = false; S.W = 0.6; S.fire = 0.4; S.P = 180; }
   for (const v of GAME.train.vehicles) { v.brake.BP = 90; v.brake.AR = 90; v.brake.BC = 0; v.brake.emerg = false; }
   S.ER = 90;
@@ -755,6 +746,8 @@ function loop() {
   const T = GAME.train; if (!T) return;
   const active = GAME.running && !S.paused && !S.derailed && !PLACE.on;
   if (active) { simStep(dt, T); SAVE.tick(dt); } else { stepSwitches(dt); if (S.derailed && GAME.running && !S.paused && !PLACE.on) GAME.wreckStep(dt, T); }
+  // wrecks that aren't ours: other players', or one of our parked trains another player ran into
+  if (!(S.derailed && GAME.running) && !S.paused) KNOCK.step(dt, null);
   renderStep(dt, T);
 }
 function simStep(dt, T) {
@@ -837,7 +830,7 @@ function renderStep(dt, T) {
     T.loco.ditch.forEach((d, k) => { const b = lv(k); d.lens.material.color.setScalar(0.25 + 0.75 * b); d.halo.material.opacity = b * lerp(0.45, 1, night) * (T.diesel ? 1 : lampFacing(T.loco, camera)); });
   }
   if (T.diesel) T.fireLight.intensity = 0;
-  else T.fireLight.intensity = S.fire * lerp(0.25, 4.2, night) * flick * (CAM.mode === 'cab' ? 1 : 0.85);
+  else T.fireLight.intensity = S.fire * lerp(0.25, 4.2, night) * flick * (CAM.mode === 'cab' ? 1 + 0.8 * (CAB.fdoor || 0) : 0.85);
   // the fire showing under the ashpan lights the ties and the trailing truck (the headlight is set just above)
   trainLights(LAMPS.own || (LAMPS.own = {}), T.loco, 0, T.diesel || T.elec ? 0 : S.fire, night, S.time);
   T.loco.beam.material.opacity = S.light === 0 ? 0 : Math.max(night * (S.light === 2 ? 0.075 : 0.035), wxBeam());
@@ -847,7 +840,7 @@ function renderStep(dt, T) {
     T.loco.ash.material.opacity = night * 0.35 * S.fire * flick;
   }
   const pb = $('btnWhistle').querySelector('.pull i'), pw = Math.round(S.whistle * 100) + '%'; if (pb.style.width !== pw) pb.style.width = pw;
-  T.cabLight.intensity = night * 0.6;
+  T.cabLight.intensity = night * (S.cabLamp === false ? 0.08 : 0.6);   // the cab light's switch (06d_cab.js cabFurnish)
   // camera
   slideFeel(dt, T);
   if (PLACE.on) PLACE.camera(camera, dt); else updateCamera(camera, MP.view() || T, dt);

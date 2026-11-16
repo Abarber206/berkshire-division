@@ -215,13 +215,17 @@ test('slamming a cut at 12 mph still couples, with a damage warning and no derai
   assert.match(sim.log.toasts.at(-1).msg, /Slammed into 4 cars at 12 mph/);
 });
 
-test('only a real wreck, above 25 mph, derails', () => {
+test('only a real wreck, above 15 mph, derails', () => {
   const sim = h.load(), T = h.train(sim, 0), S = sim.S;
-  S.v = 26 * sim.MPH;
+  S.v = 14 * sim.MPH;
   sim.CARS.contact(T, 1, { c: cut(sim, 4), end: 'rear', facing: true });
-  assert.equal(sim.log.derails.length, 1);
-  assert.match(sim.log.derails[0], /26 mph/);
-  assert.equal(T.vehicles.length, 2, 'cars stay uncoupled');
+  assert.equal(sim.log.derails.length, 0, '14 mph couples hard but stays on the rails');
+  const sim2 = h.load(), T2 = h.train(sim2, 0);
+  sim2.S.v = 16 * sim2.MPH;
+  sim2.CARS.contact(T2, 1, { c: cut(sim2, 4), end: 'rear', facing: true });
+  assert.equal(sim2.log.derails.length, 1);
+  assert.match(sim2.log.derails[0], /16 mph/);
+  assert.equal(T2.vehicles.length, 2, 'cars stay uncoupled');
 });
 
 /* ------------------------------------------------------------ knuckles and shoving */

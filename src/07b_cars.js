@@ -17,7 +17,7 @@ const YARD_CUTS = [
 ];
 const CAR_NAMES = { box: 'Box', hopper: 'Hopper', tank: 'Tank', gon: 'Gon', caboose: 'Caboose', coach: 'Coach', tender: 'Tender' };
 /* closing speeds: clean, hard, damaging (lading and draft gear), and a wreck that derails the cars */
-const COUPLE_OK = 4 * MPH, COUPLE_HARD = 8 * MPH, COUPLE_DAMAGE = 11 * MPH, COUPLE_WRECK = 25 * MPH;
+const COUPLE_OK = 4 * MPH, COUPLE_HARD = 8 * MPH, COUPLE_DAMAGE = 11 * MPH, COUPLE_WRECK = 15 * MPH;   // past COUPLE_WRECK the cars climb each other and come off
 /* a knuckle is closed (0), open (1), or has its lock lifted by the cut lever (2) while the faces are still
    pressed together: it swings open once the cars part. Two closed knuckles only buff; one open one couples. */
 const KN_CLOSED = 0, KN_OPEN = 1, KN_LIFTED = 2;
@@ -74,7 +74,7 @@ function freeObjects(roots) {
   scene.traverse(o => { if (o.geometry) liveG.add(o.geometry); if (o.material) [].concat(o.material).forEach(mark); });
   // RMAT keeps the shared materials; the ones made for one cab or one car (a diesel cab's screens, a coach's
   // drumhead, a freight car's reporting marks and graffiti) are let go with it when nothing in the scene still uses them
-  for (const k in RMAT) { const m = RMAT[k]; if (!m || !m.isMaterial) continue; if (mats.has(m) && !liveM.has(m) && /^(scr[LR]\d|hsScr\w+\d|drumhead|fm_|gf_)/.test(k)) delete RMAT[k]; else mark(m); }
+  for (const k in RMAT) { const m = RMAT[k]; if (!m || !m.isMaterial) continue; if (mats.has(m) && !liveM.has(m) && (m.userData.own || /^(scr[LR]\d|hsScr\w+\d|drumhead|fm_|gf_)/.test(k))) delete RMAT[k]; else mark(m); }
   for (const g of geos) if (!liveG.has(g)) g.dispose();
   const canvas = t => typeof HTMLCanvasElement !== 'undefined' && t.image instanceof HTMLCanvasElement;
   for (const m of mats) if (!liveM.has(m)) { texOf(m, t => { if (!liveT.has(t) && canvas(t)) { liveT.add(t); t.dispose(); } }); m.dispose(); }
@@ -322,6 +322,7 @@ function buff(mA, uA, mB, uB, e) {
 const buffE = closing => closing < 1 ? 0 : 0.3 * smooth(1, 3, closing);
 /* consist A, moving toward its dir end, has just touched hit.c */
 CARS.contact = function (A, dir, hit) {
+  if (KNOCK.on(A) || KNOCK.on(hit.c)) { KNOCK.meet(A, dir, hit); return; }   // the pile of a wreck (07e_knock.js)
   if (A.ai || hit.c.ai) { AI.contact(A, dir, hit); return; }
   const B = hit.c, T = GAME.train;
   const aEnd = dir > 0 ? 'front' : 'rear';
@@ -335,7 +336,7 @@ CARS.contact = function (A, dir, hit) {
   if (!hit.facing) {
     // the side of cars standing foul of the route
     if (ours) JOB.note('foul');
-    if (ours && closing > 2.2) { GAME.derail(`Sideswiped cars standing foul of the switch at ${mph} mph. Leave cars clear of the points before you line a route past them.`, 'Collision'); return; }
+    if (ours && closing > 2.2) { GAME.derail(`Sideswiped cars standing foul of the switch at ${mph} mph. Leave cars clear of the points before you line a route past them.`, 'Collision', { none: true }); KNOCK.strike(A === T ? B : A); return; }
     sndClunk(gain, 0);
     for (const c of [A, B]) setVel(c, 0);
     if (ours) toast('Stopped against cars standing foul of the route.', 'bad', 3000, 'foul');
@@ -345,7 +346,9 @@ CARS.contact = function (A, dir, hit) {
     const other = A === T ? B : A;
     GAME.derail(other.parkS && other.crew ? `Collided with ${FLEET.name(other)} at ${mph} mph. Keep a train length or more back from your other trains.`
       : other.parkS && typeof FLEET !== 'undefined' ? `Ran into ${FLEET.name(other)} at ${mph} mph. Come up on a standing train at a walking pace, 4 mph or less.`
-      : `Hit a cut of cars at ${mph} mph: the couplers buckled and the cars climbed each other. Shove at a walking pace, 4 mph or less.`, 'Collision');
+      : `Hit a cut of cars at ${mph} mph: the couplers buckled and the cars climbed each other. Shove at a walking pace, 4 mph or less.`, 'Collision', { none: true });
+    // the cars it hit take the blow: shoved along, and knocked off the rails where they were rammed (07e_knock.js)
+    KNOCK.strike(other);
     return;
   }
   const ka = endCoupler(A, aEnd), kb = endCoupler(B, hit.end);
@@ -494,7 +497,7 @@ const HANDBRAKE = 0.04;
 CARS.step = function (h) {
   CARS.settle();
   for (const c of CARS.cuts.slice()) {
-    if (!c.rolling || c.crew || !CARS.cuts.includes(c)) continue;   // a train with its engineer runs on its own physics (11l_fleet.js)
+    if (!c.rolling || c.crew || c.knk || !CARS.cuts.includes(c)) continue;   // a train with its engineer runs on its own physics (11l_fleet.js)
     if (CARS.driven && CARS.driven(c)) continue;   // another player in the room is moving these cars (11h_mpcars.js)
     for (const v of c.vehicles) for (const p of v.fp) p.tp.pose(p.F);
     let M = 0, Fg = 0, Fr = 0, Fb = 0;

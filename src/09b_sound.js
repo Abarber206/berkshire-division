@@ -386,7 +386,7 @@ function soundMix(dt, T, fx, tv) {
   duo(Vv.injector, AU.injector, !DSL && S.injector ? 0.1 : 0, !DSL && S.injector ? 0.55 : 0, 1, 0.2);
   const cocksSt = !DSL && S.cocks && v < 0.5 && S.throttle > 0.02 ? S.throttle : 0;
   duo(Vv.cocks, AU.cocks, 0.25 * cocksSt, 0.8 * cocksSt);
-  duo(Vv.fire, AU.firedoor, !DSL && inCab ? 0.14 * S.fire : 0, !DSL && inCab ? 0.5 * S.fire : 0);
+  duo(Vv.fire, AU.firedoor, !DSL && inCab ? 0.14 * S.fire * (1 + 1.5 * (CAB.fdoor || 0)) : 0, !DSL && inCab ? 0.5 * S.fire * (1 + 1.2 * (CAB.fdoor || 0)) : 0);
   setG(AU.drift.g, !DSL && !working && v > 1 && !Vv.roll.ok ? 0.08 * Math.min(1, v / 12) : 0);
   // rolling: the recorded take is sped up with the train
   duo(Vv.roll, AU.roar, 0.32 * Math.min(1, v / 22), Math.min(1, v / 18) ** 1.2 * (inCab ? 0.7 : 1), clamp(0.55 + v / 30, 0.6, 1.6), 0.2);
@@ -472,7 +472,7 @@ function whistleCut(o, now, tc) {
    while the cord is pulled; a part-open valve sounds lower and breathier (the quill).
    Doppler comes from the emitter. Synthesized: the voices of 09_audio.js. */
 function whistleMix(T, tv, inCab) {
-  const DSL = T.diesel, key = LOCO_SPEC[GAME.settings.loco].whistle, k = whTake(key), now = AU.ctx.currentTime;
+  const DSL = T.diesel, key = whistleKeyOf(GAME.settings.loco), k = whTake(key), now = AU.ctx.currentTime;
   let pull = S.whistle;
   if (SND.has(k)) {
     if (SND.whKey !== k) { if (SND.whistle) SND.whistle.kill(); SND.whistle = new Loop(k, SND.whBus); SND.whKey = k; SND.whPull = 0; }
@@ -651,7 +651,7 @@ function remoteSound(R, dt, st, d, cam) {
   }
   if (R.bellHit) { R.bellHit = false; if (d < 1200) sndBell(bellVoice(st.lk), B.g); }   // strokes are timed in fx, where the bell swings
   // whistle or horn: recorded through the emitter (which gives the Doppler), or the synthesized voices
-  const key = LOCO_SPEC[st.lk].whistle, k = whTake(key);
+  const key = whistleKeyOf(st.lk), k = whTake(key);
   if (SND.has(k)) {
     if (!B.whistle && st.wh > 0.02) B.whistle = new Loop(k, B.wg);
     if (B.whistle) {

@@ -61,7 +61,8 @@ function rollingMaterials() {
 /* a canvas texture that is drawn once: after its upload the canvas is shrunk to nothing, so the picture lives only
    on the GPU and not twice over (iOS also caps the memory all canvases together may hold) */
 function uploadOnce(t) { t.onUpdate = tt => { const c = tt.image; if (c && c.getContext && c.width > 1) { c.width = 1; c.height = 1; } tt.onUpdate = null; }; return t; }
-function decalMat(w, h, draw) { return new THREE.MeshStandardMaterial({ map: uploadOnce(canvasTex(w, h, draw)), transparent: true, alphaTest: 0.35, metalness: 0.2, roughness: 0.55, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }); }
+/* own: lettering drawn for one engine or car; freeObjects lets it go (and its RMAT entry) with the last model using it */
+function decalMat(w, h, draw) { const m = new THREE.MeshStandardMaterial({ map: uploadOnce(canvasTex(w, h, draw)), transparent: true, alphaTest: 0.35, metalness: 0.2, roughness: 0.55, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }); m.userData.own = true; return m; }
 function romanText(g, txt, x, y, size, color = '#efede4', spacing = 0.06) {
   g.font = `600 ${size}px "Times New Roman", Georgia, serif`; g.fillStyle = color; g.textAlign = 'center'; g.textBaseline = 'middle';
   if (g.letterSpacing !== undefined) g.letterSpacing = (size * spacing) + 'px';
@@ -182,11 +183,11 @@ function lampFacing(L, cam) {
 
 /* =================== THE BERKSHIRE =================== */
 const LOCO_SPEC = {   // front: 'nkp' headlight on top with number-board wings, bell on the door; 'pm' lamp in the door, bell on top, pumps on the pilot
-  '765': { road: 'NICKEL PLATE ROAD', num: '765', short: 'NKP', cls: 'S-2', built: 'Lima, Sept 1944', weight: 440800, adhesive: 264300, te: 64135, fw: 'Worthington', whistle: 'nkp6', front: 'nkp', leadR: 0.457, cylR: 0.3175, wheels: 'spoked' },
+  '765': { road: 'NICKEL PLATE ROAD', num: '765', short: 'NKP', cls: 'S-2', built: 'Lima, Sept 1944', weight: 440800, adhesive: 264300, te: 64135, fw: 'Worthington', whistle: 'nkp6m', front: 'nkp', leadR: 0.457, cylR: 0.3175, wheels: 'spoked' },
   'diesel': { road: 'SANDUSKY & SCIOTO', num: '4401', short: 'S&S', cls: 'AC44', built: '2026', weight: 420000, adhesive: 420000, te: 183000, diesel: true, whistle: 'k5' },
   // Union Pacific's 8500 hp gas turbine-electric, both units (the fuel tender rides on its own): 06j_turbine.js
   '18': { road: 'UNION PACIFIC', num: '18', short: 'UP', cls: 'GTEL 8500', built: 'GE, 1960', weight: 424624, adhesive: 424624, te: 212312, diesel: true, turb: true, whistle: 's5t', tenderEmpty: 171000 * 0.4536 },
-  '1225': { road: 'PERE MARQUETTE', num: '1225', short: 'PM', cls: 'N-1', built: 'Lima, Oct 1941', weight: 442500, adhesive: 277600, te: 69350, fw: 'Worthington', whistle: 'chime6', front: 'pm', leadR: 0.419, cylR: 0.330, wheels: 'boxpok' },
+  '1225': { road: 'PERE MARQUETTE', num: '1225', short: 'PM', cls: 'N-1', built: 'Lima, Oct 1941', weight: 442500, adhesive: 277600, te: 69350, fw: 'Worthington', whistle: 'pm6', front: 'pm', leadR: 0.419, cylR: 0.330, wheels: 'boxpok' },
 };
 /* Engine geometry, a = metres back from the front coupler face, heights above the rail. Taken from an NKP
    Berkshire erecting drawing whose wheelbases match the published figures: 42 ft engine wheelbase, 18 ft 3 in
@@ -704,7 +705,7 @@ function buildBerkshire(key, trim = '') {
     RMAT['cab' + key] = cabNum;
     for (const s of [-1, 1]) gb.add('cab' + key, new THREE.PlaneGeometry(1.0, 0.5), M(ax(15.95), 2.5, s * (hw + 0.026), 0, s > 0 ? 0 : Math.PI, 0));
     // interior: backhead, gauges, firedoor, seats, levers
-    cab = steamCab(gb, body, { x0: C.x0, x1: C.x1, fl: C.fl, floor: C.fl, hw: C.hw, bh: C.bh, FB: C.FB, ceil: C.ceil, fwin: C.front, side: C.side, eyeY: 3.6 });
+    cab = steamCab(gb, body, { x0: C.x0, x1: C.x1, fl: C.fl, floor: C.fl, hw: C.hw, bh: C.bh, FB: C.FB, ceil: C.ceil, fwin: C.front, side: C.side, eyeY: 3.6, key, spec, ax });
   }
   /* ---- trailing truck: Delta cast frame outside the wheels, pivoted ahead of the firebox ---- */
   {

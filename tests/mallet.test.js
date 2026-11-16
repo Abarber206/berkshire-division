@@ -107,3 +107,13 @@ test('1308 pulls like a compound Mallet (physics)', () => {
   h.run(sim, T, 2);
   assert.ok(S.TE / sim.LBF > 60000, `starting effort ${Math.round(S.TE / sim.LBF)} lbf`);
 });
+
+test('the steam cabs: firedoors, fireman\'s gauges and blowdown on every engine; the simpling valve only on the Mallet', { skip }, () => {
+  const w = world();
+  for (const [L, mallet] of [[w.buildBerkshire('765'), false], [w.buildBerkshire('1225'), false], [w.buildBigBoy('4014'), false], [w.buildMallet('1308'), true]]) {
+    const ids = new Set(L.cab.ctls.map(c => c.id));
+    for (const id of ['firedoor', 'feedpump', 'airpump', 'blowdown', 'stokerP', 'heat', 'throttle', 'reverser', 'brake', 'ind', 'injector', 'blower', 'stoker', 'whistle']) assert.ok(ids.has(id), `${L.spec.num} has ${id}`);
+    assert.ok(ids.has(L.spec.fw === 'Worthington' ? 'feed' : 'inj'), `${L.spec.num} feed gauge`);
+    assert.equal(ids.has('simple'), mallet, `${L.spec.num} simpling valve`);
+  }
+});

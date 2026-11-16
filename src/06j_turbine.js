@@ -36,7 +36,8 @@ function turbineMaterials() {
   RMAT.upLouver = mk(0xf2b21c, 0.15, 0.55, { map: louverTex() });
   wear(RMAT.upYel, 0.25, 58); wear(RMAT.upGray, 0.55, 59); wear(RMAT.upFrame, 0.5, 60); wear(RMAT.upLouver);
   const red = '#b5121b';
-  const dec = (w, h, draw) => decalMat(w, h, draw);
+  // made once and shared by every turbine, so not let go with one of them (decalMat marks its lettering as its own)
+  const dec = (w, h, draw) => { const m = decalMat(w, h, draw); m.userData.own = false; return m; };
   const gothic = px => `800 ${px}px "Arial Narrow", "Helvetica Neue", Arial, sans-serif`;
   RMAT.upRoad2 = dec(512, 512, (g, w, h) => { g.fillStyle = red; g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = gothic(196); if (g.letterSpacing !== undefined) g.letterSpacing = '18px'; g.fillText('UNION', w / 2, h * 0.27); g.fillText('PACIFIC', w / 2, h * 0.75); });
   RMAT.upRoad1 = dec(1024, 128, (g, w, h) => { g.fillStyle = red; g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = gothic(100); if (g.letterSpacing !== undefined) g.letterSpacing = '14px'; g.fillText('UNION PACIFIC', w / 2, h / 2 + 4); });
@@ -551,6 +552,10 @@ function turbineCab(gb, body, d) {
   // seats
   const seatTop = eye.y - 0.76;
   for (const sd of [-1, 1]) cabChair(gb, 'dSeat', dx(3.05), sd * 0.78, seatTop, FL);
+  // the room, as a 1960 crew had it: electrical locker, a coat on its hook, the wall radio, heaters, footrest, paperwork
+  cabFurnish(gb, K, { dx, FL, yC: d.RF - 0.26, zw: wallZ, aWall: d.CAB1 - 0.03, locker: [0.4, wallZ - 0.02, 0.2], hook: -0.75, heaters: [2.42, 2.74],
+    foot: [2.55, -0.78], clip: [1.86, yP + 0.2, -0.9], ceilA: [d.WS1 - 0.4, d.CAB1 - 0.03], speaker: [3.3, -0.6], era: '1960', wallRadio: -1.27,
+    lightSw: [d.CAB1 - 0.03, FL + 1.4, 0.325, 'fwd'] });
   return K.out(eye, { look: [{ yaw: 0.0, pitch: -0.12 }, { yaw: 0.42, pitch: -0.5 }] });
 }
 

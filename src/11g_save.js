@@ -78,9 +78,14 @@ function seatConsist(c, o, E) {
 const m4Out = m => m.elements.map(x => rnd(x, 1e5));
 const m4In = a => new THREE.Matrix4().fromArray(a);
 function wreckOut(T) {
-  const R = T.rb, W = GAME.wrecking; if (!R || !S.derailed) return null;
+  const W = GAME.wrecking; if (!T.rb || !S.derailed) return null;
+  return wreckData(T, W ? W.title : 'Derailed', W ? W.why : '');
+}
+/* the cars of consist T off the rails, each where it lies */
+function wreckData(T, title = '', why = '') {
+  const R = T.rb; if (!R) return null;
   return {
-    spec: T.wk, broken: [...R.broken], title: W ? W.title : 'Derailed', why: W ? W.why : '',
+    spec: T.wk, broken: [...R.broken], title, why,
     bodies: R.bodies.filter(b => b.v).map(b => ({ i: T.vehicles.indexOf(b.v), M0: m4Out(b.M0), t0: b.t0.map(m4Out), u0: b.u0 ? b.u0.map(m4Out) : null, l0: b.l0 ? m4Out(b.l0) : null, f0: b.f0 ? m4Out(b.f0) : null, s0: b.s0 ? m4Out(b.s0) : null, p: b.p.toArray().map(x => rnd(x)), q: b.q.toArray().map(x => rnd(x, 1e5)) })),
   };
 }
@@ -102,6 +107,16 @@ function wreckIn(T, w) {
     }
   } finally { AU.on = au; }
 }
+/* a train your wreck knocked about, lying where it came to rest (07e_knock.js) */
+const knockOut = c => c.knk && c.rb ? wreckData(c) : null;
+function knockIn(c, w) {
+  if (!w || !w.bodies) return;
+  c.update(0);
+  wreckIn(c, w);
+  c.knk = { kin: { v: 0, mass: 0, force: 0 } }; c.v = 0; c.rolling = false;
+  KNOCK.list.push(c);
+  c.update(0); c.dirty = true;
+}
 
 /* ---------------- the job, the traffic, the camera ---------------- */
 function jobOut(uid) {
@@ -120,21 +135,24 @@ function jobIn(o, V) {
   carPanelState.key = '';
   JOB.ui();
 }
-const aiOut = () => AI.trains.map(a => ({ id: a.id, f: tpOut(a.train.endTP('front')), fl: lineOut(a.train.endTP('front')), v: rnd(a.v), dwell: rnd(a.dwell), odo: rnd(a.odo), d: a.dir }));
+const aiOut = () => AI.trains.map(a => ({ id: a.id, f: tpOut(a.train.endTP('front')), fl: lineOut(a.train.endTP('front')), v: rnd(a.v), dwell: rnd(a.dwell), odo: rnd(a.odo), d: a.dir, wk: knockOut(a.train), vr: a.def.vary || null }));
 /* the timetable trains, each where it was; each asks the signals for its road again, so one that had
    a clear road carries on at the speed it can still stop from */
 function aiIn(list, E) {
   AI.clear();
   if (!AI.enabled() || !list) return;
   for (const o of list) {
-    const def = TRAFFIC[o.id]; if (!def) continue;
+    if (!TRAFFIC[o.id]) continue;
+    const vr = o.vr && typeof o.vr === 'object' ? o.vr : null, def = AI.vary(TRAFFIC[o.id], vr || { loco: TRAFFIC[o.id].loco }, true);   // the same engine and crew as before
     const tp = tpIn(o.f, E) || lineIn(o.fl); if (!tp) continue;
     const a = new AITrain(o.id, def);
     a.place(tp); a.odo = o.odo || 0; a.dwell = o.dwell || 0; if (o.d) a.dir = o.d;
     AI.trains.push(a); IX.idx = null;
+    if (o.wk) knockIn(a.train, o.wk);   // knocked off the rails by your wreck: lying where it came to rest
   }
   for (const a of AI.trains) {
     const o = list.find(x => x.id === a.id), def = a.def;
+    if (a.train.knk) { a.v = 0; continue; }
     a.v = a.ask() ? Math.min(o.v || 0, Math.sqrt(2 * def.brake * 0.5 * Math.max(0, a.authLeft - 200))) : 0;
   }
 }
@@ -150,7 +168,7 @@ const powerOf = T => T.vehicles.filter(v => !v.helper && (isPower(v) || (T.elec 
 function fleetOut(c) {
   return Object.assign(consistOut(c, powerOf(c)), { loco: c.locoKey, ck: c.consistKey, units: c.nUnits || 1, opts: JSON.parse(JSON.stringify(c.opts || {})), cfg: c.cfg || null,
     ps: c.parkS, cv: rnd(c.v || 0), rolling: !!c.rolling, stopT: rnd(c.stopT || 0), fid: c.fid || 0,
-    crew: c.crew ? { mph: c.crew.mph, dir: c.crew.dir, keep: c.crew.keep ? 1 : 0 } : null, crewMph: c.crewMph || 0 });
+    crew: c.crew ? { mph: c.crew.mph, dir: c.crew.dir, keep: c.crew.keep ? 1 : 0 } : null, crewMph: c.crewMph || 0, wk: knockOut(c) });
 }
 /* a helper engine's vehicle from its record { g, loco, opts, i }: the engine is built once per helper (g) and
    its vehicles handed out one by one */
@@ -201,7 +219,7 @@ SAVE.snapshot = function () {
     S: st, sw: NET.switches.map(s => [s.name, s.state]),
     train: Object.assign(consistOut(T, power), { loco: T.locoKey, ck: T.consistKey, units: T.nUnits || 1, fid: T.fid || 0 }),
     fleet: CARS.cuts.filter(c => c.parkS).map(fleetOut),
-    cuts: CARS.cuts.filter(c => !c.parkS).map(c => Object.assign(consistOut(c), { cv: rnd(c.v), rolling: !!c.rolling, stopT: rnd(c.stopT || 0), vented: !!c.vented, home: c.home || null })),
+    cuts: CARS.cuts.filter(c => !c.parkS).map(c => Object.assign(consistOut(c), { cv: rnd(c.v), rolling: !!c.rolling, stopT: rnd(c.stopT || 0), vented: !!c.vented, home: c.home || null, wk: knockOut(c) })),
     job, ai: aiOut(), sky: { hour: rnd(SKY.hour, 1e5), weather: SKY.weather, wx: wxOut() }, cam, wreck,
     ind: IND.out(),
     misc: { placed: PLACE.made || 0, lastStation: GAME.lastStation || null, spawnName: GAME.spawnName || '' },
@@ -238,7 +256,7 @@ SAVE.blocked = function () {
   if (!GAME.ready || !GAME.running || !T) return 'Start a run first.';
   if (MP.on) return 'Saves are for single player: leave the room to save.';
   if (PLACE.on) return 'Finish placing first.';
-  if (S.derailed && (!T.rb || !T.rb.asleep || Math.abs(S.v) > 0.05)) return 'Wait until the wreck has come to rest.';
+  if (S.derailed && (!T.rb || !T.rb.asleep || Math.abs(S.v) > 0.05 || KNOCK.list.some(c => c.rb && !c.rb.asleep))) return 'Wait until the wreck has come to rest.';
   return '';
 };
 SAVE.now = function (slot, quiet) {
@@ -290,6 +308,7 @@ SAVE.apply = function (d) {
   const E = d.print === SAVE.print() ? new Map(NET.edges.map(e => [e.id, e])) : null;
   // clear the railroad
   if (JOB.run) JOB.end();
+  KNOCK.clear();
   AI.clear();
   CARS.clear(GAME.train);
   if (GAME.train) { GAME.train.wreck(null); GAME.train.dispose(); }
@@ -313,6 +332,7 @@ SAVE.apply = function (d) {
     Object.assign(c, { v: o.cv || 0, rolling: !!o.rolling, stopT: o.stopT || 0, vented: !!o.vented, home: o.home || undefined });
     c.update(0);
     CARS.cuts.push(c); all.push(...cv);
+    if (o.wk) knockIn(c, o.wk);
   }
   // your other trains, standing as they were left; an engine that can no longer be built is left out
   for (const o of d.fleet || []) {
@@ -326,6 +346,7 @@ SAVE.apply = function (d) {
     if (o.crew) c.crew = crewNew(c, o.crew.mph, o.crew.dir, !!o.crew.keep);   // its engineer carries on
     c.update(0); FLEET.dim(c);
     CARS.cuts.push(c);
+    if (o.wk) knockIn(c, o.wk);
   }
   ROAD_SHORT = LOCO_SPEC[g.loco].short;
   FLEET.n = Math.max(FLEET.n, t.fid || 0, ...FLEET.parked().map(c => c.fid || 0));
@@ -357,7 +378,7 @@ SAVE.apply = function (d) {
     wreckIn(t, d.wreck);
     GAME.wrecking = { title: d.wreck.title, why: d.wreck.why, clunkT: 0, done: false, kin: { v: 0, mass: 0, force: 0 } };
     S.v = S.vw = 0;
-  } else S.derailed = false;
+  } else { S.derailed = false; KNOCK.clear(); }
   t.update(0, S.theta, S.reverser);
   // the camera
   cycleCamera(d.cam.mode && CAM.modes.includes(d.cam.mode) ? d.cam.mode : 'chase');

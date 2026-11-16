@@ -13,6 +13,7 @@ const WALK = {
   on: false, mode: 'drive', p: new THREE.Vector3(), vy: 0, yaw: 0, lookYaw: 0, lookPitch: -0.18, fp: false, dist: 3.6,
   keys: {}, stick: { x: 0, y: 0, on: false }, runT: false, speed: 0, phase: 0, t: 0, wave: -1, ride: null, rig: null,
   act: null, actT: 0, interiors: new Map(), inT: 0, holds: new Map(), infoT: 0, peers: new Map(), seen: new Map(),
+  fall: null, fv: new THREE.Vector3(), fp0: new THREE.Vector3(), cv: new Map(),
 };
 const WALK_R = 0.27, WALK_STEP = 0.55, WALK_V = 1.45, RUN_V = 3.9;
 const _kA = new THREE.Vector3(), _kB = new THREE.Vector3(), _kC = new THREE.Vector3(), _kD = new THREE.Vector3(), _kM = new THREE.Matrix4(), _kQ = new THREE.Vector3();
@@ -238,9 +239,27 @@ WALK.setOn = function (on) {
 WALK.leaveCab = function () {
   const T = GAME.train; if (!T || !GAME.running || S.paused || PLACE.on) return;
   if (S.derailed) { toast('Not until the train is back on the rails.', 'warn', 2400, 'walk'); return; }
-  if (Math.abs(S.v) > 0.3) { toast('Stop the train before you climb down.', 'warn', 2400, 'walk'); return; }
   if (MP.watching) MP.unwatch();
   const L = T.loco, x = (L.cabEye ? L.cabEye.x : 0) - 0.4;
+  L.root.updateMatrixWorld();
+  if (Math.abs(S.v) > 0.3) {
+    // moving: hang off the bottom step on one side and jump, with the train's speed
+    const vel = _kD.copy(T.lead.fwd).multiplyScalar(S.v); vel.y = 0;
+    let pick = null, why = '';
+    for (const s of [1, -1]) {
+      const w = new THREE.Vector3(x, 0.9, s * 1.95).applyMatrix4(L.root.matrixWorld), out = new THREE.Vector3(0, 0, s).transformDirection(L.root.matrixWorld);
+      out.y = 0; out.normalize();
+      const ok = walkLandCheck(w, out, vel);
+      if (ok === true) { if (!pick || ok === true && pick.platform < walkPlatformness(w, out)) pick = { w, out, platform: walkPlatformness(w, out) }; }
+      else why = why || ok;
+    }
+    if (!pick) { toast(why || 'Nowhere to jump to here.', 'warn', 2400, 'walk'); return; }
+    WALK.rigReady();
+    WALK.jump(pick.w, vel, pick.out);
+    WALK.mode = 'foot'; WALK.setOn(true);
+    toast(`You jump from the cab at ${Math.round(Math.abs(S.v) / MPH)} mph. Nobody is at the throttle now.`, 'warn', 3600, 'walk');
+    return;
+  }
   let best = null;
   for (const s of [1, -1]) {
     const w = _kA.set(x, 0, s * 2.35).applyMatrix4(L.root.matrixWorld), f = floorAt(w.x, w.z, w.y + 0.6);
@@ -257,15 +276,16 @@ WALK.leaveCab = function () {
 };
 WALK.toCab = function (quiet) {
   if (!WALK.on) return;
+  if (WALK.fall) return;   // get up first
   WALK.setOn(false);
   cycleCamera('cab');
   if (!quiet) toast('Back in the cab.', '', 1800, 'walk');
 };
 WALK.board = function (c, v, door) {
-  const [x, s, zi] = door, sp = Math.abs(walkSpeedOf(c));
-  if (sp > 0.4) { toast('Wait for it to stop.', 'warn', 1800, 'walk'); return; }
+  const [x, s, zi] = door;
+  if (walkRel(c) > WALK_HOP) { toast('Too fast to catch. Wait for it to stop, or run alongside.', 'warn', 1800, 'walk'); return; }
   WALK.ride = { c, v, l: new THREE.Vector3(x, walkPlan(v).yF, s * zi), seat: null, yaw: s > 0 ? Math.PI : 0 };
-  WALK.lookYaw = WALK.ride.yaw; WALK.mode = 'ride'; WALK.vy = 0;
+  WALK.lookYaw = WALK.ride.yaw; WALK.mode = 'ride'; WALK.vy = 0; WALK.fall = null;
   WALK.showInterior(v, true);
   toast(`You climb aboard ${trainName(c)}.`, 'good', 2600, 'walk');
   WALK.ui();
@@ -273,8 +293,27 @@ WALK.board = function (c, v, door) {
 /* off a coach by the nearest vestibule door, onto whatever is outside it */
 WALK.alight = function () {
   const r = WALK.ride; if (!r) return;
-  if (Math.abs(walkSpeedOf(r.c)) > 0.3) { toast('Not while the train is moving.', 'warn', 2000, 'walk'); return; }
   let best = null; const P = walkPlan(r.v);
+  if (Math.abs(walkSpeedOf(r.c)) > 0.3) {
+    // moving: down onto the bottom step of the nearest door and jump, with the car's speed
+    const vel = _kD.copy(r.vel || walkVel(r.c, _kD)); vel.y = 0;
+    let why = '';
+    for (const [x, s] of P.doors) {
+      const w = local2world(r.v, _kA.set(x, 0.75, s * Math.max(P.hw + 0.3, 1.95)), new THREE.Vector3());
+      const out = new THREE.Vector3(0, 0, s).transformDirection(vFrame(r.v)); out.y = 0; out.normalize();
+      const ok = walkLandCheck(w, out, vel);
+      if (ok !== true) { why = why || ok; continue; }
+      const d = Math.hypot(r.l.x - x, r.l.z - s * P.hw) - walkPlatformness(w, out) * 6;
+      if (!best || d < best.d) best = { d, w, out };
+    }
+    if (!best) { toast(why || 'Nowhere to jump to here.', 'warn', 2400, 'walk'); return; }
+    const mph = Math.round(Math.hypot(vel.x, vel.z) / MPH);
+    WALK.ride = null; WALK.mode = 'foot';
+    WALK.jump(best.w, vel, best.out);
+    toast(mph >= 12 ? `You jump off at ${mph} mph. Tuck and roll!` : `You hop off at ${mph} mph.`, mph >= 12 ? 'warn' : '', 2600, 'walk');
+    WALK.ui();
+    return;
+  }
   for (const [x, s] of P.doors) {
     const w = local2world(r.v, _kA.set(x, 0, s * (P.hw + 0.75)), new THREE.Vector3()), f = floorAt(w.x, w.z, w.y + 0.4);
     const d = Math.hypot(r.l.x - x, r.l.z - s * P.hw) - (f.y > w.y - 0.6 ? 6 : 0);   // a platform beats walking a little further
@@ -287,7 +326,7 @@ WALK.alight = function () {
   toast('You step down.', '', 1800, 'walk');
   WALK.ui();
 };
-WALK.reset = function () { if (WALK.on) WALK.setOn(false); for (const [v] of WALK.interiors) WALK.showInterior(v, false); WALK.tg = null; };
+WALK.reset = function () { WALK.fall = null; if (WALK.on) WALK.setOn(false); for (const [v] of WALK.interiors) WALK.showInterior(v, false); WALK.tg = null; };
 
 /* ---------------- what he can do where he is ---------------- */
 WALK.findAction = function () {
@@ -296,16 +335,17 @@ WALK.findAction = function () {
     const r = WALK.ride, l = r.l, P = walkPlan(r.v), moving = Math.abs(walkSpeedOf(r.c)) > 0.3;
     if (r.seat) return { label: 'Stand up', sub: 'Take a walk through the train', go: () => WALK.stand() };
     const inVest = P.inVest(l);
-    if (P.atDoor(l)) return moving ? { label: 'Get off', sub: 'Wait for a stop', off: true } : { label: 'Get off', sub: 'Step down here', go: () => WALK.alight() };
+    if (P.atDoor(l)) return moving ? { label: 'Jump off', sub: `At ${Math.round(Math.abs(walkSpeedOf(r.c)) / MPH)} mph`, go: () => WALK.alight() } : { label: 'Get off', sub: 'Step down here', go: () => WALK.alight() };
     let near = null;
     if (!inVest) for (const s of P.seats) { const d = Math.abs(s.ax - l.x), dm = Math.abs(s.z - P.mid); if (d < (P.hs ? 0.5 : 0.75) && (!near || d < near.d - 0.01 || (Math.abs(d - near.d) <= 0.01 && dm < near.dm))) near = { s, d, dm }; }
     if (near) { const taken = WALK.seatTaken(r.v, near.s); return { label: 'Sit down', sub: taken ? 'Next seat over is free' : 'Window seat', go: () => WALK.sit(near.s) }; }
     return moving ? { label: 'Riding', sub: 'Find a seat', off: true } : { label: 'Get off', sub: 'By the nearest door', go: () => WALK.alight() };
   }
   // on the ground: a coach door or your own cab within reach
+  if (WALK.fall) return { label: WALK.fall.ph === 'air' ? 'Jumping' : 'Down', sub: WALK.fall.ph === 'lie' || WALK.fall.ph === 'up' ? 'Getting up' : '', off: true };
   let best = null;
   for (const c of camConsists()) {
-    const sp = Math.abs(walkSpeedOf(c));
+    const sp = walkRel(c) > WALK_HOP ? 1 : 0;
     for (const v of c.vehicles) {
       if (!v.pos || Math.abs(v.pos.x - WALK.p.x) > v.len || Math.abs(v.pos.z - WALK.p.z) > v.len) continue;
       const P = walkPlan(v);
@@ -323,7 +363,7 @@ WALK.findAction = function () {
       }
     }
   }
-  if (best) return best.wait ? { label: best.label, sub: 'Wait for it to stop', off: true } : best;
+  if (best) return best.wait ? { label: best.label, sub: 'Too fast · run alongside', off: true } : best;
   return null;
 };
 WALK.seatTaken = function (v, s) { for (const p of WALK.peers.values()) if (p.seatOf === v && p.seat && Math.abs(p.seat.x - s.x) < 0.1 && Math.abs(p.seat.z - s.z) < 0.1) return true; return false; };
@@ -355,11 +395,13 @@ WALK.frame = function (dt) {
   const k = WALK.keys;
   if (k.KeyW || k.ArrowUp) f += 1; if (k.KeyS || k.ArrowDown) f -= 1; if (k.KeyD || k.ArrowRight) s += 1; if (k.KeyA || k.ArrowLeft) s -= 1;
   if (WALK.stick.on) { f += -WALK.stick.y; s += WALK.stick.x; }
+  if (WALK.fall) f = s = 0;   // no say in where he goes until he has his feet
   let m = Math.hypot(f, s); if (m > 1) { f /= m; s /= m; m = 1; }
   const run = WALK.runT !== !!(k.ShiftLeft || k.ShiftRight) || (WALK.stick.on && m > 0.92);
   const want = m * (run ? RUN_V : WALK_V);
   WALK.speed += clamp(want - WALK.speed, -6 * dt, 4 * dt);
-  if (WALK.mode === 'ride') WALK.rideStep(dt, f, s, m); else WALK.footStep(dt, f, s, m);
+  if (dt > 0) WALK.trackVel(dt);
+  if (WALK.mode === 'ride') WALK.rideStep(dt, f, s, m); else if (WALK.fall) WALK.fallMove(dt); else WALK.footStep(dt, f, s, m);
   // the stride
   const cyc = lerp(1.5, 2.9, smooth(1.9, 3.4, WALK.speed));
   WALK.phase = (WALK.phase + TAU * WALK.speed / cyc * dt) % (TAU * 1000);
@@ -390,6 +432,150 @@ WALK.footStep = function (dt, f, s, m) {
   if (p.y > fl.y + 0.03) { WALK.vy -= 9.81 * dt; p.y += WALK.vy * dt; if (p.y <= fl.y) { p.y = fl.y; WALK.vy = 0; } }
   else { p.y = fl.y > p.y ? p.y + Math.min(fl.y - p.y, Math.max(0.04, dt * 4)) : fl.y; WALK.vy = 0; }
 };
+
+/* ---------------- off a moving train ----------------
+   How fast things go: the trains (their leads, differenced each frame, or our own train's speed) and him. */
+const WALK_HOP = 1.8;   // m/s: the most a man can match to swing up onto a step or into a cab
+WALK.trackVel = function (dt) {
+  const keep = new Set();
+  for (const c of camConsists()) {
+    const v = c.lead; if (!v || !v.pos) continue; keep.add(c);
+    let e = WALK.cv.get(c); if (!e) { WALK.cv.set(c, e = { p: v.pos.clone(), v: new THREE.Vector3() }); continue; }
+    _kA.subVectors(v.pos, e.p).divideScalar(dt);
+    if (_kA.lengthSq() > 120 * 120) _kA.set(0, 0, 0);   // put somewhere new, not moved
+    e.v.lerp(_kA, Math.min(1, dt * 8)); e.p.copy(v.pos);
+  }
+  for (const c of [...WALK.cv.keys()]) if (!keep.has(c)) WALK.cv.delete(c);
+  // him: on foot, or the car under him while riding
+  const r = WALK.ride;
+  if (r) {
+    if (!r.vp || r.vpv !== r.v) { r.vp = r.v.pos.clone(); r.vpv = r.v; r.vel = walkVel(r.c, new THREE.Vector3()); }
+    else { _kA.subVectors(r.v.pos, r.vp).divideScalar(dt); if (_kA.lengthSq() < 120 * 120) r.vel.lerp(_kA, Math.min(1, dt * 8)); r.vp.copy(r.v.pos); }
+  } else {
+    _kA.subVectors(WALK.p, WALK.fp0).divideScalar(dt); _kA.y = 0;
+    if (_kA.lengthSq() > 60 * 60) _kA.set(0, 0, 0);
+    WALK.fv.lerp(_kA, Math.min(1, dt * 10));
+  }
+  WALK.fp0.copy(WALK.p);
+};
+function walkVel(c, out) {
+  if (c === GAME.train) return out.copy(c.lead.fwd).multiplyScalar(S.v);
+  const e = WALK.cv.get(c); return e ? out.copy(e.v) : out.set(0, 0, 0);
+}
+/* how fast a train goes past him: what he has to match to get on */
+function walkRel(c) {
+  const sp = Math.abs(walkSpeedOf(c)); if (sp < 0.4) return sp;
+  walkVel(c, _kQ); _kQ.y = 0;
+  if (_kQ.lengthSq() < 0.01) return sp;   // not tracked yet
+  return Math.hypot(_kQ.x - WALK.fv.x, _kQ.z - WALK.fv.z);
+}
+/* is there somewhere to land beside the step at w, jumping out along out while carried along at vel?
+   true, or why not */
+function walkLandCheck(w, out, vel) {
+  const sp = Math.hypot(vel.x, vel.z), ax = sp > 0.1 ? vel.x / sp : 0, az = sp > 0.1 ? vel.z / sp : 0;
+  for (const [o, a] of [[1.2, 0], [1.2, 0.5], [2.4, 0.9]]) {
+    const x = w.x + out.x * o + ax * a * Math.min(sp, 30) * 0.5, z = w.z + out.z * o + az * a * Math.min(sp, 30) * 0.5;
+    const f = floorAt(x, z, w.y);
+    if (f.wall) return 'No room to jump on this side.';
+    if (!WORLD.mtn && !WORLD.custom && f.y < -4.7) return 'Not into the water.';
+    if (w.y - f.y > 6.5) return 'Too far down to jump here.';
+    const tp = new THREE.Vector3(x, f.y, z); walkSolid(tp, null);
+    if (Math.hypot(tp.x - x, tp.z - z) > 0.6) return 'Something in the way on this side.';
+  }
+  return true;
+}
+/* a platform beside the step (land on that rather than the ballast) */
+function walkPlatformness(w, out) { const f = floorAt(w.x + out.x * 1.6, w.z + out.z * 1.6, w.y); return f.y > w.y - 0.6 ? 1 : 0; }
+/* off the bottom step at w: pushed out along out, up a little, with the train's velocity vel */
+WALK.jump = function (w, vel, out) {
+  const B = WALK.fall = { ph: 'air', v: { x: vel.x + out.x * 1.7, z: vel.z + out.z * 1.7 }, th: 0, tuck: 0, t: 0, hit: 0, air: 0 };
+  WALK.p.copy(w); WALK.vy = 1.0; WALK.fv.set(B.v.x, 0, B.v.z); WALK.fp0.copy(w);
+  // he faces the way the ground is going under him, as a railroader is taught, and looks there too
+  const sp = Math.hypot(vel.x, vel.z);
+  _kA.set(sp > 1 ? vel.x : out.x, 0, sp > 1 ? vel.z : out.z);
+  WALK.yaw = yawOf(_kA);
+  WALK.lookYaw = yawOf(_kB.set(B.v.x, 0, B.v.z)); WALK.lookPitch = -0.2;
+  WALK.speed = 0;
+  WALK.ui();
+};
+/* in the air, then running it out or rolling, carried by his momentum; walls and cars stop him dead */
+WALK.fallMove = function (dt) {
+  const B = WALK.fall, p = WALK.p, q = _kQ.copy(p);
+  q.x += B.v.x * dt; q.z += B.v.z * dt;
+  q.x = clamp(q.x, INNER.x0 + 20, INNER.x1 - 20); q.z = clamp(q.z, -INNER.n1 + 20, -INNER.n0 - 20);
+  const want = Math.hypot(q.x - p.x, q.z - p.z);
+  walkSolid(q, null);
+  let fl = floorAt(q.x, q.z, p.y);
+  const deep = !WORLD.mtn && !WORLD.custom && fl.y < -4.7;
+  if (fl.wall || deep) { q.x = p.x; q.z = p.z; walkSolid(q, null); fl = floorAt(q.x, q.z, p.y); }
+  const got = Math.hypot(q.x - p.x, q.z - p.z);
+  if (want > 1e-4 && got < want * 0.6) {
+    // run into something: he stops against it (what is left goes along it)
+    const k = got / want; B.v.x *= k; B.v.z *= k;
+    if (want / dt > 4 && B.ph !== 'air') walkThud(Math.min(1, want / dt / 12), false);
+  }
+  p.x = q.x; p.z = q.z;
+  if (B.ph === 'air' || p.y > fl.y + 0.05) {
+    B.air = Math.min(1, (B.air || 0) + dt * 5);
+    WALK.vy -= 9.81 * dt; p.y += WALK.vy * dt;
+    if (p.y <= fl.y) {
+      p.y = fl.y;
+      if (B.ph === 'air') {
+        const ph = fallLand(B, WALK.vy);
+        walkThud(clamp(B.hit / 14, 0.25, 1), ph === 'roll');
+        walkDust(p, B, ph === 'roll' ? 1 : ph === 'stumble' ? 0.45 : 0.15);
+        if (ph === 'roll' && B.hit > 9) toast(`You hit the ground at ${Math.round(B.hit / MPH)} mph.`, 'warn', 2400, 'walk');
+      }
+      WALK.vy = 0;
+    }
+  } else {
+    p.y = fl.y; WALK.vy = 0;
+    B.air = Math.max(0, (B.air || 0) - dt * 6);
+    const u0 = Math.hypot(B.v.x, B.v.z), th0 = B.th;
+    if (fallStep(B, dt)) {
+      // on his feet again: what speed he has left he walks off
+      WALK.fall = null; WALK.speed = Math.min(Math.hypot(B.v.x, B.v.z), RUN_V);
+      WALK.ui(); return;
+    }
+    // the ground he goes over: puffs of dust and ballast as he rolls, a scuff each time he comes round
+    if (B.ph === 'roll' && Math.floor(B.th / Math.PI) !== Math.floor(th0 / Math.PI)) { walkThud(clamp(u0 / 14, 0.15, 0.8), true); walkDust(p, B, clamp(u0 / 10, 0.2, 1)); }
+  }
+  // he faces the way he is going while he can, and the camera swings round to follow him
+  const u = Math.hypot(B.v.x, B.v.z);
+  if (u > 1 && B.ph !== 'lie' && B.ph !== 'up' && B.ph !== 'flop') {
+    const ty = Math.atan2(B.v.x, B.v.z);
+    WALK.yaw += angWrap(ty - WALK.yaw) * Math.min(1, dt * (B.ph === 'air' ? 4 : 8));
+    if (!WALK.fp) WALK.lookYaw += angWrap(ty - WALK.lookYaw) * Math.min(1, dt * 1.5);
+  }
+  WALK.speed = B.ph === 'stumble' ? Math.min(u, 5) : 0;
+};
+function walkThud(g, scrape) {
+  if (typeof AU === 'undefined' || !AU.on || !AU.world) return;
+  try {
+    const t = AU.ctx.currentTime + 0.005;
+    envNoise(t, 0.16, 260, 1.1, 0.75 * g, AU.world, 'lowpass', AU.noise, 0.003);
+    envTone(t, 0.13, 90, 0.45 * g, AU.world, 'sine', 48);
+    if (scrape) envNoise(t + 0.02, 0.28, 2400, 1.4, 0.22 * g, AU.world, 'bandpass', AU.white, 0.01);
+  } catch (e) { }
+}
+/* a puff where he hits: dust, and a few stones kicked out of the ballast */
+function walkDust(p, B, k) {
+  if (typeof DIG === 'undefined' || !DIG.dust) return;
+  const n = Math.round(k * 7 * (DIG.q || 1)), u = Math.hypot(B.v.x, B.v.z);
+  const bal = bedAt(p.x, p.z) > groundAt(p.x, -p.z) + 0.05;
+  for (let i = 0; i < n; i++) {
+    const t = Math.random();
+    digEmit(DIG.dust, p.x + (Math.random() - 0.5) * 0.8, p.y + 0.25, p.z + (Math.random() - 0.5) * 0.8,
+      B.v.x * 0.3 + (Math.random() - 0.5) * 1.4, 0.3 + 0.8 * Math.random(), B.v.z * 0.3 + (Math.random() - 0.5) * 1.4,
+      0.5 + 0.7 * k * Math.random(), 1.6 + 1.6 * Math.random(), bal ? 0.6 + 0.05 * t : 0.6 + 0.06 * t, bal ? 0.58 + 0.05 * t : 0.52 + 0.05 * t, bal ? 0.55 + 0.05 * t : 0.42 + 0.05 * t, p.y, null);
+  }
+  if (bal && u > 3) for (let i = 0; i < Math.round(k * 6 * (DIG.q || 1)); i++) {
+    const sh = 0.42 + 0.12 * Math.random();
+    digEmit(DIG.clods, p.x + (Math.random() - 0.5) * 0.5, p.y + 0.1, p.z + (Math.random() - 0.5) * 0.5,
+      B.v.x * 0.5 + (Math.random() - 0.5) * 2, 1 + 2 * Math.random(), B.v.z * 0.5 + (Math.random() - 0.5) * 2,
+      0.035 + 0.035 * Math.random(), 1.2 + Math.random(), sh, sh * 0.98, sh * 0.94, p.y, null);
+  }
+}
 /* in a coach: the aisle between the seats, the open ends, the bulkhead doors, the vestibule, and through the
    diaphragm into the next coach */
 function coachRoom(l, prev, obs) {
@@ -442,10 +628,27 @@ WALK.place = function () {
   if (r) {
     local2world(r.v, r.l, R.position);
     R.quaternion.setFromRotationMatrix(_kM.extractRotation(vFrame(r.v))).multiply(_kQQ.setFromAxisAngle(_kU, r.yaw));
-  } else { R.position.copy(WALK.p); R.quaternion.setFromAxisAngle(_kU, WALK.yaw); }
+  } else if (WALK.fall) { walkPoseFall(rig, WALK.p, WALK.yaw, WALK.fall, WALK.phase, WALK.t); R.visible = !WALK.fp; return; }
+  else { R.position.copy(WALK.p); R.quaternion.setFromAxisAngle(_kU, WALK.yaw); }
   rig.pose({ phase: WALK.phase, speed: WALK.speed, sit: r && r.seat ? r.seat.h : 0, wave: WALK.wave, look: WALK.lookPitch, t: WALK.t });
   R.visible = !WALK.fp;
 };
+/* a man in the air, running it out, rolling or lying, with his feet (or whatever is lowest) at p.y.
+   B: { ph, th, tuck, air } (see fallStep in 06g_person.js) */
+const _kR = new THREE.Vector3(1, 0, 0), _kQ2 = new THREE.Quaternion();
+function walkPoseFall(rig, p, yaw, B, phase, t) {
+  const R = rig.root, down = B.ph !== 'air' && B.ph !== 'land' && B.ph !== 'stumble';
+  rig.pose({ phase, speed: B.ph === 'stumble' ? Math.min(Math.hypot(B.v ? B.v.x : 0, B.v ? B.v.z : 0), 5) : 0, air: B.air || 0, flail: B.ph === 'stumble' ? 1 : 0, tuck: B.tuck || 0, free: down, t });
+  R.quaternion.setFromAxisAngle(_kU, yaw);
+  if (!down) { R.position.copy(p); return; }
+  // rolled forward about his middle, then put down by the lowest of him
+  R.quaternion.multiply(_kQ2.setFromAxisAngle(_kR, B.th || 0));
+  const ch = lerp(0.95, 0.5, B.tuck || 0);
+  _kC.set(0, ch, 0).applyQuaternion(R.quaternion);
+  R.position.set(p.x - _kC.x, p.y + ch - _kC.y, p.z - _kC.z);
+  R.updateMatrixWorld(true);
+  R.position.y += p.y - personLow(rig);
+}
 const _kU = new THREE.Vector3(0, 1, 0), _kQQ = new THREE.Quaternion();
 
 /* hold an AI train's doors while he walks up to it or is getting off */
@@ -481,11 +684,20 @@ WALK.camera = function (cam, dt) {
     cam.up.set(0, 1, 0); cam.lookAt(tgt);
   } else {
     const p = WALK.p, d = _kB.set(Math.sin(WALK.lookYaw) * Math.cos(P), Math.sin(P), Math.cos(WALK.lookYaw) * Math.cos(P));
-    if (WALK.fp) {
+    const B = WALK.fall, downB = B && B.ph !== 'air' && B.ph !== 'land' && B.ph !== 'stumble';
+    if (WALK.fp && downB && WALK.rig) {
+      // through his own eyes as he goes over: from his head, looking half where he looks and half where his face is
+      WALK.rig.j.head.updateMatrixWorld();
+      cam.position.setFromMatrixPosition(WALK.rig.j.head.matrixWorld);
+      _kC.set(0, 0, 1).transformDirection(WALK.rig.j.head.matrixWorld).lerp(d, 0.45).normalize();
+      cam.position.y = Math.max(cam.position.y, p.y + 0.18);
+      cam.up.set(0, 1, 0); cam.lookAt(_kA.copy(cam.position).add(_kC));
+    } else if (WALK.fp) {
       cam.position.set(p.x, p.y + PD.eye, p.z).addScaledVector(yawDir(WALK.yaw, _kC), 0.09);
       cam.lookAt(_kA.copy(cam.position).add(d));
     } else {
-      const tgt = _kA.set(p.x, p.y + 1.5, p.z), back = _kC.copy(d).negate();
+      WALK.camH = lerp(WALK.camH || 1.5, downB ? 0.75 : 1.5, Math.min(1, dt * 3));
+      const tgt = _kA.set(p.x, p.y + WALK.camH, p.z), back = _kC.copy(d).negate();
       const dd = camClear(tgt, back, WALK.dist, 0.5);
       cam.position.copy(tgt).addScaledVector(back, dd);
       const g = groundAt(cam.position.x, -cam.position.z), b = WORLD.mtn ? mtInBore(cam.position.x, cam.position.z, 0) : null;
@@ -641,11 +853,15 @@ WALK.net = function () {
     const si = r.seat ? walkPlan(r.v).seats.findIndex(s => s === r.seat || (Math.abs(s.x - r.seat.x) < 0.01 && Math.abs(s.z - r.seat.z) < 0.01)) : -1;
     return [2, owner, c.vehicles.indexOf(r.v), +r.l.x.toFixed(2), +r.l.z.toFixed(2), +r.yaw.toFixed(2), sp, fl, si];
   }
+  const B = WALK.fall;
+  if (B) return [1, +WALK.p.x.toFixed(2), +WALK.p.y.toFixed(2), +WALK.p.z.toFixed(2), +WALK.yaw.toFixed(2), sp, fl, FALL_PH.indexOf(B.ph), +(B.th || 0).toFixed(2), +(B.tuck || 0).toFixed(2), +(B.air || 0).toFixed(2)];
   return [1, +WALK.p.x.toFixed(2), +WALK.p.y.toFixed(2), +WALK.p.z.toFixed(2), +WALK.yaw.toFixed(2), sp, fl];
 };
+const FALL_PH = ['air', 'land', 'stumble', 'roll', 'flop', 'lie', 'up'];
 function walkClean(a) {
   if (!Array.isArray(a)) return null;
   const n = (x, lo, hi) => (typeof x === 'number' && isFinite(x)) ? clamp(x, lo, hi) : 0;
+  if (a[0] === 1 && a.length >= 11) return [1, n(a[1], -1e5, 1e5), n(a[2], -2000, 5000), n(a[3], -1e5, 1e5), n(a[4], -10, 10), n(a[5], 0, 6), a[6] ? 1 : 0, Math.round(n(a[7], -1, 6)), n(a[8], -1e4, 1e4), n(a[9], 0, 1), n(a[10], 0, 1)];
   if (a[0] === 1 && a.length >= 7) return [1, n(a[1], -1e5, 1e5), n(a[2], -2000, 5000), n(a[3], -1e5, 1e5), n(a[4], -10, 10), n(a[5], 0, 6), a[6] ? 1 : 0];
   if (a[0] === 2 && a.length >= 9 && typeof a[1] === 'string' && /^[a-z0-9]{6,16}$/.test(a[1])) return [2, a[1], Math.round(n(a[2], 0, 200)), n(a[3], -14, 14), n(a[4], -2, 2), n(a[5], -10, 10), n(a[6], 0, 6), a[7] ? 1 : 0, Math.round(n(a[8], -1, 200))];
   return null;
@@ -680,10 +896,20 @@ WALK.peersFrame = function (dt) {
       R.quaternion.setFromRotationMatrix(_kM.extractRotation(vFrame(v))).multiply(_kQQ.setFromAxisAngle(_kU, av[5]));
       w.pos.copy(R.position); w.init = true; w.toldAt = '';
     }
-    if (av[6] > 0.05) w.phase = (w.phase + TAU * av[6] / lerp(1.5, 2.9, smooth(1.9, 3.4, av[6])) * dt) % (TAU * 1000);
-    if (av[7]) w.wave = w.wave < 0 ? 0 : w.wave + dt; else w.wave = -1;
+    // on foot the speed and flags are a place earlier than riding
+    const sp = av[0] === 1 ? av[5] : av[6], wav = av[0] === 1 ? av[6] : av[7];
+    if (sp > 0.05) w.phase = (w.phase + TAU * sp / lerp(1.5, 2.9, smooth(1.9, 3.4, sp)) * dt) % (TAU * 1000);
+    if (wav) w.wave = w.wave < 0 ? 0 : w.wave + dt; else w.wave = -1;
     R.visible = true;
-    w.rig.pose({ phase: w.phase, speed: av[0] === 2 && w.seat ? 0 : av[6], sit: w.seat ? w.seat.h : 0, wave: w.wave, t: WALK.t });
+    if (av[0] === 1 && av.length >= 11 && av[7] >= 0) {
+      // jumping, running it out, rolling or getting up
+      const fb = w.fb || (w.fb = { v: { x: 0, z: 0 } });
+      fb.ph = FALL_PH[av[7]] || 'land'; fb.th = av[8]; fb.tuck = av[9]; fb.air = av[10]; fb.v.x = sp; fb.v.z = 0;
+      walkPoseFall(w.rig, w.pos, w.yaw, fb, w.phase, WALK.t);
+      WALK.peerTag(p, w);
+      continue;
+    }
+    w.rig.pose({ phase: w.phase, speed: av[0] === 2 && w.seat ? 0 : sp, sit: w.seat ? w.seat.h : 0, wave: w.wave, t: WALK.t });
     WALK.peerTag(p, w);
   }
   for (const [id, w] of [...WALK.peers]) if (!live.has(id)) { scene.remove(w.rig.root); w.rig.root.traverse(o => { if (o.isMesh) o.geometry.dispose(); }); if (w.tag) w.tag.remove(); WALK.peers.delete(id); }

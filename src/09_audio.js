@@ -74,8 +74,12 @@ function audioInit() {
 const WHISTLES = {
   deep6: { kind: 'steam', notes: [164.8, 196.0, 220.0, 246.9, 293.7, 329.6], harm: [1, 0.56, 0.36, 0.24, 0.15, 0.09, 0.05], breath: 0.13, breathF: 1400, vib: [4.8, 0.0025], quill: 0.06, attack: 0.06, beat: 1.0018, pres: 2200 },
   // the 765: its recording's chord (see WHISTLE_REC.nkp6), as it is played
-  co3: { kind: 'steam', notes: [196.0, 246.9, 293.7], harm: [1, 0.56, 0.36, 0.24, 0.15, 0.09, 0.05], breath: 0.13, breathF: 1400, vib: [4.8, 0.0025], quill: 0.06, attack: 0.06, beat: 1.0018, pres: 2200 },   // C&O 1308: a three-chime
+  co3d: { kind: 'steam', notes: [196.0, 246.9, 293.7], harm: [1, 0.56, 0.36, 0.24, 0.15, 0.09, 0.05], breath: 0.13, breathF: 1400, vib: [4.8, 0.0025], quill: 0.06, attack: 0.06, beat: 1.0018, pres: 2200 },   // C&O 1308: a three-chime
   nkp6: { kind: 'steam', notes: [249.4, 289.8, 329.4, 362.9, 424.0, 514.3], harm: [1, 0.56, 0.36, 0.24, 0.15, 0.09, 0.05], breath: 0.13, breathF: 1400, vib: [4.8, 0.0025], quill: 0.06, attack: 0.06, beat: 1.0018, pres: 2200 },
+  /* the synthesized-take whistles (audio/tools/whistle_synth.py), the same chords for the live fallback */
+  pm6: { kind: 'steam', notes: [387, 491, 582, 655, 756, 859], harm: [1, 0.4, 0.25, 0.14, 0.07], breath: 0.15, breathF: 2400, vib: [5.2, 0.004], quill: 0.04, attack: 0.04, beat: 1.012, pres: 2600 },
+  nkp6m: { kind: 'steam', notes: [233, 277, 311, 349, 415, 466], harm: [1, 0.28, 0.09, 0.035], breath: 0.13, breathF: 2400, vib: [4.6, 0.0035], quill: 0.06, attack: 0.06, beat: 1.009, pres: 2200 },
+  co3: { kind: 'steam', notes: [277, 330, 415], harm: [1, 0.45, 0.2, 0.1, 0.05], breath: 0.17, breathF: 2300, vib: [5.0, 0.005], quill: 0.05, attack: 0.05, beat: 1.016, pres: 2200 },
   chime6: { kind: 'steam', notes: [335.0, 375.4, 444.6, 505.4, 632.3, 825.8], harm: [1, 0.62, 0.38, 0.26, 0.16, 0.1, 0.06], breath: 0.14, breathF: 2200, vib: [5.4, 0.003], quill: 0.05, attack: 0.05, beat: 1.0025, pres: 2600 },
   /* Shinkansen air horn: a bright two-tone (A5 over F#5) with few upper partials */
   shin: { kind: 'horn', notes: [740.0, 880.0], harm: [1, 0.75, 0.5, 0.34, 0.22, 0.14, 0.08], breath: 0.025, breathF: 2400, vib: [0, 0], quill: 0, attack: 0.012, beat: 1.003, pres: 2400 },

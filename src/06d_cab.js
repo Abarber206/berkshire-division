@@ -68,6 +68,11 @@ const DIALS = {
   load: { max: 1500, major: 300, minor: 50, label: 'LOAD', small: true, unit: 'AMPERES', red: 1250 },
   tspd: { max: 120, major: 20, minor: 5, label: 'TURBINE', small: true, unit: 'PER CENT SPEED', red: 104 },
   egt: { max: 1000, major: 200, minor: 50, label: 'EXHAUST', small: true, unit: 'DEG F', red: 850 },
+  // the fireman's gauges on the steam engines
+  stokerP: { max: 100, major: 20, minor: 5, label: 'STOKER', small: true },
+  feed: { max: 400, major: 100, minor: 20, label: 'FEED PUMP', small: true },
+  inj: { max: 400, major: 100, minor: 20, label: 'INJECTOR', small: true },
+  heat: { max: 160, major: 40, minor: 10, label: 'STEAM HEAT', small: true },
 };
 function dialMaterial(kind) {
   const key = 'dial_' + kind; if (RMAT[key]) return RMAT[key];
@@ -190,6 +195,7 @@ function steamCab(gb, body, d) {
     for (let y = ffl + 0.12; y < cy + FB.r - 0.05; y += 0.15) for (let z = -1.2; z <= 1.2; z += 0.15) {
       const zz = z + ((Math.round((y - ffl) / 0.15) % 2) ? 0.075 : 0);
       if (Math.abs(zz) > half(y) - 0.06) continue;
+      if (Math.abs(zz) < 0.34 && Math.abs(y - (ffl + 0.68)) < 0.28) continue;          // none under the firedoor's frame
       gb.add('backhead', new THREE.CylinderGeometry(0.007, 0.008, 0.01, 6).rotateZ(Math.PI / 2).translate(F - 0.003, y, zz));
     }
     // washout plugs low at the corners and high on the shoulders
@@ -202,15 +208,32 @@ function steamCab(gb, body, d) {
     const s = rrect(new THREE.Shape(), -0.31, fy - 0.25, 0.31, fy + 0.25, 0.06);
     s.holes.push(rrect(new THREE.Path(), -0.22, fy - 0.16, 0.22, fy + 0.16, 0.035));
     onFace('dark', s, 0.05);
+    // the two butterfly leaves swing open on their outer hinges, back toward the crew (a toggle: tap a leaf or the pedal)
+    const leaves = [];
     for (const sd of [-1, 1]) {
-      gb.box('dark', 0.03, 0.34, 0.2, F - 0.065, fy, sd * 0.12);                     // door leaf, 4 cm apart in the middle
-      gb.box('steel', 0.02, 0.04, 0.05, F - 0.09, fy, sd * 0.06);                    // its handle
-      gb.cyl('dark', 0.018, 0.018, 0.36, 8, F - 0.065, fy, sd * 0.235);              // hinge
+      gb.cyl('dark', 0.018, 0.018, 0.36, 8, F - 0.065, fy, sd * 0.235);              // hinge pin
+      for (const dy of [-0.13, 0.13]) gb.box('dark', 0.03, 0.04, 0.05, F - 0.04, fy + dy, sd * 0.25);   // hinge lugs off the frame
+      const pt = K.part(V(F - 0.065, fy, sd * 0.235));
+      pt.gb.box('dark', 0.03, 0.34, 0.2, 0, 0, -sd * 0.115);                          // door leaf, 4 cm apart in the middle when shut
+      pt.gb.box('dark', 0.012, 0.3, 0.16, -0.019, 0, -sd * 0.115);                    // its stiffening panel
+      pt.gb.box('steel', 0.02, 0.04, 0.05, -0.025, 0, -sd * 0.175);                   // handle
+      pt.gb.cyl('dark', 0.024, 0.024, 0.06, 8, 0, 0, 0);                              // knuckle round the pin
+      K.done(pt); leaves.push([pt, sd]);
     }
+    const doorCtl = { id: 'firedoor', name: 'Firedoor', kind: 'toggle', part: leaves[1][0].inner, outer: leaves[1][0].outer, grip: V(-0.025, 0, -0.175),
+      show: () => S.fdoor ? 1 : 0, pose: p => { for (const [pt, sd] of leaves) pt.inner.rotation.y = sd * p * 1.25; },
+      tap: () => { S.fdoor = !S.fdoor; }, label: () => 'Firedoor · ' + (S.fdoor ? 'open: cold air over the fire' : 'shut') };
+    K.ctl(doorCtl);
+    for (const [pt, sd] of leaves) K.hit(pt, doorCtl, 0.06, 0.34, 0.2, 0, 0, -sd * 0.115);
     gb.cylZ('dark', 0.035, 0.42, 12, F - 0.075, fy + 0.3, 0);                          // door engine
     for (const z of [-0.17, 0.17]) gb.box('dark', 0.075, 0.05, 0.04, F - 0.037, fy + 0.3, z);
     gb.box('dark', 0.08, 0.03, 0.1, F - 0.28, ffl + 0.025, -0.3);                      // pedal block on the deck
-    gb.box('steel', 0.16, 0.02, 0.09, F - 0.29, ffl + 0.06, -0.3, 0, 0, -0.18);       // pedal
+    const pp = K.part(V(F - 0.28, ffl + 0.045, -0.3));                                  // the pedal works the door engine's air valve
+    pp.gb.box('steel', 0.16, 0.02, 0.09, -0.01, 0.015, 0); pp.gb.box('dark', 0.02, 0.025, 0.09, -0.085, 0.024, 0);
+    K.done(pp);
+    const pedal = K.ctl(Object.assign({}, doorCtl, { part: pp.inner, outer: pp.outer, grip: V(-0.05, 0.02, 0),
+      pose: p => { pp.inner.rotation.z = -0.18 + 0.12 * p; } }));
+    K.hit(pp, pedal, 0.18, 0.06, 0.11, -0.01, 0.015, 0);
   }
   const firePos = V(F - 0.003, fy, 0), fireSize = [0.44, 0.32];
 
@@ -221,7 +244,27 @@ function steamCab(gb, body, d) {
   gb.box('steel', 0.13, 0.08, 0.12, F - 0.06, ty, 0);                                 // the turret's feed from the dome
   const valveZ = [-0.3, -0.1, 0.1, 0.3];
   for (const z of valveZ) { gb.cyl('steel', 0.026, 0.032, 0.08, 10, tx, ty + 0.1, z); gb.cyl('rod', 0.008, 0.008, 0.06, 6, tx, ty + 0.16, z); }
-  for (const z of [-0.3, 0.1]) { const g = new GeoBin(); handwheel(g, 'black', 0.05); for (const k in g.bins) for (const geo of g.bins[k]) gb.add('black', geo, M(tx, ty + 0.19, z, Math.PI / 2, 0, 0)); }
+  const worth = !!(d.spec && d.spec.fw === 'Worthington');
+  // fireman's end: the Worthington feedwater pump's throttle (or, on an engine with injectors only, the fireman's injector)
+  {
+    const pt = K.part(V(tx, ty + 0.19, -0.3)); handwheel(pt.gb, 'red', 0.05, 4);
+    for (const k in pt.gb.bins) pt.gb.bins[k].forEach(g => g.rotateX(Math.PI / 2));
+    K.done(pt);
+    const nm = worth ? 'Feedwater pump' : 'Fireman\'s injector';
+    const c = K.ctl({ id: 'feedpump', name: nm, kind: 'toggle', part: pt.inner, outer: pt.outer, grip: V(0, 0, 0.05),
+      show: () => S.injector ? 1 : 0, pose: p => { pt.inner.rotation.y = -p * 3.4; },
+      tap: () => { GAME.manualFire('injector'); S.injector = !S.injector; },
+      label: () => nm + ' · ' + (S.injector ? (worth ? 'running: hot water into the boiler' : 'on: feeding the boiler') : 'shut') });
+    K.hit(pt, c, 0.13, 0.06, 0.13);
+  }
+  // the air pump's steam throttle: the governor works it, so it only tells you what the pump is doing
+  {
+    const pt = K.part(V(tx, ty + 0.19, 0.1)); handwheel(pt.gb, 'black', 0.05);
+    for (const k in pt.gb.bins) pt.gb.bins[k].forEach(g => g.rotateX(Math.PI / 2));
+    K.done(pt);
+    const c = K.ctl({ id: 'airpump', kind: 'info', part: pt.inner, outer: pt.outer, label: () => `Air pump throttle · ${S.pumping ? 'pumping' : 'governor has it idle'} · main reservoir ${Math.round(S.MR)} psi` });
+    K.hit(pt, c, 0.13, 0.06, 0.13);
+  }
   // blower: a handwheel turned open
   {
     const pt = K.part(V(tx, ty + 0.19, -0.1)); handwheel(pt.gb, 'brass', 0.055); pt.inner.rotation.order = 'YXZ';
@@ -441,7 +484,7 @@ function steamCab(gb, body, d) {
     gb.box('cabInt', 0.52, 0.06, 0.13, xm + 0.05, seatTop + 0.3, sd * (wallZ - 0.065));        // padded armrest on the window sill
   }
   // the deck: oak boards laid fore and aft over the steel floor, from the seat boxes forward to the backhead
-  { const xa = F - 0.06, xb = eye.x - 0.6, n = 13, w = 2 * wallZ / n;
+  if (d.key !== '4014') { const xa = F - 0.06, xb = eye.x - 0.6, n = 13, w = 2 * wallZ / n;
     for (let i = 0; i < n; i++) gb.box(i % 3 ? 'cabWood' : 'cabWood2', xa - xb, 0.012, w - 0.008, (xa + xb) / 2, ffl + 0.006, -wallZ + w * (i + 0.5)); }
   /* ---- the working cab's clutter: steel carlines under the roof, the injector steam lines down each side of the
      backhead, gauge siphons up to the turret, gauge lamps, an oil can shelf and a hung lantern on the fireman's side ---- */
@@ -480,25 +523,201 @@ function steamCab(gb, body, d) {
   // cab lamp in the middle of the roof
   { const xl = F - 0.9, yt = d.ceil(0) + 0.01; gb.cyl('dark', 0.05, 0.05, 0.05, 12, xl, yt - 0.025, 0); gb.add('white', new THREE.SphereGeometry(0.045, 12, 6, 0, TAU, Math.PI / 2, Math.PI / 2).translate(xl, yt - 0.05, 0)); }
 
-  return K.out(eye, { firePos, fireSize, look: [{ yaw: 0.06, pitch: -0.04 }, { yaw: 0.75, pitch: -0.32 }] });
+  steamCabMore(gb, body, K, { d, F, ffl, wallZ, cy, half, eye, tx, ty, worth, fy, V });
+  return K.out(eye, { firePos, fireSize, look: [{ yaw: 0.06, pitch: -0.04 }, { yaw: 0.75, pitch: -0.32 }, { yaw: -0.55, pitch: -0.3 }] });
 }
 
-/* a cab chair on a pedestal: the column and its foot, the seat pan, a cushion with a rolled front edge, a back
-   leaning 7 degrees with its headrest, and an armrest each side on its post */
+/* The rest of a working steam cab, as the crews knew it on these engines: the fireman's gauges (stoker, feedwater
+   pump, steam heat), the blowdown valve, grate shaker posts, the squirt hose, a lined and riveted cab in cab green
+   with wooden window frames, the roof hatch, gauge lamps that light at dusk, a glowing fire bed behind the doors,
+   and per engine: the Big Boy's ribbed steel deck, the Mallet's simpling (intercepting) valve. */
+function steamCabMore(gb, body, K, o) {
+  const { d, F, ffl, wallZ, cy, half, eye, tx, ty, worth, fy, V } = o, sp = d.spec || {}, back = V(-1, 0, 0);
+  if (!RMAT.cabBulb) {
+    RMAT.cabBulb = new THREE.MeshStandardMaterial({ color: 0xfff1d6, metalness: 0, roughness: 0.3, emissive: 0xffc777, emissiveIntensity: 0 });
+    CAB.bulbs = [RMAT.cabBulb];
+    RMAT.fireBed = new THREE.MeshBasicMaterial({ map: fireBedTex(), color: 0xffffff, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+    RMAT.fireBed.userData.noShadow = true;
+  }
+  const lamp = (x, y, z, dz) => {                                // a hooded gauge lamp: shade, bulb under it, lead off to the side
+    gb.box('dark', 0.1, 0.02, 0.1, x, y, z + dz); gb.box('dark', 0.04, 0.04, 0.03, x + 0.03, y, z + dz);
+    gb.add('cabBulb', new THREE.SphereGeometry(0.016, 8, 6).translate(x - 0.005, y - 0.022, z + dz));
+  };
+
+  /* ---- the fireman's gauges: stoker engine steam, feedwater pump discharge (or the injector delivery), steam heat ---- */
+  const isPax = () => !!(GAME.train && GAME.train.vehicles && GAME.train.vehicles.some(v => v.kind === 'coach'));
+  const fdials = [
+    { kind: 'stokerP', p: V(F, cy + 0.5, -0.43), r: 0.075, hands: [[() => S.stoker * 42 + (S.stoker > 0.02 ? 6 : 0)]], read: () => `Stoker engine steam · ${Math.round(S.stoker * 42 + (S.stoker > 0.02 ? 6 : 0))} psi` },
+    { kind: worth ? 'feed' : 'inj', p: V(F, cy + 0.42, -0.68), r: 0.075, hands: [[() => S.injector ? S.P + 28 : 0]], read: () => (worth ? 'Feedwater pump discharge · ' : 'Injector delivery · ') + (S.injector ? Math.round(S.P + 28) + ' psi' : 'shut') },
+    { kind: 'heat', p: V(F, cy + 0.2, -0.93), r: 0.068, hands: [[() => isPax() ? 55 + 3 * Math.sin(S.time * 0.2) : 0]], read: () => 'Steam heat to the train · ' + (isPax() ? '55 psi' : 'off (no coaches)') },
+  ];
+  for (const g of fdials) {
+    g.p.z = -Math.min(-g.p.z, half(g.p.y) - g.r - 0.06);
+    K.dial(Object.assign({ n: back }, g));
+    const z0 = g.p.z, zt = Math.max(z0, -0.38);
+    gb.tube('copper', [[F - 0.02, g.p.y + g.r + 0.005, z0], [F - 0.03, g.p.y + g.r + 0.06, z0], [tx + 0.01, ty - 0.12, (z0 + zt) / 2], [tx, ty - 0.05, zt]], 0.006, 16, 5);
+    lamp(F - 0.05, g.p.y + g.r + 0.035, z0, -0.07);
+  }
+  // and a bulb under each of the engineer's gauge hoods (the hoods are drawn with the gauges)
+  for (const [y, z, r] of [[cy + 0.52, -0.05, 0.14], [cy + 0.48, 0.3, 0.095], [cy + 0.56, 0.58, 0.095], [cy + 0.34, 0.82, 0.095]])
+    gb.add('cabBulb', new THREE.SphereGeometry(0.016, 8, 6).translate(F - 0.055, y + r + 0.013, z + (z > 0 ? 0.08 : -0.08)));
+
+  /* ---- blowdown: the Wilson blow-off valve's lever, low on the fireman's side. Hold it down to blow the boiler down. ---- */
+  {
+    const p = V(F - 0.05, ffl + 0.42, -Math.min(0.78, half(ffl + 0.42) - 0.12));
+    gb.box('dark', 0.06, 0.09, 0.07, F - 0.025, p.y, p.z);
+    const pt = K.part(p);
+    pt.gb.cyl('steel', 0.016, 0.016, 0.05, 8, 0, 0, 0, Math.PI / 2, 0, 0); pt.gb.box('handle', 0.018, 0.22, 0.016, -0.01, 0.11, 0); pt.gb.cyl('knob', 0.018, 0.018, 0.05, 8, -0.01, 0.22, 0, Math.PI / 2, 0, 0);
+    K.done(pt);
+    const c = K.ctl({ id: 'blowdown', name: 'Blowdown', kind: 'hold', part: pt.inner, outer: pt.outer, grip: V(-0.01, 0.22, 0),
+      show: () => S.blowdown ? 1 : 0, p: () => S.blowdown ? 1 : 0, setP: () => {}, pose: p => { pt.inner.rotation.z = p * 0.75; },
+      press: () => { S.blowdown = true; }, release: () => { S.blowdown = false; }, label: () => 'Blowdown valve · hold to blow down the boiler (water ' + Math.round(glassLevel(S.W) * 100) + '%)' });
+    K.hit(pt, c, 0.07, 0.26, 0.07, -0.01, 0.12, 0);
+    gb.tube('steel', [[F - 0.02, p.y - 0.04, p.z], [F - 0.03, ffl + 0.12, p.z - 0.03], [F - 0.02, ffl - 0.04, p.z - 0.05]], 0.02, 8, 6);
+  }
+
+  /* ---- grate shaker posts on the deck either side of the door, and the power shaker's valve ---- */
+  for (const z of [-0.62, -0.46, 0.46, 0.62]) {
+    gb.box('dark', 0.1, 0.06, 0.1, F - 0.12, ffl + 0.03, z);
+    gb.box('dark', 0.06, 0.08, 0.06, F - 0.12, ffl + 0.1, z);
+    gb.box('steel', 0.035, 0.012, 0.035, F - 0.12, ffl + 0.146, z);
+  }
+  /* ---- squirt hose: its valve off the backhead's corner and the hose coiled on a hook on the fireman's wall ---- */
+  {
+    const yv = ffl + 0.28, zv = -Math.min(1.08, half(yv) - 0.05), xw = F - 0.42, yh = ffl + 0.95, zw = -(wallZ - 0.04);
+    gb.cylX('brass', 0.022, 0.022, 0.06, 8, F - 0.03, yv, zv);
+    gb.cyl('rod', 0.007, 0.007, 0.05, 6, F - 0.06, yv + 0.03, zv); gb.add('black', new THREE.TorusGeometry(0.03, 0.006, 4, 12).rotateX(Math.PI / 2).translate(F - 0.06, yv + 0.055, zv));
+    gb.tube('black', [[F - 0.06, yv, zv], [F - 0.2, ffl + 0.08, zv - 0.05], [xw + 0.05, ffl + 0.06, zw + 0.02], [xw + 0.12, yh - 0.25, zw], [xw + 0.12, yh - 0.12, zw]], 0.016, 16, 6);
+    gb.add('black', barGeo(0.008, [xw, yh + 0.12, -wallZ], [xw, yh + 0.12, zw + 0.02], 5));
+    for (let i = 0; i < 3; i++) gb.add('black', new THREE.TorusGeometry(0.13 - i * 0.012, 0.016, 6, 22).scale(1, 1.15, 1).translate(xw, yh - 0.02, zw + 0.012 + i * 0.012));
+    gb.cylZ('brass', 0.02, 0.07, 8, xw - 0.13, yh - 0.2, zw + 0.02);                     // the nozzle, hung down
+  }
+
+  /* ---- the cab lined in cab green with rows of rivets: a wainscot under the windows, the piers and the header ---- */
+  const AX = d.ax, w = d.side;
+  if (AX && w) {
+    const xa = AX(w.a1), xb = AX(w.a0), x0 = d.x0 - 0.03, x1 = d.x1 + 0.04, top = d.ceil(wallZ) - 0.04;
+    for (const s of [-1, 1]) {
+      const z = s * (wallZ - 0.007), zr = s * (wallZ - 0.016);
+      gb.box('cabInt', x0 - x1, w.y0 - 0.02 - ffl, 0.012, (x0 + x1) / 2, (w.y0 - 0.02 + ffl) / 2, z);                 // wainscot
+      gb.box('cabInt', x0 - xb - 0.04, top - w.y0 + 0.02, 0.012, (x0 + xb + 0.04) / 2, (top + w.y0 - 0.02) / 2, z);   // front pier
+      gb.box('cabInt', xb + 0.04 - xa + 0.04, top - w.y1 - 0.04, 0.012, (xa + xb) / 2, (top + w.y1 + 0.04) / 2, z);  // header
+      // wooden window frames round the two sashes, the middle post and the sill
+      const mid = (w.a0 + w.a1) / 2;
+      for (const [a0, a1] of [[w.a0, mid - 0.04], [mid + 0.04, w.a1]]) {
+        const fx0 = AX(a1), fx1 = AX(a0), hy = w.y1 - w.y0;
+        gb.box('cabWood', fx1 - fx0 + 0.08, 0.04, 0.03, (fx0 + fx1) / 2, w.y1 + 0.02, zr);
+        gb.box('cabWood', 0.04, hy + 0.08, 0.03, fx0 - 0.02, (w.y0 + w.y1) / 2, zr);
+        gb.box('cabWood', 0.04, hy + 0.08, 0.03, fx1 + 0.02, (w.y0 + w.y1) / 2, zr);
+        gb.box('steel', 0.05, 0.04, 0.02, (fx0 + fx1) / 2, w.y0 + 0.013, s * (wallZ - 0.03));                        // sash lift, on the sill
+      }
+      gb.box('cabWood2', xb - xa + 0.1, 0.03, 0.06, (xa + xb) / 2, w.y0 - 0.02, s * (wallZ - 0.035));                  // sill board
+      // rivets along the wainscot's top and bottom, and up the front pier's seam
+      const n = [0, 0, -s];
+      gb.add('dark', dtStuds([...dtLine([x1 + 0.06, w.y0 - 0.06, z - s * 0.006], [x0 - 0.06, w.y0 - 0.06, z - s * 0.006], 0.12, n),
+        ...dtLine([x1 + 0.06, ffl + 0.08, z - s * 0.006], [x0 - 0.06, ffl + 0.08, z - s * 0.006], 0.12, n),
+        ...dtLine([xb + 0.1, w.y0 + 0.06, z - s * 0.006], [xb + 0.1, top - 0.06, z - s * 0.006], 0.12, n)], 0.008, 0.006, 5));
+    }
+    // inside the front windows: wooden frames and a hinged glare shield over each
+    const fw = d.fwin;
+    for (const s of [-1, 1]) {
+      const zc = s * (fw.zi + fw.zo) / 2, wz = fw.zo - fw.zi, xf = d.x0 - 0.045;
+      gb.box('cabWood', 0.03, 0.04, wz + 0.08, xf, fw.y1 + 0.02, zc); gb.box('cabWood', 0.03, 0.04, wz + 0.08, xf, fw.y0 - 0.02, zc);
+      gb.box('cabWood', 0.03, fw.y1 - fw.y0, 0.04, xf, (fw.y0 + fw.y1) / 2, s * (fw.zi - 0.02)); gb.box('cabWood', 0.03, fw.y1 - fw.y0, 0.04, xf, (fw.y0 + fw.y1) / 2, s * (fw.zo + 0.02));
+      gb.cylZ('dark', 0.01, wz, 6, xf - 0.02, fw.y1 + 0.05, zc);                                                       // shield hinge rod
+      gb.box('dark', 0.16, 0.008, wz - 0.02, xf - 0.1, fw.y1 + 0.03, zc, 0, 0, 0.25);                                   // the shield, tipped up
+    }
+    // the roof hatch from inside: its frame under the crown and the lever that props it
+    { const xm = (d.x0 + d.x1) / 2, yc = d.ceil(0) - 0.01;
+      for (const s of [-1, 1]) { gb.box('dark', 0.92, 0.05, 0.04, xm, yc - 0.025, s * 0.42); gb.box('dark', 0.04, 0.05, 0.84, xm + s * 0.46, yc - 0.025, 0); }
+      gb.add('steel', barGeo(0.008, [xm - 0.44, yc - 0.05, 0.3], [xm - 0.2, yc - 0.32, 0.3], 5)); gb.cyl('knob', 0.016, 0.016, 0.05, 8, xm - 0.2, yc - 0.34, 0.3); }
+  }
+
+  /* ---- the deck: the Big Boy stands its crew on ribbed steel plate; the others on oak boards (drawn in steamCab) ---- */
+  if (d.key === '4014') {
+    const xa = F - 0.06, xb = eye.x - 0.6;
+    gb.box('steel', xa - xb, 0.012, 2 * wallZ - 0.02, (xa + xb) / 2, ffl + 0.006, 0);
+    for (let a = xb + 0.05; a < xa - 0.03; a += 0.06) gb.box('steel', 0.012, 0.006, 2 * wallZ - 0.1, a, ffl + 0.014, 0);
+    gb.box('handle', 0.5, 0.004, 0.3, (xa + xb) / 2 + 0.2, ffl + 0.019, 0);                  // the stainless access plate over the air and fuel lines
+  }
+
+  /* ---- the Mallet's simpling valve: live steam to the low pressure engine for a start, shut once she's rolling ---- */
+  if (sp.mallet) {
+    const p = V(F - 0.05, cy - 0.34, Math.min(0.47, half(cy - 0.34) - 0.2));
+    gb.box('dark', 0.07, 0.1, 0.08, F - 0.03, p.y, p.z);
+    const pt = K.part(p);
+    pt.gb.cyl('steel', 0.016, 0.016, 0.04, 8, 0, 0, 0, 0, 0, Math.PI / 2); pt.gb.box('handle', 0.016, 0.17, 0.018, -0.01, -0.085, 0); pt.gb.cyl('redKnob', 0.02, 0.02, 0.05, 8, -0.01, -0.17, 0, Math.PI / 2, 0, 0);
+    K.done(pt);
+    const c = K.ctl({ id: 'simple', name: 'Simpling valve', kind: 'toggle', part: pt.inner, outer: pt.outer, grip: V(-0.01, -0.17, 0),
+      show: () => S.simple ? 1 : 0, pose: p => { pt.inner.rotation.x = (p - 0.5) * 0.8; },
+      tap: () => { S.simple = !S.simple; }, label: () => 'Simpling valve · ' + (S.simple ? 'SIMPLE: live steam to all four cylinders, for starting' : 'compound') });
+    K.hit(pt, c, 0.07, 0.22, 0.08, -0.01, -0.09, 0);
+  }
+
+  /* ---- the fire bed seen between the doors: a flickering sheet of coals in front of the glow ---- */
+  {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(0.42, 0.3), RMAT.fireBed); m.position.set(F - 0.006, fy - 0.01, 0); m.rotation.y = -Math.PI / 2; m.castShadow = false; m.renderOrder = 2; body.add(m);
+  }
+}
+/* a sheet of glowing coals for the fire bed: hot yellow at the heart of the bed, orange and red toward the edges */
+function fireBedTex() {
+  return canvasTex(128, 96, (g, w, h) => {
+    g.fillStyle = '#000'; g.fillRect(0, 0, w, h);
+    let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    for (let i = 0; i < 260; i++) {
+      const x = rnd() * w, y = h * (0.35 + 0.65 * rnd()), r = 3 + rnd() * 7, hot = (y / h) * (1 - Math.abs(x / w - 0.5));
+      const gr = g.createRadialGradient(x, y, 0, x, y, r);
+      gr.addColorStop(0, hot > 0.45 ? '#ffe9a0' : hot > 0.3 ? '#ffb040' : '#e2541c'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+      g.fillStyle = gr; g.beginPath(); g.arc(x, y, r, 0, TAU); g.fill();
+    }
+    for (let i = 0; i < 14; i++) { const x = rnd() * w, y = h * 0.4 * rnd(); g.fillStyle = 'rgba(255,170,60,0.25)'; g.beginPath(); g.ellipse(x, y + 10, 3, 12, 0, 0, TAU); g.fill(); }   // flames licking up
+  });
+}
+
+/* a padded block with rounded edges: w along x, h up, d along z, centred on the origin */
+function cushionGeo(w, h, d, r = 0.03) {
+  r = Math.min(r, w / 2 - 0.002, d / 2 - 0.002, h / 2 - 0.002);
+  const s = new THREE.Shape(), x0 = -w / 2 + r, x1 = w / 2 - r, z0 = -d / 2 + r, z1 = d / 2 - r;
+  s.moveTo(x0, z0); s.lineTo(x1, z0); s.quadraticCurveTo(x1 + r, z0, x1 + r, z0 + r); s.lineTo(x1 + r, z1); s.quadraticCurveTo(x1 + r, z1 + r, x1, z1 + r);
+  s.lineTo(x0, z1 + r); s.quadraticCurveTo(x0 - r, z1 + r, x0 - r, z1); s.lineTo(x0 - r, z0); s.quadraticCurveTo(x0 - r, z0 - r, x0, z0 - r); s.closePath();
+  const g = new THREE.ExtrudeGeometry(s, { depth: h - 2 * r, bevelEnabled: true, bevelThickness: r, bevelSize: r * 0.999, bevelSegments: 3, curveSegments: 4 });
+  g.rotateX(Math.PI / 2); g.translate(0, h / 2 - r, 0);
+  return g;
+}
+/* a cab chair on a pedestal, facing +x: the floor plate and its slide rails, the column with its gas spring and the
+   height lever, a swivel plate under a padded seat with a rolled front edge, a back with a lumbar roll and side
+   bolsters leaning 7 degrees, a headrest on two posts, and padded armrests that fold up on their hinges */
 function cabChair(gb, key, x, z, seatTop, floorY) {
-  gb.cyl('dSteel', 0.2, 0.22, 0.03, 16, x, floorY + 0.015, z);
-  gb.cyl('dSteel', 0.045, 0.045, seatTop - 0.08 - floorY, 10, x, (seatTop - 0.08 + floorY) / 2, z);
-  gb.box('dSteel', 0.4, 0.04, 0.4, x, seatTop - 0.1, z);
-  gb.add(key, new THREE.CylinderGeometry(0.06, 0.06, 0.48, 10).rotateX(Math.PI / 2).translate(x + 0.2, seatTop - 0.03, z));
-  gb.box(key, 0.46, 0.1, 0.5, x - 0.02, seatTop - 0.035, z);
+  gb.box('dSteel', 0.46, 0.012, 0.36, x, floorY + 0.006, z);                                       // floor plate
+  for (const e of [-1, 1]) gb.box('dSteel', 0.42, 0.03, 0.04, x, floorY + 0.027, z + e * 0.13);    // slide rails
+  gb.cyl('dSteel', 0.15, 0.17, 0.03, 20, x, floorY + 0.057, z);                                   // the column's foot
+  const cTop = seatTop - 0.13;
+  gb.cyl('dSteel', 0.05, 0.05, (cTop - floorY - 0.07) * 0.55, 14, x, floorY + 0.07 + (cTop - floorY - 0.07) * 0.275, z);   // outer tube
+  gb.cyl('steel', 0.036, 0.036, (cTop - floorY - 0.07) * 0.5, 14, x, cTop - (cTop - floorY - 0.07) * 0.25, z);            // the gas spring's rod
+  gb.box('dSteel', 0.36, 0.035, 0.36, x, cTop + 0.0175 - 0.002, z);                                // swivel plate
+  gb.box('dSteel', 0.12, 0.012, 0.02, x + 0.12, cTop - 0.01, z + 0.19);                            // height lever
+  gb.add('knob', cushionGeo(0.05, 0.024, 0.03, 0.01).translate(x + 0.17, cTop - 0.01, z + 0.19));
+  // the seat: a pan and a cushion, its front edge rolled over
+  gb.add(key, cushionGeo(0.48, 0.1, 0.5, 0.04).translate(x - 0.02, seatTop - 0.06, z));
+  gb.add(key, new THREE.CylinderGeometry(0.055, 0.055, 0.46, 12).rotateX(Math.PI / 2).translate(x + 0.2, seatTop - 0.035, z));
+  gb.add('dark', new THREE.BoxGeometry(0.003, 0.004, 0.44).translate(x + 0.256, seatTop - 0.035, z));   // piping along the roll
+  // the back, leaning 7 degrees: a shell, the pad with its lumbar roll and side bolsters
   const back = M(x - 0.27, seatTop + 0.33, z, 0, 0, 0.12);
-  gb.add(key, new THREE.BoxGeometry(0.1, 0.66, 0.48).applyMatrix4(back));
-  gb.add(key, new THREE.BoxGeometry(0.12, 0.2, 0.3).translate(-0.01, 0.42, 0).applyMatrix4(back));
-  gb.add('dSteel', new THREE.BoxGeometry(0.03, 0.1, 0.04).translate(0, 0.35, 0).applyMatrix4(back));
-  gb.box('dSteel', 0.14, 0.04, 0.06, x - 0.21, seatTop + 0.02, z);
+  gb.add('dSteel', new THREE.BoxGeometry(0.04, 0.62, 0.46).translate(-0.04, 0, 0).applyMatrix4(back));
+  gb.add(key, cushionGeo(0.08, 0.6, 0.42, 0.03).translate(0.02, 0, 0).applyMatrix4(back));
+  gb.add(key, new THREE.CylinderGeometry(0.05, 0.05, 0.36, 12).rotateX(Math.PI / 2).translate(0.06, -0.12, 0).applyMatrix4(back));   // lumbar roll
+  for (const e of [-1, 1]) gb.add(key, cushionGeo(0.12, 0.52, 0.07, 0.03).translate(0.04, -0.02, e * 0.21).applyMatrix4(back));     // bolsters
+  for (const e of [-1, 1]) gb.add('dark', new THREE.BoxGeometry(0.004, 0.5, 0.003).translate(0.0625, 0.0, e * 0.15).applyMatrix4(back));   // seams
+  gb.add('dSteel', new THREE.BoxGeometry(0.03, 0.12, 0.05).translate(-0.02, -0.36, 0).applyMatrix4(back));                           // the back's hinge to the swivel plate
+  gb.box('dSteel', 0.12, 0.04, 0.06, x - 0.21, seatTop - 0.1, z);
+  // headrest on two posts
+  for (const e of [-1, 1]) gb.add('steel', new THREE.CylinderGeometry(0.008, 0.008, 0.12, 6).translate(0.0, 0.34, e * 0.08).applyMatrix4(back));
+  gb.add(key, cushionGeo(0.1, 0.17, 0.3, 0.04).translate(0.01, 0.46, 0).applyMatrix4(back));
+  // armrests: a pad on a post, hinged to the back's frame
   for (const e of [-1, 1]) {
-    gb.box(key, 0.36, 0.06, 0.07, x - 0.05, seatTop + 0.22, z + e * 0.28);
-    gb.box('dSteel', 0.04, 0.24, 0.03, x - 0.18, seatTop + 0.08, z + e * 0.27);
+    gb.add(key, cushionGeo(0.34, 0.055, 0.07, 0.02).translate(x - 0.06, seatTop + 0.22, z + e * 0.28));
+    gb.box('dSteel', 0.035, 0.24, 0.03, x - 0.18, seatTop + 0.08, z + e * 0.27);
+    gb.cylZ('dSteel', 0.02, 0.05, 10, x - 0.2, seatTop + 0.22, z + e * 0.27);
   }
 }
 
@@ -516,8 +735,12 @@ function dieselCab(gb, body, d) {
   const aF = d.CAB0 - 0.17, aT = d.CAB0 + 0.38, aS = d.CAB0 + 0.65, yTop = d.sill - 0.015, yS = 3.22;
   {
     const s = new THREE.Shape();
-    s.moveTo(dx(aF), FL - 0.03); s.lineTo(dx(aF), yTop); s.lineTo(dx(aT), yTop); s.lineTo(dx(aS), yS); s.lineTo(dx(aS), FL - 0.03); s.closePath();
+    // with a nose narrower than the cab (d.nose: its half width and roof height over the console) only the part
+    // inside the cab runs wall to wall; ahead of the cab's front wall it is cut to fit inside the nose
+    const a0 = d.nose ? d.CAB0 : aF;
+    s.moveTo(dx(a0), FL - 0.03); s.lineTo(dx(a0), yTop); s.lineTo(dx(aT), yTop); s.lineTo(dx(aS), yS); s.lineTo(dx(aS), FL - 0.03); s.closePath();
     const zw = wallZ + 0.005, g = new THREE.ExtrudeGeometry(s, { depth: 2 * zw, bevelEnabled: false }); g.translate(0, 0, -zw); gb.add('dDesk', g);
+    if (d.nose) box('dDesk', aF, a0 + 0.002, FL - 0.03, d.nose.top, -d.nose.w, d.nose.w);
     box('dUnder', aS - 0.01, aS + 0.005, FL - 0.03, FL + 0.12, -zw, zw);                 // kick plate
   }
   // the sloped face: a frame for each screen and a row of switches under the engineer's
@@ -679,7 +902,174 @@ function dieselCab(gb, body, d) {
     box('dMat', aB0, aB1 - 0.02, FL, FL + 0.008, -zl, zl);
     for (let a = aB0 + 0.08; a < aB1 - 0.06; a += 0.1) box('dMat', a, a + 0.03, FL + 0.008, FL + 0.014, -zl + 0.04, zl - 0.04);
   }
+  /* ---- the room: locker, coats, first aid, heaters, footrest, paperwork, ceiling, the overhead radio console with
+     the cab light and wiper switches under it ---- */
+  {
+    const aB1 = d.CAB1 - 0.06, zl = wallZ - 0.01, yC = d.ceil;
+    cabFurnish(gb, K, { dx, FL, yC, zw: zl, aWall: aB1 - 0.02, locker: [0.64, zl - 0.02, 0.3], hook: -1.24, aid: 0.1, heaters: [3.55, 4.0],
+      foot: [3.5, -0.86], clip: [d.CAB0 + 0.12, yTop, -0.78], ceilA: [aS - 0.24, aB1 - 0.02], speaker: [4.75, -0.75], era: 'modern',
+      radio: { a0: d.CAB0 + 1.0, a1: d.CAB0 + 1.36, z0: -0.3, z1: 0.18 },
+      lightSw: [d.CAB0 + 1.06, yC - 0.11, -0.2, 'down'], wiperSw: [d.CAB0 + 1.06, yC - 0.11, 0.08, 'down'] });
+  }
+  /* ---- windshield wipers, outside the glass: each hangs from its pivot at the pane's inner bottom corner and sweeps up ---- */
+  if (d.wipe) {
+    const { tL, wz0, wz1, wy0, yW0 } = d.wipe, n = V(1, tL, 0).normalize(), L = wz1 - wz0 - 0.12;
+    for (const sd of [-1, 1]) {
+      const y = wy0 + 0.06, piv = V(dx(d.CAB0) + tL * yW0 - tL * y + 0.012, y, sd * (wz0 + 0.03));
+      const m = faceFrame(piv, n);
+      gb.add('dUnder', new THREE.CylinderGeometry(0.018, 0.022, 0.03, 10).rotateX(Math.PI / 2).translate(0, 0, -0.012), m);   // spindle boss on the frame
+      const pt = K.part(V()); pt.outer.matrixAutoUpdate = false; pt.outer.matrix.copy(m);
+      pt.gb.add('dUnder', new THREE.BoxGeometry(L, 0.014, 0.01).translate(-sd * L / 2, 0, 0.008));
+      pt.gb.add('dUnder', new THREE.BoxGeometry(0.05, 0.02, 0.044).translate(-sd * L * 0.55, 0, -0.01));
+      pt.gb.add('black', new THREE.BoxGeometry(L * 0.9, 0.012, 0.012).translate(-sd * L * 0.55, -0.006, -0.034));             // the blade on the glass, recessed 3 cm in its frame
+      K.done(pt);
+      K.ctl({ id: 'wiper', kind: 'anim', part: pt.inner, outer: pt.outer, show: () => wipersOn() ? 0.5 - 0.5 * Math.cos(S.time * 2.3) : 0,
+        pose: p => { pt.inner.rotation.z = -sd * p * 0.5; } });
+    }
+  }
   return K.out(eye, { look: [{ yaw: 0.0, pitch: -0.1 }, { yaw: 0.45, pitch: -0.42 }] });
+}
+
+/* ---------------- furnishing a diesel-era cab ----------------
+   What makes a cab a room: the electrical locker on the back wall with its breaker panel, coat hooks with a
+   jacket or a hi-vis vest, the first aid kit, a clipboard of paperwork, heaters under the side windows, the
+   conductor's footrest, ceiling seams, grab handles and speaker, an overhead radio console (modern) or a wall
+   radio (1960), and the cab light switch. f: dx, FL, yC (ceiling), zw (inner face of the side walls), aWall (back
+   wall's face; things stand at a < aWall), door [z0, z1] on the back wall, locker [z0, z1, depth], hook z,
+   heaters [a0, a1], foot [a, z], clip [a, y, z] (lying on a desk top), radio {a0, a1} (overhead) or null,
+   era 'modern' | '1960'. */
+function cabFurnish(gb, K, f) {
+  const dx = f.dx, V = (x, y, z) => new THREE.Vector3(x, y, z);
+  const box = (k, a0, a1, y0, y1, z0, z1) => gb.box(k, Math.abs(a1 - a0), Math.abs(y1 - y0), Math.abs(z1 - z0), dx((a0 + a1) / 2), (y0 + y1) / 2, (z0 + z1) / 2);
+  cabFurnishMats();
+  const aw = f.aWall, FL = f.FL, yC = f.yC, zw = f.zw;
+  /* ---- the electrical locker: two doors with louvres, handles and hinges; a breaker panel let into the left door ---- */
+  {
+    const [z0, z1, dep] = f.locker, a0 = aw - dep, h = Math.min(1.95, yC - FL - 0.04), y1 = FL + h, zm = (z0 + z1) / 2;
+    box('dLining', a0, aw, FL, y1, z0, z1);
+    box('dUnder', a0 - 0.004, a0, FL + 0.02, y1 - 0.02, zm - 0.003, zm + 0.003);                 // the doors' meeting line
+    for (const [za, zb] of [[z0, zm], [zm, z1]]) {
+      for (let y = FL + 0.12; y < FL + 0.5; y += 0.04) box('dUnder', a0 - 0.012, a0, y, y + 0.012, za + 0.06, zb - 0.06);   // louvres low
+      for (let y = y1 - 0.42; y < y1 - 0.12; y += 0.04) box('dUnder', a0 - 0.012, a0, y, y + 0.012, za + 0.06, zb - 0.06);  // and high
+      const zh = za === z0 ? zb - 0.05 : za + 0.05;
+      box('dSteel', a0 - 0.035, a0, FL + 0.95, FL + 1.12, zh - 0.012, zh + 0.012);                  // handle
+      const zg = za === z0 ? za + 0.012 : zb - 0.012;
+      for (const y of [FL + 0.2, y1 - 0.2]) box('dSteel', a0 - 0.015, a0 + 0.01, y - 0.05, y + 0.05, zg - 0.01, zg + 0.01);   // hinges
+    }
+    // breaker panel: a grey plate with three rows of breakers and their label strip
+    const pz0 = z0 + 0.07, pz1 = zm - 0.07, py0 = FL + 1.2, py1 = Math.min(FL + 1.62, y1 - 0.45);
+    box('dSteel', a0 - 0.008, a0, py0, py1, pz0, pz1);
+    for (let r = 0; r < 3; r++) {
+      const y = py0 + 0.06 + r * (py1 - py0 - 0.08) / 3;
+      for (let z = pz0 + 0.04; z < pz1 - 0.02; z += 0.035) box('black', a0 - 0.03, a0 - 0.008, y, y + 0.05, z - 0.01, z + 0.01);
+      box('white', a0 - 0.01, a0 - 0.008, y - 0.022, y - 0.006, pz0 + 0.02, pz1 - 0.02);
+    }
+    gb.add('cabWarn', new THREE.PlaneGeometry(0.16, 0.08).rotateY(Math.PI / 2).translate(dx(a0) + 0.0015, y1 - 0.62, (zm + z1) / 2));   // high voltage warning
+  }
+  /* ---- coat hooks on the back wall, a jacket (1960) or a hi-vis vest (modern) hung on one ---- */
+  {
+    const z = f.hook, y = FL + 1.66;
+    box('dSteel', aw - 0.02, aw, y - 0.03, y + 0.03, z - 0.18, z + 0.18);
+    for (const dz of [-0.12, 0.12]) { gb.add('dSteel', barGeo(0.008, [dx(aw - 0.02), y, z + dz], [dx(aw - 0.07), y + 0.03, z + dz], 5)); gb.cyl('dSteel', 0.012, 0.012, 0.02, 8, dx(aw - 0.07), y + 0.04, z + dz); }
+    const k = f.era === 'modern' ? 'cabVest' : 'cabCoat', zv = z - 0.12, len = f.era === 'modern' ? 0.62 : 0.85;
+    gb.add(k, cushionGeo(0.05, len, 0.42, 0.02).translate(dx(aw - 0.055), y - len / 2 + 0.03, zv));
+    gb.add(k, cushionGeo(0.07, 0.08, 0.16, 0.03).translate(dx(aw - 0.065), y + 0.0, zv));               // collar over the hook
+    if (f.era === 'modern') for (const yy of [y - 0.22, y - 0.42]) box('cabStripe', aw - 0.083, aw - 0.079, yy, yy + 0.04, zv - 0.2, zv + 0.2);
+  }
+  /* ---- first aid kit: a white box with its red cross, on the back wall ---- */
+  if (f.aid !== undefined) {
+    const z = f.aid, y = FL + 1.45;
+    box('white', aw - 0.1, aw, y - 0.14, y + 0.14, z - 0.15, z + 0.15);
+    gb.add('cabAid', new THREE.PlaneGeometry(0.22, 0.22).rotateY(Math.PI / 2).translate(dx(aw - 0.1) + 0.0015, y, z));
+    box('dSteel', aw - 0.11, aw - 0.1, y - 0.03, y + 0.03, z - 0.17, z - 0.15);
+  }
+  /* ---- heaters under the side windows: a louvred case on legs off the floor ---- */
+  for (const sd of [-1, 1]) {
+    const [a0, a1] = f.heaters, zo = sd * zw, zi = sd * (zw - 0.12), y0 = FL + 0.06, y1 = FL + 0.34;
+    box('dDesk', a0, a1, y0, y1, zi, zo);
+    for (let a = a0 + 0.04; a < a1 - 0.03; a += 0.035) box('dUnder', a, a + 0.012, y0 + 0.1, y1 - 0.04, zi - sd * 0.006, zi);
+    for (const a of [a0 + 0.03, a1 - 0.03]) box('dSteel', a - 0.015, a + 0.015, FL, y0, zi + sd * 0.02, zi + sd * 0.05);
+  }
+  /* ---- the conductor's footrest: a ribbed plate tipped up on its frame ---- */
+  if (f.foot) {
+    const [a, z] = f.foot;
+    gb.add('dSteel', new THREE.BoxGeometry(0.22, 0.015, 0.5).applyMatrix4(M(dx(a), FL + 0.09, z, 0, 0, 0.35)));
+    for (let i = -2; i <= 2; i++) gb.add('dUnder', new THREE.BoxGeometry(0.012, 0.006, 0.46).translate(i * 0.04, 0.01, 0).applyMatrix4(M(dx(a), FL + 0.09, z, 0, 0, 0.35)));
+    for (const e of [-1, 1]) box('dSteel', a - 0.06, a + 0.06, FL, FL + 0.09, z + e * 0.22 - 0.015, z + e * 0.22 + 0.015);
+  }
+  /* ---- a clipboard of paperwork lying on the desk ---- */
+  if (f.clip) {
+    const [a, y, z] = f.clip;
+    gb.add('cabWood', new THREE.BoxGeometry(0.33, 0.006, 0.24).translate(dx(a), y + 0.003, z));
+    gb.add(f.era === 'modern' ? 'cabPaper' : 'cabPaper60', new THREE.PlaneGeometry(0.29, 0.21).rotateX(-Math.PI / 2).rotateY(-Math.PI / 2).translate(dx(a) - 0.005, y + 0.0075, z));
+    box('dSteel', a - 0.165, a - 0.13, y + 0.006, y + 0.018, z - 0.05, z + 0.05);
+    gb.add('knob', new THREE.CylinderGeometry(0.004, 0.004, 0.14, 6).rotateZ(Math.PI / 2).translate(dx(a) + 0.02, y + 0.01, z + 0.07));   // a pencil
+  }
+  /* ---- ceiling: seams every 40 cm, two grab handles, a speaker ---- */
+  {
+    const [c0, c1] = f.ceilA;
+    for (let a = c0 + 0.3; a < c1 - 0.1; a += 0.4) box('dUnder', a, a + 0.012, yC - 0.026, yC - 0.02, -zw + 0.05, zw - 0.05);
+    for (const sd of [-1, 1]) {
+      const z = sd * (zw - 0.22), a0 = c0 + 0.45, a1 = a0 + 0.3;
+      for (const a of [a0, a1]) box('dSteel', a - 0.015, a + 0.015, yC - 0.08, yC - 0.02, z - 0.015, z + 0.015);
+      gb.cylX('dSteel', 0.012, 0.012, 0.33, 8, dx((a0 + a1) / 2), yC - 0.09, z);
+    }
+    if (f.speaker) { const [a, z] = f.speaker; gb.cyl('dUnder', 0.08, 0.08, 0.012, 16, dx(a), yC - 0.026, z); for (let i = -2; i <= 2; i++) box('black', a - 0.06, a + 0.06, yC - 0.034, yC - 0.031, z + i * 0.025 - 0.004, z + i * 0.025 + 0.004); }
+  }
+  /* ---- the radio: an overhead console with its handset on a coiled cord (modern), or a box on the wall (1960) ---- */
+  let rf = null;
+  if (f.radio) {
+    const { a0, a1, z0, z1 } = f.radio, yb = yC - 0.11;
+    box('dDesk', a0, a1, yb, yC - 0.02, z0, z1);
+    // its face toward the crew: a green display and buttons
+    gb.add('cabLcd', new THREE.PlaneGeometry(0.16, 0.035).rotateY(-Math.PI / 2).translate(dx(a1) - 0.001, yb + 0.055, (z0 + z1) / 2 - 0.05));
+    for (let i = 0; i < 5; i++) box('knob', a1, a1 + 0.012, yb + 0.02, yb + 0.035, (z0 + z1) / 2 + 0.06 + i * 0.03 - 0.01, (z0 + z1) / 2 + 0.06 + i * 0.03 + 0.01);
+    // handset on its cradle at the console's end, and the cord in loops below
+    const zc = z1 + 0.03;
+    box('dDesk', a1 - 0.18, a1 - 0.02, yb + 0.02, yb + 0.08, z1, zc - 0.012);
+    gb.add('black', cushionGeo(0.2, 0.04, 0.05, 0.015).translate(dx(a1 - 0.1), yb + 0.05, zc));
+    for (let i = 0; i < 9; i++) gb.add('black', new THREE.TorusGeometry(0.018, 0.004, 4, 10).translate(dx(a1 - 0.1), yb + 0.0 - i * 0.012, zc - 0.005));
+    rf = { a: (a0 + a1) / 2, y: yb, z: (z0 + z1) / 2 };
+  } else {
+    const z = f.wallRadio, y = FL + 1.75;
+    box('dDesk', aw - 0.16, aw, y - 0.1, y + 0.1, z - 0.18, z + 0.18);
+    for (let i = 0; i < 3; i++) gb.cylX('knob', 0.016, 0.016, 0.03, 10, dx(aw - 0.175), y - 0.04, z - 0.1 + i * 0.1);
+    gb.add('cabLcd', new THREE.PlaneGeometry(0.2, 0.05).rotateY(Math.PI / 2).translate(dx(aw - 0.16) + 0.001, y + 0.04, z));
+    box('black', aw - 0.19, aw - 0.16, y - 0.09, y - 0.03, z + 0.12, z + 0.17);                                     // microphone on its clip
+  }
+  /* ---- switches: the cab light, and the windshield wipers on the engines that have them ---- */
+  const sw = [];
+  if (f.lightSw) sw.push({ id: 'cablamp', at: f.lightSw, name: 'Cab light', get: () => S.cabLamp === false ? 0 : 1, tap: () => { S.cabLamp = S.cabLamp === false; }, txt: () => S.cabLamp === false ? 'off' : 'on' });
+  if (f.wiperSw) sw.push({ id: 'wipers', at: f.wiperSw, name: 'Windshield wipers', get: () => wipersOn() ? 1 : 0, tap: () => { S.wipers = !wipersOn(); }, txt: () => wipersOn() ? 'running' : 'parked' });
+  for (const o of sw) {
+    const [a, y, z, face] = o.at, n = face === 'down' ? V(0, -1, 0) : V(1, 0, 0);   // 'down' under a console, 'fwd' on the back wall
+    const m = faceFrame(V(dx(a), y, z), n, face === 'down' ? V(-1, 0, 0) : _Y);
+    gb.add('dUnder', new THREE.BoxGeometry(0.06, 0.08, 0.012).translate(0, 0, 0.006), m);
+    const pt = K.part(V()); pt.outer.matrixAutoUpdate = false; pt.outer.matrix.copy(m);
+    pt.gb.box('knob', 0.024, 0.02, 0.016, 0, 0, 0.02); pt.gb.box('handle', 0.008, 0.026, 0.006, 0, 0.0, 0.03);
+    K.done(pt);
+    const c = K.ctl({ id: o.id, name: o.name, kind: 'toggle', part: pt.inner, outer: pt.outer, grip: V(0, 0, 0.03), show: o.get,
+      pose: p => { pt.inner.rotation.x = (p - 0.5) * 0.9; }, tap: o.tap, label: () => o.name + ' · ' + o.txt() });
+    K.hit(pt, c, 0.07, 0.09, 0.07, 0, 0, 0.02);
+  }
+  return rf;
+}
+/* the wipers run when switched on, or on their own in rain and snow until someone switches them off */
+const wipersOn = () => S.wipers !== undefined ? !!S.wipers : (typeof WX !== 'undefined' && WX.P ? (WX.P.rain || 0) + (WX.P.snow || 0) > 0.15 : false);
+function cabFurnishMats() {
+  if (RMAT.cabVest) return;
+  const mk = (c, m, r, x = {}) => new THREE.MeshStandardMaterial({ color: c, metalness: m, roughness: r, ...x });
+  RMAT.cabVest = mk(0xff6a10, 0, 0.8); RMAT.cabCoat = mk(0x2c2a35, 0, 0.95); RMAT.cabStripe = mk(0xd8d8d0, 0.6, 0.3, { emissive: 0x333333 });
+  RMAT.cabLcd = new THREE.MeshBasicMaterial({ color: 0x3fd07a });
+  const tex = (w, h, draw) => { const t = canvasTex(w, h, draw); return t ? uploadOnce(t) : t; };
+  RMAT.cabAid = mk(0xffffff, 0, 0.6, { map: tex(64, 64, (g, w) => { g.fillStyle = '#f2f2ee'; g.fillRect(0, 0, w, w); g.fillStyle = '#c4221a'; g.fillRect(w * 0.38, w * 0.12, w * 0.24, w * 0.76); g.fillRect(w * 0.12, w * 0.38, w * 0.76, w * 0.24); }), polygonOffset: true, polygonOffsetFactor: -2 });
+  RMAT.cabWarn = mk(0xffffff, 0, 0.6, { map: tex(128, 64, (g, w, h) => { g.fillStyle = '#f2c21b'; g.fillRect(0, 0, w, h); g.fillStyle = '#111'; g.fillRect(3, 3, w - 6, 14); g.fillStyle = '#f2c21b'; g.font = 'bold 12px Arial, sans-serif'; g.textAlign = 'center'; g.fillText('DANGER', w / 2, 14); g.fillStyle = '#111'; g.font = 'bold 11px Arial, sans-serif'; g.fillText('HIGH VOLTAGE', w / 2, 34); g.fillText('KEEP OUT', w / 2, 50); }), polygonOffset: true, polygonOffsetFactor: -2 });
+  const paper = (title, tint) => mk(0xffffff, 0, 0.9, { map: tex(128, 96, (g, w, h) => {
+    g.fillStyle = tint; g.fillRect(0, 0, w, h); g.fillStyle = '#222'; g.font = 'bold 9px Arial, sans-serif'; g.fillText(title, 6, 12);
+    g.fillStyle = '#555'; for (let i = 0; i < 9; i++) g.fillRect(6, 20 + i * 8, 40 + ((i * 37) % 70), 2); g.strokeStyle = '#999'; g.strokeRect(84, 18, 38, 30); }) });
+  RMAT.cabPaper = paper('TRACK WARRANT', '#f4f1e6');            // today's written authority
+  RMAT.cabPaper60 = paper('TRAIN ORDER No. 31', '#f0e6b8');     // 1960: train orders on yellow flimsy
+  for (const k of ['cabAid', 'cabWarn', 'cabPaper', 'cabPaper60']) RMAT[k].side = THREE.DoubleSide;
 }
 
 /* ---------------- the diesel's displays ---------------- */
@@ -849,6 +1239,15 @@ CAB.frame = function (dt, T) {
   for (const gl of cab.glasses) gl.mesh.scale.y = Math.max(0.001, gl.h * clamp(lvl + bob, 0, 1));
   const lamp = smooth(0.2, 0.6, SKY.dark) * 0.55;
   for (const m of CAB.lamps) m.emissiveIntensity = lamp;
+  if (CAB.bulbs) for (const m of CAB.bulbs) m.emissiveIntensity = lamp * 2;
+  // the firedoor's leaves, as far open as they stand, let the fire light the cab; the coals flicker
+  const dc = cab.ctls.find(c => c.id === 'firedoor'); CAB.fdoor = dc ? dc.cur : 0;
+  if (RMAT.fireBed && !T.diesel) {
+    const f = clamp(S.fire, 0, 1.2), fl = 0.8 + 0.2 * Math.sin(S.time * 17) * Math.sin(S.time * 5.3);
+    RMAT.fireBed.color.setRGB(f * fl, f * fl * (0.75 + 0.25 * fl), f * fl * 0.7);
+    RMAT.fireBed.map.offset.set(Math.sin(S.time * 0.7) * 0.02, Math.sin(S.time * 1.3) * 0.015);
+  }
+  if (S.blowdown && GAME.running && !S.paused && !T.diesel) { S.W -= dt * 0.012; S.P -= dt * 0.6; }
   if (CAB.lookTo) {
     const lk = CAB.lookTo, a = 1 - Math.exp(-dt * 6);
     CAM.cabYaw += (lk.yaw - CAM.cabYaw) * a; CAM.cabPitch += (lk.pitch - CAM.cabPitch) * a;

@@ -209,3 +209,18 @@ test('a record that does not make sense is dropped', () => {
   assert.equal(C(ok).s, 100);
   assert.equal(C({ ...ok, f: [0, 9e9, 1] }).s, 600, 'clamped to the track');
 });
+
+test('cars knocked off the rails by a wreck come with where each lies, checked and clamped', () => {
+  const r = room(), { b } = r;
+  b.sim.MPC.join(false);
+  const C = b.sim.MPC.clean;
+  const ok = { k: 'aaaaaa.1', n: 1, o: 'aaaaaa', q: 1, c: ['box.1.NKP.0..65:000', 'box.2.NKP.0..65:000'], f: [0, 100, 1], v: 0 };
+  assert.equal(C(ok).w, null, 'standing on the rails: no wreck');
+  const body = [1, 120.5, 1.2, -3.4, 0, 0.38, 0, 0.92, 2, 0, -1];
+  const w = C({ ...ok, w: { z: 0, b: [body, [5, ...body.slice(1)], [0, 1, 2], [0, NaN, ...body.slice(2)], [0, 1, 2, 3, 0, 0, 0, 1, 900, 0, 0]] } }).w;
+  assert.equal(w.z, 0);
+  assert.equal(JSON.stringify(w.b[0]), JSON.stringify(body));
+  assert.equal(w.b.length, 2, 'a car that is not in the cut, a short entry and a NaN are left out');
+  assert.equal(w.b[1][8], 60, 'speeds clamped');
+  assert.equal(C({ ...ok, w: { z: 1, b: [body] } }).w.z, 1, 'come to rest');
+});
