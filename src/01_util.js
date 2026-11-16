@@ -86,15 +86,23 @@ class GeoBin {
     const g = new THREE.Group();
     for (const k in this.bins) {
       if (!this.bins[k].length) continue;
-      // snow on the engines and cars: snowMat (10i_snow.js) gives the outside its coat and keeps the inside dry
-      const mesh = new THREE.Mesh(mergeGeos(this.bins[k]), typeof snowMat === 'function' ? snowMat(mats, k, opt) : mats[k]);
-      mesh.castShadow = opt.cast !== false && !(mats[k] && mats[k].userData.noShadow);
+      // snow on the engines and cars: snowMat (10i_snow.js) gives the outside its coat and keeps the inside dry;
+      // keys marked 'in:' (inBin) are inside a cab built into the body's own bin, so they stay dry too
+      const inside = k.startsWith('in:'), mk = inside ? k.slice(3) : k;
+      const mesh = new THREE.Mesh(mergeGeos(this.bins[k]), typeof snowMat === 'function' ? snowMat(mats, mk, inside ? { ...opt, cast: false } : opt) : mats[mk]);
+      mesh.castShadow = opt.cast !== false && !(mats[mk] && mats[mk].userData.noShadow);
       mesh.receiveShadow = opt.receive !== false;
-      mesh.name = k;
+      mesh.name = mk;
       g.add(mesh);
     }
     return g;
   }
+}
+/* a view of a GeoBin for the inside of a cab: the same bins, every key marked 'in:' so build() keeps it dry of snow */
+function inBin(gb) {
+  const v = Object.create(gb);
+  v.add = (key, geo, m) => gb.add(key.startsWith('in:') ? key : 'in:' + key, geo, m);
+  return v;
 }
 /* a round bar from point a to point b ([x, y, z] arrays) */
 function barGeo(r, a, b, seg = 8) {

@@ -440,6 +440,7 @@ const GTT_EMPTY = 171000 * 0.4536;   // 24-C-GTE tender light weight, lb (about 
 
 /* ---------------- the cab: GE control stand of the 1950s, gauges on the panel, 20-notch throttle ---------------- */
 function turbineCab(gb, body, d) {
+  gb = inBin(gb);   // the cab's inside stays dry of snow
   const K = new CabKit(gb, body), dx = d.dx, FL = d.FL, wallZ = d.W - 0.04;
   const V = (x, y, z) => new THREE.Vector3(x, y, z);
   const box = (k, a0, a1, y0, y1, z0, z1) => gb.box(k, Math.abs(a1 - a0), Math.abs(y1 - y0), Math.abs(z1 - z0), dx((a0 + a1) / 2), (y0 + y1) / 2, (z0 + z1) / 2);
