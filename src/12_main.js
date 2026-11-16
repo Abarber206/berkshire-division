@@ -2,7 +2,7 @@
    Game: boot, world loading, main loop, rules, HUD
    ========================================================================== */
 const GAME = {
-  settings: { traffic: 'on', loco: '765', consist: 'passenger', time: 'morning', gfx: 'auto', cycle: 'x30', weather: 'changing', wxV: 1, fire: 'easy', fireV: 2, units: 1, livery: 'ss', mix: false, finish: 'standard', job: '', custom: { body: 0x2c5f8a, roof: 0x24384a, accent: 0xf0f0ea, letter: 0xf0f0ea, rail: 0xf0f0ea }, number: 4401, coach: 'road', coachV: 1, obsLamp: 'side', coachColor: 0x2a3a2a },
+  settings: { traffic: 'on', loco: '765', consist: 'passenger', time: 'morning', gfx: 'auto', cycle: 'x30', weather: 'changing', wxV: 1, fire: 'easy', fireV: 2, units: 1, livery: 'ss', mix: false, finish: 'standard', job: '', custom: { body: 0x2c5f8a, roof: 0x24384a, accent: 0xf0f0ea, letter: 0xf0f0ea, rail: 0xf0f0ea }, number: 4401, coach: 'road', coachV: 1, obsLamp: 'side', coachColor: 0x2a3a2a, whistles: 'new' },
   train: null, running: false, ready: false, stats: { runThrough: 0 },
   events: {}, stopped: 0, lastStation: null, filling: null,
 };
@@ -313,7 +313,7 @@ function setObsLamps(st) {
     if (v.lamps) { for (const o of [...v.lamps.meshes, ...v.lamps.glows]) { if (o.parent) o.parent.remove(o); if (o.geometry) o.geometry.dispose(); } v.lamps.mat.dispose(); v.lamps = null; }
   }
 }
-const SAVE_KEYS = ['job', 'traffic', 'loco', 'consist', 'time', 'cycle', 'weather', 'wxV', 'fire', 'fireV', 'units', 'livery', 'mix', 'finish', 'custom', 'number', 'coach', 'coachV', 'obsLamp', 'coachColor', 'gfx'];
+const SAVE_KEYS = ['job', 'traffic', 'loco', 'consist', 'time', 'cycle', 'weather', 'wxV', 'fire', 'fireV', 'units', 'livery', 'mix', 'finish', 'custom', 'number', 'coach', 'coachV', 'obsLamp', 'coachColor', 'gfx', 'whistles'];
 function saveSettings() { try { const o = {}; for (const k of SAVE_KEYS) o[k] = GAME.settings[k]; localStorage.setItem('bd_settings', JSON.stringify(o)); } catch (e) {} }
 function loadSettings() { try { const o = JSON.parse(localStorage.getItem('bd_settings') || 'null'); if (o) for (const k of SAVE_KEYS) if (o[k] !== undefined) GAME.settings[k] = o[k]; } catch (e) {}
   // easy steam came in as the default after 'auto' had been saved by everyone: move them up to it once
@@ -323,10 +323,11 @@ function loadSettings() { try { const o = JSON.parse(localStorage.getItem('bd_se
   // the coaches matching the engine's road came in as the default after Pullman green had been saved by everyone
   if (GAME.settings.coachV !== 1) { if (GAME.settings.coach === 'pullman') GAME.settings.coach = 'road'; GAME.settings.coachV = 1; }
   if (GAME.settings.obsLamp !== 'roof') GAME.settings.obsLamp = 'side';
+  if (GAME.settings.whistles !== 'classic') GAME.settings.whistles = 'new';
   if (!WEATHER[GAME.settings.weather]) GAME.settings.weather = 'changing';
   if (!['easy', 'auto', 'hand'].includes(GAME.settings.fire)) GAME.settings.fire = 'easy'; if (!LOCO_SPEC[GAME.settings.loco]) GAME.settings.loco = '765'; if (!LIVERIES[GAME.settings.livery]) GAME.settings.livery = 'ss'; if (!DN.starts[GAME.settings.time]) GAME.settings.time = 'morning'; if (!DN.rates[GAME.settings.cycle]) GAME.settings.cycle = 'x30'; if (!COACH_PAINT[GAME.settings.coach]) GAME.settings.coach = 'road'; if (!GFX_MENU[GAME.settings.gfx]) GAME.settings.gfx = 'auto'; }
 GAME.needNewTrain = function () { const t = GAME.train, g = GAME.settings, j = JOB.wanted(); return !t || MP.needSpawn || t.locoKey !== g.loco || (!t.elec && t.consistKey !== JOB.consist()) || (j ? j.id : '') !== JOB.activeId() || (t.diesel && !t.elec && t.nUnits !== (+g.units || 1)) || (!t.diesel && (t.trim || '') !== trimWanted()); };
-function buildWhistleIfReady() { if (!AU.on) return; buildWhistle(WHISTLES[LOCO_SPEC[GAME.settings.loco].whistle]); }
+function buildWhistleIfReady() { if (!AU.on) return; buildWhistle(WHISTLES[whistleKeyOf(GAME.settings.loco)]); }
 
 /* ---------------- menu ---------------- */
 function segButtons(id, opts, key, onPick) {
@@ -364,6 +365,7 @@ function buildMenu() {
   const coachOpts = {}; for (const k in COACH_PAINT) coachOpts[k] = { name: COACH_PAINT[k].name, sub: COACH_PAINT[k].sub, swatch: coachSw(k) };
   segButtons('optCoach', coachOpts, 'coach', k => { applyCoachPaint(k, GAME.settings.coachColor); refreshMenuGroups(); saveSettings(); });
   segButtons('optObsLamp', { side: { name: 'Canopy corners', sub: 'A pair of markers' }, roof: { name: 'One on top', sub: 'A single red lamp, no lanterns' } }, 'obsLamp', k => { setObsLamps(k); saveSettings(); });
+  segButtons('optWhistles', { new: { name: 'Each engine its own', sub: 'New 1225, 765 and 1308 whistles' }, classic: { name: 'Original recordings', sub: 'The borrowed whistles from before' } }, 'whistles', () => { buildWhistleIfReady(); saveSettings(); });
   $('cCoach').value = hexCss(GAME.settings.coachColor);
   $('cCoach').addEventListener('input', () => {
     GAME.settings.coachColor = parseInt($('cCoach').value.slice(1), 16);

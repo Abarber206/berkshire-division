@@ -216,6 +216,10 @@ def main(src_dir, recipe, only=None):
         old = {k: ast.literal_eval(v) for k, v in old.items()}
         for k, v in files.items(): old[k] = v
         files = old
+    else:   # the synthesized whistles (whistle_synth.py) are not in the recipe: keep them
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import whistle_synth
+        for k, v in whistle_synth.manifest().items(): files.setdefault(k, v)
     body = ',\n'.join(f"  {k}: [{', '.join(repr(f) for f in v)}]" for k, v in files.items())
     open(js, 'w').write(src[:a] + 'const SND_FILES = {\n' + body + ',\n};\n' + src[b:])
 

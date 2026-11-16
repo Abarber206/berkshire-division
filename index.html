@@ -1026,6 +1026,7 @@ h1{text-shadow:0 2px 0 #000,0 10px 40px rgba(0,0,0,.6)}
       <section class="mpane" data-pane="sound" role="tabpanel">
         <div class="fgroup"><span class="lbl">Volume</span><div class="vols" id="optVol"></div></div>
         <p class="help">Whistle &amp; horn sits well above the engine by default. Slide any of them from silent to 150%.</p>
+        <div class="fgroup"><span class="lbl">Steam whistles</span><div class="seg" id="optWhistles"></div></div>
       </section>
       <section class="mpane" data-pane="online" role="tabpanel">
         <div class="fgroup" id="grpMP"><span class="lbl">Multiplayer</span>
@@ -7101,11 +7102,11 @@ function lampFacing(L, cam) {
 
 /* =================== THE BERKSHIRE =================== */
 const LOCO_SPEC = {   // front: 'nkp' headlight on top with number-board wings, bell on the door; 'pm' lamp in the door, bell on top, pumps on the pilot
-  '765': { road: 'NICKEL PLATE ROAD', num: '765', short: 'NKP', cls: 'S-2', built: 'Lima, Sept 1944', weight: 440800, adhesive: 264300, te: 64135, fw: 'Worthington', whistle: 'nkp6', front: 'nkp', leadR: 0.457, cylR: 0.3175, wheels: 'spoked' },
+  '765': { road: 'NICKEL PLATE ROAD', num: '765', short: 'NKP', cls: 'S-2', built: 'Lima, Sept 1944', weight: 440800, adhesive: 264300, te: 64135, fw: 'Worthington', whistle: 'nkp6m', front: 'nkp', leadR: 0.457, cylR: 0.3175, wheels: 'spoked' },
   'diesel': { road: 'SANDUSKY & SCIOTO', num: '4401', short: 'S&S', cls: 'AC44', built: '2026', weight: 420000, adhesive: 420000, te: 183000, diesel: true, whistle: 'k5' },
   // Union Pacific's 8500 hp gas turbine-electric, both units (the fuel tender rides on its own): 06j_turbine.js
   '18': { road: 'UNION PACIFIC', num: '18', short: 'UP', cls: 'GTEL 8500', built: 'GE, 1960', weight: 424624, adhesive: 424624, te: 212312, diesel: true, turb: true, whistle: 's5t', tenderEmpty: 171000 * 0.4536 },
-  '1225': { road: 'PERE MARQUETTE', num: '1225', short: 'PM', cls: 'N-1', built: 'Lima, Oct 1941', weight: 442500, adhesive: 277600, te: 69350, fw: 'Worthington', whistle: 'chime6', front: 'pm', leadR: 0.419, cylR: 0.330, wheels: 'boxpok' },
+  '1225': { road: 'PERE MARQUETTE', num: '1225', short: 'PM', cls: 'N-1', built: 'Lima, Oct 1941', weight: 442500, adhesive: 277600, te: 69350, fw: 'Worthington', whistle: 'pm6', front: 'pm', leadR: 0.419, cylR: 0.330, wheels: 'boxpok' },
 };
 /* Engine geometry, a = metres back from the front coupler face, heights above the rail. Taken from an NKP
    Berkshire erecting drawing whose wheelbases match the published figures: 42 ft engine wheelbase, 18 ft 3 in
@@ -17593,8 +17594,12 @@ function audioInit() {
 const WHISTLES = {
   deep6: { kind: 'steam', notes: [164.8, 196.0, 220.0, 246.9, 293.7, 329.6], harm: [1, 0.56, 0.36, 0.24, 0.15, 0.09, 0.05], breath: 0.13, breathF: 1400, vib: [4.8, 0.0025], quill: 0.06, attack: 0.06, beat: 1.0018, pres: 2200 },
   // the 765: its recording's chord (see WHISTLE_REC.nkp6), as it is played
-  co3: { kind: 'steam', notes: [196.0, 246.9, 293.7], harm: [1, 0.56, 0.36, 0.24, 0.15, 0.09, 0.05], breath: 0.13, breathF: 1400, vib: [4.8, 0.0025], quill: 0.06, attack: 0.06, beat: 1.0018, pres: 2200 },   // C&O 1308: a three-chime
+  co3d: { kind: 'steam', notes: [196.0, 246.9, 293.7], harm: [1, 0.56, 0.36, 0.24, 0.15, 0.09, 0.05], breath: 0.13, breathF: 1400, vib: [4.8, 0.0025], quill: 0.06, attack: 0.06, beat: 1.0018, pres: 2200 },   // C&O 1308: a three-chime
   nkp6: { kind: 'steam', notes: [249.4, 289.8, 329.4, 362.9, 424.0, 514.3], harm: [1, 0.56, 0.36, 0.24, 0.15, 0.09, 0.05], breath: 0.13, breathF: 1400, vib: [4.8, 0.0025], quill: 0.06, attack: 0.06, beat: 1.0018, pres: 2200 },
+  /* the synthesized-take whistles (audio/tools/whistle_synth.py), the same chords for the live fallback */
+  pm6: { kind: 'steam', notes: [387, 491, 582, 655, 756, 859], harm: [1, 0.4, 0.25, 0.14, 0.07], breath: 0.15, breathF: 2400, vib: [5.2, 0.004], quill: 0.04, attack: 0.04, beat: 1.012, pres: 2600 },
+  nkp6m: { kind: 'steam', notes: [233, 277, 311, 349, 415, 466], harm: [1, 0.28, 0.09, 0.035], breath: 0.13, breathF: 2400, vib: [4.6, 0.0035], quill: 0.06, attack: 0.06, beat: 1.009, pres: 2200 },
+  co3: { kind: 'steam', notes: [277, 330, 415], harm: [1, 0.45, 0.2, 0.1, 0.05], breath: 0.17, breathF: 2300, vib: [5.0, 0.005], quill: 0.05, attack: 0.05, beat: 1.016, pres: 2200 },
   chime6: { kind: 'steam', notes: [335.0, 375.4, 444.6, 505.4, 632.3, 825.8], harm: [1, 0.62, 0.38, 0.26, 0.16, 0.1, 0.06], breath: 0.14, breathF: 2200, vib: [5.4, 0.003], quill: 0.05, attack: 0.05, beat: 1.0025, pres: 2600 },
   /* Shinkansen air horn: a bright two-tone (A5 over F#5) with few upper partials */
   shin: { kind: 'horn', notes: [740.0, 880.0], harm: [1, 0.75, 0.5, 0.34, 0.22, 0.14, 0.08], breath: 0.025, breathF: 2400, vib: [0, 0], quill: 0, attack: 0.012, beat: 1.003, pres: 2400 },
@@ -17811,6 +17816,15 @@ const SND_FILES = {
   wh_nkp6: ['wh_nkp6_0.wav'],
   wh_nkp6_on: ['wh_nkp6_on_0.mp3'],
   wh_nkp6_off: ['wh_nkp6_off_0.mp3'],
+  wh_pm6: ['wh_pm6_0.wav'],
+  wh_pm6_on: ['wh_pm6_on_0.mp3'],
+  wh_pm6_off: ['wh_pm6_off_0.mp3'],
+  wh_nkp6m: ['wh_nkp6m_0.wav'],
+  wh_nkp6m_on: ['wh_nkp6m_on_0.mp3'],
+  wh_nkp6m_off: ['wh_nkp6m_off_0.mp3'],
+  wh_co3: ['wh_co3_0.wav'],
+  wh_co3_on: ['wh_co3_on_0.mp3'],
+  wh_co3_off: ['wh_co3_off_0.mp3'],
 };
 // end SND_FILES (written by audio/tools/prepare.py)
 const SND_GAIN = { bell_st: 0.8, gt_whine: 0.55, gt_roar: 0.8, chuff: 1, chuff_hard: 0.9, fire: 0.6, comp: 0.5, purge: 0.6, dump: 0.8, squeal: 0.5, bell: 0.8, crickets: 0.45, dawn: 0.5, frogs: 0.3, joint: 0.9, roll: 0.7, flange: 0.35, wind: 0.8, birds: 0.5, night: 0.5, blower: 0.5, safety: 0.9, pump: 0.6, cocks: 0.6, bpx: 0.7, injector: 0.5, dz: 1, wh_deep6: 1, wh_nkp6: 1, wh_chime6: 1, wh_k5: 1, rain_lt: 0.7, rain: 0.65, rain_hvy: 0.6, thunder: 1 };
@@ -17824,11 +17838,24 @@ const WHISTLE_REC = {
   // rate: played this much lower. No PD recording of NKP 765's own whistle exists, so it blows a deep multi-chime
   // recorded at the Grand Canyon Railway (another engine than the 1225's), lowered to sit between the 1225 and the Big Boy
   nkp6: { quill: 0.05, attack: 0.05, release: 0.12, on: 1.2, xf: 0.03, rate: 0.86 },
-  co3: { take: 'deep6', quill: 0.05, attack: 0.05, release: 0.12, on: 1.2, rate: 1.19 },   // C&O 1308: no PD recording of an H-6, so the deep chime played higher and shorter
+  co3d: { take: 'deep6', quill: 0.05, attack: 0.05, release: 0.12, on: 1.2, rate: 1.19 },   // the 1308's first voice: the Big Boy's chime played higher
+  /* Built by audio/tools/whistle_synth.py (no public-domain recording of these engines' whistles exists):
+     pm6 the 1225's bright five-chime, nkp6m a deeper minor six-chime for the 765, co3 the 1308's three-chime hooter */
+  pm6: { quill: 0.04, attack: 0.04, release: 0.1, on: 1.25, xf: 0.03 },
+  nkp6m: { quill: 0.06, attack: 0.05, release: 0.12, on: 1.25, xf: 0.03 },
+  co3: { quill: 0.05, attack: 0.05, release: 0.12, on: 1.25, xf: 0.03 },
   chime6: { quill: 0.05, attack: 0.05, release: 0.12, on: 1.2, xf: 0.03 },
   k5: { quill: 0, attack: 0.02, release: 0.08, on: 1.2 },
   s5t: { quill: 0, attack: 0.03, release: 0.1, on: 0.7 },   // Leslie S-5T-R, the gas turbine's horn
 };
+
+/* Sound tab, Whistles: 'new' (each engine's own voice) or 'classic' (the recordings borrowed from other
+   engines that the 1225, 765 and 1308 blew before). whistleKeyOf(lk) is the whistle an engine blows now. */
+const WHISTLE_CLASSIC = { pm6: 'chime6', nkp6m: 'nkp6', co3: 'co3d' };
+function whistleKeyOf(lk) {
+  const k = LOCO_SPEC[lk].whistle;
+  return (typeof GAME !== 'undefined' && GAME.settings && GAME.settings.whistles === 'classic' && WHISTLE_CLASSIC[k]) || k;
+}
 
 /* Every engine rings its own bell. take: the recorded strokes it plays (bell_st, a locomotive bell rung at
    Steamtown, cleaned of the engine blowing behind it; bell, an old cast crossing bell); rate: played this
@@ -18319,7 +18346,7 @@ function whistleCut(o, now, tc) {
    while the cord is pulled; a part-open valve sounds lower and breathier (the quill).
    Doppler comes from the emitter. Synthesized: the voices of 09_audio.js. */
 function whistleMix(T, tv, inCab) {
-  const DSL = T.diesel, key = LOCO_SPEC[GAME.settings.loco].whistle, k = whTake(key), now = AU.ctx.currentTime;
+  const DSL = T.diesel, key = whistleKeyOf(GAME.settings.loco), k = whTake(key), now = AU.ctx.currentTime;
   let pull = S.whistle;
   if (SND.has(k)) {
     if (SND.whKey !== k) { if (SND.whistle) SND.whistle.kill(); SND.whistle = new Loop(k, SND.whBus); SND.whKey = k; SND.whPull = 0; }
@@ -18498,7 +18525,7 @@ function remoteSound(R, dt, st, d, cam) {
   }
   if (R.bellHit) { R.bellHit = false; if (d < 1200) sndBell(bellVoice(st.lk), B.g); }   // strokes are timed in fx, where the bell swings
   // whistle or horn: recorded through the emitter (which gives the Doppler), or the synthesized voices
-  const key = LOCO_SPEC[st.lk].whistle, k = whTake(key);
+  const key = whistleKeyOf(st.lk), k = whTake(key);
   if (SND.has(k)) {
     if (!B.whistle && st.wh > 0.02) B.whistle = new Loop(k, B.wg);
     if (B.whistle) {
@@ -28506,7 +28533,7 @@ const LOCO_ART_SIZE = [450, 102];
    Game: boot, world loading, main loop, rules, HUD
    ========================================================================== */
 const GAME = {
-  settings: { traffic: 'on', loco: '765', consist: 'passenger', time: 'morning', gfx: 'auto', cycle: 'x30', weather: 'changing', wxV: 1, fire: 'easy', fireV: 2, units: 1, livery: 'ss', mix: false, finish: 'standard', job: '', custom: { body: 0x2c5f8a, roof: 0x24384a, accent: 0xf0f0ea, letter: 0xf0f0ea, rail: 0xf0f0ea }, number: 4401, coach: 'road', coachV: 1, obsLamp: 'side', coachColor: 0x2a3a2a },
+  settings: { traffic: 'on', loco: '765', consist: 'passenger', time: 'morning', gfx: 'auto', cycle: 'x30', weather: 'changing', wxV: 1, fire: 'easy', fireV: 2, units: 1, livery: 'ss', mix: false, finish: 'standard', job: '', custom: { body: 0x2c5f8a, roof: 0x24384a, accent: 0xf0f0ea, letter: 0xf0f0ea, rail: 0xf0f0ea }, number: 4401, coach: 'road', coachV: 1, obsLamp: 'side', coachColor: 0x2a3a2a, whistles: 'new' },
   train: null, running: false, ready: false, stats: { runThrough: 0 },
   events: {}, stopped: 0, lastStation: null, filling: null,
 };
@@ -28817,7 +28844,7 @@ function setObsLamps(st) {
     if (v.lamps) { for (const o of [...v.lamps.meshes, ...v.lamps.glows]) { if (o.parent) o.parent.remove(o); if (o.geometry) o.geometry.dispose(); } v.lamps.mat.dispose(); v.lamps = null; }
   }
 }
-const SAVE_KEYS = ['job', 'traffic', 'loco', 'consist', 'time', 'cycle', 'weather', 'wxV', 'fire', 'fireV', 'units', 'livery', 'mix', 'finish', 'custom', 'number', 'coach', 'coachV', 'obsLamp', 'coachColor', 'gfx'];
+const SAVE_KEYS = ['job', 'traffic', 'loco', 'consist', 'time', 'cycle', 'weather', 'wxV', 'fire', 'fireV', 'units', 'livery', 'mix', 'finish', 'custom', 'number', 'coach', 'coachV', 'obsLamp', 'coachColor', 'gfx', 'whistles'];
 function saveSettings() { try { const o = {}; for (const k of SAVE_KEYS) o[k] = GAME.settings[k]; localStorage.setItem('bd_settings', JSON.stringify(o)); } catch (e) {} }
 function loadSettings() { try { const o = JSON.parse(localStorage.getItem('bd_settings') || 'null'); if (o) for (const k of SAVE_KEYS) if (o[k] !== undefined) GAME.settings[k] = o[k]; } catch (e) {}
   // easy steam came in as the default after 'auto' had been saved by everyone: move them up to it once
@@ -28827,10 +28854,11 @@ function loadSettings() { try { const o = JSON.parse(localStorage.getItem('bd_se
   // the coaches matching the engine's road came in as the default after Pullman green had been saved by everyone
   if (GAME.settings.coachV !== 1) { if (GAME.settings.coach === 'pullman') GAME.settings.coach = 'road'; GAME.settings.coachV = 1; }
   if (GAME.settings.obsLamp !== 'roof') GAME.settings.obsLamp = 'side';
+  if (GAME.settings.whistles !== 'classic') GAME.settings.whistles = 'new';
   if (!WEATHER[GAME.settings.weather]) GAME.settings.weather = 'changing';
   if (!['easy', 'auto', 'hand'].includes(GAME.settings.fire)) GAME.settings.fire = 'easy'; if (!LOCO_SPEC[GAME.settings.loco]) GAME.settings.loco = '765'; if (!LIVERIES[GAME.settings.livery]) GAME.settings.livery = 'ss'; if (!DN.starts[GAME.settings.time]) GAME.settings.time = 'morning'; if (!DN.rates[GAME.settings.cycle]) GAME.settings.cycle = 'x30'; if (!COACH_PAINT[GAME.settings.coach]) GAME.settings.coach = 'road'; if (!GFX_MENU[GAME.settings.gfx]) GAME.settings.gfx = 'auto'; }
 GAME.needNewTrain = function () { const t = GAME.train, g = GAME.settings, j = JOB.wanted(); return !t || MP.needSpawn || t.locoKey !== g.loco || (!t.elec && t.consistKey !== JOB.consist()) || (j ? j.id : '') !== JOB.activeId() || (t.diesel && !t.elec && t.nUnits !== (+g.units || 1)) || (!t.diesel && (t.trim || '') !== trimWanted()); };
-function buildWhistleIfReady() { if (!AU.on) return; buildWhistle(WHISTLES[LOCO_SPEC[GAME.settings.loco].whistle]); }
+function buildWhistleIfReady() { if (!AU.on) return; buildWhistle(WHISTLES[whistleKeyOf(GAME.settings.loco)]); }
 
 /* ---------------- menu ---------------- */
 function segButtons(id, opts, key, onPick) {
@@ -28868,6 +28896,7 @@ function buildMenu() {
   const coachOpts = {}; for (const k in COACH_PAINT) coachOpts[k] = { name: COACH_PAINT[k].name, sub: COACH_PAINT[k].sub, swatch: coachSw(k) };
   segButtons('optCoach', coachOpts, 'coach', k => { applyCoachPaint(k, GAME.settings.coachColor); refreshMenuGroups(); saveSettings(); });
   segButtons('optObsLamp', { side: { name: 'Canopy corners', sub: 'A pair of markers' }, roof: { name: 'One on top', sub: 'A single red lamp, no lanterns' } }, 'obsLamp', k => { setObsLamps(k); saveSettings(); });
+  segButtons('optWhistles', { new: { name: 'Each engine its own', sub: 'New 1225, 765 and 1308 whistles' }, classic: { name: 'Original recordings', sub: 'The borrowed whistles from before' } }, 'whistles', () => { buildWhistleIfReady(); saveSettings(); });
   $('cCoach').value = hexCss(GAME.settings.coachColor);
   $('cCoach').addEventListener('input', () => {
     GAME.settings.coachColor = parseInt($('cCoach').value.slice(1), 16);
