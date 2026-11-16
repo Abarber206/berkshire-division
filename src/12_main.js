@@ -339,27 +339,11 @@ function segButtons(id, opts, key, onPick) {
     host.appendChild(b);
   }
 }
-/* a side view of each engine for its card in the menu: drawn as a few shapes, nothing to download or render.
-   body: SVG shapes in a 150 x 34 box standing on y = 30; wheels: [x, radius] */
+/* a side view of each engine for its card in the menu, drawn from its in-game model by tools/locoart.js
+   (src/12a_locoart.js): an alpha mask the card fills with its own colour, so a picked card turns brass */
 function locoGlyph(key) {
-  const W = (list, y = 30) => list.map(([x, r]) => `<circle cx="${x}" cy="${y - r}" r="${r}"/>`).join('');
-  const row = (x0, n, d, r) => Array.from({ length: n }, (_, i) => [x0 + i * d, r]);
-  const tender = '<rect x="3" y="11" width="33" height="13" rx="1.5"/>' + W([...row(8, 2, 7, 3), ...row(24, 2, 7, 3)]);
-  const art = {
-    steam: tender + '<rect x="40" y="3.5" width="15" height="18"/><rect x="55" y="7" width="62" height="11.5" rx="5.5"/><rect x="108" y="1.5" width="5" height="7"/><rect x="80" y="4" width="9" height="5" rx="2.5"/><rect x="40" y="18.5" width="82" height="2.4"/><path d="M119 22l11 8h-11z"/>'
-      + W([...row(66, 4, 11.4, 4.9), [122, 2.9], ...row(45, 2, 8, 3.1)]),
-    art: '<rect x="2" y="11" width="30" height="13" rx="1.5"/>' + W([...row(6, 4, 7, 2.8)]) + '<rect x="35" y="3.5" width="12" height="18"/><rect x="47" y="7.5" width="84" height="11.5" rx="5.5"/><rect x="122" y="2" width="5" height="7"/><rect x="35" y="19" width="102" height="2.4"/><path d="M135 22.5l11 7.5h-11z"/>'
-      + W([...row(53, 4, 8.8, 4), ...row(93, 4, 8.8, 4), ...row(131, 2, 6.4, 2.6), ...row(38, 2, 6.6, 2.8)]),
-    mallet: '<rect x="3" y="12" width="27" height="12" rx="1.5"/>' + W([...row(7, 2, 5.6, 2.7), ...row(20.5, 2, 5.6, 2.7)]) + '<rect x="33" y="5" width="12" height="17"/><rect x="45" y="8" width="80" height="11" rx="5.5"/><rect x="116" y="3" width="4.6" height="6"/><rect x="66" y="5" width="8" height="5" rx="2.5"/><rect x="92" y="5" width="8" height="5" rx="2.5"/><rect x="125" y="9" width="5" height="9" rx="1"/><rect x="33" y="19.5" width="98" height="2.2"/><rect x="116" y="20" width="11" height="7.5" rx="1.5"/><rect x="131" y="21" width="11" height="2.4"/><rect x="134" y="16" width="4" height="5" rx="2"/>'
-      + W([...row(52, 3, 8.2, 3.9), ...row(86, 3, 8.2, 3.9), [133, 2.4], [40, 3]]),
-    diesel: '<rect x="8" y="21" width="134" height="4"/><rect x="12" y="9" width="104" height="12"/><rect x="116" y="5.5" width="17" height="15.5"/><path d="M133 12h7l2 9h-9z"/><rect x="52" y="25" width="44" height="4.5" rx="2"/><rect x="14" y="7" width="26" height="2.5"/>'
-      + W([...row(20, 3, 8.5, 3.9), ...row(113, 3, 8.5, 3.9)]),
-    turb: '<path d="M144 25V14q-2-8-12-8H78v19z"/><rect x="6" y="6" width="69" height="19" rx="1.5"/><rect x="20" y="3.5" width="30" height="3"/>' + W([...row(12, 3, 7.5, 3.4), ...row(54, 3, 7.5, 3.4), ...row(84, 3, 7.5, 3.4), ...row(124, 3, 7.5, 3.4)], 30.5),
-    e5: '<path d="M148 27q-28-1-52-14-9-6-22-6H2v20z"/><rect x="6" y="12" width="56" height="3.5" rx="1.5" fill="#0c1115" opacity=".55"/>' + W([...row(12, 2, 8, 2.6), ...row(58, 2, 8, 2.6), ...row(104, 2, 8, 2.6)], 30.5),
-    acela: '<path d="M146 27l-3-9q-13-12-30-12H2v21z"/><rect x="6" y="11" width="92" height="4" rx="1.5" fill="#0c1115" opacity=".55"/><rect x="60" y="2.5" width="22" height="3.5"/>' + W([...row(14, 2, 9, 2.8), ...row(60, 2, 9, 2.8), ...row(112, 2, 9, 2.8)], 30.5),
-  };
-  const s = LOCO_SPEC[key], kind = s.set === 'e5' ? 'e5' : s.set === 'acela' ? 'acela' : s.turb ? 'turb' : s.diesel ? 'diesel' : s.mallet ? 'mallet' : s.art ? 'art' : 'steam';
-  return `<svg viewBox="0 0 150 34" aria-hidden="true"><g fill="currentColor">${art[kind]}</g></svg>`;
+  const art = LOCO_ART[key];
+  return art ? `<span class="lart" aria-hidden="true" style="--art:url(${art})"></span>` : '';
 }
 function buildMenu() {
   loadSettings();

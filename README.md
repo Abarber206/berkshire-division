@@ -74,6 +74,8 @@ On a phone, use the levers and buttons on screen. Tap a switch stand, the switch
 
 The game is one file, `index.html`. The source lives in `src/`; run `./build.sh` to rebuild `index.html` after editing it. Three.js r128 loads from cdnjs.
 
+The engine pictures on the menu's Locomotive cards are drawn from the in-game models by `tools/locoart.js` into `src/12a_locoart.js`. After changing an engine's model, run `./build.sh && node tools/locoart.js && ./build.sh` (needs `tests/vendor/three.min.js` and Playwright's Chromium) and commit the result.
+
 ## Tests
 
 `node --test tests/*.test.js` (Node 18 or newer, no install) loads the simulation source headless and checks the boiler (starting tractive effort, slipping and sand, steaming under load, low water and the fusible plug, safety valves), the air brake (charging, service and emergency propagation, release, stopping distances), grades, and car work (coupling speeds, knuckles that must be open to couple, shoving cars with momentum conserved, turned cuts, set-outs, kicks, splitting cuts and tie-downs), and placing by hand (snapping to couple, overlaps, the end of the track, switches under a car, AI trains). GitHub Actions runs the tests and `./build.sh` on every push and pull request, and fails if the committed `index.html` doesn't match a fresh build.
