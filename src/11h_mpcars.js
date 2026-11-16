@@ -38,7 +38,7 @@ function mpcBeats(r, rec) {
 /* a car with its two knuckles and its handbrake */
 const mpcCar = v => carToken(v) + ':' + ((v.kn && v.kn[0]) || 0) + ((v.kn && v.kn[1]) || 0) + (v.hb ? 1 : 0);
 /* everything about a cut but where it stands and how fast it rolls */
-MPC.sig = c => c.vehicles.map(mpcCar).join(',') + (c.vented ? '|v' : '');
+MPC.sig = c => c.vehicles.map(mpcCar).join(',') + (c.vented ? '|v' : '') + (c.knk && c.rb ? '|w' + c.rb.bodies.filter(b => b.v).length : '');
 /* which cars, in what order and which way round */
 MPC.ids = c => c.vehicles.map(carToken).join(',');
 MPC.find = mid => CARS.cuts.find(c => c.mid === mid) || null;
@@ -157,13 +157,17 @@ MPC.diff = function (now) {
     if (rec.g) { MPC.take(c, rec, now); continue; }   // picked up and set down again
     const sig = again || rec.sig === undefined ? MPC.sig(c) : rec.sig;
     const v = c.v || 0, rolling = c.rolling ? 1 : 0;
+    // knocked about by our wreck (07e_knock.js): ours to report, while it moves and once more when it comes to rest
+    const wl = c.knk && c.rb ? (c.rb.asleep ? 1 : 2) : 0;
     if (rec.o !== MP.id) {
       // someone else's (or nobody's) cars, changed here: we coupled up, shoved them, worked a knuckle
-      if (sig !== rec.sig || v !== rec.v || rolling !== rec.r) MPC.take(c, rec, now);
+      if (sig !== rec.sig || v !== rec.v || rolling !== rec.r || wl) MPC.take(c, rec, now);
       continue;
     }
     if (sig !== rec.sig) { rec.n++; MPC.mark(c, rec, sig, now); }
     else if (rolling !== rec.r || (rolling && now - rec.at > MPC_ROLL_EVERY)) MPC.mark(c, rec, sig, now);
+    else if (wl && (wl !== rec.wl || (wl === 2 && now - rec.at > MPC_ROLL_EVERY))) MPC.mark(c, rec, sig, now);
+    rec.wl = wl;
   }
   for (const [mid, rec] of MPC.recs) {
     if (rec.g || seen.has(mid)) continue;
@@ -189,7 +193,13 @@ MPC.record = function (mid) {
   const f = c.endTP('front');
   // while our game is stopped (the menu, placing, a wreck) our cars stand still, so they are reported standing
   const still = !GAME.running || S.paused || S.derailed || (typeof PLACE !== 'undefined' && PLACE.on);
-  return { k: mid, n: rec.n, o: rec.o, q: rec.q, c: c.vehicles.map(mpcCar), f: [f.e.id, Math.round(f.s * 1000) / 1000, f.o], v: still ? 0 : Math.round((c.v || 0) * 1000) / 1000, r: c.rolling ? 1 : 0, vt: c.vented ? 1 : 0, h: c.home || '' };
+  const o = { k: mid, n: rec.n, o: rec.o, q: rec.q, c: c.vehicles.map(mpcCar), f: [f.e.id, Math.round(f.s * 1000) / 1000, f.o], v: still ? 0 : Math.round((c.v || 0) * 1000) / 1000, r: c.rolling ? 1 : 0, vt: c.vented ? 1 : 0, h: c.home || '' };
+  // knocked off the rails by our wreck: where each car lies, so everyone sees the same pile (07e_knock.js)
+  if (c.knk && c.rb) {
+    const R = c.rb, r3 = x => Math.round(x * 1000) / 1000;
+    o.w = { z: R.asleep ? 1 : 0, b: R.bodies.filter(b => b.v).slice(0, 40).map(b => [c.vehicles.indexOf(b.v), ...b.p.toArray().map(r3), ...b.q.toArray().map(r3), ...b.lv.toArray().map(r3)]) };
+  }
+  return o;
 };
 MPC.post = function (t, list, extra) {
   for (let i = 0; i < list.length; i += 40) MPC.send(Object.assign({ t, c: list.slice(i, i + 40) }, extra || {}));
@@ -255,7 +265,17 @@ MPC.clean = function (r) {
   if (!e || typeof r.f[1] !== 'number' || !isFinite(r.f[1])) return null;
   const v = typeof r.v === 'number' && isFinite(r.v) ? clamp(r.v, -30, 30) : 0;
   const h = typeof r.h === 'string' ? r.h.replace(/[^\w &'.,-]/g, '').slice(0, 24) : '';
-  return { k: r.k, n: r.n, o: r.o, q, cars, e, s: clamp(r.f[1], 0, e.len), fo: r.f[2] < 0 ? -1 : 1, v, r: r.r ? 1 : 0, vt: r.vt ? 1 : 0, h };
+  // cars of it off the rails: [car index, position, rotation, velocity] each
+  let w = null;
+  if (r.w && typeof r.w === 'object' && Array.isArray(r.w.b)) {
+    w = { z: r.w.z ? 1 : 0, b: [] };
+    for (const x of r.w.b.slice(0, 40)) {
+      if (!Array.isArray(x) || x.length !== 11 || !x.every(n => typeof n === 'number' && isFinite(n))) continue;
+      if (!Number.isInteger(x[0]) || x[0] < 0 || x[0] >= cars.length) continue;
+      w.b.push([x[0], clamp(x[1], -1e5, 1e5), clamp(x[2], -1e4, 1e4), clamp(x[3], -1e5, 1e5), ...x.slice(4, 8).map(n => clamp(n, -1, 1)), ...x.slice(8, 11).map(n => clamp(n, -60, 60))]);
+    }
+  }
+  return { k: r.k, n: r.n, o: r.o, q, cars, e, s: clamp(r.f[1], 0, e.len), fo: r.f[2] < 0 ? -1 : 1, v, r: r.r ? 1 : 0, vt: r.vt ? 1 : 0, h, w };
 };
 MPC.apply = function (r, lag = 0) {
   const rec = MPC.recs.get(r.k);
@@ -282,6 +302,7 @@ MPC.apply = function (r, lag = 0) {
   c.vented = !!r.vt; c.v = r.v; c.rolling = !!r.r; c.stopT = 0; if (r.h) c.home = r.h;
   nrec.tp = new TrackPos(r.e, r.s, r.fo); nrec.lag = lag; nrec.v = c.v; nrec.r = c.rolling ? 1 : 0;
   c.place(nrec.tp); c.dirty = true;
+  mpcWreck(c, r.w);
   nrec.sig = MPC.sig(c);
   MPC.objs.set(r.k, c);
   // a cut that has only rolled on needs no more than a fresh look at what stands where
@@ -306,6 +327,25 @@ CARS.wall = function (c, d) {
   }
   return false;
 };
+/* Another player's wreck knocked these cars about: the cars off the rails lie where they report them. Between
+   reports each runs on at the speed it was reported going (the wreck physics here, which can't take any more cars
+   off: KNOCK.step steps it with the rest), and the next report puts it right. w null: back on the rails. */
+function mpcWreck(c, w) {
+  if (!w || !w.b.length) { if (c.rb && c.knkRoom) { c.wreck(null); c.knkRoom = false; } return; }
+  if (c.knk) return;   // knocked about by our own wreck: ours says where it goes
+  if (!c.rb || !c.knkRoom) { c.wreck({ none: true, a: 0, side: 1, k: 0.5, v0: 20, vs: 0, seed: 1 }); c.knkRoom = true; }
+  const R = c.rb; R.room = true; R.asleep = false; R.still = 0;
+  for (const x of w.b) {
+    const v = c.vehicles[x[0]]; if (!v) continue;
+    let b = v.rb;
+    if (!b) { if (!v.pos) c.update(0); R.room = false; try { b = R.derail(x[0], 0); } finally { R.room = true; } if (!b) continue; }   // it comes off here too, with a clunk
+    b.p.set(x[1], x[2], x[3]); b.q.set(x[4], x[5], x[6], x[7]).normalize();
+    b.lv.set(x[8], x[9], x[10]); b.av.set(0, 0, 0); b.sleep = !!w.z; b.restT = 0;
+    R.pose(b); v.pos.copy(b.p);
+  }
+  if (w.z) R.asleep = true;
+  c.dirty = true;
+}
 MPC.drop = function (c) {
   CARS.cuts = CARS.cuts.filter(x => x !== c);
   c.dispose(); c.vehicles.forEach(freeVehicle);

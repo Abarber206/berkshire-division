@@ -110,7 +110,7 @@ class WreckSim {
   }
   /* take vehicle i off the rails: a rigid body with the speed the train had (times keep) */
   derail(i, keep = 1) {
-    const v = this.T.vehicles[i]; if (!v || v.rb || this.bodies.length - (this.nTruck || 0) >= WK.MAXB) return null;
+    const v = this.T.vehicles[i]; if (!v || v.rb || this.room || this.bodies.length - (this.nTruck || 0) >= WK.MAXB) return null;   // room: another player says which cars come off
     // part way through a step the train has run on kx metres from where it is drawn: it comes off from there
     const kx = this.kx || 0, sh = new THREE.Matrix4();
     if (kx) { sh.makeTranslation(...new THREE.Vector3().setFromMatrixColumn(v.root.matrix, 0).normalize().multiplyScalar(WreckSim.sF(v) * kx).toArray()); v.root.matrix.premultiply(sh); }
