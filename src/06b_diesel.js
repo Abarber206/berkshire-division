@@ -210,6 +210,9 @@ function buildDiesel(opts) {
   };
   const zAt = y => Wn - (y - yC) * (Wn - Wt) / (yT2 - yC);   // the chamfer, from the top of the side wall to the edge of the top
   const zF = zAt(yF);
+  // the top is crowned: a centre ridge stands hR above the corner edges at the front crease, easing to the flat
+  // windshield sill at the cab (ridge height at a: rY(a))
+  const hR = 0.12, rY = a => yF + (yT2 - yF) * (a - N0) / (CAB0 - N0) + hR * (CAB0 - a) / (CAB0 - N0);
   const P = (a, z, y) => [dx(a), y, z];
   const facet = (k, pts, uvs) => {      // flat convex polygon, fan triangulated
     const pos = [], uv = [];
@@ -221,12 +224,13 @@ function buildDiesel(opts) {
   {
     const v = y => (y - D) / (yT1 - D), u = z => (Wn - z) / (2 * Wn);
     // front face: the nose scheme (bands and design) across it
-    const front = [P(N0, Wn, D), P(N0, -Wn, D), P(N0, -Wn, yC), P(N0, -zF, yF), P(N0, zF, yF), P(N0, Wn, yC)];
+    const front = [P(N0, Wn, D), P(N0, -Wn, D), P(N0, -Wn, yC), P(N0, -zF, yF), P(N0, 0, rY(N0)), P(N0, zF, yF), P(N0, Wn, yC)];
     facet('lNose', front, front.map(p => [u(p[2]), v(p[1])]));
     // the sides run straight back, then flare out to the cab's full width over the last half metre, so the nose
     // meets the cab corners with no step (aFl: where the flare starts; zE, yE: the top corner edge there)
     const aFl = CAB0 - 0.5, yE = yF + (yT2 - yF) * (aFl - N0) / (CAB0 - N0), zE = zAt(yE);
-    facet('lRoof', [P(N0, -zF, yF), P(aFl, -zE, yE), P(aFl, zE, yE), P(N0, zF, yF)]);   // the sloping top, crease to flare
+    facet('lRoof', [P(N0, -zF, yF), P(aFl, -zE, yE), P(aFl, 0, rY(aFl)), P(N0, 0, rY(N0))]);   // the sloping, crowned top, crease to flare
+    facet('lRoof', [P(N0, 0, rY(N0)), P(aFl, 0, rY(aFl)), P(aFl, zE, yE), P(N0, zF, yF)]);
     for (const s of [-1, 1]) {
       const f = s > 0 ? 0 : Math.PI;
       facet('lBody', [P(N0, s * Wn, D), P(aFl, s * Wn, D), P(aFl, s * Wn, yC), P(N0, s * Wn, yC)]);                // side wall
@@ -243,10 +247,11 @@ function buildDiesel(opts) {
       facet('lRoof', [P(CAB0, s * Wc, yW0), P(CAB0, s * W, yW0), P(CAB0 + CHc, s * W, yW0)]);
     }
     // the sloping top, widening with the flare
-    facet('lRoof', [P(aFl, -zE, yE), P(CAB0, -Wc, yT2), P(CAB0, Wc, yT2), P(aFl, zE, yE)]);
+    facet('lRoof', [P(aFl, -zE, yE), P(CAB0, -Wc, yT2), P(CAB0, 0, yT2), P(aFl, 0, rY(aFl))]);
+    facet('lRoof', [P(aFl, 0, rY(aFl)), P(CAB0, 0, yT2), P(CAB0, Wc, yT2), P(aFl, zE, yE)]);
     box('dUnder', 1.5, 1.9, 1.95, 2.35, Wn - 0.004, Wn + 0.008);          // access panel, engineer's side
     // crease trim along the top of the front face, and the drip strip over the nose door
-    box('lBody', N0 - 0.012, N0 + 0.004, yF - 0.02, yF, -zF, zF);
+    for (const s of [-1, 1]) rod('lBody', 0.011, [dx(N0 - 0.004), yF - 0.008, s * zF], [dx(N0 - 0.004), rY(N0) - 0.008, 0], 5);
   }
   /* ---- ditch lights: a pair of square housings low on the nose face, just above the anticlimber ---- */
   const ditch = [];
@@ -271,8 +276,7 @@ function buildDiesel(opts) {
     rod('dSteel', 0.008, [dx(0.52), 2.72 - sag(z0), z0], [dx(0.52), 2.72 - sag(z1), z1], 4);
   }
   // the bell, on a stand on the nose top ahead of the windshield; it swings while it rings (bellRig)
-  const nTop = a => yF + (yT2 - yF) * (a - N0) / (CAB0 - N0);
-  const bellA = 2.0, bellY = nTop(bellA), bs = 0.6, bp = bellY + 0.25;
+  const bellA = 2.0, bellY = rY(bellA), bs = 0.6, bp = bellY + 0.25;
   box('dUnder', bellA - 0.16, bellA + 0.16, bellY - 0.03, bellY + 0.025, -0.22, 0.22);                  // base plate on the roof
   for (const s of [-1, 1]) box('dUnder', bellA - 0.035, bellA + 0.035, bellY, bp + 0.05, s * 0.17, s * 0.2);   // stand posts
   gb.cylZ('dSteel', 0.016, 0.4, 8, dx(bellA), bp, 0);                                                  // trunnion shaft
