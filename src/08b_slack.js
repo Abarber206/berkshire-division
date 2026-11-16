@@ -82,7 +82,7 @@ function slackStep(dt, T, a) {
   // the jolt the engine took this step: the cab lurches the other way (10b_slide.js)
   if (T === GAME.train && typeof SLIDE !== 'undefined') SLIDE.surgeV -= clamp((u[T.li] || 0) - uL0, -0.5, 0.5) * 0.35;
   if (clank.length) slkClank(T, clank);
-  if (T === GAME.train && !S.derailed && slkCurves(T, s, dt)) return;
+  if (T === GAME.train && !S.derailed && !(typeof iceSkating === 'function' && iceSkating()) && slkCurves(T, s, dt)) return;
   // too much pull for a knuckle: it breaks and the train comes apart there
   if (T === GAME.train && s.maxT > SLK.BREAK) {
     for (let j = 0; j < n - 1; j++) if (t[j] > SLK.BREAK && CARS.canCut(T, j + 1)) { slkPart(T, j + 1); break; }

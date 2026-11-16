@@ -10,7 +10,7 @@ const vm = require('vm');
 
 const SRC = path.join(__dirname, '..', 'src');
 const THREE_JS = path.join(__dirname, 'vendor', 'three.min.js');
-const FILES = ['01_util.js', '02_track.js', '03_route.js', '03c_mountain.js', '03d_frost.js', '04_world.js', '04b_mountain.js', '04d_frost.js'];
+const FILES = ['01_util.js', '02_track.js', '03_route.js', '03c_mountain.js', '03d_frost.js', '04_world.js', '04b_mountain.js', '04d_frost.js', '10n_ice.js'];
 const SKIP = !fs.existsSync(THREE_JS) && !process.env.CI && 'tests/vendor/three.min.js missing (npm pack three@0.128.0)';
 
 let W = null;
@@ -21,8 +21,8 @@ function frost() {
   vm.createContext(ctx);
   vm.runInContext(fs.readFileSync(THREE_JS, 'utf8'), ctx, { filename: 'three.min.js' });
   const code = FILES.map(f => fs.readFileSync(path.join(SRC, f), 'utf8')).join('\n') + `
-    WORLD.roadsX = []; WORLD.roadN = 1e7; buildFrostRoute(); frPrepare(); buildLattice();
-    ({ ROUTE, ROUTES, ROUTE_KEY, NET, FROST, WORLD, MILE, ICE_RAIL, groundH, latticeAt, naturalH, frInPoly })`;
+    WORLD.roadsX = []; WORLD.roadN = 1e7; buildFrostRoute(); frPrepare(); buildLattice(); prepareSwitchData();
+    ({ ROUTE, ROUTES, ROUTE_KEY, NET, FROST, WORLD, MILE, ICE_RAIL, groundH, latticeAt, naturalH, frInPoly, THREE, skate: { ICE, iceSkateEdge } })`;
   return (W = vm.runInContext(code, ctx, { filename: 'frost.js' }));
 }
 const y = (m, s) => { const l = m.locate(s); return l.edge.elev(l.s); };
@@ -77,4 +77,25 @@ test('the ground carries the track off the ice, the cliff stands over the shelf 
   const hi = Math.max(off(60), off(-60)), lo = Math.min(off(150), off(-150));
   assert.ok(hi - ty > 25, `cliff stands ${(hi - ty).toFixed(0)} m over the shelf`);
   assert.ok(ty - lo > 15, `the lake side falls ${(ty - lo).toFixed(0)} m below the shelf`);
+});
+
+test('no rails on the lake, and a skating train follows the path its engine made', { skip: SKIP }, () => {
+  const W = frost(), ctx = W.ctx || null;
+  const { NET, FROST } = W;
+  const E = NET.edges.find(e => e.ice && e.ice.length), [a, b] = E.ice[0];
+  assert.ok(E.trim[0].some(r => r[0] <= a + 0.01 && r[1] >= b - 0.01) && E.trim[1].some(r => r[0] <= a + 0.01 && r[1] >= b - 0.01), 'both rails stop at the shore');
+  assert.ok(E.noTie.some(r => r[0] <= a + 0.01 && r[1] >= b - 0.01), 'and so do the ties');
+  // the skating path: a steady swing to the right of the line, read back through the edge's pose
+  const sk = W.skate;
+  sk.iceSkateEdge(); const K = sk.ICE.sk;
+  for (let j = 0; j < K.D.length; j++) K.D[j] = j * 0.05;
+  K.live = true;
+  const F = { p: new W.THREE.Vector3(), f: new W.THREE.Vector3(), u: new W.THREE.Vector3(), r: new W.THREE.Vector3() };
+  const s = a + 400; E.pose(s, F); const p1 = F.p.clone(), f1 = F.f.clone();
+  K.live = false; E.pose(s, F); const p0 = F.p.clone(), r0 = F.r.clone(), f0 = F.f.clone();
+  assert.ok(Math.abs(p1.clone().sub(p0).dot(r0) - 20) < 0.05, `offset ${p1.clone().sub(p0).dot(r0).toFixed(2)} m to the right`);
+  const turned = Math.atan2(f1.dot(r0), f1.dot(f0));
+  assert.ok(Math.abs(turned - Math.atan(0.05)) < 0.002, `heading turned ${(turned * 180 / Math.PI).toFixed(2)} degrees`);
+  E.pose(a - 5, F); assert.ok(F.p.distanceTo(p0) > 1, 'off the ice the track is untouched');
+  K.D.fill(0);
 });

@@ -48,7 +48,7 @@ class Edge {
     this.bridges = opt.bridges || [];      // [[s0,s1],...]
     this.tunnels = opt.tunnels || [];      // [[s0,s1],...] bored through the hill: no ground is graded over them
     this.ice = opt.ice || [];              // [[s0,s1],...] ties laid straight on a frozen lake: no ballast, no grading
-    this.noTies = false;
+    this.noTies = false; this.sk = null;
     const total = pts[pts.length - 1].s - pts[0].s;
     this.len = total;
     const n = Math.max(2, Math.ceil(total / 1.0) + 1);
@@ -101,6 +101,7 @@ class Edge {
     out.u.crossVectors(out.r, out.f).normalize();
     out.r.crossVectors(out.f, out.u).normalize();
     out.p.set(X, y, -Nn);
+    if (this.sk) this.sk(s, out);   // a train skating across a frozen lake follows its own path, not the survey (10n_ice.js)
     if (lateral) out.p.addScaledVector(out.r, lateral);
     return out;
   }
