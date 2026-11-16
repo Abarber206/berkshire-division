@@ -179,7 +179,7 @@ function trainCode(T) {
 /* a car built from its token (not on the track yet) */
 function carFromToken(k) {
   let m;
-  if (k.type === 'coach') m = coachModel(LOCO_SPEC[k.rk] || LOCO_SPEC['765'], k.num, k.flag, k.tr || '');
+  if (k.type === 'coach') m = coachModel(coachSpecOf(k.rk, k.lv), k.num, k.flag, k.tr || '');
   else { const was = ROAD_SHORT; if (k.rs) ROAD_SHORT = k.rs; try { m = freightModel(k.type, k.num, () => 0.5); } finally { ROAD_SHORT = was; } }
   scene.add(m.root); linearizeObject(m.root);
   const v = carVehicle(m);

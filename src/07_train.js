@@ -298,9 +298,11 @@ class Train extends Consist {
     let n = 0;
     for (const [type, flag] of list) {
       const num = type === 'coach' ? 3010 + (n++) * 7 : 10000 + ((r() * 89999) | 0);
-      const m = type === 'coach' ? coachModel(spec, num, !!flag, this.trim) : freightModel(type, num, r);
+      const lv = locoKey === 'diesel' ? (opts.livery || 'ss') : '';
+      const m = type === 'coach' ? coachModel(coachSpecOf(locoKey, lv), num, !!flag, this.trim) : freightModel(type, num, r);
       scene.add(m.root);
       const v = carVehicle(m); v.made = { type, num, flag: !!flag, rk: locoKey, rs: spec.short };
+      if (type === 'coach' && lv) v.made.lv = lv;
       if (type === 'coach' && this.trim) v.made.tr = this.trim;
       this.vehicles.push(v);
     }
@@ -328,9 +330,9 @@ class Train extends Consist {
   markerLamps(v) {
     if (!v.markers || v.lamps) return;
     const mat = new THREE.MeshBasicMaterial({ color: 0x2a0806 });
-    v.lamps = { mat, lit: -1, glows: [] };
+    v.lamps = { mat, lit: -1, glows: [], meshes: [] };
     for (const p of v.markers) {
-      const m = new THREE.Mesh(new THREE.CircleGeometry(0.075, 14), mat); m.position.copy(p); m.rotation.y = -Math.PI / 2; v.root.add(m);
+      const m = new THREE.Mesh(new THREE.CircleGeometry(0.075, 14), mat); m.position.copy(p); m.rotation.y = -Math.PI / 2; v.root.add(m); v.lamps.meshes.push(m);
       if (typeof markerGlow === 'function') { const g = markerGlow(0.8); g.position.copy(p).x -= 0.05; v.root.add(g); v.lamps.glows.push(g); }
     }
   }
@@ -391,7 +393,7 @@ class Train extends Consist {
 function dieselLiveryFor(opts, u) {
   const base = opts.livery || 'ss';
   let key = base;
-  if (opts.mix && u > 0) { const order = LIVERY_ORDER.filter(k => k !== base); key = order[(u - 1) % order.length]; }
+  if (opts.mix && u > 0) { const order = liveryMixOrder(base); key = order[(u - 1) % order.length]; }
   if (key === 'custom') return Object.assign({}, LIVERIES.custom, opts.custom || {});
   return LIVERIES[key];
 }
