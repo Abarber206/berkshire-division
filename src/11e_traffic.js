@@ -565,7 +565,7 @@ AI.tick = function (dt) {
   if (!AI.trains.length) return;
   if (!AI.enabled()) { AI.clear(); return; }   // a multiplayer session or a custom world started under us
   IX.playerTick();
-  for (const a of AI.trains) a.tick(dt);
+  for (const a of AI.trains) if (!a.train.knk) a.tick(dt);   // one knocked about by a wreck goes where the wreck puts it
   // a train held up by ours says so, and on a job it costs a little for every minute
   for (const a of AI.trains) {
     if (a.heldWhy !== 'your train' || a.held === 0) { a.told = 0; continue; }
@@ -584,7 +584,8 @@ AI.contact = function (A, dir, hit) {
   const closing = dir * (velOf(A) - vB), mph = Math.round(closing / MPH);
   const ai = (A.ai || B.ai), other = A.ai ? B : A;
   if (other === T) {
-    if (closing > 2.7) { GAME.derail(`Collided with ${ai.name} at ${mph} mph. Stop at red signals: they are protecting other trains.`, 'Collision'); return; }
+    // the AI train takes the blow too: shoved along, its cars knocked off the rails where they were rammed (07e_knock.js)
+    if (closing > KNOCK.RAM) { GAME.derail(`Collided with ${ai.name} at ${mph} mph. Stop at red signals: they are protecting other trains.`, 'Collision', { none: true }); KNOCK.strike(ai.train); return; }
     sndClunk(0.8, 0);
   } else if (closing > 0.5) sndClunk(clamp(closing / COUPLE_OK, 0.3, 1.2) / (1 + Math.pow(ai.train.lead.pos.distanceTo(camera.position) / 30, 1.3)), 0);
   for (const c of [A, B]) setVel(c, 0);

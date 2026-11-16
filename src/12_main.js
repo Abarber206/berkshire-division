@@ -106,6 +106,7 @@ function resetState() {
 function makeTrain() {
   // your other trains stay where they stand when you make up a new one; a job or a room starts with just the one
   const others = FLEET.parked().length, keep = others > 0 && !MP.on && !JOB.wanted();
+  KNOCK.clear();   // anything an old wreck knocked about goes back on the rails
   CARS.clear(GAME.train, false, keep);
   if (others && !keep && !MP.on) toast(`Your other ${others > 1 ? others + ' trains were' : 'train was'} put away: a job is worked with one train.`, 'warn', 5200, 'fleet');
   const was = GAME.train;
@@ -553,18 +554,17 @@ GAME.wreckStep = function (dt, T) {
   const W = GAME.wrecking; if (!W) return;
   const R = T.rb, kin = W.kin;
   kin.v = S.v; kin.mass = 0; for (const v of T.vehicles) if (!v.rb) kin.mass += R ? R.massOf(v) : v.mass || 40000;
-  // a fault in the wreck physics must never freeze the game: the pile just stays where it is
-  const live = R && !R.asleep; kin.dx = undefined;
-  if (live) { try { R.step(dt, kin); } catch (e) { console.warn('wreck', e); R.asleep = true; kin.v = 0; kin.dx = undefined; } }
+  // ours and every train it knocked about, together (07e_knock.js); a fault in the wreck physics never freezes the game
+  kin.dx = undefined;
+  KNOCK.step(dt, R || null, kin);
   S.v = S.vw = kin.mass > 0 ? kin.v : 0;
   if (S.v !== 0 || kin.dx) {
-    // the cars still on the rails run on
-    const d = kin.mass > 0 && kin.dx !== undefined ? kin.dx : S.v * dt, lim = CARS.limit(T, d);
-    const moved = T.move(lim.d, { onBlocked: () => { S.v = S.vw = 0; } });
+    // the cars still on the rails run on, into anything standing in the way (which is knocked about in turn)
+    const d = KNOCK.limit(T, kin.mass > 0 && kin.dx !== undefined ? kin.dx : S.v * dt);
+    const moved = T.move(d, { onBlocked: () => { S.v = S.vw = 0; } });
     S.odo += Math.abs(moved);
-    if (lim.hit) { S.v = S.vw = 0; sndClunk(1.2, 0); }   // ploughed into standing cars
   }
-  const moving = Math.abs(S.v) > 0.05 || (R && !R.asleep);
+  const moving = Math.abs(S.v) > 0.05 || (R && !R.asleep) || KNOCK.list.some(c => c.rb && !c.rb.asleep);
   if (moving) {
     CAM.shakeHit = Math.max(CAM.shakeHit, clamp(Math.abs(S.v) / 20, 0, 0.5));
     W.clunkT -= dt;
@@ -572,6 +572,8 @@ GAME.wreckStep = function (dt, T) {
   } else if (!W.done) {
     // the dust has settled: a job is over; otherwise offer to put it back on the rails
     W.done = true; S.v = S.vw = 0;
+    // a hard hit that put nothing on the ground (the cars took it): carry on
+    if (R && !R.bodies.length && !KNOCK.list.some(c => c.rb && c.rb.bodies.length)) { GAME.rerail(); toast(W.why.replace(/\.? *$/, '. Nothing came off the rails.'), 'bad', 4000, 'hardhit'); return; }
     if (!JOB.fail(W.title, W.why)) GAME.wreckBar();
   }
 };
@@ -584,6 +586,7 @@ GAME.wreckBar = function () {
 GAME.rerail = function () {
   $('bigMsg').hidden = true; $('bigMsg').classList.remove('wreck'); S.derailed = false; S.v = 0; S.vw = 0; S.brakeH = 0.12; MP.dirty = true;
   GAME.train.wreck(null); GAME.wrecking = null;
+  KNOCK.clear();
   if (S.dead) { S.dead = false; S.W = 0.6; S.fire = 0.4; S.P = 180; }
   for (const v of GAME.train.vehicles) { v.brake.BP = 90; v.brake.AR = 90; v.brake.BC = 0; v.brake.emerg = false; }
   S.ER = 90;
@@ -755,6 +758,8 @@ function loop() {
   const T = GAME.train; if (!T) return;
   const active = GAME.running && !S.paused && !S.derailed && !PLACE.on;
   if (active) { simStep(dt, T); SAVE.tick(dt); } else { stepSwitches(dt); if (S.derailed && GAME.running && !S.paused && !PLACE.on) GAME.wreckStep(dt, T); }
+  // wrecks that aren't ours: other players', or one of our parked trains another player ran into
+  if (!(S.derailed && GAME.running) && !S.paused) KNOCK.step(dt, null);
   renderStep(dt, T);
 }
 function simStep(dt, T) {

@@ -151,7 +151,7 @@ function mpTrainClean(r, o) {
     o.s = n(r.s, 0, 1e5); o.o = r.o < 0 ? -1 : 1; o.v = n(r.v, -60, 60); o.rv = n(r.rv, -1, 1);
     o.wh = n(r.wh, 0, 1); o.bl = r.bl ? 1 : 0; o.cl = r.cl ? 1 : 0; o.hl = Math.round(n(r.hl, 0, 2, 1)); o.dl = r.dl ? 1 : 0;
     o.ex = n(r.ex, 0, 1.5); o.rpm = n(r.rpm, 0, 1200); o.dr = r.dr ? 1 : 0;
-    o.wk = o.dr && Array.isArray(r.wk) && r.wk.length >= 4 ? [n(r.wk[0], 0, 5000), r.wk[1] < 0 ? -1 : 1, Math.round(n(r.wk[2], 1, 2e9, 1)), n(r.wk[3], 0, 1), n(r.wk[4], 0, 150), n(r.wk[5], -150, 150), r.wk[6] ? 1 : 0] : null;
+    o.wk = o.dr && Array.isArray(r.wk) && r.wk.length >= 4 ? [n(r.wk[0], 0, 5000), r.wk[1] < 0 ? -1 : 1, Math.round(n(r.wk[2], 1, 2e9, 1)), n(r.wk[3], 0, 1), n(r.wk[4], 0, 150), n(r.wk[5], -150, 150), r.wk[6] ? 1 : 0, r.wk[7] ? 1 : 0] : null;
   }
   return o;
 }
@@ -176,7 +176,7 @@ function mpClean(r) {
   o.lt = Array.isArray(r.lt) && r.lt.length === 2 ? [Math.round(n(r.lt[0], 0, 255)), Math.round(n(r.lt[1], 0, 1e9))] : null;
   // a hit on someone's train: [their id, count, mph, x, z of the point of impact]
   // (and which of their trains: 0 or missing, the one they drive; else the number of one of their other trains)
-  o.hx = Array.isArray(r.hx) && (r.hx.length === 5 || r.hx.length === 6) && typeof r.hx[0] === 'string' ? [r.hx[0].slice(0, 16), Math.round(n(r.hx[1], 0, 1e9)), n(r.hx[2], 0, 200), n(r.hx[3], -1e5, 1e5), n(r.hx[4], -1e5, 1e5), Math.round(n(r.hx[5], 0, 1e6))] : null;
+  o.hx = Array.isArray(r.hx) && r.hx.length >= 5 && r.hx.length <= 8 && typeof r.hx[0] === 'string' ? [r.hx[0].slice(0, 16), Math.round(n(r.hx[1], 0, 1e9)), n(r.hx[2], 0, 200), n(r.hx[3], -1e5, 1e5), n(r.hx[4], -1e5, 1e5), Math.round(n(r.hx[5], 0, 1e6)), r.hx.length > 6 ? n(r.hx[6], -80, 80) : null, r.hx[7] < 0 ? -1 : 1] : null;
   o.ch = Array.isArray(r.ch) && r.ch.length === 2 ? [Math.round(n(r.ch[0], 0, 1e9)), mpText(r.ch[1], 80)] : null;
   return o;
 }
@@ -279,7 +279,7 @@ class RemoteTrain {
     this.v = st.v;
     // their wreck, as they see it: the same cars go over in the same order while it slides to rest
     const wk = st.dr && st.wk ? st.wk.join() : '';
-    if (wk !== (this.wkKey || '')) { this.wkKey = wk; this.train.wreck(wk ? { a: st.wk[0], side: st.wk[1], seed: st.wk[2], k: st.wk[3], v0: st.wk[4], vs: st.wk[5] || 0, hit: !!st.wk[6] } : null); }
+    if (wk !== (this.wkKey || '')) { this.wkKey = wk; this.train.wreck(wk ? { a: st.wk[0], side: st.wk[1], seed: st.wk[2], k: st.wk[3], v0: st.wk[4], vs: st.wk[5] || 0, hit: !!st.wk[6], none: !!st.wk[7] } : null); }
   }
   frame(dt, st, cam, force) {
     if (!this.tp) return;
@@ -295,7 +295,7 @@ class RemoteTrain {
     this.updT = 0;
     for (const p of T.pts) { if (p.tp) p.tp.copy(this.tp); else p.tp = this.tp.clone(); const off = p.a - this.a0; if (off) p.tp.advance(-off, null); }
     // their wreck plays out here too, the cars still on the rails going at the speed they report
-    if (T.rb) { this.kin = this.kin || { v: 0, mass: 0, force: 0 }; this.kin.v = this.v; this.kin.x0 = -this.v * dt; try { T.rb.step(dt, this.kin); } catch (e) { T.rb.asleep = true; } }
+    // (their wreck plays out in KNOCK.step with everyone else's, 07e_knock.js)
     T.update(dt, this.theta, st.rv || 0);
     // polyline for contact tests: front coupler, every tracked point, rear coupler
     const n = T.pts.length + 2;
@@ -575,14 +575,17 @@ MP.drop = function (id, why) {
 };
 /* one train for the room: T with engine state es (S, or a train left standing's own), made up from settings g.
    held: where it stood before it was picked up to be placed. m keeps when its list of cars last changed. */
+const mpWk = w => [+w.a.toFixed(1), w.side, w.seed, +w.k.toFixed(2), +(w.v0 || 0).toFixed(1), +(w.vs || 0).toFixed(2), w.hit ? 1 : 0, w.none ? 1 : 0];
 function mpTrainOut(T, es, g, held, now, m, other) {
   const f = held ? held[0] : T.pts[0].tp, sk = T.diesel ? null : steamK(LOCO_SPEC[T.locoKey]);
   const o = {
     f: T.fid || 0, lk: T.locoKey, ck: T.consistKey, u: T.nUnits || 1, lv: g.livery, mx: g.mix ? 1 : 0, cu: g.livery === 'custom' && g.custom ? [g.custom.body, g.custom.accent, g.custom.letter] : 0, no: g.livery === 'custom' ? (+g.number || 0) : 0, tm: T.trim || '',
     e: f.e.id, s: +f.s.toFixed(2), o: f.o, v: held || (PLACE.on && !other) ? 0 : +((other ? T.v : es.v) || 0).toFixed(2), rv: +(es.reverser || 0).toFixed(2), wh: +(es.whistle || 0).toFixed(2), bl: es.bell ? 1 : 0, cl: es.classLamps ? 1 : 0, hl: es.light || 0, dl: es.ditch ? 1 : 0,
     ex: T.diesel ? +(es.load || 0).toFixed(2) : (es.Psc > 6 && es.cut > 0 && es.throttle > 0.02 ? +clamp((es.Psc / sk.PL) * (0.35 + es.cut * 1.25), 0, 1.3).toFixed(2) : 0),
-    rpm: T.diesel && !T.elec && es.engineRun ? Math.round(es.rpm) : 0, dr: !other && S.derailed ? 1 : 0,
+    rpm: T.diesel && !T.elec && es.engineRun ? Math.round(es.rpm) : 0, dr: (other ? T.knk && T.wk : S.derailed) ? 1 : 0,
   };
+  // one of our other trains knocked about by a wreck (07e_knock.js): the room sees it come off too
+  if (other && o.dr) o.wk = mpWk(T.wk);
   // a train made up differently from what its engine and train build (cars picked up, set out or placed) says what is in it
   const code = trainCode(T);
   if (code !== T.code0) {
@@ -604,7 +607,7 @@ MP.state = function () {
     const held = PLACE.on && PLACE.ghost && PLACE.ghost.kind === 'train' && PLACE.ghost.c === T ? PLACE.ghost.orig : null;
     FLEET.all();   // every train has its number
     Object.assign(st, mpTrainOut(T, S, g, held, now, MP));
-    if (S.derailed && T.wk) st.wk = [+T.wk.a.toFixed(1), T.wk.side, T.wk.seed, +T.wk.k.toFixed(2), +(T.wk.v0 || 0).toFixed(1), +(T.wk.vs || 0).toFixed(2), T.wk.hit ? 1 : 0];
+    if (S.derailed && T.wk) st.wk = mpWk(T.wk);
     // your other trains (11l_fleet.js), by number; at most one list of cars goes with each message
     const fl = FLEET.parked();
     if (fl.length) {
@@ -773,7 +776,7 @@ MP.contact = function (T) {
       if (h.ghost || tc.kind === 'ghost') { h.ghost = true; continue; }
       if (tc.kind === 'side') {
         const sp = Math.abs(S.v - theirs);
-        if (sp > MP_SIDESWIPE) { MP.wreckBoth(T, p, end, sp, sg, h); return; }
+        if (sp > MP_SIDESWIPE) { MP.wreckBoth(T, p, end, sp, sg, h, true); return; }
         // pressed against their side: no further in
         if (d < tc.d - 0.01 && Math.abs(S.v) > 0.02) { S.v = 0; S.vw = 0; toast(`Stopped against ${p.st.nm}'s train. It is foul of your track.`, 'warn', 3000, 'mpside'); }
         tc.d = Math.min(tc.d, d);
@@ -799,23 +802,51 @@ MP.overlaps = function (T, rt, n = 1) {
   for (const q of T.pts) for (let i = 0; i < rt.polyN - 1; i++) if (mpSegDist(q.F.p, rt.poly[i], rt.poly[i + 1]) < 2) { if (++k >= n) return true; break; }
   return false;
 };
-/* a collision bad enough to put both trains on the ground */
-MP.wreckBoth = function (T, p, end, sp, sg, h) {
-  const mph = Math.round(sp / MPH), f = h && h.rt !== p.rt ? h.f : 0;
+/* a collision bad enough to put both trains on the ground. Coupler to coupler, the two trains trade momentum (the
+   lighter one is shoved back harder) and each comes off at the speed it is left with; into their side, ours stops
+   short and theirs is knocked over away from us. They hear how hard and which way in hx. */
+MP.wreckBoth = function (T, p, end, sp, sg, h, side) {
+  const mph = Math.round(sp / MPH), f = h && h.rt !== p.rt ? h.f : 0, rt = h && h.rt ? h.rt : p.rt;
+  const their = rt.train, fd = their.lead.fwd.dot(T.lead.fwd) < 0 ? -1 : 1;
+  let vsThem = rt.v, away = 1;
+  if (side) {
+    // thrown over away from our train: the side of theirs we came at from
+    _mpC.set(-their.lead.fwd.z, 0, their.lead.fwd.x);   // their right
+    away = _mpC.dot(T.lead.fwd) * Math.sign(S.v || 1) > 0 ? 1 : -1;
+  } else {
+    const [uA, uB] = buff(consistMass(T), S.v, mpMass(their), fd * rt.v, 0.1);
+    S.v = S.vw = uA; vsThem = fd * uB; away = Math.random() < 0.5 ? -1 : 1;
+  }
   MP.hitN = (MP.hitN || 0) + 1;
-  MP.hit = [p.id, MP.hitN, mph, +end.x.toFixed(1), +end.z.toFixed(1), f];
-  GAME.derail(`Collided with ${p.st.nm}'s ${f ? (LOCO_SPEC[h.st.lk] || {}).short || 'train' : 'train'} at ${mph} mph. Back away before you try again.`, 'Collision', { a: sg > 0 ? 0 : T.length, k: clamp((sp / MPH - 4) / 35, 0.3, 1) });
+  MP.hit = [p.id, MP.hitN, mph, +end.x.toFixed(1), +end.z.toFixed(1), f, +vsThem.toFixed(2), away];
+  GAME.derail(`Collided with ${p.st.nm}'s ${f ? (LOCO_SPEC[h.st.lk] || {}).short || 'train' : 'train'} at ${mph} mph. Back away before you try again.`, 'Collision', { a: sg > 0 ? 0 : T.length, k: clamp((sp / MPH - 4) / 35, 0.3, 1) }, !!side);
 };
+/* weight of another player's train, kg */
+function mpMass(T) { let m = 0; for (const v of T.vehicles) m += v.mass > 0 ? v.mass : 60000; return m; }
+/* how far back from train T's front coupler (m) the vehicle nearest world x, z is, and how far that is */
+function mpHitAt(T, x, z) {
+  let a = 0, best = Infinity;
+  for (const v of T.vehicles) { if (!v.pos) continue; const dd = Math.hypot(v.pos.x - x, v.pos.z - z); if (dd < best) { best = dd; a = v.a0 + v.len / 2; } }
+  return { a, d: best };
+}
 /* someone else's train hit ours hard */
 MP.struck = function (p, hx) {
-  // one of our other trains: it is stopped where it stands (only the train being driven goes on the ground)
-  if (hx[5]) { const c = FLEET.parked().find(t => t.fid === hx[5]); if (c) FLEET.struck(c, `${p.st.nm}'s train ran into ${FLEET.name(c)} at ${hx[2]} mph.`); return; }
+  const k = clamp((hx[2] - 4) / 35, 0.3, 1), vs = hx[6], side = hx[7] || 1;
+  // one of our other trains: knocked off its rails where it was hit, shoved on by the blow (07e_knock.js)
+  if (hx[5]) {
+    const c = FLEET.parked().find(t => t.fid === hx[5]); if (!c || c.knk) return;
+    const at = mpHitAt(c, hx[3], hx[4]); if (at.d > 80) return;
+    const v = vs === null || vs === undefined ? 0 : vs;
+    KNOCK.strike(c, { none: false, a: at.a, side, k, v0: Math.max(Math.abs(v), hx[2] * MPH * 0.5), vs: v });
+    FLEET.struck(c, `${p.st.nm}'s train ran into ${FLEET.name(c)} at ${hx[2]} mph.`);
+    return;
+  }
   const T = GAME.train; if (!T || !MP.spawned || S.derailed || !GAME.running) return;
-  // where along our train it hit
-  let a = 0, best = Infinity; _mpC.set(hx[3], 0, hx[4]);
-  for (const v of T.vehicles) { const dd = Math.hypot(v.pos.x - _mpC.x, v.pos.z - _mpC.z); if (dd < best) { best = dd; a = v.a0 + v.len / 2; } }
-  if (best > 80) return;   // not near us any more: an old message
-  GAME.derail(`${p.st.nm}'s train hit yours at ${hx[2]} mph.`, 'Collision', { a, k: clamp((hx[2] - 4) / 35, 0.3, 1) });
+  const at = mpHitAt(T, hx[3], hx[4]);
+  if (at.d > 80) return;   // not near us any more: an old message
+  // shoved (or stopped) by the blow, as their side worked it out
+  if (vs !== null && vs !== undefined) { S.v = S.vw = vs; }
+  GAME.derail(`${p.st.nm}'s train hit yours at ${hx[2]} mph.`, 'Collision', { a: at.a, k, side }, vs === null || vs === undefined);
 };
 MP.view = function () {
   if (!MP.watching) return null;

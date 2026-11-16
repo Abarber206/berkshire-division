@@ -171,10 +171,9 @@ function crewAhead(T, dir, range) {
   }
   return carAhead(T, dir, range, idx);
 }
-/* another player's train ran into one of ours hard: it is stopped where it stands */
+/* another player's train ran into one of ours hard: knocked about by it (07e_knock.js), the crew stopped */
 FLEET.struck = function (T, msg) {
   if (T.crew) T.crew.mph = 0;
-  T.v = 0; if (T.parkS) T.parkS.vw = 0;
   sndClunk(1 / (1 + Math.pow((T.lead.pos ? T.lead.pos.distanceTo(camera.position) : 999) / 30, 1.3)), 0);
   toast(msg, 'bad', 4600, 'fleetHit');
   FLEET.ui(true); FLEET.cardFill();
@@ -278,7 +277,7 @@ function crewStep(T, h) {
 }
 /* every train with an engineer, each physics step */
 FLEET.tick = function (h) {
-  for (const T of CARS.cuts.slice()) if (T.crew && T.parkS && CARS.cuts.includes(T)) crewStep(T, h);
+  for (const T of CARS.cuts.slice()) if (T.crew && T.parkS && !T.knk && CARS.cuts.includes(T)) crewStep(T, h);
 };
 
 /* why you cannot make up, change or take off a train right now, or '' */

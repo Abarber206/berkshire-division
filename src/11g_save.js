@@ -290,6 +290,7 @@ SAVE.apply = function (d) {
   const E = d.print === SAVE.print() ? new Map(NET.edges.map(e => [e.id, e])) : null;
   // clear the railroad
   if (JOB.run) JOB.end();
+  KNOCK.clear();
   AI.clear();
   CARS.clear(GAME.train);
   if (GAME.train) { GAME.train.wreck(null); GAME.train.dispose(); }

@@ -27,9 +27,11 @@ function loadWreck(extra = '') {
 /* Each car's box takes in its couplers, so coupled boxes overlap a little at the ends, as in the game.
    kinds: list of [kind, length m, mass kg]; the train runs toward +x with its front coupler at x = 0. gap: metres the
    coupler faces stand apart (as the track can leave them in the game) */
-function makeTrain(W, kinds, gap = 0) {
+function makeTrain(W, kinds, gap = 0, opt = {}) {
   const { THREE } = W;
-  const T = { vehicles: [], loco: {}, x: 0 };
+  // dir -1: the train faces -x (front coupler at x, the rest of it toward +x)
+  const dir = opt.dir || 1, rot = new THREE.Matrix4().makeRotationY(dir > 0 ? 0 : Math.PI);
+  const T = { vehicles: [], loco: {}, x: opt.x || 0, dir };
   let a = 0;
   for (const [kind, len, mass] of kinds) {
     const root = new THREE.Group(); root.matrixAutoUpdate = false;
@@ -43,10 +45,10 @@ function makeTrain(W, kinds, gap = 0) {
   T.place = () => {
     for (const v of T.vehicles) {
       if (v.rb) continue;
-      const x = T.x - v.a0 - v.len / 2;
-      v.root.matrix.makeTranslation(x, 0, 0); v.root.updateMatrixWorld(true);
-      v.pos = (v.pos || new THREE.Vector3()).set(x, 0, 0); v.fwd = v.fwd || new THREE.Vector3(1, 0, 0);
-      v.tp = [-1, 1].map(k => ({ F: { p: new THREE.Vector3(x + k * (v.len / 2 - 2), 0, 0), f: new THREE.Vector3(1, 0, 0), u: new THREE.Vector3(0, 1, 0), r: new THREE.Vector3(0, 0, 1) } }));
+      const x = T.x - dir * (v.a0 + v.len / 2);
+      v.root.matrix.makeTranslation(x, 0, 0).multiply(rot); v.root.updateMatrixWorld(true);
+      v.pos = (v.pos || new THREE.Vector3()).set(x, 0, 0); v.fwd = (v.fwd || new THREE.Vector3()).set(dir, 0, 0);
+      v.tp = [-1, 1].map(k => ({ F: { p: new THREE.Vector3(x + k * (v.len / 2 - 2), 0, 0), f: new THREE.Vector3(dir, 0, 0), u: new THREE.Vector3(0, 1, 0), r: new THREE.Vector3(0, 0, dir) } }));
     }
   };
   T.place();
@@ -76,6 +78,25 @@ function runWreck(W, T, v0, secs, spec = {}, onFrame) {
   return { R, out };
 }
 
+/* Trains that meet (as KNOCK does it in the game): each { T, v: m/s toward its front, spec }; every one starts with
+   nothing off the rails (spec.none) unless its spec says otherwise, and they are stepped together at 60 Hz */
+function runKnock(W, list, secs, onFrame) {
+  const clk = {}, dt = 1 / 60;
+  for (const o of list) {
+    o.R = new W.WreckSim(o.T, Object.assign({ a: 0, side: 1, k: 0.5, none: true, v0: Math.abs(o.v), vs: o.v, seed: 7 }, o.spec || {}));
+    o.kin = { v: o.v, mass: 0, force: 0 }; o.x0 = o.T.x;
+  }
+  let f = 0;
+  for (; f < secs * 60; f++) {
+    for (const o of list) { o.kin.mass = 0; for (const v of o.T.vehicles) if (!v.rb) o.kin.mass += v.mass; o.R.kin = o.kin; }
+    W.WreckSim.stepAll(list.map(o => o.R), dt, clk);
+    for (const o of list) { if (o.kin.mass <= 0) o.kin.v = 0; o.T.x += o.T.dir * o.kin.dx; o.T.place(); }
+    if (onFrame) onFrame((f + 1) * dt, list);
+    if (list.every(o => o.R.asleep && Math.abs(o.kin.v) < 0.05)) break;
+  }
+  return { t: (f + 1) * dt };
+}
+
 const PASSENGER = [['loco', 30, 200000], ['tender', 30, 170000], ...Array.from({ length: 8 }, () => ['coach', 25, 60000])];
 const FREIGHT = [['loco', 30, 200000], ['tender', 30, 170000], ...Array.from({ length: 20 }, (_, i) => ['car', 17, i % 2 ? 30000 : 120000])];
-module.exports = { loadWreck, makeTrain, runWreck, PASSENGER, FREIGHT, THREE_JS };
+module.exports = { loadWreck, makeTrain, runWreck, runKnock, PASSENGER, FREIGHT, THREE_JS };
