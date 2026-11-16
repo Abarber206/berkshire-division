@@ -26945,7 +26945,7 @@ const WALK = {
   on: false, mode: 'drive', p: new THREE.Vector3(), vy: 0, yaw: 0, lookYaw: 0, lookPitch: -0.18, fp: false, dist: 3.6,
   keys: {}, stick: { x: 0, y: 0, on: false }, runT: false, speed: 0, phase: 0, t: 0, wave: -1, ride: null, rig: null,
   act: null, actT: 0, interiors: new Map(), inT: 0, holds: new Map(), infoT: 0, peers: new Map(), seen: new Map(),
-  fall: null, fv: new THREE.Vector3(), fp0: new THREE.Vector3(), cv: new Map(), alertT: 0,
+  fall: null, fv: new THREE.Vector3(), fp0: new THREE.Vector3(), cv: new Map(),
 };
 const WALK_R = 0.27, WALK_STEP = 0.55, WALK_V = 1.45, RUN_V = 3.9;
 const _kA = new THREE.Vector3(), _kB = new THREE.Vector3(), _kC = new THREE.Vector3(), _kD = new THREE.Vector3(), _kM = new THREE.Matrix4(), _kQ = new THREE.Vector3();
@@ -27189,7 +27189,6 @@ WALK.leaveCab = function () {
     WALK.rigReady();
     WALK.jump(pick.w, vel, pick.out);
     WALK.mode = 'foot'; WALK.setOn(true);
-    WALK.alertT = 0;
     toast(`You jump from the cab at ${Math.round(Math.abs(S.v) / MPH)} mph. Nobody is at the throttle now.`, 'warn', 3600, 'walk');
     return;
   }
@@ -27335,7 +27334,6 @@ WALK.frame = function (dt) {
   WALK.speed += clamp(want - WALK.speed, -6 * dt, 4 * dt);
   if (dt > 0) WALK.trackVel(dt);
   if (WALK.mode === 'ride') WALK.rideStep(dt, f, s, m); else if (WALK.fall) WALK.fallMove(dt); else WALK.footStep(dt, f, s, m);
-  if (dt > 0) WALK.alerter(dt);
   // the stride
   const cyc = lerp(1.5, 2.9, smooth(1.9, 3.4, WALK.speed));
   WALK.phase = (WALK.phase + TAU * WALK.speed / cyc * dt) % (TAU * 1000);
@@ -27510,18 +27508,6 @@ function walkDust(p, B, k) {
       0.035 + 0.035 * Math.random(), 1.2 + Math.random(), sh, sh * 0.98, sh * 0.94, p.y, null);
   }
 }
-/* nobody at the throttle of our train while it runs: a diesel's or a motor's alerter sounds and then sets the
-   brakes; a steam engine has none and runs on as she was left */
-WALK.alerter = function (dt) {
-  const T = GAME.train;
-  if (!T || !(T.diesel || T.elec) || Math.abs(S.v) < 0.5 || S.derailed) { WALK.alertT = 0; return; }
-  WALK.alertT += dt;
-  if (WALK.alertT > 25 && WALK.alertT - dt <= 25) toast('Your engine\'s alerter is sounding: nobody is at the controls.', 'warn', 3200, 'alert');
-  if (WALK.alertT > 35 && S.brakeH < 0.6) {
-    S.throttle = 0; S.notch = 0; S.dyn = 0; S.brakeH = 0.6;
-    toast('No answer to the alerter: your train makes a penalty brake application.', 'warn', 3600, 'alert');
-  }
-};
 /* in a coach: the aisle between the seats, the open ends, the bulkhead doors, the vestibule, and through the
    diaphragm into the next coach */
 function coachRoom(l, prev, obs) {
