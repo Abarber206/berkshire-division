@@ -472,7 +472,7 @@ function whistleCut(o, now, tc) {
    while the cord is pulled; a part-open valve sounds lower and breathier (the quill).
    Doppler comes from the emitter. Synthesized: the voices of 09_audio.js. */
 function whistleMix(T, tv, inCab) {
-  const DSL = T.diesel, key = LOCO_SPEC[GAME.settings.loco].whistle, k = whTake(key), now = AU.ctx.currentTime;
+  const DSL = T.diesel, key = whistleKeyOf(GAME.settings.loco), k = whTake(key), now = AU.ctx.currentTime;
   let pull = S.whistle;
   if (SND.has(k)) {
     if (SND.whKey !== k) { if (SND.whistle) SND.whistle.kill(); SND.whistle = new Loop(k, SND.whBus); SND.whKey = k; SND.whPull = 0; }
@@ -651,7 +651,7 @@ function remoteSound(R, dt, st, d, cam) {
   }
   if (R.bellHit) { R.bellHit = false; if (d < 1200) sndBell(bellVoice(st.lk), B.g); }   // strokes are timed in fx, where the bell swings
   // whistle or horn: recorded through the emitter (which gives the Doppler), or the synthesized voices
-  const key = LOCO_SPEC[st.lk].whistle, k = whTake(key);
+  const key = whistleKeyOf(st.lk), k = whTake(key);
   if (SND.has(k)) {
     if (!B.whistle && st.wh > 0.02) B.whistle = new Loop(k, B.wg);
     if (B.whistle) {

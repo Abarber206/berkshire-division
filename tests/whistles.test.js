@@ -147,3 +147,39 @@ test('the sustain loop waits under the opening take and takes over as it fades, 
   p = c.whistleValve(o, 0, 3); c.whistleOnset(o, 'wh_x', R, p, null, 3);
   assert.equal(c.whistleBlend(o, 3), 1);
 });
+
+test('every whistle with a release take closes from its sustain level and dies away; opening takes swell up to it', t => {
+  try { require('child_process').execFileSync('ffmpeg', ['-version']); } catch (e) { t.skip('no ffmpeg'); return; }
+  for (const key of ['pm6', 'nkp6m', 'co3']) {
+    const R = bank.WHISTLE_REC[key];
+    assert.ok(R && R.xf > 0 && bank.SND_FILES['wh_' + key + '_off'], `${key}: no release take`);
+    const loop = takeLevels(bank.SND_FILES['wh_' + key][0]), on = takeLevels(bank.SND_FILES['wh_' + key + '_on'][0]), off = takeLevels(bank.SND_FILES['wh_' + key + '_off'][0]);
+    const sustain = loop.reduce((a, b) => a + b) / loop.length;
+    const start = (off[0] + off[1]) / 2;   // the first 100 ms: one 50 ms window can land in a dip of the flutter
+    assert.ok(Math.abs(start - sustain) < 3, `${key}: release starts at ${start.toFixed(1)} dB, the loop sustains at ${sustain.toFixed(1)} dB`);
+    assert.ok(off[off.length - 1] < start - 25, `${key}: the release does not die away`);
+    assert.ok(on[0] < sustain - 6, `${key}: the opening take starts at full voice, not on the valve opening`);
+    // by the time the loop starts taking over (62% of R.on) the opening take is at the loop's level
+    const at = on.slice(Math.round(0.4 / 0.05), Math.round(0.62 * R.on / 0.05));
+    const mean = at.reduce((a, b) => a + b) / at.length;
+    assert.ok(Math.abs(mean - sustain) < 2.5, `${key}: the opening take sits at ${mean.toFixed(1)} dB, the loop at ${sustain.toFixed(1)} dB`);
+    assert.ok(on.length * 0.05 >= R.on, `${key}: opening take shorter than R.on`);
+  }
+});
+
+test('the Sound tab can put back the original recordings, and every whistle either way is playable', () => {
+  const src = fs.readFileSync(path.join(ROOT, 'src', '09a_soundbank.js'), 'utf8');
+  const ctx = { LOCO_SPEC, GAME: { settings: { whistles: 'new' } } };
+  vm.runInNewContext(src + ';this.whistleKeyOf = whistleKeyOf; this.WHISTLE_CLASSIC = WHISTLE_CLASSIC;', ctx);
+  assert.equal(ctx.whistleKeyOf('1225'), 'pm6');
+  assert.equal(ctx.whistleKeyOf('4014'), 'deep6', 'the Big Boy keeps its own recording');
+  ctx.GAME.settings.whistles = 'classic';
+  assert.equal(ctx.whistleKeyOf('1225'), 'chime6');
+  assert.equal(ctx.whistleKeyOf('765'), 'nkp6');
+  assert.equal(ctx.whistleKeyOf('diesel'), 'k5', 'horns are the same either way');
+  for (const key of Object.values(ctx.WHISTLE_CLASSIC)) {
+    assert.ok(new RegExp(`\\b${key}: \\{ kind:`).test(synth), `classic '${key}' has no synthesized fallback`);
+    const R = bank.WHISTLE_REC[key]; assert.ok(R, `classic '${key}' has no WHISTLE_REC`);
+    assert.ok(bank.SND_FILES['wh_' + (R.take || key)], `classic '${key}' has no takes`);
+  }
+});

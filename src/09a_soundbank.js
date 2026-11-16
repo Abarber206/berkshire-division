@@ -48,6 +48,15 @@ const SND_FILES = {
   wh_nkp6: ['wh_nkp6_0.wav'],
   wh_nkp6_on: ['wh_nkp6_on_0.mp3'],
   wh_nkp6_off: ['wh_nkp6_off_0.mp3'],
+  wh_pm6: ['wh_pm6_0.wav'],
+  wh_pm6_on: ['wh_pm6_on_0.mp3'],
+  wh_pm6_off: ['wh_pm6_off_0.mp3'],
+  wh_nkp6m: ['wh_nkp6m_0.wav'],
+  wh_nkp6m_on: ['wh_nkp6m_on_0.mp3'],
+  wh_nkp6m_off: ['wh_nkp6m_off_0.mp3'],
+  wh_co3: ['wh_co3_0.wav'],
+  wh_co3_on: ['wh_co3_on_0.mp3'],
+  wh_co3_off: ['wh_co3_off_0.mp3'],
 };
 // end SND_FILES (written by audio/tools/prepare.py)
 const SND_GAIN = { bell_st: 0.8, gt_whine: 0.55, gt_roar: 0.8, chuff: 1, chuff_hard: 0.9, fire: 0.6, comp: 0.5, purge: 0.6, dump: 0.8, squeal: 0.5, bell: 0.8, crickets: 0.45, dawn: 0.5, frogs: 0.3, joint: 0.9, roll: 0.7, flange: 0.35, wind: 0.8, birds: 0.5, night: 0.5, blower: 0.5, safety: 0.9, pump: 0.6, cocks: 0.6, bpx: 0.7, injector: 0.5, dz: 1, wh_deep6: 1, wh_nkp6: 1, wh_chime6: 1, wh_k5: 1, rain_lt: 0.7, rain: 0.65, rain_hvy: 0.6, thunder: 1 };
@@ -61,11 +70,24 @@ const WHISTLE_REC = {
   // rate: played this much lower. No PD recording of NKP 765's own whistle exists, so it blows a deep multi-chime
   // recorded at the Grand Canyon Railway (another engine than the 1225's), lowered to sit between the 1225 and the Big Boy
   nkp6: { quill: 0.05, attack: 0.05, release: 0.12, on: 1.2, xf: 0.03, rate: 0.86 },
-  co3: { take: 'deep6', quill: 0.05, attack: 0.05, release: 0.12, on: 1.2, rate: 1.19 },   // C&O 1308: no PD recording of an H-6, so the deep chime played higher and shorter
+  co3d: { take: 'deep6', quill: 0.05, attack: 0.05, release: 0.12, on: 1.2, rate: 1.19 },   // the 1308's first voice: the Big Boy's chime played higher
+  /* Built by audio/tools/whistle_synth.py (no public-domain recording of these engines' whistles exists):
+     pm6 the 1225's bright five-chime, nkp6m a deeper minor six-chime for the 765, co3 the 1308's three-chime hooter */
+  pm6: { quill: 0.04, attack: 0.04, release: 0.1, on: 1.25, xf: 0.03 },
+  nkp6m: { quill: 0.06, attack: 0.05, release: 0.12, on: 1.25, xf: 0.03 },
+  co3: { quill: 0.05, attack: 0.05, release: 0.12, on: 1.25, xf: 0.03 },
   chime6: { quill: 0.05, attack: 0.05, release: 0.12, on: 1.2, xf: 0.03 },
   k5: { quill: 0, attack: 0.02, release: 0.08, on: 1.2 },
   s5t: { quill: 0, attack: 0.03, release: 0.1, on: 0.7 },   // Leslie S-5T-R, the gas turbine's horn
 };
+
+/* Sound tab, Whistles: 'new' (each engine's own voice) or 'classic' (the recordings borrowed from other
+   engines that the 1225, 765 and 1308 blew before). whistleKeyOf(lk) is the whistle an engine blows now. */
+const WHISTLE_CLASSIC = { pm6: 'chime6', nkp6m: 'nkp6', co3: 'co3d' };
+function whistleKeyOf(lk) {
+  const k = LOCO_SPEC[lk].whistle;
+  return (typeof GAME !== 'undefined' && GAME.settings && GAME.settings.whistles === 'classic' && WHISTLE_CLASSIC[k]) || k;
+}
 
 /* Every engine rings its own bell. take: the recorded strokes it plays (bell_st, a locomotive bell rung at
    Steamtown, cleaned of the engine blowing behind it; bell, an old cast crossing bell); rate: played this

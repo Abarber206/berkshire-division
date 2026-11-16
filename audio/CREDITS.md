@@ -40,3 +40,8 @@ The source recordings are kept in the project's sound library (`sound-sources/`,
 Still synthesized in the browser, as no clean public-domain recording has turned up: couplers closing and slack running in,
 the cut lever, the switch stand, the diesel engine cranking, and the steam engine's side-rod clank. Turbo, traction motors and
 dynamic-brake fans are no longer separate voices: they are heard in the throttle takes themselves.
+
+Built from scratch by `tools/whistle_synth.py`, no recording sampled (the engines' own whistles have no public-domain recording):
+`wh_pm6*` (PM 1225's bright five-chime), `wh_nkp6m*` (a deeper minor six-chime for NKP 765) and `wh_co3*` (C&O 1308's three-chime
+hooter). Each chamber is modelled as a pair of mistuned tones with the pitch wander and flutter of a steam jet, over the hiss of
+the steam. The Sound tab's "Original recordings" choice puts back the borrowed recordings above (wh_chime6, wh_nkp6, wh_deep6).
