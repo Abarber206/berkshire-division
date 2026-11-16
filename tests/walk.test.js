@@ -82,3 +82,17 @@ test('52 seats, two and two, every one with room to sit and the aisle clear', { 
   for (const s of S) assert.ok(Math.abs(s.z) > w.COACH_IN.aisle && Math.abs(s.z) < w.COACH_IN.hi - 0.15);
   const xs = w.coachPairs(); for (let i = 1; i < xs.length; i++) assert.ok(xs[i] - xs[i - 1] > 0.95, 'seat pitch at least 0.95 m');
 });
+
+test('every coach carries its saloon from the start, so it looks the same far off as close up', { skip }, () => {
+  const w = world();
+  for (const obs of [false, true]) {
+    const a = w.coachModel(w.LOCO_SPEC['765'], 3010, obs), b = w.coachModel(w.LOCO_SPEC['765'], 3012, obs);
+    const sa = a.root.getObjectByName('saloon'), sb = b.root.getObjectByName('saloon');
+    assert.ok(sa && sb && a.root.userData.saloon, 'built into the car');
+    const seats = []; sa.traverse(o => { if (o.isMesh) seats.push(o); });
+    assert.ok(seats.length > 3, 'with its seats and fittings');
+    const ga = new Set(); sa.traverse(o => { if (o.isMesh) ga.add(o.geometry); });
+    let shared = 0; sb.traverse(o => { if (o.isMesh && ga.has(o.geometry)) shared++; });
+    assert.ok(shared >= seats.length - 1, `the second car shares the first one's geometry (${shared}/${seats.length})`);
+  }
+});

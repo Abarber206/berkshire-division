@@ -720,6 +720,7 @@ WALK.toggleView = function () { WALK.fp = !WALK.fp; if (WALK.fp && !WALK.ride) W
 WALK.showInterior = function (v, on) {
   const have = WALK.interiors.get(v);
   if (on && !have && !(walkPlan(v) || {}).coach) return;   // a trainset car has its inside built in
+  if (on && !have && v.model && v.model.root.userData.saloon) return;   // and so does every coach now (coachModel)
   if (on && !have) {
     const g = coachInterior(isObs(v)); linearizeObject(g); v.model.root.add(g);
     const wins = []; v.model.root.traverse(o => { if (o.isMesh && (o.name === 'win' || o.name === 'holWin')) { wins.push([o, o.material]); o.material = RMAT.ciGlass; } });

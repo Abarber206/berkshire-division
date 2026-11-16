@@ -8341,97 +8341,6 @@ function carMaterials() {
   SCN.winMats.push(RMAT.ceil, RMAT.globe, RMAT.coachGlass, RMAT.holGlass, RMAT.holCeil);
 }
 
-/* The saloon of a heavyweight coach, built into its own bin (no shadows cast inside): carpet, mahogany wainscot and
-   window stools, cream upper walls and ceiling, a lamp globe down the centre every 3 m, brass parcel racks over the
-   windows, steam heat pipes along the floor, and a pair of walkover seats at every window facing the direction of
-   travel. The observation car's last three window pairs are a lounge of armchairs facing the aisle. The end bulkheads carry a door. */
-function coachInterior(ib, o) {
-  const hw = CH.hw, yF = CH.yT + 0.02, [w0, w1] = CH.win, yE = CH.eave, xb = CH.xb, zi = hw - 0.04, zw = hw - 0.06;
-  const plush = o.trim ? 'holPlush' : 'plush', ceil = o.trim ? 'holCeil' : 'ceil';
-  const x0 = o.observation ? -xb : -(xb - 0.04), x1 = xb - 0.04, Lx = x1 - x0, xm = (x0 + x1) / 2;
-  ib.box('carpet', Lx, 0.02, 2 * zi, xm, CH.yT + 0.01, 0);
-  ib.box('runner', Lx, 0.006, 0.54, xm, CH.yT + 0.023, 0);                                           // the aisle runner
-  for (const s of [-1, 1]) {
-    ib.box('mahog', Lx, w0 - CH.yT, 0.02, xm, (w0 + CH.yT) / 2, s * (zi - 0.01));                     // wainscot
-    ib.box('mahogPlain', Lx, 0.03, 0.1, xm, w0 + 0.015, s * (zw - 0.04));                                // window stool
-    ib.box('mahogPlain', Lx, 0.05, 0.03, xm, CH.belt - 0.1, s * (zw - 0.012));                          // chair rail
-    ib.box(ceil, Lx, yE - w1, 0.02, xm, (yE + w1) / 2, s * (zi - 0.01));                                // upper wall
-    ib.box('mahogPlain', Lx, 0.04, 0.04, xm, w1 + 0.02, s * (zw - 0.02));                               // window head moulding
-    // a mahogany pier between each pair of windows and between the two of a pair, over the glass
-    const op = []; for (let i = 0; i < 13; i++) for (const d of [-0.33, 0.33]) op.push([-9.5 + i * 1.58 + d - 0.28, -9.5 + i * 1.58 + d + 0.28]);
-    let xa = x0; for (const [a, b] of op) { if (a > xa + 0.01) ib.box('mahogPlain', a - xa, w1 - w0, 0.02, (a + xa) / 2, (w0 + w1) / 2, s * (zw - 0.01)); xa = b; }
-    if (x1 > xa + 0.01) ib.box('mahogPlain', x1 - xa, w1 - w0, 0.02, (x1 + xa) / 2, (w0 + w1) / 2, s * (zw - 0.01));
-    ib.add('dark', barGeo(0.03, [x0 + 0.1, yF + 0.07, s * (zw - 0.03)], [x1 - 0.1, yF + 0.07, s * (zw - 0.03)], 8));   // steam heat pipe
-    for (let x = x0 + 0.6; x < x1 - 0.4; x += 2.4) ib.box('dark', 0.05, 0.07, 0.06, x, yF + 0.035, s * (zw - 0.03));   // its hangers
-    // parcel rack: brackets out of the upper wall, three brass rods along them
-    const yr = w1 + 0.14;
-    for (const z of [zw - 0.14, zw - 0.24, zw - 0.34]) ib.add('brass', barGeo(0.011, [x0 + 0.3, yr, s * z], [x1 - 0.3, yr, s * z], 6));
-    for (let x = x0 + 0.3; x <= x1 - 0.29; x += (Lx - 0.6) / 12) {
-      ib.add('brass', barGeo(0.014, [x, yr, s * zw], [x, yr, s * (zw - 0.36)], 6));
-      ib.add('brass', barGeo(0.01, [x, yr, s * (zw - 0.3)], [x, yr + 0.2, s * zw], 5));
-    }
-  }
-  ib.box(ceil, Lx, 0.02, 2 * zi, xm, yE - 0.01, 0);                                                    // ceiling
-  ib.box('mahogPlain', Lx, 0.03, 0.12, xm, yE - 0.035, 0);                                             // the lamp batten
-  for (let x = -9; x <= 9.01; x += 3) {
-    ib.cyl('brass', 0.07, 0.09, 0.04, 14, x, yE - 0.07, 0);
-    ib.cyl('brass', 0.012, 0.012, 0.12, 6, x, yE - 0.15, 0);
-    ib.cyl('brass', 0.06, 0.04, 0.04, 14, x, yE - 0.22, 0);
-    ib.add('globe', new THREE.SphereGeometry(0.1, 14, 10).translate(x, yE - 0.31, 0));
-  }
-  // walkover seats: a seat box on the floor, the cushion, a back leaning 11 degrees, a linen cover for each head,
-  // and the aisle armrest
-  const seat = (xc, s) => {
-    const za = 0.3, wz = zw - za, zc = s * (za + wz / 2), tilt = 0.19;
-    ib.box('mahogPlain', 0.42, 0.34, wz - 0.06, xc, yF + 0.17, s * (za + 0.03 + (wz - 0.06) / 2));
-    ib.box('dark', 0.36, 0.02, wz - 0.12, xc, yF + 0.01, zc);
-    ib.box(plush, 0.5, 0.14, wz, xc + 0.02, yF + 0.41, zc);
-    const back = M(xc - 0.21, yF + 0.76, zc, 0, 0, tilt);
-    ib.add(plush, new THREE.BoxGeometry(0.12, 0.64, wz).applyMatrix4(back));
-    ib.add(plush, new THREE.CylinderGeometry(0.07, 0.07, wz, 10).rotateX(Math.PI / 2).translate(0, 0.32, 0).applyMatrix4(back));   // the head roll
-    for (const d of [-1, 1]) ib.add('linen', new THREE.BoxGeometry(0.012, 0.17, wz * 0.3).translate(0.066, 0.17, d * wz / 4).applyMatrix4(back));
-    ib.box('mahogPlain', 0.5, 0.05, 0.07, xc, yF + 0.63, s * (za + 0.035));
-    ib.box('mahogPlain', 0.06, 0.15, 0.05, xc + 0.12, yF + 0.53, s * (za + 0.035));
-    ib.add('brass', barGeo(0.012, [xc - 0.275, yF + 1.08, s * (za + 0.05)], [xc - 0.29, yF + 1.21, s * (za + 0.05)], 5));   // grab handle atop the back
-    ib.add('brass', new THREE.SphereGeometry(0.022, 8, 6).translate(xc - 0.29, yF + 1.21, s * (za + 0.05)));
-  };
-  // a lounge armchair against the wall, facing the aisle
-  const chair = (xc, s) => {
-    const zc = s * (zw - 0.36);
-    ib.box('mahogPlain', 0.56, 0.3, 0.56, xc, yF + 0.15, zc);
-    ib.box(plush, 0.62, 0.16, 0.6, xc, yF + 0.38, zc);
-    const back = M(xc, yF + 0.72, s * (zw - 0.08), s * 0.15, 0, 0);
-    ib.add(plush, new THREE.BoxGeometry(0.62, 0.6, 0.14).applyMatrix4(back));
-    for (const d of [-1, 1]) ib.box(plush, 0.12, 0.26, 0.6, xc + d * 0.3, yF + 0.57, zc);
-    ib.add('linen', new THREE.BoxGeometry(0.34, 0.22, 0.012).translate(0, 0.14, -s * 0.076).applyMatrix4(back));
-  };
-  const pairs = []; for (let i = 0; i < 13; i++) pairs.push(-9.5 + i * 1.58);
-  for (const s of [-1, 1]) for (const xp of pairs) {
-    if (o.observation && xp < -5.6) { chair(xp - 0.33, s); chair(xp + 0.33, s); }
-    else { seat(xp - 0.4, s); seat(xp + 0.4, s); }
-  }
-  if (o.observation) {   // the lounge's rear wall lined in mahogany below and above its windows and over the door
-    const x = -xb + 0.01;
-    for (const sd of [-1, 1]) {
-      ib.box('mahog', 0.02, w0 - CH.yT, zi - 0.4, x, (w0 + CH.yT) / 2, sd * (zi + 0.4) / 2);
-      ib.box('mahog', 0.02, yE - w1, zi - 0.4, x, (yE + w1) / 2, sd * (zi + 0.4) / 2);
-      ib.box('mahogPlain', 0.08, 0.03, zi - 0.45, x + 0.04, w0 + 0.015, sd * (zi + 0.45) / 2);
-    }
-    ib.box('mahog', 0.02, yE - 3.1, 0.8, x, (yE + 3.1) / 2, 0);
-  }
-  // end bulkheads: mahogany either side of a panelled door with a brass knob and kick plate
-  for (const e of o.observation ? [1] : [-1, 1]) {
-    const x = e * (xb - 0.02);
-    for (const s of [-1, 1]) ib.box('mahog', 0.04, yE - CH.yT, zi - 0.42, x, (yE + CH.yT) / 2, s * (zi + 0.42) / 2);
-    ib.box('mahog', 0.04, yE - 3.08, 0.84, x, (yE + 3.08) / 2, 0);
-    ib.box('mahogPlain', 0.03, 3.08 - CH.yT, 0.8, x + e * 0.005, (3.08 + CH.yT) / 2, 0);
-    for (const y of [1.9, 2.65]) ib.box('mahogPlain', 0.02, 0.5, 0.56, x - e * 0.018, y, 0);
-    ib.box('brass', 0.015, 0.2, 0.7, x - e * 0.018, CH.yT + 0.14, 0);
-    ib.add('brass', new THREE.SphereGeometry(0.03, 8, 6).translate(x - e * 0.04, 2.15, -0.3));
-    ib.box('brass', 0.02, 0.06, 0.06, x - e * 0.02, 2.15, -0.3);
-  }
-}
-
 /* ---- small parts the cars share ---- */
 const v3a = (p, q, s = 1) => [p[0] + q[0] * s, p[1] + q[1] * s, p[2] + q[2] * s];
 /* a closed solid from eight corners: P[0..3] one end ring, P[4..7] the other in the same order */
@@ -9134,12 +9043,17 @@ function coachModel(spec, num, observation, trim = '') {
   const couplers = carCouplers(gb, root, L, -0.55, 0.955, 1.08);
   root.add(shareCarGeos(gb.build(RMAT)));
   root.traverse(o => { if (o.isMesh && !o.userData.cpl) { o.castShadow = true; o.receiveShadow = true; } });
-  const ib = new GeoBin(); coachInterior(ib, { observation, trim: T });
-  const inner = ib.build(RMAT, { cast: false }); inner.traverse(o => { if (o.isMesh) o.receiveShadow = true; }); root.add(inner);
+  // the saloon (06g_person.js): every coach carries it, near or far, so a car never changes as the camera comes up to it.
+  // Its geometry is shared by every car of the same kind.
+  let inner = null;
+  if (typeof coachInterior === 'function') {
+    inner = coachInterior(observation); linearizeObject(inner); shareCarGeos(inner); root.userData.saloon = true;
+    inner.name = 'saloon'; inner.traverse(o => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = true; } }); root.add(inner);
+  }
   // the windows' light on the ground beside the car at night (10m_winlight.js): the pairs, the glass, and the lamps
   // along the clerestory ceiling that shine out through them
   const cp = coachPairs();
-  root.userData.winLight = { x0: cp[0], pitch: cp[1] - cp[0], n: cp.length, so: 0.33, hw: 0.28, side: hw - 0.05, sill: w0, head: w1, yL: yE + 0.4, half: CH.xb, col: T ? 0xffbb6a : 0xffc47c, I: T ? 5.0 : 4.4, lit: 'coach' };
+  root.userData.winLight = { x0: cp[0], pitch: cp[1] - cp[0], n: cp.length, so: 0.33, hw: 0.28, side: hw - 0.05, skin: hw + 0.08, sill: w0, head: w1, yL: yE + 0.4, half: CH.xb, col: T ? 0xffbb6a : 0xffc47c, I: T ? 2.3 : 2.0, lit: 'coach' };
   return { root, len: L, trucks: [{ a: 3.5, type: 'six', R: 0.457 }, { a: 21.2, type: 'six', R: 0.457 }], frame: [3.5, 21.2], weight: 82 * STON, kind: 'coach', axles: 6, area: 120, couplers };
 }
 
@@ -11944,7 +11858,7 @@ function buildE5Car(def, idx) {
   hsNoCast([...cabParts, inner]);
   if (beam) beam.castShadow = false;
   // the windows' light on the ground at night (10m_winlight.js): a cool white from the saloon's ceiling
-  root.userData.winLight = { x0: x(wins[n - 1]), pitch, n, so: 0, hw: wW / 2, side: E5.HW - 0.1, sill: WY[0], head: WY[1], yL: 3.3, half: (S1 - S0) / 2, col: 0xf4f2ea, I: 4.0, lit: 'hs' };
+  root.userData.winLight = { x0: x(wins[n - 1]), pitch, n, so: 0, hw: wW / 2, side: E5.HW - 0.1, skin: E5.HW + 0.06, sill: WY[0], head: WY[1], yL: 3.3, half: (S1 - S0) / 2, col: 0xf4f2ea, I: 1.9, lit: 'hs' };
   return {
     root, body, trucks, wheels, rW: E5.R, wb: E5.WB, len: L, frame: [t0, t1], ref, pans, lens, lenses, beam, halo, ditch: [], set: 'e5', nose, motor: def.motor, mass: def.t * 1000, num: def.num,
     cab, cabEye: cab ? cab.eye : new THREE.Vector3(x(10.35), 3.18, -0.3),
@@ -12252,7 +12166,7 @@ function buildAcelaCar(def, idx) {
   root.traverse(o => { if (o.isMesh && o.material !== RMAT.hsGlass && o.material !== RMAT.hit) { o.castShadow = true; o.receiveShadow = true; } });
   hsNoCast([...cabParts, inner]);
   if (beam) beam.castShadow = false;
-  if (!power && n) root.userData.winLight = { x0: x(wins[n - 1]), pitch, n, so: 0, hw: 0.5, side: AC.CW - 0.1, sill: 2.31, head: 2.93, yL: 3.65, half: (S1 - S0) / 2, col: 0xfff0dc, I: 4.2, lit: 'hs' };
+  if (!power && n) root.userData.winLight = { x0: x(wins[n - 1]), pitch, n, so: 0, hw: 0.5, side: AC.CW - 0.1, skin: AC.CW + 0.06, sill: 2.31, head: 2.93, yL: 3.65, half: (S1 - S0) / 2, col: 0xfff0dc, I: 2.0, lit: 'hs' };
   return {
     root, body, trucks, wheels, rW: power ? AC.PR : AC.CR, wb: power ? AC.PWB : AC.CWB, len: L, frame: [t0, t1], ref, pans, lens, lenses, beam, halo, ditch, set: 'acela', nose: power, motor: power, mass: def.t * 1000, num: def.num,
     tilt: !power, tiltY: 1.3,
@@ -22108,9 +22022,10 @@ function ownHeadlight(own, L, I, col) {
    At night a lit passenger car throws its windows onto everything beside it: a row of warm panes on the
    ballast and the ground, stretched out from the car, sliding along with the train, climbing a platform
    edge, a fence or the side of a train on the next track. The light comes from the lamps along the
-   ceiling, so a pane lands where the line from the ceiling through the window meets the ground: the sill
-   puts the near edge a few metres out, the window head the far edge, and the panes blur into one soft band
-   further out as the light from many lamps spreads. Worked out per pixel for every lit material, a few
+   ceiling, wall to wall and end to end, so the light reaching any spot is the part of that ceiling it can see
+   through the glass: it starts just off the car's side under the sills, is brightest a few metres out, fades
+   to nothing past the line through the window heads, and each pane spreads into its neighbours the further
+   it falls, as the light from many lamps does. Worked out per pixel for every lit material, a few
    sums per car near the camera. The observation car's red marker (and a caboose's) lights the rails behind.
    ========================================================================== */
 // the cars nearest the camera that light the ground: a computer 12, a phone 4
@@ -22122,7 +22037,7 @@ const WLIT = { O: new Float32Array(WL_MAX * 4), X: new Float32Array(WL_MAX * 4),
    wlX: the car's length axis, the window pitch      wlY: its up axis, how many windows
    wlW: half the gap between a pair's panes (0: single windows), half a pane's width, the glass's distance from the
         centre line, the ceiling lamps' height
-   wlC: colour x brightness, the sill's height        wlH: the window head's height */
+   wlC: colour x brightness, the sill's height        wlH: the window head's height, half the car, its outside (sills, grabs) */
 (function wlChunks() {
   const C = THREE.ShaderChunk, DECL = `
 #ifndef WL_DECL
@@ -22143,22 +22058,26 @@ const WLIT = { O: new Float32Array(WL_MAX * 4), X: new Float32Array(WL_MAX * 4),
       float lx = dot( d, ax ), ly = dot( d, ay ), lz = dot( d, cross( ax, ay ) );
       float side = wlW[ i ].z, az = abs( lz ), wo = az - side;
       float mid = ( wlY[ i ].w - 1.0 ) * wlX[ i ].w * 0.5, along = abs( lx - wlO[ i ].w - mid ) - mid;   // past the end of the window run
-      if ( wo < 0.03 || wo > 15.0 || along > 4.0 ) continue;
-      // the line from the ceiling lamps through the glass to here: the height where it crosses the side
-      float yL = wlW[ i ].w, t = side / az, yc = yL + ( ly - yL ) * t;
-      float blur = 0.03 + wo * 0.035;
-      float band = smoothstep( wlC[ i ].w - blur, wlC[ i ].w + blur, yc ) * ( 1.0 - smoothstep( wlH[ i ].x - blur, wlH[ i ].x + blur, yc ) );
+      if ( az < wlH[ i ].z || wo > 15.0 || along > 4.0 ) continue;   // nothing on the car's own skin, sills and grab irons
+      // the lit ceiling spans the car from wall to wall: where the lines from its far and near edges cross the glass
+      float yL = wlW[ i ].w, zc = side - 0.3, uA = ( side + zc ) / ( az + zc ), uB = ( side - zc ) / ( az - zc );
+      float ya = yL + ( ly - yL ) * uA, yb = yL + ( ly - yL ) * uB;
+      // how much of the window's height that span looks through: a soft edge of its own, wider the further out
+      float sill = wlC[ i ].w, head = wlH[ i ].x;
+      float band = clamp( min( max( ya, yb ), head ) - max( min( ya, yb ), sill ), 0.0, head - sill ) / ( head - sill );
       if ( band <= 0.0 ) continue;
-      // which pane: the panes blur together further wo, as the light from many lamps spreads
-      float pitch = wlX[ i ].w, so = wlW[ i ].x, hp = wlW[ i ].y, xb = 0.03 + wo * 0.06;
-      float k = clamp( floor( ( lx - wlO[ i ].w ) / pitch + 0.5 ), 0.0, wlY[ i ].w - 1.0 );
-      float dx = abs( lx - wlO[ i ].w - k * pitch ), e = so > 0.0 ? abs( dx - so ) : dx;
-      float pane = 1.0 - smoothstep( hp - xb, hp + xb, e );
-      float frac = clamp( ( so > 0.0 ? 4.0 : 2.0 ) * hp / pitch, 0.0, 1.0 );
-      float runEnd = 1.0 - smoothstep( 0.0, xb + 0.2, along - so - hp );
-      pane = mix( pane, frac * runEnd, clamp( xb / pitch, 0.0, 0.85 ) );
+      // along the car the lamps run the whole length, so each pane spreads more the further it falls from the glass
+      float pitch = wlX[ i ].w, so = wlW[ i ].x, hp = wlW[ i ].y, um = 0.5 * ( uA + uB ), B = 1.0 * ( 1.0 - um ) + 0.02;
+      float pane = 0.0;
+      for ( int j = 0; j < 7; j ++ ) {
+        float x = lx + B * ( float( j ) / 3.0 - 1.0 );
+        float k = clamp( floor( ( x - wlO[ i ].w ) / pitch + 0.5 ), 0.0, wlY[ i ].w - 1.0 );
+        float dx = abs( x - wlO[ i ].w - k * pitch ), e = so > 0.0 ? abs( dx - so ) : dx;
+        pane += 1.0 - smoothstep( hp - 0.04, hp + 0.04, e );
+      }
+      pane /= 7.0;
       // from the glass to here, and the way the light comes in
-      float r = ( 1.0 - t ) * length( vec2( ly - yL, az ) );
+      float r = ( 1.0 - um ) * length( vec2( ly - yL, az ) );
       vec3 src = wlO[ i ].xyz + ax * lx + ay * yL;
       float nl = max( dot( wlN, normalize( src - vLampP ) ) * 0.85 + 0.15, 0.0 );
       wlSum += wlC[ i ].rgb * ( band * pane * nl * ( 1.0 - smoothstep( 10.0, 15.0, wo ) ) / ( 1.0 + 0.05 * r * r ) );
@@ -22177,17 +22096,20 @@ function wlAt(c, p, n) {
   const lx = d[0] * ax.x + d[1] * ax.y + d[2] * ax.z, ly = d[0] * ay.x + d[1] * ay.y + d[2] * ay.z, lz = d[0] * az3.x + d[1] * az3.y + d[2] * az3.z;
   const w = c.w, az = Math.abs(lz), out = az - w.side;
   const mid = (w.n - 1) * w.pitch * 0.5, along = Math.abs(lx - w.x0 - mid) - mid;
-  if (out < 0.03 || out > 15 || along > 4) return 0;
-  const t = w.side / az, yc = w.yL + (ly - w.yL) * t, blur = 0.03 + out * 0.035;
-  const band = smooth(w.sill - blur, w.sill + blur, yc) * (1 - smooth(w.head - blur, w.head + blur, yc));
+  if (az < w.skin || out > 15 || along > 4) return 0;
+  const zc = w.side - 0.3, uA = (w.side + zc) / (az + zc), uB = (w.side - zc) / (az - zc);
+  const ya = w.yL + (ly - w.yL) * uA, yb = w.yL + (ly - w.yL) * uB;
+  const band = clamp(Math.min(Math.max(ya, yb), w.head) - Math.max(Math.min(ya, yb), w.sill), 0, w.head - w.sill) / (w.head - w.sill);
   if (band <= 0) return 0;
-  const xb = 0.03 + out * 0.06, k = clamp(Math.floor((lx - w.x0) / w.pitch + 0.5), 0, w.n - 1);
-  const dx = Math.abs(lx - w.x0 - k * w.pitch), e = w.so > 0 ? Math.abs(dx - w.so) : dx;
-  let pane = 1 - smooth(w.hw - xb, w.hw + xb, e);
-  const frac = clamp((w.so > 0 ? 4 : 2) * w.hw / w.pitch, 0, 1);
-  const runEnd = 1 - smooth(0, xb + 0.2, along - w.so - w.hw);
-  pane = lerp(pane, frac * runEnd, clamp(xb / w.pitch, 0, 0.85));
-  const r = (1 - t) * Math.hypot(ly - w.yL, az);
+  const um = 0.5 * (uA + uB), B = 1.0 * (1 - um) + 0.02;
+  let pane = 0;
+  for (let j = 0; j < 7; j++) {
+    const x = lx + B * (j / 3 - 1), k = clamp(Math.floor((x - w.x0) / w.pitch + 0.5), 0, w.n - 1);
+    const dx = Math.abs(x - w.x0 - k * w.pitch), e = w.so > 0 ? Math.abs(dx - w.so) : dx;
+    pane += 1 - smooth(w.hw - 0.04, w.hw + 0.04, e);
+  }
+  pane /= 7;
+  const r = (1 - um) * Math.hypot(ly - w.yL, az);
   const src = c.o.clone().addScaledVector(ax, lx).addScaledVector(ay, w.yL), L = src.sub(p).normalize(), N = n || new THREE.Vector3(0, 1, 0);
   const nl = Math.max(N.dot(L) * 0.85 + 0.15, 0);
   return c.I * band * pane * nl * (1 - smooth(10, 15, out)) / (1 + 0.05 * r * r);
@@ -22236,7 +22158,7 @@ function wlCars(consists, cam, dark) {
     Y[j] = e.ay.x; Y[j + 1] = e.ay.y; Y[j + 2] = e.ay.z; Y[j + 3] = w.n;
     W[j] = w.so; W[j + 1] = w.hw; W[j + 2] = w.side; W[j + 3] = w.yL;
     C[j] = _lc.r; C[j + 1] = _lc.g; C[j + 2] = _lc.b; C[j + 3] = w.sill;
-    H[j] = w.head; H[j + 1] = w.half;
+    H[j] = w.head; H[j + 1] = w.half; H[j + 2] = w.skin;
     k++;
   }
   WLIT.info[0] = k;
@@ -28151,6 +28073,7 @@ WALK.toggleView = function () { WALK.fp = !WALK.fp; if (WALK.fp && !WALK.ride) W
 WALK.showInterior = function (v, on) {
   const have = WALK.interiors.get(v);
   if (on && !have && !(walkPlan(v) || {}).coach) return;   // a trainset car has its inside built in
+  if (on && !have && v.model && v.model.root.userData.saloon) return;   // and so does every coach now (coachModel)
   if (on && !have) {
     const g = coachInterior(isObs(v)); linearizeObject(g); v.model.root.add(g);
     const wins = []; v.model.root.traverse(o => { if (o.isMesh && (o.name === 'win' || o.name === 'holWin')) { wins.push([o, o.material]); o.material = RMAT.ciGlass; } });
