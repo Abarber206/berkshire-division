@@ -74,3 +74,36 @@ test('a knuckle pulled past its strength breaks: the train parts and both halves
   assert.equal(T.vehicles.length + cut.vehicles.length, 27);
   assert.ok(sim.log.toasts.some(t => /knuckle broke/.test(t.msg)));
 });
+
+/* a 100-car Big Boy drag on a curve of radius R, the first few cars empty */
+function onCurve(R, empties) {
+  const r = freight(100, '4014');
+  for (const v of r.T.vehicles) for (const p of v.fp) p.tp.e.curv = () => 1 / R;
+  for (let i = 2; i < 2 + empties; i++) r.T.vehicles[i].mass = 25 * 907.185;
+  return r;
+}
+const bunchAndSlam = ({ sim, T, S }) => { S.v = 6; S.indH = 1; H.run(sim, T, 10); S.indH = 0; S.throttle = 1; H.run(sim, T, 20, () => sim.log.derails.length > 0); };
+
+test('slamming a bunched heavy train on a sharp curve stringlines the empties at the head end', () => {
+  const r = onCurve(180, 5);
+  bunchAndSlam(r);
+  assert.equal(r.sim.log.derails.length, 1, 'nothing came off');
+  assert.match(r.sim.log.derails[0], /Stringlined/);
+});
+
+test('the same slam with loaded cars, or on a gentle curve, stays on the rails', () => {
+  for (const [R, empties] of [[180, 0], [300, 5], [1e9, 5]]) {
+    const r = onCurve(R, empties);
+    bunchAndSlam(r);
+    assert.equal(r.sim.log.derails.length, 0, `R ${R} m with ${empties} empties: ${r.sim.log.derails[0]}`);
+  }
+});
+
+test('an emergency stop on an ordinary curve does not jackknife the train', () => {
+  for (const R of [250, 400, 600]) {
+    const r = onCurve(R, 5);
+    r.S.v = 20; H.run(r.sim, r.T, 1); r.S.brakeH = 1;
+    H.run(r.sim, r.T, 90, () => r.S.v <= 0 || r.sim.log.derails.length > 0);
+    assert.equal(r.sim.log.derails.length, 0, `R ${R} m: ${r.sim.log.derails[0]}`);
+  }
+});
