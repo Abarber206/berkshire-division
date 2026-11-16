@@ -5521,8 +5521,26 @@ function finalizeScenery(scene) {
     grp.children.forEach(m => { const b = m.geometry.boundingSphere; if (first) { sp.copy(b); first = false; } else sp.union(b); });
     grp.userData = { c: sp.center.clone(), r: sp.radius };
     scene.add(grp); WORLD.binGroups.push(grp);
+    gb.bins = {};   // the parts are merged now: let them go (they held hundreds of MB on a phone)
   }
   roofGrid();
+}
+/* Hand every scenery bin to the GPU once, right after loading, so roofGrid's dropArray lets go of its arrays now
+   instead of only when the camera first comes near it (the far bins kept theirs for ever, ~60 MB on a phone). One
+   draw of each into a 1 x 1 target with a plain material: no new shaders, and every attribute is uploaded. */
+function sceneryUpload(renderer) {
+  const tmp = new THREE.Scene(), was = [], cam = new THREE.PerspectiveCamera();
+  const rt = new THREE.WebGLRenderTarget(1, 1, { depthBuffer: false });
+  tmp.overrideMaterial = new THREE.MeshBasicMaterial();
+  for (const grp of WORLD.binGroups) for (const m of grp.children) if (m.geometry.attributes.position && m.geometry.attributes.position.array) {
+    was.push([m, m.parent, m.frustumCulled, m.castShadow]);
+  }
+  for (const [m] of was) { tmp.add(m); m.frustumCulled = false; m.castShadow = false; }
+  const sh = renderer.shadowMap.enabled; renderer.shadowMap.enabled = false;
+  renderer.setRenderTarget(rt); renderer.render(tmp, cam); renderer.setRenderTarget(null);
+  renderer.shadowMap.enabled = sh;
+  for (const [m, p, fc, cs] of was) { p.add(m); m.frustumCulled = fc; m.castShadow = cs; }
+  rt.dispose(); tmp.overrideMaterial.dispose();
 }
 /* The camera and the walker need each building's roof height. Instead of casting rays into the merged meshes (which
    needs their vertex arrays kept in memory for ever, and took seconds), every vertex of the scenery bins goes once
@@ -6981,7 +6999,8 @@ function rollingMaterials() {
 /* a canvas texture that is drawn once: after its upload the canvas is shrunk to nothing, so the picture lives only
    on the GPU and not twice over (iOS also caps the memory all canvases together may hold) */
 function uploadOnce(t) { t.onUpdate = tt => { const c = tt.image; if (c && c.getContext && c.width > 1) { c.width = 1; c.height = 1; } tt.onUpdate = null; }; return t; }
-function decalMat(w, h, draw) { return new THREE.MeshStandardMaterial({ map: uploadOnce(canvasTex(w, h, draw)), transparent: true, alphaTest: 0.35, metalness: 0.2, roughness: 0.55, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }); }
+/* own: lettering drawn for one engine or car; freeObjects lets it go (and its RMAT entry) with the last model using it */
+function decalMat(w, h, draw) { const m = new THREE.MeshStandardMaterial({ map: uploadOnce(canvasTex(w, h, draw)), transparent: true, alphaTest: 0.35, metalness: 0.2, roughness: 0.55, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }); m.userData.own = true; return m; }
 function romanText(g, txt, x, y, size, color = '#efede4', spacing = 0.06) {
   g.font = `600 ${size}px "Times New Roman", Georgia, serif`; g.fillStyle = color; g.textAlign = 'center'; g.textBaseline = 'middle';
   if (g.letterSpacing !== undefined) g.letterSpacing = (size * spacing) + 'px';
@@ -14711,7 +14730,8 @@ function turbineMaterials() {
   RMAT.upLouver = mk(0xf2b21c, 0.15, 0.55, { map: louverTex() });
   wear(RMAT.upYel, 0.25, 58); wear(RMAT.upGray, 0.55, 59); wear(RMAT.upFrame, 0.5, 60); wear(RMAT.upLouver);
   const red = '#b5121b';
-  const dec = (w, h, draw) => decalMat(w, h, draw);
+  // made once and shared by every turbine, so not let go with one of them (decalMat marks its lettering as its own)
+  const dec = (w, h, draw) => { const m = decalMat(w, h, draw); m.userData.own = false; return m; };
   const gothic = px => `800 ${px}px "Arial Narrow", "Helvetica Neue", Arial, sans-serif`;
   RMAT.upRoad2 = dec(512, 512, (g, w, h) => { g.fillStyle = red; g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = gothic(196); if (g.letterSpacing !== undefined) g.letterSpacing = '18px'; g.fillText('UNION', w / 2, h * 0.27); g.fillText('PACIFIC', w / 2, h * 0.75); });
   RMAT.upRoad1 = dec(1024, 128, (g, w, h) => { g.fillStyle = red; g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = gothic(100); if (g.letterSpacing !== undefined) g.letterSpacing = '14px'; g.fillText('UNION PACIFIC', w / 2, h / 2 + 4); });
@@ -15896,7 +15916,7 @@ function freeObjects(roots) {
   scene.traverse(o => { if (o.geometry) liveG.add(o.geometry); if (o.material) [].concat(o.material).forEach(mark); });
   // RMAT keeps the shared materials; the ones made for one cab or one car (a diesel cab's screens, a coach's
   // drumhead, a freight car's reporting marks and graffiti) are let go with it when nothing in the scene still uses them
-  for (const k in RMAT) { const m = RMAT[k]; if (!m || !m.isMaterial) continue; if (mats.has(m) && !liveM.has(m) && /^(scr[LR]\d|hsScr\w+\d|drumhead|fm_|gf_)/.test(k)) delete RMAT[k]; else mark(m); }
+  for (const k in RMAT) { const m = RMAT[k]; if (!m || !m.isMaterial) continue; if (mats.has(m) && !liveM.has(m) && (m.userData.own || /^(scr[LR]\d|hsScr\w+\d|drumhead|fm_|gf_)/.test(k))) delete RMAT[k]; else mark(m); }
   for (const g of geos) if (!liveG.has(g)) g.dispose();
   const canvas = t => typeof HTMLCanvasElement !== 'undefined' && t.image instanceof HTMLCanvasElement;
   for (const m of mats) if (!liveM.has(m)) { texOf(m, t => { if (!liveT.has(t) && canvas(t)) { liveT.add(t); t.dispose(); } }); m.dispose(); }
@@ -29008,6 +29028,7 @@ async function loadWorld() {
   if (ROUTE.coal) { const c = ROUTE.coal; c.edge.pose(c.s, FR); c.p = FR.p.clone(); }
   setupViewInput($('gl'), camera); PLACE.setup($('gl')); setupLevers(); setupButtons(); setupMap(); WALK.setup(); FLEET.setup();
   linearizeObject(scene);
+  sceneryUpload(renderer);
   AI.lazy = true; makeTrain(); AI.lazy = false;
   applyLook(GAME.settings.time, GAME.settings.weather, renderer, scene);
   prog(0.97, 'Raising steam…');

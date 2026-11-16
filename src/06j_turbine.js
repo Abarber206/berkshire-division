@@ -36,7 +36,8 @@ function turbineMaterials() {
   RMAT.upLouver = mk(0xf2b21c, 0.15, 0.55, { map: louverTex() });
   wear(RMAT.upYel, 0.25, 58); wear(RMAT.upGray, 0.55, 59); wear(RMAT.upFrame, 0.5, 60); wear(RMAT.upLouver);
   const red = '#b5121b';
-  const dec = (w, h, draw) => decalMat(w, h, draw);
+  // made once and shared by every turbine, so not let go with one of them (decalMat marks its lettering as its own)
+  const dec = (w, h, draw) => { const m = decalMat(w, h, draw); m.userData.own = false; return m; };
   const gothic = px => `800 ${px}px "Arial Narrow", "Helvetica Neue", Arial, sans-serif`;
   RMAT.upRoad2 = dec(512, 512, (g, w, h) => { g.fillStyle = red; g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = gothic(196); if (g.letterSpacing !== undefined) g.letterSpacing = '18px'; g.fillText('UNION', w / 2, h * 0.27); g.fillText('PACIFIC', w / 2, h * 0.75); });
   RMAT.upRoad1 = dec(1024, 128, (g, w, h) => { g.fillStyle = red; g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = gothic(100); if (g.letterSpacing !== undefined) g.letterSpacing = '14px'; g.fillText('UNION PACIFIC', w / 2, h / 2 + 4); });

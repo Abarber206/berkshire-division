@@ -74,7 +74,7 @@ function freeObjects(roots) {
   scene.traverse(o => { if (o.geometry) liveG.add(o.geometry); if (o.material) [].concat(o.material).forEach(mark); });
   // RMAT keeps the shared materials; the ones made for one cab or one car (a diesel cab's screens, a coach's
   // drumhead, a freight car's reporting marks and graffiti) are let go with it when nothing in the scene still uses them
-  for (const k in RMAT) { const m = RMAT[k]; if (!m || !m.isMaterial) continue; if (mats.has(m) && !liveM.has(m) && /^(scr[LR]\d|hsScr\w+\d|drumhead|fm_|gf_)/.test(k)) delete RMAT[k]; else mark(m); }
+  for (const k in RMAT) { const m = RMAT[k]; if (!m || !m.isMaterial) continue; if (mats.has(m) && !liveM.has(m) && (m.userData.own || /^(scr[LR]\d|hsScr\w+\d|drumhead|fm_|gf_)/.test(k))) delete RMAT[k]; else mark(m); }
   for (const g of geos) if (!liveG.has(g)) g.dispose();
   const canvas = t => typeof HTMLCanvasElement !== 'undefined' && t.image instanceof HTMLCanvasElement;
   for (const m of mats) if (!liveM.has(m)) { texOf(m, t => { if (!liveT.has(t) && canvas(t)) { liveT.add(t); t.dispose(); } }); m.dispose(); }
