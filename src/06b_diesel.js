@@ -254,7 +254,6 @@ function buildDiesel(opts) {
     const g = new THREE.ExtrudeGeometry(f, { depth: 0.06, bevelEnabled: false, curveSegments: 5 }); g.rotateY(Math.PI / 2); g.translate(-0.06, 0, 0); g.applyMatrix4(shear); gb.add('lBody', g);
     for (const s of [-1, 1]) {
       gb.add('glassT', new THREE.PlaneGeometry(wz1 - wz0 + 0.02, wy1 - wy0 + 0.02).rotateY(Math.PI / 2).translate(-0.03, (wy0 + wy1) / 2, s * (wz0 + wz1) / 2).applyMatrix4(shear));
-      gb.add('dUnder', new THREE.BoxGeometry(0.015, 0.012, 0.8).translate(0.006, wy0 - 0.002, s * (wz0 + wz1) / 2).applyMatrix4(shear));   // parked wiper
       // chamfered corner panel between the windshield and the cab side
       facet('lBody', [P(CAB0, s * Wc, yW0), P(aTop, s * Wc, yW1), P(aTop + CHc, s * W, yW1), P(CAB0 + CHc, s * W, yW0)]);
     }
@@ -291,7 +290,7 @@ function buildDiesel(opts) {
     // interior: floor, console, control stand, seats
     const FL = 2.7;                                            // the cab floor sits well above the deck
     box('dInt', CAB0 + 0.3, CAB1 - 0.05, FL - 0.03, FL, -W + 0.02, W - 0.02);
-    cab = dieselCab(gb, body, { dx, CAB0, CAB1, FL, W, sill: yW0, ceil: yW1, lead, uid: ++DG.uid });
+    cab = dieselCab(gb, body, { dx, CAB0, CAB1, FL, W, sill: yW0, ceil: yW1, lead, uid: ++DG.uid, wipe: { tL, wz0: 0.08, wz1: Wc - 0.1, wy0: yW0 + 0.07, yW0 } });
     // air conditioner under the cab, conductor's side
     box('grille', CAB0 + 0.3, CAB0 + 1.5, 1.2, 1.62, -W - 0.006, -W - 0.002);
   }

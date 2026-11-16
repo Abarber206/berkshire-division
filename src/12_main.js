@@ -839,7 +839,7 @@ function renderStep(dt, T) {
     T.loco.ash.material.opacity = night * 0.35 * S.fire * flick;
   }
   const pb = $('btnWhistle').querySelector('.pull i'), pw = Math.round(S.whistle * 100) + '%'; if (pb.style.width !== pw) pb.style.width = pw;
-  T.cabLight.intensity = night * 0.6;
+  T.cabLight.intensity = night * (S.cabLamp === false ? 0.08 : 0.6);   // the cab light's switch (06d_cab.js cabFurnish)
   // camera
   slideFeel(dt, T);
   if (PLACE.on) PLACE.camera(camera, dt); else updateCamera(camera, MP.view() || T, dt);

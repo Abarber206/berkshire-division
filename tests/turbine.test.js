@@ -138,3 +138,17 @@ test('the aux diesel cranks the turbine, it lights off, and it burns Bunker C', 
   h.run(sim, T, 90);
   assert.ok(!S.tOn && Math.abs(S.tspd - GTE.cool) < 0.03, `cool-down crank at ${(S.tspd * GTE.rpm).toFixed(0)} rpm`);
 });
+
+test('the diesel and turbine cabs are furnished: cab light switch on both, working wipers on the diesel, the new chairs in each', { skip }, () => {
+  const w = world();
+  const D = w.buildDiesel({ livery: w.LIVERIES ? w.LIVERIES.ss : undefined, number: 4401, lead: true }), G = w.buildTurbineUnit({ unit: 'A', number: 18 });
+  const ids = m => new Set(m.cab.ctls.map(c => c.id));
+  for (const [nm, m] of [['diesel', D], ['turbine', G]]) assert.ok(ids(m).has('cablamp'), nm + ' cab light switch');
+  const sw = D.cab.ctls.find(c => c.id === 'wipers'), arms = D.cab.ctls.filter(c => c.id === 'wiper');
+  assert.equal(arms.length, 2, 'two wiper arms');
+  assert.equal(sw.show(), 0); assert.equal(arms[0].show(), 0, 'parked while switched off');
+  sw.tap(); assert.equal(sw.show(), 1, 'switched on');
+  sw.tap(); assert.equal(sw.show(), 0); assert.equal(arms[1].show(), 0);
+  const lamp = D.cab.ctls.find(c => c.id === 'cablamp');
+  assert.equal(lamp.show(), 1); lamp.tap(); assert.equal(lamp.show(), 0); lamp.tap(); assert.equal(lamp.show(), 1);
+});
