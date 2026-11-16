@@ -24703,6 +24703,40 @@ const PASSING = { 1: 'Kenton East', '-1': 'Fostoria East' }, MTN_PASSING = { 1: 
 const passingSw = dir => (WORLD.mtn ? MTN_PASSING : PASSING)[dir];
 const DWELL = 35, TERMINAL_DWELL = 90;
 
+/* Every train made up gets an engine from the roster for its kind of work, so the traffic is never the same twice:
+   steam, the turbine, the Big Boy and the Mallet on freights, diesels in any road's paint. In free running about one
+   crew in four is reckless: they run well over the track speed, pull hard and brake late and hard. */
+const AI_ROSTER = {
+  passenger: [['1225', 3], ['765', 3], ['diesel', 4], ['18', 1]],
+  freight: [['diesel', 5], ['4014', 2], ['1308', 2], ['18', 2], ['765', 1]],
+};
+const AI_LIVERIES = ['nkp', 'prr', 'nyc', 'bo', 'co', 'nw', 'pm', 'fle', 'kn', 'ss'];
+const AI_RECKLESS = 0.25;
+/* the engine and crew for this run of train def; v: a choice made before (a save) to keep */
+AI.vary = function (def, v, job) {
+  const r = Math.random, d = Object.assign({}, def);
+  if (!v) {
+    const list = (AI_ROSTER[def.consist] || []).filter(([k]) => LOCO_SPEC[k]);
+    let loco = def.loco;
+    if (list.length) { let x = r() * list.reduce((a, [, w]) => a + w, 0); for (const [k, w] of list) if ((x -= w) <= 0) { loco = k; break; } }
+    const freight = def.consist === 'freight';
+    v = { loco, units: loco === 'diesel' ? (freight ? 2 + (r() < 0.4 ? 1 : 0) : 1 + (r() < 0.5 ? 1 : 0)) : 1,
+      livery: loco === 'diesel' ? AI_LIVERIES[(r() * AI_LIVERIES.length) | 0] : def.livery, reckless: !job && r() < AI_RECKLESS ? 1 : 0 };
+  }
+  d.loco = LOCO_SPEC[v.loco] ? v.loco : def.loco; d.units = v.units || def.units; d.livery = v.livery || def.livery;
+  // what each engine can do with the train: steam pulls away slower than a diesel and its top speed is its own
+  const steam = !LOCO_SPEC[d.loco].diesel;
+  if (steam) d.accel *= d.loco === '4014' ? 0.95 : 0.8;
+  if (d.loco === '1308') d.vmax = Math.min(d.vmax, 45);
+  if (d.loco === '4014') d.vmax = Math.min(d.vmax, 60);
+  if (v.reckless) {
+    d.reckless = true; d.vmax = Math.min(95, d.vmax + 25); d.accel *= 1.7; d.brakeAt = 1.25; d.lim = 1.35;
+    d.sub = `${d.sub} · reckless crew`;
+  }
+  d.vary = v;
+  return d;
+};
+
 class AITrain extends RemoteTrain {
   constructor(id, def) {
     const st = { lk: def.loco, ck: def.consist, u: def.units || 1, lv: def.livery || 'ss', mx: false, cu: null, no: null };
@@ -24878,9 +24912,10 @@ class AITrain extends RemoteTrain {
     }
     // speed allowed: track limits under the train and ahead, our own top speed, and stopping where we must
     let vt = def.vmax * MPH;
-    for (const p of T.pts) vt = Math.min(vt, p.tp.e.limit * MPH);
-    // each target is a speed to be down to at a distance ahead; brake to meet the hardest of them
-    const b = def.brake * 0.85, v = this.v, ahead = x => x - this.odo;
+    const lim = def.lim || 1;   // a reckless crew takes the track speed as a suggestion
+    for (const p of T.pts) vt = Math.min(vt, p.tp.e.limit * MPH * lim);
+    // each target is a speed to be down to at a distance ahead; brake to meet the hardest of them (a reckless crew leaves it late)
+    const b = def.brake * 0.85 * (def.brakeAt || 1), v = this.v, ahead = x => x - this.odo;
     let need = 0;
     const target = (v1, d) => {
       vt = Math.min(vt, Math.sqrt(v1 * v1 + 2 * b * Math.max(0, d)));
@@ -24890,7 +24925,7 @@ class AITrain extends RemoteTrain {
     if (this.block) target(0, this.block.d - 20);
     for (const ev of this.events) {
       const d = ahead(ev.at);
-      if (ev.limit !== undefined && d > 0) target(ev.limit, d - 4);
+      if (ev.limit !== undefined && d > 0) target(ev.limit * lim, d - 4);
       if (ev.stop && !ev.done) { if (d > -3) target(0, d); else ev.done = true; }   // overrun: carry on
       if (d > 2500) break;
     }
@@ -25033,7 +25068,8 @@ AI.flush = function () {
   if (list && AI.enabled()) for (const [id, s] of list) AI.spawn(id, s);
 };
 AI.spawn = function (id, sMain) {
-  const def = TRAFFIC[id]; if (!def) return null;
+  if (!TRAFFIC[id]) return null;
+  const def = AI.vary(TRAFFIC[id], null, !!JOB.wanted());
   const a = new AITrain(id, def);
   // the front at sMain, or further back along the road if something is in the way there
   for (let k = 0; k < 8; k++) {
@@ -25093,7 +25129,7 @@ AI.drawMap = function (g, tx, ty, opt) {
     T.vehicles.forEach((v, i) => { const x = tx(v.pos.x), y = ty(-v.pos.z); i ? g.lineTo(x, y) : g.moveTo(x, y); }); g.stroke();
     const q = T.lead.pos, x = tx(q.x), y = ty(-q.z);
     g.fillStyle = '#ffffff'; g.beginPath(); g.arc(x, y, 3 * opt.w, 0, TAU); g.fill();
-    if (opt.labels) { g.font = `700 ${opt.fs}px "IBM Plex Sans Condensed", sans-serif`; g.textAlign = 'left'; g.lineWidth = 3; g.strokeStyle = 'rgba(0,0,0,0.75)'; g.strokeText(a.name, x + 7, y - 7); g.fillStyle = '#9fd0ff'; g.fillText(a.name, x + 7, y - 7); }
+    if (opt.labels) { g.font = `700 ${opt.fs}px "IBM Plex Sans Condensed", sans-serif`; g.textAlign = 'left'; g.lineWidth = 3; g.strokeStyle = 'rgba(0,0,0,0.75)'; const nm = a.def.reckless ? `${a.name} · reckless` : a.name; g.strokeText(nm, x + 7, y - 7); g.fillStyle = a.def.reckless ? '#ffb38a' : '#9fd0ff'; g.fillText(nm, x + 7, y - 7); }
   }
 };
 
@@ -25670,14 +25706,15 @@ function jobIn(o, V) {
   carPanelState.key = '';
   JOB.ui();
 }
-const aiOut = () => AI.trains.map(a => ({ id: a.id, f: tpOut(a.train.endTP('front')), fl: lineOut(a.train.endTP('front')), v: rnd(a.v), dwell: rnd(a.dwell), odo: rnd(a.odo), d: a.dir, wk: knockOut(a.train) }));
+const aiOut = () => AI.trains.map(a => ({ id: a.id, f: tpOut(a.train.endTP('front')), fl: lineOut(a.train.endTP('front')), v: rnd(a.v), dwell: rnd(a.dwell), odo: rnd(a.odo), d: a.dir, wk: knockOut(a.train), vr: a.def.vary || null }));
 /* the timetable trains, each where it was; each asks the signals for its road again, so one that had
    a clear road carries on at the speed it can still stop from */
 function aiIn(list, E) {
   AI.clear();
   if (!AI.enabled() || !list) return;
   for (const o of list) {
-    const def = TRAFFIC[o.id]; if (!def) continue;
+    if (!TRAFFIC[o.id]) continue;
+    const vr = o.vr && typeof o.vr === 'object' ? o.vr : null, def = AI.vary(TRAFFIC[o.id], vr || { loco: TRAFFIC[o.id].loco }, true);   // the same engine and crew as before
     const tp = tpIn(o.f, E) || lineIn(o.fl); if (!tp) continue;
     const a = new AITrain(o.id, def);
     a.place(tp); a.odo = o.odo || 0; a.dwell = o.dwell || 0; if (o.d) a.dir = o.d;
