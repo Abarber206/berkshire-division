@@ -1,8 +1,7 @@
 /* ============================================================================
    Raven Lake scenery: the frozen lake itself (black ice swept clear in places
-   and drifted over with snow in others, glinting under the moon), the plowed
-   snow banks along the track on the ice, the little spruces set out to mark
-   the line across it, and the engine terminal at Hollow Pine.
+   and drifted over with snow in others, glinting under the moon), lanterns
+   where the rails end at each shore, and the engine terminal at Hollow Pine.
    ========================================================================== */
 
 /* ---------------- the ice ----------------
@@ -78,45 +77,32 @@ function frBuildIce(scene) {
   scene.add(m); FROST.iceMesh = m;
 }
 
-/* ---------------- along the track on the ice ----------------
-   The snow plowed off the track lies in two low banks either side, and a little spruce is stuck in the snow every
-   fifty metres on both sides to show where the line runs at night or in a blow. */
-function frTrackOnIce(scene) {
-  const m = ROUTE.main, [s0, s1] = FROST.sIce;
-  // the banks: a rounded profile across (metres out from the centre line, height over the ice)
-  const PU = [-5.6, -4.6, -3.7, -3.0, -2.55, 2.55, 3.0, 3.7, 4.6, 5.6], PV = [0, 0.22, 0.42, 0.36, 0.05, 0.05, 0.36, 0.42, 0.22, 0];
-  const pos = [], col = [], idx = [];
-  let rows = 0;
-  for (let s = s0 - 4; s <= s1 + 4; s += 2) {
-    const p = m.poseAt(s), wob = 0.08 * Math.sin(s * 0.37) + 0.06 * Math.sin(s * 0.11 + 1);
-    for (let q = 0; q < PU.length; q++) {
-      const u = PU[q] * (1 + (q === 0 || q === PU.length - 1 ? wob : 0)), v = PV[q] * (1 + 1.4 * wob);
-      const X = p.X - Math.sin(p.h) * u, N = p.N + Math.cos(p.h) * u;
-      pos.push(X, FROST.iceY + v - 0.02, -N);
-      const sh = 0.9 + 0.1 * Math.sin(s * 1.7 + q);
-      col.push(0.8 * sh, 0.84 * sh, 0.9 * sh);
+/* ---------------- where the rails end at the shore ----------------
+   No track crosses the lake: the rails stop at the water's edge on both shores. Each end has a lantern on a
+   post either side of the rails, burning orange, so a crew skating across in the dark has something to aim
+   at, and a little spruce stuck in the snow beyond each lantern. */
+function frShoreMarks(scene) {
+  const m = ROUTE.main, [s0, s1] = FROST.sIce, list = [], lamps = [];
+  const post = new THREE.CylinderGeometry(0.06, 0.08, 1.9, 6); post.translate(0, 0.95, 0);
+  const lamp = new THREE.SphereGeometry(0.17, 10, 8); lamp.translate(0, 2.05, 0);
+  const glow = new THREE.SphereGeometry(0.6, 10, 8); glow.translate(0, 2.05, 0);
+  const pm = new THREE.MeshLambertMaterial({ color: 0x2a2520 }), lm = new THREE.MeshBasicMaterial({ color: 0xffa040 });
+  const gm = new THREE.MeshBasicMaterial({ color: 0xff8a30, transparent: true, opacity: 0.22, depthWrite: false, blending: THREE.AdditiveBlending });
+  for (const [s, dir] of [[s0, 1], [s1, -1]]) {   // dir: out onto the ice from this end
+    const p = m.poseAt(s - dir * 1.5);
+    for (const side of [-1, 1]) {
+      const o = side * 3.3, X = p.X - Math.sin(p.h) * o, N = p.N + Math.cos(p.h) * o, y = groundAt(X, N);
+      for (const [g, mt] of [[post, pm], [lamp, lm], [glow, gm]]) { const k = new THREE.Mesh(g, mt); k.position.set(X, y, -N); k.castShadow = mt === pm; scene.add(k); }
+      lamps.push(new THREE.Vector3(X, y + 2.05, -N));
+      const o2 = side * 6.5, q = m.poseAt(s - dir * 6);
+      list.push([q.X - Math.sin(q.h) * o2, q.N + Math.cos(q.h) * o2, 0.9 + 0.3 * Math.abs(Math.sin(s + side))]);
     }
-    if (rows) { const k = (rows - 1) * PU.length; for (let q = 0; q < PU.length - 1; q++) { if (q === 4) continue; idx.push(k + q, k + q + PU.length, k + q + 1, k + q + 1, k + q + PU.length, k + q + PU.length + 1); } }
-    rows++;
   }
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
-  g.setIndex(idx); g.computeVertexNormals();
-  { const n = g.attributes.normal; if (n.getY(1) < 0) { for (let i = 0; i < idx.length; i += 3) { const t = idx[i + 1]; idx[i + 1] = idx[i + 2]; idx[i + 2] = t; } g.setIndex(idx); g.computeVertexNormals(); } }
-  g.computeBoundingSphere();
-  const bank = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors: true }));
-  bank.receiveShadow = true; scene.add(bank);
-  // the marker spruces: a small snowy cone tree, instanced
-  const tree = frSpruceGeo(), list = [];
-  for (let s = s0 + 20; s < s1 - 10; s += 50) for (const side of [-1, 1]) {
-    const p = m.poseAt(s + side * 7), o = side * (6.4 + 0.5 * Math.sin(s));
-    list.push([p.X - Math.sin(p.h) * o, p.N + Math.cos(p.h) * o, 0.85 + 0.35 * Math.abs(Math.sin(s * 3.1 + side))]);
-  }
-  const im = new THREE.InstancedMesh(tree, new THREE.MeshLambertMaterial({ vertexColors: true }), list.length);
-  list.forEach((q, i) => { _m4.compose(_v1.set(q[0], FROST.iceY + 0.3, -q[1]), _q.setFromEuler(_e.set(0.04 * Math.sin(i), i * 1.7, 0.05 * Math.cos(i))), _v2.set(q[2], q[2], q[2])); im.setMatrixAt(i, _m4); });
-  im.castShadow = true; im.receiveShadow = true; im.computeBoundingSphere && im.computeBoundingSphere();
+  const tree = frSpruceGeo(), im = new THREE.InstancedMesh(tree, new THREE.MeshLambertMaterial({ vertexColors: true }), list.length);
+  list.forEach((q, i) => { _m4.compose(_v1.set(q[0], groundAt(q[0], q[1]) - 0.1, -q[1]), _q.setFromEuler(_e.set(0.04 * Math.sin(i), i * 1.7, 0.05 * Math.cos(i))), _v2.set(q[2], q[2], q[2])); im.setMatrixAt(i, _m4); });
+  im.castShadow = true; im.receiveShadow = true;
   scene.add(im);
-  for (const q of list) solid(q[0], -q[1], 0.6 * q[2], FROST.iceY, FROST.iceY + 2.6 * q[2]);
+  FROST.lanterns = lamps;
 }
 /* a little spruce, about 2.6 m: tiers of drooping boughs with snow on their tops, a bare stick of a trunk */
 function frSpruceGeo() {
@@ -144,5 +130,5 @@ function frFacilities() {
   yardOffice(clearPlace(ROUTE.main, 1450, -10, 6));
 }
 function frBuildScenery(scene) {
-  frTrackOnIce(scene);
+  frShoreMarks(scene);
 }

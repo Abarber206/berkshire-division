@@ -750,7 +750,11 @@ function frameMatrix(F, m) { m.makeBasis(F.f, F.u, F.r); m.setPosition(F.p); ret
 
 /* Per-edge decorations computed from switches */
 function prepareSwitchData() {
-  for (const e of NET.edges) { e.trim = [[], []]; e.noTie = []; e.drop = []; }
+  for (const e of NET.edges) {
+    e.trim = [[], []]; e.noTie = []; e.drop = [];
+    // no rails at all out on the frozen lake (03d_frost.js): the track ends at the shore and the train skates across
+    for (const r of e.ice) { e.trim[0].push(r.slice()); e.trim[1].push(r.slice()); e.noTie.push(r.slice()); }
+  }
   const P = 7.0;
   for (const sw of NET.switches) {
     const A = sw.legs[0], B = sw.legs[1];

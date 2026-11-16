@@ -580,6 +580,7 @@ GAME.wreckBar = function () {
   $('bigMsg').classList.add('wreck'); $('bigMsg').hidden = false;
 };
 GAME.rerail = function () {
+  iceSkateReset();   // a train skating the lake (10n_ice.js) goes back on the surveyed line
   $('bigMsg').hidden = true; $('bigMsg').classList.remove('wreck'); S.derailed = false; S.v = 0; S.vw = 0; S.brakeH = 0.12; MP.dirty = true;
   GAME.train.wreck(null); GAME.wrecking = null;
   KNOCK.clear();
@@ -790,7 +791,7 @@ function simStep(dt, T) {
     }
     // curve overspeed (unbalanced lateral acceleration at the lead truck)
     const ub = curveUnbalanced(T.lead.leadPt.tp, S.v);
-    tipT = ub > CURVE_TIP && !S.derailed ? tipT + dt : 0;
+    tipT = ub > CURVE_TIP && !S.derailed && !iceSkating() ? tipT + dt : 0;
     if (tipT > CURVE_HOLD) GAME.derail(`Overturned on the curve at ${Math.round(Math.abs(S.v) / MPH)} mph.`);
     if (ICE.on && !S.derailed) iceStep(dt, T);   // out on the frozen lake (10n_ice.js)
     else if (ub > CURVE_WARN) { toast('Too fast for this curve!', 'warn', 2000, 'curve'); JOB.note('curve', { mph: Math.abs(S.v) / MPH }); }

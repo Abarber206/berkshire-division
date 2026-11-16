@@ -120,7 +120,7 @@ function buildFrostRoute() {
 
   /* ---------- the main ---------- */
   // speed limits: 40 over the plateau, 30 down the cliff, 25 on the ice, 35 on the climb
-  const limits = [[0, 40], [sD0 - 300, 30], [sI0 - 150, 25], [sI1 + 60, 35], [climb[1] + 300, 40]];
+  const limits = [[0, 40], [sD0 - 300, 30], [sI0 - 150, 60], [sI1 + 60, 35], [climb[1] + 300, 40]];
   const limitAt = s => { s = ((s % LEN) + LEN) % LEN; let v = limits[0][1]; for (const [a, l] of limits) if (s >= a) v = l; return v; };
   const main = new Line('Main', P, { kind: 'main', loop: true, limitAt, ice: [[sI0, sI1]] });
   main.mainS = s => s;
@@ -154,17 +154,17 @@ function buildFrostRoute() {
 
   /* ---------- the station, water and coal, signals, mileposts ---------- */
   const st = (name, line, s, side_, kind, across = 0) => { const loc = line.locate(s); ROUTE.stations.push({ name, line, sLine: s, edge: loc.edge, s: loc.s, side: side_, kind, across }); };
-  st('Hollow Pine', main, 760, -1, 'depot');
+  st('Hollow Pine', main, 760, 1, 'depot');   // on the open side: the siding and engine track are on the other
   st('Owl Creek', main, climb[0] + 2400, 1, 'small');
   const wc = (line, s, side_, kind) => { const loc = line.locate(s); ROUTE.water.push({ line, sLine: s, edge: loc.edge, s: loc.s, side: side_, kind }); };
-  wc(eng, 180, 1, 'tower'); wc(main, 1120, -1, 'column');
+  wc(eng, 180, 1, 'tower'); wc(main, 1120, 1, 'column');
   ROUTE.coal = { line: eng, sLine: 300, edge: eng.locate(300).edge, s: eng.locate(300).s };
   const sig = (line, sLine, dir, kind = 'mast') => ROUTE.signals.push({ line, sLine, dir, kind });
   // home signals into Hollow Pine both ways, automatics round the loop (none on the ice or the cliff shelf)
   sig(main, LEN - 350 + 250, 1); sig(main, 1250 + 350, -1);
   for (const s of [sD0 - 600, climb[0] + 1500, climb[0] + 4200]) sig(main, s, 1);
   sig(sid, 80, -1, 'dwarf'); sig(sid, sid.len - 80, 1, 'dwarf');
-  for (let m = 1; m * MILE < main.len; m++) ROUTE.mileposts.push({ line: main, sLine: m * MILE, num: m });
+  for (let m = 1; m * MILE < main.len; m++) if (m * MILE < sI0 - 30 || m * MILE > sI1 + 30) ROUTE.mileposts.push({ line: main, sLine: m * MILE, num: m });
   ROUTE.yardLimits = [];
   ROUTE.tunnels = [];
   ROUTE.startLine = sid; ROUTE.startS = 500;

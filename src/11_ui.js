@@ -199,6 +199,8 @@ function setupButtons() {
     if (WALK.on && WALK.key(e)) return;   // on foot the keys walk him about (11j_walk.js)
     if (e.code === 'Enter' || e.code === 'NumpadEnter') { WALK.leaveCab(); return; }
     keys[e.code] = true;
+    // skating across the frozen lake: A and D sand the left or right drivers to swing her (10n_ice.js)
+    if ((e.code === 'KeyA' || e.code === 'KeyD') && iceSkating()) { ICE.sk.steer = e.code === 'KeyA' ? 1 : -1; return; }
     switch (e.code) {
       case 'KeyW': S.throttle = GAME.isDiesel() ? clamp(Math.round(S.throttle * GAME.notches() + 1) / GAME.notches(), 0, 1) : clamp(S.throttle + 0.04, 0, 1); break;
       case 'KeyS': S.throttle = GAME.isDiesel() ? clamp(Math.round(S.throttle * GAME.notches() - 1) / GAME.notches(), 0, 1) : clamp(S.throttle - 0.06, 0, 1); break;
@@ -236,7 +238,7 @@ function setupButtons() {
     }
     GAME.refreshKeys();
   });
-  addEventListener('keyup', e => { keys[e.code] = false; if (e.code === 'Space') S.whistle = 0; });
+  addEventListener('keyup', e => { keys[e.code] = false; if (e.code === 'KeyA' || e.code === 'KeyD') ICE.sk.steer = 0; if (e.code === 'Space') S.whistle = 0; });
 }
 
 /* ---------------- gauges ---------------- */
