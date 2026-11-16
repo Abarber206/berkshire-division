@@ -1319,8 +1319,26 @@ function finalizeScenery(scene) {
     grp.children.forEach(m => { const b = m.geometry.boundingSphere; if (first) { sp.copy(b); first = false; } else sp.union(b); });
     grp.userData = { c: sp.center.clone(), r: sp.radius };
     scene.add(grp); WORLD.binGroups.push(grp);
+    gb.bins = {};   // the parts are merged now: let them go (they held hundreds of MB on a phone)
   }
   roofGrid();
+}
+/* Hand every scenery bin to the GPU once, right after loading, so roofGrid's dropArray lets go of its arrays now
+   instead of only when the camera first comes near it (the far bins kept theirs for ever, ~60 MB on a phone). One
+   draw of each into a 1 x 1 target with a plain material: no new shaders, and every attribute is uploaded. */
+function sceneryUpload(renderer) {
+  const tmp = new THREE.Scene(), was = [], cam = new THREE.PerspectiveCamera();
+  const rt = new THREE.WebGLRenderTarget(1, 1, { depthBuffer: false });
+  tmp.overrideMaterial = new THREE.MeshBasicMaterial();
+  for (const grp of WORLD.binGroups) for (const m of grp.children) if (m.geometry.attributes.position && m.geometry.attributes.position.array) {
+    was.push([m, m.parent, m.frustumCulled, m.castShadow]);
+  }
+  for (const [m] of was) { tmp.add(m); m.frustumCulled = false; m.castShadow = false; }
+  const sh = renderer.shadowMap.enabled; renderer.shadowMap.enabled = false;
+  renderer.setRenderTarget(rt); renderer.render(tmp, cam); renderer.setRenderTarget(null);
+  renderer.shadowMap.enabled = sh;
+  for (const [m, p, fc, cs] of was) { p.add(m); m.frustumCulled = fc; m.castShadow = cs; }
+  rt.dispose(); tmp.overrideMaterial.dispose();
 }
 /* The camera and the walker need each building's roof height. Instead of casting rays into the merged meshes (which
    needs their vertex arrays kept in memory for ever, and took seconds), every vertex of the scenery bins goes once

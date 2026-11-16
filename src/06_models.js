@@ -61,7 +61,8 @@ function rollingMaterials() {
 /* a canvas texture that is drawn once: after its upload the canvas is shrunk to nothing, so the picture lives only
    on the GPU and not twice over (iOS also caps the memory all canvases together may hold) */
 function uploadOnce(t) { t.onUpdate = tt => { const c = tt.image; if (c && c.getContext && c.width > 1) { c.width = 1; c.height = 1; } tt.onUpdate = null; }; return t; }
-function decalMat(w, h, draw) { return new THREE.MeshStandardMaterial({ map: uploadOnce(canvasTex(w, h, draw)), transparent: true, alphaTest: 0.35, metalness: 0.2, roughness: 0.55, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }); }
+/* own: lettering drawn for one engine or car; freeObjects lets it go (and its RMAT entry) with the last model using it */
+function decalMat(w, h, draw) { const m = new THREE.MeshStandardMaterial({ map: uploadOnce(canvasTex(w, h, draw)), transparent: true, alphaTest: 0.35, metalness: 0.2, roughness: 0.55, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }); m.userData.own = true; return m; }
 function romanText(g, txt, x, y, size, color = '#efede4', spacing = 0.06) {
   g.font = `600 ${size}px "Times New Roman", Georgia, serif`; g.fillStyle = color; g.textAlign = 'center'; g.textBaseline = 'middle';
   if (g.letterSpacing !== undefined) g.letterSpacing = (size * spacing) + 'px';

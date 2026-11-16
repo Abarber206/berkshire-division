@@ -74,6 +74,7 @@ async function loadWorld() {
   if (ROUTE.coal) { const c = ROUTE.coal; c.edge.pose(c.s, FR); c.p = FR.p.clone(); }
   setupViewInput($('gl'), camera); PLACE.setup($('gl')); setupLevers(); setupButtons(); setupMap(); WALK.setup(); FLEET.setup();
   linearizeObject(scene);
+  sceneryUpload(renderer);
   AI.lazy = true; makeTrain(); AI.lazy = false;
   applyLook(GAME.settings.time, GAME.settings.weather, renderer, scene);
   prog(0.97, 'Raising steam…');
