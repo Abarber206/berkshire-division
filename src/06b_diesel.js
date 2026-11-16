@@ -200,7 +200,7 @@ function buildDiesel(opts) {
   /* ---- short nose, as on the GE Evolution wide cabs (ES44AC): nearly as wide as the cab, a flat front face with the
          nose door, the top sloping up from a crease to the windshield sill, and its two top corners cut off by long
          chamfers. Narrow walkways run past it on both sides to the cab front wall. ---- */
-  const N0 = 1.12, Wn = 1.22, yC = 3.12, Wt = 0.98, yF = 3.34, yT1 = 3.48, yT2 = 3.6, CHc = 0.25, NF = Wn;
+  const N0 = 1.12, Wn = 1.48, yC = 3.12, Wt = 1.16, yF = 3.34, yT1 = 3.48, yT2 = 3.6, CHc = 0.25, NF = Wn;
   const yW0 = yT2, yW1 = 4.33, tL = 0.2, aTop = CAB0 + (yW1 - yW0) * tL, Wc = W - CHc, aB = aTop - 0.12;
   /* the side bands (lSide): one decal over each flat run of the sides, mapped by height so the bands line up */
   const band = (a0, a1, y0, y1, z, face) => {
@@ -223,20 +223,28 @@ function buildDiesel(opts) {
     // front face: the nose scheme (bands and design) across it
     const front = [P(N0, Wn, D), P(N0, -Wn, D), P(N0, -Wn, yC), P(N0, -zF, yF), P(N0, zF, yF), P(N0, Wn, yC)];
     facet('lNose', front, front.map(p => [u(p[2]), v(p[1])]));
-    // the sloping top, from the crease up to the windshield sill
-    facet('lRoof', [P(N0, -zF, yF), P(CAB0, -Wt, yT2), P(CAB0, Wt, yT2), P(N0, zF, yF)]);
+    // the sides run straight back, then flare out to the cab's full width over the last half metre, so the nose
+    // meets the cab corners with no step (aFl: where the flare starts; zE, yE: the top corner edge there)
+    const aFl = CAB0 - 0.5, yE = yF + (yT2 - yF) * (aFl - N0) / (CAB0 - N0), zE = zAt(yE);
+    facet('lRoof', [P(N0, -zF, yF), P(aFl, -zE, yE), P(aFl, zE, yE), P(N0, zF, yF)]);   // the sloping top, crease to flare
     for (const s of [-1, 1]) {
-      facet('lBody', [P(N0, s * Wn, D), P(CAB0, s * Wn, D), P(CAB0, s * Wn, yC), P(N0, s * Wn, yC)]);              // side wall
-      facet('lBody', [P(N0, s * Wn, yC), P(CAB0, s * Wn, yC), P(CAB0, s * Wt, yT2), P(N0, s * zF, yF)]);            // top corner chamfer
-      band(N0, CAB0, D, yC, s * (Wn + 0.003), s > 0 ? 0 : Math.PI);
-      // the cab's front wall beside the nose, out to the side (square below the sill, where the cab's lockers stand)
-      const wall = [P(CAB0, s * Wn, D), P(CAB0, s * W, D), P(CAB0, s * W, yW0), P(CAB0, s * Wt, yW0), P(CAB0, s * Wn, yC)];
-      facet('lBody', wall); bandFacet(wall, [0.003, 0, 0]);
+      const f = s > 0 ? 0 : Math.PI;
+      facet('lBody', [P(N0, s * Wn, D), P(aFl, s * Wn, D), P(aFl, s * Wn, yC), P(N0, s * Wn, yC)]);                // side wall
+      facet('lBody', [P(N0, s * Wn, yC), P(aFl, s * Wn, yC), P(aFl, s * zE, yE), P(N0, s * zF, yF)]);              // top corner chamfer
+      band(N0, aFl, D, yC, s * (Wn + 0.003), f);
+      const flare = [P(aFl, s * Wn, D), P(CAB0, s * W, D), P(CAB0, s * W, yC), P(aFl, s * Wn, yC)];
+      facet('lBody', flare); bandFacet(flare, [-0.003 * (W - Wn) / Math.hypot(W - Wn, 0.5), 0, s * 0.003 * 0.5 / Math.hypot(W - Wn, 0.5)]);
+      facet('lBody', [P(aFl, s * Wn, yC), P(CAB0, s * W, yC), P(CAB0, s * Wc, yT2)]);                              // the chamfer, flaring with it
+      facet('lBody', [P(aFl, s * Wn, yC), P(CAB0, s * Wc, yT2), P(aFl, s * zE, yE)]);
+      facet('lBody', [P(CAB0, s * W, yC), P(CAB0, s * W, yW0), P(CAB0, s * Wc, yW0)]);                               // corner cap under the windshield's angled corner
+      // the cab side ahead of the side window, square to the sill, and the ledge under the windshield's corner
       facet('lBody', [P(CAB0, s * W, D), P(CAB0 + CHc, s * W, D), P(CAB0 + CHc, s * W, yW0), P(CAB0, s * W, yW0)]);
-      band(CAB0, CAB0 + CHc, D, yW0, s * (W + 0.003), s > 0 ? 0 : Math.PI);
-      facet('lRoof', [P(CAB0, s * Wc, yW0), P(CAB0, s * W, yW0), P(CAB0 + CHc, s * W, yW0)]);   // ledge under the windshield's angled corner
+      band(CAB0, CAB0 + CHc, D, yW0, s * (W + 0.003), f);
+      facet('lRoof', [P(CAB0, s * Wc, yW0), P(CAB0, s * W, yW0), P(CAB0 + CHc, s * W, yW0)]);
     }
-    box('dUnder', 1.85, 2.25, 1.95, 2.35, Wn - 0.004, Wn + 0.008);        // access panel, engineer's side
+    // the sloping top, widening with the flare
+    facet('lRoof', [P(aFl, -zE, yE), P(CAB0, -Wc, yT2), P(CAB0, Wc, yT2), P(aFl, zE, yE)]);
+    box('dUnder', 1.5, 1.9, 1.95, 2.35, Wn - 0.004, Wn + 0.008);          // access panel, engineer's side
     // crease trim along the top of the front face, and the drip strip over the nose door
     box('lBody', N0 - 0.012, N0 + 0.004, yF - 0.02, yF, -zF, zF);
   }
