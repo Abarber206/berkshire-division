@@ -177,9 +177,16 @@ function buildDiesel(opts) {
     gb.add('lPilot', new THREE.PlaneGeometry(2 * PW, 0.9), M(dx(at(0.41)), 1.18, 0, 0, e ? -Math.PI / 2 : Math.PI / 2, 0));
     for (const s of [-1, 1]) gb.add('dUnder', new THREE.BoxGeometry(1.42, 0.62, 0.05), M(dx(at(0.58)), 0.46, s * 0.62, 0, -s * sg * 0.42, 0).multiply(M(0, 0, 0, 0, Math.PI / 2, 0)));   // snow plow
     couplers.push(addCoupler(gb, body, { x: dx(A), out: e ? -1 : 1, sx: -0.42, sb: 0.72, ly: 1.4, zh: 0.95, yp: 0.86, housing: false }));
-    box('dUnder', at(0.36), at(0.48), 1.58, 1.72, -PW - 0.03, PW + 0.03);   // anticlimber
+    // anticlimber: a heavy ribbed ledge across the end at deck height
+    box('dUnder', at(0.34), at(0.5), 1.6, 1.8, -PW - 0.03, PW + 0.03);
+    for (const y of [1.65, 1.71, 1.77]) box('dUnder', at(0.32), at(0.36), y - 0.012, y + 0.012, -PW, PW);
     for (const z of [-0.95, -0.62, 0.62, 0.95]) gb.add('dUnder', new THREE.CylinderGeometry(0.035, 0.035, 0.5, 6), M(dx(at(0.4)), 0.98, z, 0.3 * sg, 0, 0));
     for (const z of [-0.74, 0.74]) box('dUnder', at(0.36), at(0.44), 1.02, 1.26, z - 0.11, z + 0.11); // MU receptacles
+    // MU jumper cables and air hoses: looped from the receptacles in toward the coupler, and hanging at the corners
+    for (const s of [-1, 1]) {
+      gb.tube('dUnder', [[dx(at(0.38)), 1.06, s * 0.66], [dx(at(0.33)), 0.88, s * 0.5], [dx(at(0.33)), 0.84, s * 0.32], [dx(at(0.4)), 1.0, s * 0.16]], 0.024, 14, 6);
+      gb.tube('dUnder', [[dx(at(0.38)), 1.1, s * 0.8], [dx(at(0.32)), 0.8, s * 0.92], [dx(at(0.33)), 0.62, s * 0.86], [dx(at(0.38)), 0.7, s * 0.8]], 0.02, 12, 6);
+    }
     gb.tube('dSafety', [[dx(at(0.44)), 1.72, -0.42], [dx(at(0.4)), 1.86, -0.36], [dx(at(0.4)), 1.86, 0.36], [dx(at(0.44)), 1.72, 0.42]], 0.018, 12, 6);
     for (const s of [-1, 1]) {
       box('dUnder', at(0.44), at(1.25), 0.30, 1.69, s * (PW - 0.03), s * (PW + 0.006));   // inner wall of the step well
@@ -190,60 +197,81 @@ function buildDiesel(opts) {
       gb.tube('dSafety', [[dx(at(0.5)), 2.5, s * 1.52], [dx(at(0.5)), 2.74, s * 1.32], [dx(at(0.53)), 2.62, s * 1.08], [dx(at(0.56)), 1.74, s * 1.0]], 0.02, 18, 6);
     }
   }
-  // ditch lights low on the front pilot corners
-  const ditch = [];
-  for (const s of [-1, 1]) {
-    box('dUnder', 0.355, 0.415, 1.37, 1.57, s * 0.81, s * 1.03);
-    const lens = new THREE.Mesh(new THREE.CircleGeometry(0.072, 16), new THREE.MeshBasicMaterial({ color: 0xfff3d6 })); lens.position.set(dx(0.35), 1.47, s * 0.92); lens.rotation.y = Math.PI / 2; body.add(lens);
-    const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: haloTex(), color: 0xffffff, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0 }));
-    halo.position.set(dx(0.32), 1.47, s * 0.92); halo.scale.set(1.2, 1.2, 1); body.add(halo);
-    ditch.push({ lens, halo });
-  }
-
-  /* ---- short nose: corners chamfered in plan, a sloping top and a chamfered front edge.
-         Built from flat facets so the stripes wrap from the front face onto the cheeks. ---- */
-  const N0 = 1.12, NF = 0.84, CH = 0.58, FC = 0.3, yF = 3.22, yT1 = 3.48, yT2 = 3.6, CHc = 0.25;
+  /* ---- short nose, as on the GE Evolution wide cabs (ES44AC): nearly as wide as the cab, a flat front face with the
+         nose door, the top sloping up from a crease to the windshield sill, and its two top corners cut off by long
+         chamfers. Narrow walkways run past it on both sides to the cab front wall. ---- */
+  const N0 = 1.12, Wn = 1.22, yC = 3.12, Wt = 0.98, yF = 3.34, yT1 = 3.48, yT2 = 3.6, CHc = 0.25, NF = Wn;
+  const yW0 = yT2, yW1 = 4.33, tL = 0.2, aTop = CAB0 + (yW1 - yW0) * tL, Wc = W - CHc, aB = aTop - 0.12;
+  /* the side bands (lSide): one decal over each flat run of the sides, mapped by height so the bands line up */
+  const band = (a0, a1, y0, y1, z, face) => {
+    const g = new THREE.PlaneGeometry(Math.abs(a1 - a0), y1 - y0), uv = g.attributes.uv, p = g.attributes.position;
+    for (let i = 0; i < uv.count; i++) uv.setY(i, (p.getY(i) + (y0 + y1) / 2 - LSIDE.y0) / (LSIDE.y1 - LSIDE.y0));
+    gb.add('lSide', g.applyMatrix4(M(dx((a0 + a1) / 2), (y0 + y1) / 2, z, 0, face, 0)));
+  };
+  const zAt = y => Wn - (y - yC) * (Wn - Wt) / (yT2 - yC);   // the chamfer, from the top of the side wall to the edge of the top
+  const zF = zAt(yF);
   const P = (a, z, y) => [dx(a), y, z];
   const facet = (k, pts, uvs) => {      // flat convex polygon, fan triangulated
     const pos = [], uv = [];
     for (let i = 1; i < pts.length - 1; i++) for (const j of [0, i, i + 1]) { pos.push(...pts[j]); uv.push(...(uvs ? uvs[j] : [0, 0])); }
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.computeVertexNormals(); gb.add(k, g);
   };
+  // the side bands on a flat facet, mapped by height like the sides (the band texture is one column)
+  const bandFacet = (pts, off) => facet('lSide', pts.map(p => [p[0] + off[0], p[1], p[2] + off[2]]), pts.map(p => [0.5, (p[1] - LSIDE.y0) / (LSIDE.y1 - LSIDE.y0)]));
   {
-    const hw = a => a < N0 + CH ? NF + (W - NF) * (a - N0) / CH : W;
-    const yt = a => a < N0 + FC ? yF + (yT1 - yF) * (a - N0) / FC : (a < CAB0 ? yT1 + (yT2 - yT1) * (a - N0 - FC) / (CAB0 - N0 - FC) : yT2);
-    const cheek = Math.hypot(CH, W - NF), U = 2 * cheek + 2 * NF, uF0 = cheek / U, uF1 = 1 - uF0, v = y => (y - D) / (yT1 - D);
-    const uOf = (a, s) => s > 0 ? uF0 * (1 - (a - N0) / CH) : uF1 + (1 - uF1) * (a - N0) / CH;
-    facet('lNose', [P(N0, NF, D), P(N0, -NF, D), P(N0, -NF, yF), P(N0, NF, yF)], [[uF0, 0], [uF1, 0], [uF1, v(yF)], [uF0, v(yF)]]);
-    const st = [N0, N0 + FC, N0 + CH, CAB0, CAB0 + CHc];
-    for (let i = 0; i < st.length - 1; i++) {
-      const a0 = st[i], a1 = st[i + 1], painted = a1 <= N0 + CH + 1e-6;
-      for (const s of [-1, 1]) {
-        const q = [P(a0, s * hw(a0), D), P(a1, s * hw(a1), D), P(a1, s * hw(a1), yt(a1)), P(a0, s * hw(a0), yt(a0))];
-        const uv = painted ? [[uOf(a0, s), 0], [uOf(a1, s), 0], [uOf(a1, s), v(yt(a1))], [uOf(a0, s), v(yt(a0))]] : null;
-        if (s > 0) { q.reverse(); if (uv) uv.reverse(); }
-        facet(painted ? 'lNose' : 'lBody', q, uv);
-      }
-      facet('lRoof', [P(a0, -hw(a0), yt(a0)), P(a1, -hw(a1), yt(a1)), P(a1, hw(a1), yt(a1)), P(a0, hw(a0), yt(a0))]);
+    const v = y => (y - D) / (yT1 - D), u = z => (Wn - z) / (2 * Wn);
+    // front face: the nose scheme (bands and design) across it
+    const front = [P(N0, Wn, D), P(N0, -Wn, D), P(N0, -Wn, yC), P(N0, -zF, yF), P(N0, zF, yF), P(N0, Wn, yC)];
+    facet('lNose', front, front.map(p => [u(p[2]), v(p[1])]));
+    // the sloping top, from the crease up to the windshield sill
+    facet('lRoof', [P(N0, -zF, yF), P(CAB0, -Wt, yT2), P(CAB0, Wt, yT2), P(N0, zF, yF)]);
+    for (const s of [-1, 1]) {
+      facet('lBody', [P(N0, s * Wn, D), P(CAB0, s * Wn, D), P(CAB0, s * Wn, yC), P(N0, s * Wn, yC)]);              // side wall
+      facet('lBody', [P(N0, s * Wn, yC), P(CAB0, s * Wn, yC), P(CAB0, s * Wt, yT2), P(N0, s * zF, yF)]);            // top corner chamfer
+      band(N0, CAB0, D, yC, s * (Wn + 0.003), s > 0 ? 0 : Math.PI);
+      // the cab's front wall beside the nose, out to the side (square below the sill, where the cab's lockers stand)
+      const wall = [P(CAB0, s * Wn, D), P(CAB0, s * W, D), P(CAB0, s * W, yW0), P(CAB0, s * Wt, yW0), P(CAB0, s * Wn, yC)];
+      facet('lBody', wall); bandFacet(wall, [0.003, 0, 0]);
+      facet('lBody', [P(CAB0, s * W, D), P(CAB0 + CHc, s * W, D), P(CAB0 + CHc, s * W, yW0), P(CAB0, s * W, yW0)]);
+      band(CAB0, CAB0 + CHc, D, yW0, s * (W + 0.003), s > 0 ? 0 : Math.PI);
+      facet('lRoof', [P(CAB0, s * Wc, yW0), P(CAB0, s * W, yW0), P(CAB0 + CHc, s * W, yW0)]);   // ledge under the windshield's angled corner
     }
-    box('dUnder', N0 - 0.03, N0 + 0.01, 2.64, 3.17, -0.16, 0.16);         // stacked headlight housing
-    box('dUnder', N0 - 0.06, N0 + 0.02, D, D + 0.1, -NF, NF);             // anticlimber lip along the nose foot
-    box('dUnder', 1.85, 2.25, 1.95, 2.35, W - 0.004, W + 0.008);         // access panel, engineer's side
+    box('dUnder', 1.85, 2.25, 1.95, 2.35, Wn - 0.004, Wn + 0.008);        // access panel, engineer's side
+    // crease trim along the top of the front face, and the drip strip over the nose door
+    box('lBody', N0 - 0.012, N0 + 0.004, yF - 0.02, yF, -zF, zF);
   }
-  // the bell on a stand on the nose top, ahead of the windshield; it swings while it rings (bellRig)
-  const bellA = 2.0, bellY = 3.48 + 0.12 * (bellA - 1.42) / (CAB0 - 1.42), bs = 0.6, bp = bellY + 0.25;
+  /* ---- ditch lights: a pair of square housings low on the nose face, just above the anticlimber ---- */
+  const ditch = [];
+  for (const s of [-1, 1]) {
+    const z = s * 0.88, y = 2.0;
+    box('dUnder', N0 - 0.1, N0, y - 0.12, y + 0.12, z - 0.13, z + 0.13);           // housing
+    box('dSteel', N0 - 0.108, N0 - 0.098, y - 0.1, y + 0.1, z - 0.11, z + 0.11);   // bezel
+    const lens = new THREE.Mesh(new THREE.CircleGeometry(0.075, 18), new THREE.MeshBasicMaterial({ color: 0xfff3d6 })); lens.position.set(dx(N0 - 0.11), y, z); lens.rotation.y = Math.PI / 2; body.add(lens);
+    const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: haloTex(), color: 0xffffff, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0 }));
+    halo.position.set(dx(N0 - 0.15), y, z); halo.scale.set(1.2, 1.2, 1); body.add(halo);
+    ditch.push({ lens, halo });
+  }
+  /* ---- front walkway railing: posts in the paint colour, a chain across the nose door ---- */
+  for (const s of [-1, 1]) {
+    const aR = 0.52, yR = 2.77;
+    rod('lRail', 0.024, [dx(aR), yR, s * 1.08], [dx(aR), yR, s * 0.36]);
+    for (const z of [0.36, 0.72]) rod('lRail', 0.022, [dx(aR), D, s * z], [dx(aR), yR + 0.02, s * z]);
+    rod('lRail', 0.022, [dx(aR), yR + 0.02, s * 1.08], [dx(0.53), 2.6, s * 1.08]);   // down onto the yellow corner rail
+  }
+  for (let i = 0; i < 10; i++) {   // the chain, hanging in a shallow curve
+    const z0 = -0.34 + i * 0.068, z1 = z0 + 0.068, sag = q => 0.09 * (1 - (q / 0.34) ** 2);
+    rod('dSteel', 0.008, [dx(0.52), 2.72 - sag(z0), z0], [dx(0.52), 2.72 - sag(z1), z1], 4);
+  }
+  // the bell, on a stand on the nose top ahead of the windshield; it swings while it rings (bellRig)
+  const nTop = a => yF + (yT2 - yF) * (a - N0) / (CAB0 - N0);
+  const bellA = 2.0, bellY = nTop(bellA), bs = 0.6, bp = bellY + 0.25;
   box('dUnder', bellA - 0.16, bellA + 0.16, bellY - 0.03, bellY + 0.025, -0.22, 0.22);                  // base plate on the roof
   for (const s of [-1, 1]) box('dUnder', bellA - 0.035, bellA + 0.035, bellY, bp + 0.05, s * 0.17, s * 0.2);   // stand posts
   gb.cylZ('dSteel', 0.016, 0.4, 8, dx(bellA), bp, 0);                                                  // trunnion shaft
   const bellRigD = bellRig(body, dx(bellA), bp, bs, 0.35, 'diesel');
-  const lenses = [];
-  for (const y of [3.04, 2.78]) {
-    const ln = new THREE.Mesh(new THREE.CircleGeometry(0.105, 20), lead ? RMAT.lens : RMAT.headOff); ln.position.set(dx(N0 - 0.035), y, 0); ln.rotation.y = Math.PI / 2; body.add(ln); lenses.push(ln);
-  }
 
   /* ---- cab: raked windshield with chamfered corners, and a brow above it carrying the number boards ---- */
-  const yW0 = yT2, yW1 = 4.33, tL = 0.2, aTop = CAB0 + (yW1 - yW0) * tL, Wc = W - CHc, aB = aTop - 0.12;
-  let cab;
+  let cab; const lenses = [];
   {
     const rr = (p, x0, y0, x1, y1, r) => { p.moveTo(x0 + r, y0); p.lineTo(x1 - r, y0); p.quadraticCurveTo(x1, y0, x1, y0 + r); p.lineTo(x1, y1 - r); p.quadraticCurveTo(x1, y1, x1 - r, y1); p.lineTo(x0 + r, y1); p.quadraticCurveTo(x0, y1, x0, y1 - r); p.lineTo(x0, y0 + r); p.quadraticCurveTo(x0, y0, x0 + r, y0); };
     // the windshield plane leans back: x' = x - (y - yW0) * tL
@@ -261,9 +289,17 @@ function buildDiesel(opts) {
     const bp = new THREE.Shape();
     bp.moveTo(dx(aB), -Wc); bp.lineTo(dx(aB), Wc); bp.lineTo(dx(aB + CHc), W); bp.lineTo(dx(CAB1), W); bp.lineTo(dx(CAB1), -W); bp.lineTo(dx(aB + CHc), -W); bp.closePath();
     const bg = new THREE.ExtrudeGeometry(bp, { depth: ROOF - yW1, bevelEnabled: false }); bg.rotateX(-Math.PI / 2); bg.translate(0, yW1, 0); gb.add('lBody', bg);
+    // number boards either side of the twin headlights, each in its own raised case on the brow
     for (const s of [-1, 1]) {
-      box('dUnder', aB - 0.05, aB + 0.01, 4.35, 4.6, s * 0.48, s * 1.1);
-      gb.add('lBoard', new THREE.PlaneGeometry(0.56, 0.19), M(dx(aB - 0.052), 4.475, s * 0.79, 0, Math.PI / 2, 0));
+      box('dUnder', aB - 0.07, aB + 0.01, 4.36, 4.59, s * 0.36, s * 0.97);
+      box('lBody', aB - 0.075, aB - 0.065, 4.36, 4.59, s * 0.36, s * 0.97);
+      gb.add('lBoard', new THREE.PlaneGeometry(0.54, 0.17), M(dx(aB - 0.078), 4.475, s * 0.665, 0, Math.PI / 2, 0));
+    }
+    // headlight case between the boards: two sealed beams side by side
+    box('dUnder', aB - 0.1, aB + 0.01, 4.36, 4.59, -0.3, 0.3);
+    for (const s of [-1, 1]) gb.add('dSteel', new THREE.TorusGeometry(0.098, 0.014, 6, 20).rotateY(Math.PI / 2), M(dx(aB - 0.104), 4.475, s * 0.135));
+    for (const s of [-1, 1]) {
+      const ln = new THREE.Mesh(new THREE.CircleGeometry(0.092, 20), lead ? RMAT.lens : RMAT.headOff); ln.position.set(dx(aB - 0.103), 4.475, s * 0.135); ln.rotation.y = Math.PI / 2; body.add(ln); lenses.push(ln);
     }
     // roof cap following the same outline
     const o = 0.006, rp = new THREE.Shape();
@@ -290,7 +326,7 @@ function buildDiesel(opts) {
     // interior: floor, console, control stand, seats
     const FL = 2.7;                                            // the cab floor sits well above the deck
     box('dInt', CAB0 + 0.3, CAB1 - 0.05, FL - 0.03, FL, -W + 0.02, W - 0.02);
-    cab = dieselCab(gb, body, { dx, CAB0, CAB1, FL, W, sill: yW0, ceil: yW1, lead, uid: ++DG.uid, wipe: { tL, wz0: 0.08, wz1: Wc - 0.1, wy0: yW0 + 0.07, yW0 } });
+    cab = dieselCab(gb, body, { dx, CAB0, CAB1, FL, W, sill: yW0, ceil: yW1, lead, uid: ++DG.uid, nose: { w: zAt(3.5) - 0.04, top: 3.5 }, wipe: { tL, wz0: 0.08, wz1: Wc - 0.1, wy0: yW0 + 0.07, yW0 } });
     // air conditioner under the cab, conductor's side
     box('grille', CAB0 + 0.3, CAB0 + 1.5, 1.2, 1.62, -W - 0.006, -W - 0.002);
   }
@@ -360,15 +396,9 @@ function buildDiesel(opts) {
     rod('lRail', 0.019, [dx(21.5), D, s * 1.49], [dx(21.5), 2.75, s * 1.49]);
   }
   /* ---- side bands (lSide): one decal over each flat run of the sides, mapped by height so the bands line up ---- */
-  const band = (a0, a1, y0, y1, z, face) => {
-    const g = new THREE.PlaneGeometry(Math.abs(a1 - a0), y1 - y0), uv = g.attributes.uv, p = g.attributes.position;
-    for (let i = 0; i < uv.count; i++) uv.setY(i, (p.getY(i) + (y0 + y1) / 2 - LSIDE.y0) / (LSIDE.y1 - LSIDE.y0));
-    gb.add('lSide', g.applyMatrix4(M(dx((a0 + a1) / 2), (y0 + y1) / 2, z, 0, face, 0)));
-  };
   for (const s of [-1, 1]) {
     const f = s > 0 ? 0 : Math.PI;
     band(1.26, DG.len - 1.26, 1.16, 1.70, s * (W + 0.003), f);                 // frame sill
-    band(1.70, CAB0 + CHc, D, 3.48, s * (W + 0.003), f);                        // behind the nose cheek, under the windshield corner
     band(CAB0 + CHc, CAB1, D, 3.5, s * (W + 0.033), f);                         // cab side, under the window
     band(s < 0 ? 7.1 : CAB1, RAD1, D, HOOD, s * (HZ + 0.003), f);                // long hood and radiator section
     band(RAD0 + 0.75, RAD1, 3.32, RADH, s * (WING + 0.003), f);                 // the radiator wing's face
@@ -392,10 +422,10 @@ function buildDiesel(opts) {
   const statics = gb.build({ ...RMAT, ...skin });
   body.add(statics);
   // headlight beam & halo
-  const hlY = 2.91;
-  const beam = headBeam(dx(N0 - 0.05), hlY); body.add(beam);
+  const hlY = 4.475, hlA = 2.766 - 0.12 - 0.12;   // up on the brow, between the number boards (aB - 0.12)
+  const beam = headBeam(dx(hlA), hlY, -0.045); body.add(beam);
   const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: haloTex(), color: 0xffffff, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0 }));
-  halo.position.set(dx(N0 - 0.08), hlY, 0); halo.scale.set(2.0, 2.6, 1); body.add(halo);
+  halo.position.set(dx(hlA - 0.02), hlY, 0); halo.scale.set(2.4, 1.6, 1); body.add(halo);
   /* ---- Hi-Ad style trucks (swivel; placed by the train) ---- */
   const trucks = [], wheels = [];
   const ax = plainAxle(DG.rW, true, RAIL_OFF, 1.16, 28);
@@ -444,7 +474,7 @@ function buildDiesel(opts) {
   return {
     root, body, trucks, wheels, couplers, lens: lenses[0], lenses, beam, halo, ditch, spec, skin, livery: L, number: num, diesel: true, lead, len: DG.len, frame: DG.trucks.slice(),
     stackPos: new THREE.Vector3(dx(11.5), HOOD + 0.3, 0), hornPos: new THREE.Vector3(dx(6.0), DBH + 0.35, 0), enginePos: new THREE.Vector3(dx(12.5), 2.9, 0),
-    cabEye: cab.eye, cab, headlightPos: new THREE.Vector3(dx(N0 - 0.05), hlY, 0), cabLightPos: new THREE.Vector3(dx(4.1), 4.25, 0), bellRig: bellRigD,
+    cabEye: cab.eye, cab, headlightPos: new THREE.Vector3(dx(hlA), hlY, 0), cabLightPos: new THREE.Vector3(dx(4.1), 4.25, 0), bellRig: bellRigD,
   };
 }
 let _louverTex = null;
@@ -503,11 +533,14 @@ function dieselDetail(gb, c) {
   }
   // nose door (conductor's side of the headlights): frame, hinges and handle; grab irons up the engineer's side
   {
-    const y0 = D + 0.1, y1 = yF - 0.08, z0 = -NF + 0.06, z1 = -0.24, a0 = N0 - 0.008, a1 = N0 + 0.004;
+    const y0 = D + 0.1, y1 = yF - 0.08, z0 = -0.7, z1 = -0.24, a0 = N0 - 0.008, a1 = N0 + 0.004;
     for (const z of [z0, z1]) box('dUnder', a0, a1, y0, y1, z - 0.008, z + 0.008);
     box('dUnder', a0, a1, y1 - 0.008, y1 + 0.008, z0, z1);
     for (const y of [y0 + 0.2, y1 - 0.2]) box('dSteel', N0 - 0.02, a1, y - 0.05, y + 0.05, z0 - 0.03, z0 + 0.03);
     box('dSteel', N0 - 0.035, a1, 2.5, 2.54, z1 - 0.16, z1 - 0.04);
+    // its small window, up high
+    box('dUnder', N0 - 0.006, a1, 2.86, 3.14, z0 + 0.1, z0 + 0.3);
+    box('glassT', N0 - 0.01, N0 - 0.004, 2.88, 3.12, z0 + 0.12, z0 + 0.28);
     for (const y of [2.1, 2.45, 2.8, 3.1]) grab('dSafety', [dx(N0), y, 0.3], [dx(N0), y, 0.72], [0.06, 0, 0]);
   }
   // rear hood door, and grab irons up the wall beside it

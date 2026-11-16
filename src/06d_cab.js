@@ -735,8 +735,12 @@ function dieselCab(gb, body, d) {
   const aF = d.CAB0 - 0.17, aT = d.CAB0 + 0.38, aS = d.CAB0 + 0.65, yTop = d.sill - 0.015, yS = 3.22;
   {
     const s = new THREE.Shape();
-    s.moveTo(dx(aF), FL - 0.03); s.lineTo(dx(aF), yTop); s.lineTo(dx(aT), yTop); s.lineTo(dx(aS), yS); s.lineTo(dx(aS), FL - 0.03); s.closePath();
+    // with a nose narrower than the cab (d.nose: its half width and roof height over the console) only the part
+    // inside the cab runs wall to wall; ahead of the cab's front wall it is cut to fit inside the nose
+    const a0 = d.nose ? d.CAB0 : aF;
+    s.moveTo(dx(a0), FL - 0.03); s.lineTo(dx(a0), yTop); s.lineTo(dx(aT), yTop); s.lineTo(dx(aS), yS); s.lineTo(dx(aS), FL - 0.03); s.closePath();
     const zw = wallZ + 0.005, g = new THREE.ExtrudeGeometry(s, { depth: 2 * zw, bevelEnabled: false }); g.translate(0, 0, -zw); gb.add('dDesk', g);
+    if (d.nose) box('dDesk', aF, a0 + 0.002, FL - 0.03, d.nose.top, -d.nose.w, d.nose.w);
     box('dUnder', aS - 0.01, aS + 0.005, FL - 0.03, FL + 0.12, -zw, zw);                 // kick plate
   }
   // the sloped face: a frame for each screen and a row of switches under the engineer's
