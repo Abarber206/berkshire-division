@@ -157,7 +157,7 @@ function wxGround() {
 /* the clock: a job runs on its own railroad clock; otherwise time passes at the chosen rate */
 function skyTick(dt) {
   if (JOB.run && !JOB.run.over) SKY.hour = dnWrap(JOB.clock() / 3600);
-  else if (GAME.running && !S.paused) SKY.hour = dnWrap(SKY.hour + dt * ((DN.rates[GAME.settings.cycle] || DN.rates.x30).k) / 3600);
+  else if (GAME.running && !S.paused && !GAME.frostNight) SKY.hour = dnWrap(SKY.hour + dt * ((DN.rates[GAME.settings.cycle] || DN.rates.x30).k) / 3600);
   // the weather runs on real time whatever the clock does, so a spell lasts minutes at any clock rate
   if (!S.paused) { wxStep(dt, (1 - SKY.dark) * (1 - CLOUD.shade)); wxNews(); wxWind(dt); }
   if (typeof snowFrame === 'function') snowFrame();

@@ -219,6 +219,7 @@ class WreckSim {
   ground(b, P) {
     this.onBed = false; this.slope = 0;
     let g = groundAt(P.x, -P.z);
+    this.onIce = WORLD.frost && g <= FROST.iceY + 0.02 && frOnIce(P.x, -P.z);   // out on the frozen lake (10n_ice.js)
     if (WORLD.mtn && P.y < g) { const t = mtInBore(P.x, P.z, 0.5); if (t) g = t.rail - 0.3; }   // in a tunnel: the bore's floor, not the hill over it
     const B = b.bed; _we.subVectors(P, B.o);
     if (Math.abs(_we.dot(B.f)) < B.len * 1.5) {
@@ -362,6 +363,8 @@ class WreckSim {
         const n = _wb.set(0, 1, 0); if (b.truck && this.slope) n.addScaledVector(b.bed.r, 0.66 * this.slope).normalize();
         const c = this.contact(b, null, null, P, n, pen * n.y, WK.MU, WK.E_G); c.bed = this.onBed;
         const vh = Math.hypot(c.v0.x, c.v0.z);
+        // steel on ice: it slides, and a car going sideways skates rather than digging in (ties lying on the ice, a little more)
+        if (this.onIce) { c.mu = ICE.MU * (this.onBed ? 1.8 : 1) + (vh > 0.3 ? ICE.TRIP * Math.abs(c.v0.x * b.ax[2].x + c.v0.z * b.ax[2].z) / vh : 0); continue; }
         if (vh > 0.3) c.mu = WK.MU + WK.TRIP * (this.onBed ? 0.5 : 1) * Math.abs(c.v0.x * b.ax[2].x + c.v0.z * b.ax[2].z) / vh;
       }
     }

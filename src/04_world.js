@@ -195,6 +195,7 @@ const INNER = { x0: -6000, x1: 6000, n0: -2000, n1: 7000, step: 20 };
 function riverX(N) { const A = n => 170 * Math.sin(n / 700) + 70 * Math.sin(n / 230 + 1); return -1203 + A(N) - A(2402); }
 function naturalH(X, N) {
   if (WORLD.custom) return layoutH(X, N);
+  if (WORLD.frost) return frNaturalH(X, N);
   if (WORLD.mtn) return mtNaturalH(X, N);
   let h = 6.5 * Noise.fbm(X / 1600 + 3.1, N / 1600 - 1.7, 4) + 2.2 * Noise.fbm(X / 320, N / 320, 3);
   // Kenton Hill (track crest at +13.5)
@@ -219,6 +220,7 @@ function riverCourse(N, xAt, nTrack, lake) {
 }
 function riverDist(X, N) {
   if (WORLD.custom) return 1e9;
+  if (WORLD.frost) return frRiverDist(X, N);
   if (WORLD.mtn) return mtRiverDist(X, N);
   let d = 1e9;
   for (const [xAt, nT, lake] of [[riverX, 2402, WORLD.lake], [river2X, VW.riverN, VW.lake]]) {
@@ -249,7 +251,7 @@ function buildLattice() {
   const R = 80, rc = Math.ceil(R / L.step);
   for (const e of NET.edges) {
     for (let s = 0; s <= e.len; s += 3) {
-      if (e.isBridge(s) || e.isTunnel(s)) continue;
+      if (e.isBridge(s) || e.isTunnel(s) || e.isIce(s)) continue;
       const [X, N] = e.xz(s), ty = e.elev(s);
       const ci = Math.round((X - L.x0) / L.step), cj = Math.round((N - L.n0) / L.step);
       for (let j = cj - rc; j <= cj + rc; j++) {
@@ -276,14 +278,19 @@ function latticeAt(X, N) {
 function groundH(X, N, lat) {
   let h = heightRaw(X, N);
   if (lat && lat.d < 80) {
-    const w = 1 - smooth(14, 76, lat.d);
+    const gw = WORLD.frost ? frGradeW(X, N) : 76, w = 1 - smooth(14 * gw / 76, gw, lat.d);
     h = lerp(h, lat.y - 0.95, w);
     // a mountain stream beyond the embankment's foot keeps its bed under the grading's edge
-    if (WORLD.mtn && lat.d > 22) h = mtCarve(X, N, h);
+    if (WORLD.mtn && !WORLD.frost && lat.d > 22) h = mtCarve(X, N, h);
   }
   return h;
 }
 function groundAt(X, N) { // continuous sampler; exact terrain triangles once the grid is filled
+  // on the winter route the frozen lake is the ground: nothing is under the ice
+  if (WORLD.frost) { const h = groundAt0(X, N); return h < FROST.iceY ? FROST.iceY : h; }
+  return groundAt0(X, N);
+}
+function groundAt0(X, N) {
   const L = INNER;
   if (WORLD.patches) { const p = patchAt(X, N); if (p !== null) return p; }
   if (X < L.x0 || X > L.x1 || N < L.n0 || N > L.n1) return heightRaw(X, N);
@@ -323,6 +330,7 @@ function fieldAt(X, N) {
 /* Vertex colour carries everything that is not crop (verges, ballast shoulders, banks, roads, hills).
    out[3] is the crop weight; the ground shader paints the crop pattern itself, per pixel. */
 function groundColor(X, N, h, lat, out) {
+  if (WORLD.frost) return frGroundColor(X, N, h, lat, out);
   if (WORLD.mtn) return mtGroundColor(X, N, h, lat, out);
   let r = 0.37, g = 0.49, b = 0.22, w = 1;
   if (lat && lat.d < 30) {
@@ -796,10 +804,10 @@ function buildTrack(scene) {
       let rings = 0; let lastB = false;
       const bs = railSamples(e, s0, s1);
       // ring exactly at each bridge limit, so the shoulders run right up to the abutment fill
-      for (const b of e.bridges) for (const sb of [b[0] - 0.001, b[1] + 0.001]) if (sb > s0 && sb < s1) bs.push(sb);
+      for (const b of [...e.bridges, ...e.ice]) for (const sb of [b[0] - 0.001, b[1] + 0.001]) if (sb > s0 && sb < s1) bs.push(sb);
       bs.sort((a, b) => a - b);
       for (const s of bs) {
-        const br = e.isBridge(s);
+        const br = e.isBridge(s) || e.isIce(s);
         if (br) { lastB = true; continue; }
         if (lastB && rings > 0) { rings = 0; } // restart strip after bridge
         lastB = false;

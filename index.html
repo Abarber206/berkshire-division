@@ -877,7 +877,7 @@ h1{text-shadow:0 2px 0 #000,0 10px 40px rgba(0,0,0,.6)}
   <button id="mapClose">Close map</button>
 </div>
 
-<div id="bigMsg" hidden><div class="card"><h2 id="bigTitle">Derailed</h2><p id="bigBody"></p><div class="acts"><button class="btn prim" id="bigRetry">Re-rail and continue</button><button class="btn" id="bigMenu">Main menu</button></div></div></div>
+<div id="bigMsg" hidden><div class="card"><h2 id="bigTitle">Derailed</h2><p id="bigBody"></p><div class="acts"><button class="btn prim" id="bigRetry">Re-rail and continue</button><button class="btn" id="bigFar" hidden>Re-rail on the far shore</button><button class="btn" id="bigMenu">Main menu</button></div></div></div>
 
 <div id="jobDone" class="overlay" hidden><div class="card" role="dialog" aria-labelledby="jdTitle">
   <div class="eyebrow" id="jdEyebrow"></div>
@@ -1274,6 +1274,7 @@ class Edge {
     this.cantOK = opt.cant !== false && this.kind === 'main';
     this.bridges = opt.bridges || [];      // [[s0,s1],...]
     this.tunnels = opt.tunnels || [];      // [[s0,s1],...] bored through the hill: no ground is graded over them
+    this.ice = opt.ice || [];              // [[s0,s1],...] ties laid straight on a frozen lake: no ballast, no grading
     this.noTies = false;
     const total = pts[pts.length - 1].s - pts[0].s;
     this.len = total;
@@ -1298,9 +1299,15 @@ class Edge {
       const E = this.cantOK ? clamp(105 * Math.abs(this.K[i]), 0, 0.1) : 0;
       this.C[i] = Math.sign(this.K[i]) * Math.asin(E / 1.5);
     }
+    // ties laid flat on lake ice: no superelevation, ramped out over 40 m either side
+    for (const r of this.ice) for (let i = 0; i < this.n; i++) {
+      const s = i * this.ds, d = s < r[0] ? r[0] - s : s > r[1] ? s - r[1] : 0;
+      if (d < 40) this.C[i] *= d / 40;
+    }
   }
   isBridge(s) { for (const b of this.bridges) if (s >= b[0] && s <= b[1]) return true; return false; }
   isTunnel(s) { for (const b of this.tunnels) if (s >= b[0] && s <= b[1]) return true; return false; }
+  isIce(s) { for (const b of this.ice) if (s >= b[0] && s <= b[1]) return true; return false; }
   _idx(s) { const f = clamp(s, 0, this.len) / this.ds; let i = Math.floor(f); if (i >= this.n - 1) i = this.n - 2; return [i, f - i]; }
   heading(s) { const [i, t] = this._idx(s); return lerp(this.H[i], this.H[i + 1], t); }
   curv(s) { const [i, t] = this._idx(s); return lerp(this.K[i], this.K[i + 1], t); }
@@ -1514,7 +1521,7 @@ class Line {
       const pts = this.slice(sg.s0, sg.s1);
       const local = R => (R || []).map(b => [b[0] - sg.s0, b[1] - sg.s0]).filter(b => b[1] > 0 && b[0] < sg.s1 - sg.s0);
       const limit = opt.limitAt ? opt.limitAt((sg.s0 + sg.s1) / 2) : opt.limit;
-      const e = NET.edge(pts, { kind: opt.kind, name: this.name, limit, cant: opt.cant, bridges: local(opt.bridges), tunnels: local(opt.tunnels) });
+      const e = NET.edge(pts, { kind: opt.kind, name: this.name, limit, cant: opt.cant, bridges: local(opt.bridges), tunnels: local(opt.tunnels), ice: local(opt.ice) });
       e.line = this; e.lineS0 = sg.s0;
       e.setProfile((s, X, N) => profile(sg.s0 + s, X, N));
       NET.attach(e, 0, sg.na); NET.attach(e, 1, sg.nb);
@@ -2278,6 +2285,7 @@ const PLAY_LAYOUT = (() => { try { const id = new URLSearchParams(location.searc
 const ROUTES = {
   ohio: { name: 'Berkshire Division', sub: 'Ohio farm country · 13.8 mi double-track loop' },
   laurel: { name: 'Laurel Mountain', sub: 'Mountain grades · 35.6 mi double track, horseshoe curve, tunnel' },
+  frost: { name: 'Raven Lake', sub: 'Winter night · 9-mile loop, 4% cliff grade, track across the frozen lake' },
 };
 /* ?route= picks the railroad; without it, the one last driven. A layout from the editor overrides both. */
 const ROUTE_KEY = (() => {
@@ -2520,6 +2528,185 @@ const MTN_SPAWNS = [['Riverton 2', -175], ['Riverton 3', -140], ['Riverton 4', -
 const MTN_SPAWN_NAMES = { 'Riverton 1': 'Riverton 1, Riverton Yard', 'Riverton 2': 'Riverton 2, Riverton Yard', 'Riverton 3': 'Riverton 3, Riverton Yard', 'Riverton 4': 'Riverton 4, Riverton Yard', 'Ashby 2': 'Ashby 2, Ashby', 'Hollins Siding': 'the Hollins siding', 'Pine Flats Siding': 'the Pine Flats siding', 'Main': 'the main line' };
 
 /* ============================================================================
+   Raven Lake: the winter railroad. A single-track loop of a little over nine
+   miles, run at night under a full moon. From Hollow Pine on the plateau the
+   line drops down the face of Raven Cliff on a 4 per cent shelf, swings onto
+   the frozen lake at the foot of it and crosses nearly two kilometres of ice
+   on ties laid straight on the ice, then climbs back out up Owl Creek at 1.4
+   per cent and round the west end of the lake to the plateau again.
+   ========================================================================== */
+/* the lake and its outlet: plan shapes (X, N), the ice level, and where the track runs on the ice */
+const FROST = { iceY: 0, plateau: 96, lake: null, river: null, sIce: [0, 0], cliff: [0, 0] };
+/* rail top over the ice: the ties lie straight on it (their undersides are 0.364 m under the rail top) */
+const ICE_RAIL = 0.364;
+
+/* point-in-polygon, polygon as [[X, N], ...] */
+function frInPoly(P, X, N) {
+  let c = false;
+  for (let i = 0, j = P.length - 1; i < P.length; j = i++) {
+    const a = P[i], b = P[j];
+    if ((a[1] > N) !== (b[1] > N) && X < (b[0] - a[0]) * (N - a[1]) / (b[1] - a[1]) + a[0]) c = !c;
+  }
+  return c;
+}
+
+/* the loop: plateau tangent past Hollow Pine, round onto the cliff and down it, the turn onto the ice at the
+   foot, across the lake, and the long climb back round the west end. lk and lm are the two straights that are
+   solved so the loop closes. */
+function frLoopPts(lk, lm) {
+  const pb = new PathBuilder(-2600, 900, 0), at = {};
+  const mark = k => (at[k] = pb.s);
+  pb.straight(1500); mark('plateauEnd');
+  pb.curve(-800, 30, 120); mark('cliffTop');
+  pb.straight(700); pb.curve(1200, 15, 100); pb.straight(900); mark('foot');
+  pb.curve(-500, 75, 110); mark('iceTurnEnd');
+  pb.straight(700); pb.curve(1000, 12, 90); pb.curve(-1000, 12, 90); pb.straight(400); mark('farShore');
+  pb.curve(-600, 90, 120); mark('climbW'); pb.straight(lk);
+  pb.curve(-700, 90, 130); mark('climbN'); pb.straight(lm);
+  pb.curve(-800, 90, 130); mark('top');
+  return { pb, at };
+}
+
+function buildFrostRoute() {
+  WORLD.mtn = true; WORLD.lazy = true; WORLD.frost = true;
+  /* ---------- the loop, closed exactly ---------- */
+  let lk = 3580, lm = 1912;
+  for (let it = 0; it < 30; it++) {
+    const e = (a, b) => { const { pb } = frLoopPts(a, b); return [pb.X - pb.pts[0].X, pb.N - pb.pts[0].N]; };
+    const f0 = e(lk, lm); if (Math.hypot(f0[0], f0[1]) < 1e-4) break;
+    const fa = e(lk + 1, lm), fb = e(lk, lm + 1);
+    const J = [[fa[0] - f0[0], fb[0] - f0[0]], [fa[1] - f0[1], fb[1] - f0[1]]], det = J[0][0] * J[1][1] - J[0][1] * J[1][0];
+    lk -= (J[1][1] * f0[0] - J[0][1] * f0[1]) / det; lm -= (-J[1][0] * f0[0] + J[0][0] * f0[1]) / det;
+  }
+  const { pb, at } = frLoopPts(lk, lm), F = at;
+  { // what little is left is spread round the loop so it closes exactly
+    const P = pb.pts, L0 = P[0], LE = P[P.length - 1], ex = LE.X - L0.X, en = LE.N - L0.N, n = P.length;
+    for (let i = 0; i < n; i++) { const t = i / (n - 1); P[i].X -= ex * t * t; P[i].N -= en * t * t; }
+  }
+  const LEN = pb.s;
+  const P = pb.pts, poseAt = s => { s = ((s % LEN) + LEN) % LEN; let lo = 0, hi = P.length - 1; while (hi - lo > 1) { const m = (lo + hi) >> 1; if (P[m].s <= s) lo = m; else hi = m; } const a = P[lo], b = P[hi], t = clamp((s - a.s) / ((b.s - a.s) || 1), 0, 1); return { X: lerp(a.X, b.X, t), N: lerp(a.N, b.N, t), h: lerp(a.h, b.h, t) }; };
+  const side = (s, off) => { const p = poseAt(s); return [p.X - Math.sin(p.h) * off, p.N + Math.cos(p.h) * off]; };
+
+  /* ---------- the lake ----------
+     Its north shore runs under the cliff shelf, 45 m out from the track; it takes in the turn at the foot and
+     the whole crossing, and reaches west under the plateau. The outlet river leaves its east end. */
+  const sFoot = F.foot;
+  // control points [X, N, how sheer the shore is there]
+  const north = [];
+  for (let s = F.cliffTop + 260; s <= sFoot + 60; s += 60) north.push([...side(s, -30 - 10 * smooth(F.cliffTop + 260, F.cliffTop + 900, s)), 1]);
+  const lakeCtl = [
+    ...north,
+    // round the outside of the turn at the foot (a bluff) and down the east side of the crossing
+    [...side(F.foot + 300, 230), 0.7], [...side(F.iceTurnEnd + 120, 330), 0.35], [...side(F.iceTurnEnd + 700, 420), 0], [...side(F.farShore - 260, 380), 0],
+    // the south shore: the track leaves the ice here, square to the shore
+    [...side(F.farShore - 120, 120), 0], [...side(F.farShore - 100, 0), 0], [...side(F.farShore - 120, -160), 0],
+    [1000, -2300, 0], [200, -2380, 0], [-600, -2280, 0], [-1300, -1980, 0], [-1720, -1460, 0], [-1700, -820, 0.25], [-1350, -280, 0.7], [-850, 280, 0.95],
+  ];
+  FROST.lake = mtSpline(lakeCtl.concat([lakeCtl[0]]), 25).slice(0, -1);
+  // each shore point takes the sheerness of the control points either side of it
+  FROST.lakeC = FROST.lake.map(p => { let w = 0, c = 0; for (const q of lakeCtl) { const d = Math.hypot(q[0] - p[0], q[1] - p[1]), k = 1 / (d * d + 400); w += k * k; c += k * k * q[2]; } return c / w; });
+  // the outlet: from the lake's east side away to the east, wandering a little
+  {
+    const a = side(F.iceTurnEnd + 700, 400);
+    const ctl = [a, [a[0] + 900, a[1] - 150], [a[0] + 2000, a[1] + 220], [a[0] + 3300, a[1] - 80], [a[0] + 4800, a[1] + 260], [a[0] + 7000, a[1] + 100]];
+    FROST.river = { pts: mtSpline(ctl, 20), halfW: s => 70 - 30 * smooth(0, 1500, s) };
+  }
+  // where the main line is on the ice: the stretch inside the lake around the crossing
+  {
+    let s0 = null, s1 = null;
+    for (let s = F.foot - 400; s < F.farShore + 400; s += 0.5) {
+      const p = poseAt(s), inside = frInPoly(FROST.lake, p.X, p.N);
+      if (inside && s0 === null) s0 = s; if (!inside && s0 !== null && s1 === null && s > F.iceTurnEnd) s1 = s;
+    }
+    // the track runs onto the ice a few metres inside the shore and leaves it the same
+    FROST.sIce = [s0 + 6, s1 - 6];
+  }
+  const [sI0, sI1] = FROST.sIce;
+
+  /* ---------- profile ----------
+     The plateau at 96 m over the ice. The cliff grade, 4 per cent, ends 40 m short of the ice; the climb
+     from the far shore is 1.4 per cent to the top. Vertical curves round every change over 160 m. */
+  const YI = FROST.iceY + ICE_RAIL, YP = FROST.iceY + FROST.plateau;
+  const sD0 = F.cliffTop - 120, gD = 0.04, sD1 = sI0 - 40, sC0 = sI1 + 40, gC = 0.014;
+  const drop = YP - YI, dLen = drop / gD;
+  const descent = [sD1 - dLen, sD1], climb = [sC0, sC0 + drop / gC];
+  FROST.cliff = descent; FROST.climb = climb;
+  const gAt = s => {
+    const R = 80;
+    return -gD * smooth(descent[0] - R, descent[0] + R, s) * (1 - smooth(descent[1] - R, descent[1] + R, s))
+      + gC * smooth(climb[0] - R, climb[0] + R, s) * (1 - smooth(climb[1] - R, climb[1] + R, s));
+  };
+  const MY = new Float32Array(Math.ceil(LEN) + 2);
+  { let y = YP; for (let i = 0; i < MY.length; i++) { MY[i] = y; y += gAt(i + 0.5); } }
+  { // the climb gives back exactly what the cliff took: anything left over is taken out along the climb
+    const e = MY[Math.floor(LEN)] + (LEN % 1) * (MY[Math.floor(LEN) + 1] - MY[Math.floor(LEN)]) - YP;
+    for (let i = 0; i < MY.length; i++) MY[i] -= e * smooth(climb[0], climb[1], i);
+    // and on the ice the rails lie exactly at the ice
+    for (let i = Math.floor(sI0 - 20); i <= Math.ceil(sI1 + 20); i++) MY[i] = lerp(MY[i], YI, smooth(sI0 - 30, sI0, i) * (1 - smooth(sI1, sI1 + 30, i)));
+  }
+  const mainY = s => { s = ((s % LEN) + LEN) % LEN; const i = Math.min(Math.floor(s), MY.length - 2), t = s - i; return lerp(MY[i], MY[i + 1], t); };
+  ROUTE.mainY = mainY;
+
+  /* ---------- the main ---------- */
+  // speed limits: 40 over the plateau, 30 down the cliff, 25 on the ice, 35 on the climb
+  const limits = [[0, 40], [sD0 - 300, 30], [sI0 - 150, 25], [sI1 + 60, 35], [climb[1] + 300, 40]];
+  const limitAt = s => { s = ((s % LEN) + LEN) % LEN; let v = limits[0][1]; for (const [a, l] of limits) if (s >= a) v = l; return v; };
+  const main = new Line('Main', P, { kind: 'main', loop: true, limitAt, ice: [[sI0, sI1]] });
+  main.mainS = s => s;
+  ROUTE.mainLen = main.len; ROUTE.main = main; ROUTE.features = F;
+  for (const [a] of limits) main.cut(a);
+
+  /* ---------- Hollow Pine: a passing siding and an engine track on the plateau ---------- */
+  const lines = [];
+  const sideLine = (name, parent, sA, sB, off, opt, back = true, L = 90) => {
+    const nA = parent.cut(sA), nB = back ? parent.cut(sB) : null;
+    const ln = new Line(name, alongside(parent, sA, sB, off, L, true, back), Object.assign({ startNode: nA, endNode: nB || undefined }, opt));
+    lines.push(ln); return ln;
+  };
+  const sid = sideLine('Hollow Pine Siding', main, 250, 1250, 4.5, { kind: 'siding', limit: 25 });
+  const eng = sideLine('Hollow Pine Engine Track', sid, 120, 560, 9, { kind: 'yard', limit: 10 }, false, 110);
+  ROUTE.features.engine = eng;
+
+  /* ---------- build ---------- */
+  main.build(s => mainY(s));
+  FROST.main = main;
+  for (const l of lines) l.build(s => mainY(l.mainS(s)));
+  const SW = (name, node, line, divLine, atStart, legNames) => {
+    const lm = line.map.get(node), d = atStart ? divLine.first() : divLine.last();
+    return NET.addSwitch(node, atStart ? lm.before : lm.after, atStart ? lm.after : lm.before, d, name, legNames);
+  };
+  SW('Hollow Pine West', sid.startNode, main, sid, true, ['Main', 'Siding']);
+  SW('Hollow Pine East', sid.endNode, main, sid, false, ['Main', 'Siding']);
+  SW('Engine Track', eng.startNode, sid, eng, true, ['Siding', 'Engine track']);
+  for (const sw of NET.switches) { const dk = sw.legs[1].edge.kind; sw.divLimit = dk === 'siding' ? 25 : 15; }
+  for (const nd of NET.nodes) if (nd.att.length === 1) ROUTE.bumpers.push(nd);
+
+  /* ---------- the station, water and coal, signals, mileposts ---------- */
+  const st = (name, line, s, side_, kind, across = 0) => { const loc = line.locate(s); ROUTE.stations.push({ name, line, sLine: s, edge: loc.edge, s: loc.s, side: side_, kind, across }); };
+  st('Hollow Pine', main, 760, -1, 'depot');
+  st('Owl Creek', main, climb[0] + 2400, 1, 'small');
+  const wc = (line, s, side_, kind) => { const loc = line.locate(s); ROUTE.water.push({ line, sLine: s, edge: loc.edge, s: loc.s, side: side_, kind }); };
+  wc(eng, 180, 1, 'tower'); wc(main, 1120, -1, 'column');
+  ROUTE.coal = { line: eng, sLine: 300, edge: eng.locate(300).edge, s: eng.locate(300).s };
+  const sig = (line, sLine, dir, kind = 'mast') => ROUTE.signals.push({ line, sLine, dir, kind });
+  // home signals into Hollow Pine both ways, automatics round the loop (none on the ice or the cliff shelf)
+  sig(main, LEN - 350 + 250, 1); sig(main, 1250 + 350, -1);
+  for (const s of [sD0 - 600, climb[0] + 1500, climb[0] + 4200]) sig(main, s, 1);
+  sig(sid, 80, -1, 'dwarf'); sig(sid, sid.len - 80, 1, 'dwarf');
+  for (let m = 1; m * MILE < main.len; m++) ROUTE.mileposts.push({ line: main, sLine: m * MILE, num: m });
+  ROUTE.yardLimits = [];
+  ROUTE.tunnels = [];
+  ROUTE.startLine = sid; ROUTE.startS = 500;
+  ROUTE.lined = ['Hollow Pine East'];
+  ROUTE.spawnName = 'the siding at Hollow Pine';
+  ROUTE.sidings = { 'Hollow Pine': sid };
+  return { main, at: F };
+}
+/* where a new train is made up in a multiplayer room at Raven Lake (negative = from the end of the track) */
+const FROST_SPAWNS = [['Hollow Pine Siding', -175], ['Main', 400], ['Main', 2600], ['Main', 9000], ['Main', 11500]];
+const FROST_SPAWN_NAMES = { 'Hollow Pine Siding': 'the siding at Hollow Pine', 'Main': 'the main line' };
+
+/* ============================================================================
    World: terrain, river, track meshes (rails, ties, ballast, turnouts)
    ========================================================================== */
 const MAT = {};
@@ -2716,6 +2903,7 @@ const INNER = { x0: -6000, x1: 6000, n0: -2000, n1: 7000, step: 20 };
 function riverX(N) { const A = n => 170 * Math.sin(n / 700) + 70 * Math.sin(n / 230 + 1); return -1203 + A(N) - A(2402); }
 function naturalH(X, N) {
   if (WORLD.custom) return layoutH(X, N);
+  if (WORLD.frost) return frNaturalH(X, N);
   if (WORLD.mtn) return mtNaturalH(X, N);
   let h = 6.5 * Noise.fbm(X / 1600 + 3.1, N / 1600 - 1.7, 4) + 2.2 * Noise.fbm(X / 320, N / 320, 3);
   // Kenton Hill (track crest at +13.5)
@@ -2740,6 +2928,7 @@ function riverCourse(N, xAt, nTrack, lake) {
 }
 function riverDist(X, N) {
   if (WORLD.custom) return 1e9;
+  if (WORLD.frost) return frRiverDist(X, N);
   if (WORLD.mtn) return mtRiverDist(X, N);
   let d = 1e9;
   for (const [xAt, nT, lake] of [[riverX, 2402, WORLD.lake], [river2X, VW.riverN, VW.lake]]) {
@@ -2770,7 +2959,7 @@ function buildLattice() {
   const R = 80, rc = Math.ceil(R / L.step);
   for (const e of NET.edges) {
     for (let s = 0; s <= e.len; s += 3) {
-      if (e.isBridge(s) || e.isTunnel(s)) continue;
+      if (e.isBridge(s) || e.isTunnel(s) || e.isIce(s)) continue;
       const [X, N] = e.xz(s), ty = e.elev(s);
       const ci = Math.round((X - L.x0) / L.step), cj = Math.round((N - L.n0) / L.step);
       for (let j = cj - rc; j <= cj + rc; j++) {
@@ -2797,14 +2986,19 @@ function latticeAt(X, N) {
 function groundH(X, N, lat) {
   let h = heightRaw(X, N);
   if (lat && lat.d < 80) {
-    const w = 1 - smooth(14, 76, lat.d);
+    const gw = WORLD.frost ? frGradeW(X, N) : 76, w = 1 - smooth(14 * gw / 76, gw, lat.d);
     h = lerp(h, lat.y - 0.95, w);
     // a mountain stream beyond the embankment's foot keeps its bed under the grading's edge
-    if (WORLD.mtn && lat.d > 22) h = mtCarve(X, N, h);
+    if (WORLD.mtn && !WORLD.frost && lat.d > 22) h = mtCarve(X, N, h);
   }
   return h;
 }
 function groundAt(X, N) { // continuous sampler; exact terrain triangles once the grid is filled
+  // on the winter route the frozen lake is the ground: nothing is under the ice
+  if (WORLD.frost) { const h = groundAt0(X, N); return h < FROST.iceY ? FROST.iceY : h; }
+  return groundAt0(X, N);
+}
+function groundAt0(X, N) {
   const L = INNER;
   if (WORLD.patches) { const p = patchAt(X, N); if (p !== null) return p; }
   if (X < L.x0 || X > L.x1 || N < L.n0 || N > L.n1) return heightRaw(X, N);
@@ -2844,6 +3038,7 @@ function fieldAt(X, N) {
 /* Vertex colour carries everything that is not crop (verges, ballast shoulders, banks, roads, hills).
    out[3] is the crop weight; the ground shader paints the crop pattern itself, per pixel. */
 function groundColor(X, N, h, lat, out) {
+  if (WORLD.frost) return frGroundColor(X, N, h, lat, out);
   if (WORLD.mtn) return mtGroundColor(X, N, h, lat, out);
   let r = 0.37, g = 0.49, b = 0.22, w = 1;
   if (lat && lat.d < 30) {
@@ -3317,10 +3512,10 @@ function buildTrack(scene) {
       let rings = 0; let lastB = false;
       const bs = railSamples(e, s0, s1);
       // ring exactly at each bridge limit, so the shoulders run right up to the abutment fill
-      for (const b of e.bridges) for (const sb of [b[0] - 0.001, b[1] + 0.001]) if (sb > s0 && sb < s1) bs.push(sb);
+      for (const b of [...e.bridges, ...e.ice]) for (const sb of [b[0] - 0.001, b[1] + 0.001]) if (sb > s0 && sb < s1) bs.push(sb);
       bs.sort((a, b) => a - b);
       for (const s of bs) {
-        const br = e.isBridge(s);
+        const br = e.isBridge(s) || e.isIce(s);
         if (br) { lastB = true; continue; }
         if (lastB && rings > 0) { rings = 0; } // restart strip after bridge
         lastB = false;
@@ -3822,6 +4017,190 @@ function mtGroundColor(X, N, h, lat, out) {
   if (dr < 50) { const k = 1 - smooth(14, 50, dr); r = lerp(r, 0.42, k); g = lerp(g, 0.40, k); b = lerp(b, 0.33, k); }
   if (WORLD.townMask && inTown(X, N)) { r = 0.36; g = 0.45; b = 0.22; }
   const n = 0.86 + 0.28 * (Noise.n2(X / 37, N / 37) * 0.5 + 0.5);
+  out[0] = r * n; out[1] = g * n; out[2] = b * n; out[3] = 0;
+}
+
+/* ============================================================================
+   Raven Lake country: the ground the winter loop is laid on. A snowbound
+   plateau of low hills and pines, mountains standing round it at the horizon,
+   and the lake sunk below it: Raven Cliff falls sheer to the ice along the
+   north shore, under the shelf the line comes down on, and the south and west
+   shores slope gently down to it. The lake's outlet runs away east, frozen too.
+   Ice is the ground there: groundAt never returns less than the ice level.
+   ========================================================================== */
+
+/* distances on a grid: nearest-seed chamfer, two sweeps, with the seed's own value carried along */
+function frChamfer(x0, n0, step, nx, nn, seeds) {
+  const d = new Float32Array(nx * nn).fill(1e9), near = new Int32Array(nx * nn).fill(-1);
+  for (let q = 0; q < seeds.length; q += 3) {
+    const i = Math.round((seeds[q] - x0) / step), j = Math.round((seeds[q + 1] - n0) / step);
+    for (let b = j - 1; b <= j + 1; b++) for (let a = i - 1; a <= i + 1; a++) {
+      if (a < 0 || b < 0 || a >= nx || b >= nn) continue;
+      const k = b * nx + a, dd = Math.hypot(x0 + a * step - seeds[q], n0 + b * step - seeds[q + 1]);
+      if (dd < d[k]) { d[k] = dd; near[k] = q; }
+    }
+  }
+  const relax = (i, j, ii, jj) => {
+    if (ii < 0 || jj < 0 || ii >= nx || jj >= nn) return;
+    const q = near[jj * nx + ii]; if (q < 0) return;
+    const k = j * nx + i, dd = Math.hypot(x0 + i * step - seeds[q], n0 + j * step - seeds[q + 1]);
+    if (dd < d[k]) { d[k] = dd; near[k] = q; }
+  };
+  for (let pass = 0; pass < 2; pass++) {
+    for (let j = 0; j < nn; j++) for (let i = 0; i < nx; i++) { relax(i, j, i - 1, j); relax(i, j, i, j - 1); relax(i, j, i - 1, j - 1); relax(i, j, i + 1, j - 1); }
+    for (let j = nn - 1; j >= 0; j--) for (let i = nx - 1; i >= 0; i--) { relax(i, j, i + 1, j); relax(i, j, i, j + 1); relax(i, j, i + 1, j + 1); relax(i, j, i - 1, j + 1); }
+  }
+  return { d, near };
+}
+/* bilinear sample of a grid { x0, n0, step, nx, nn, a } (clamped at its edges) */
+function frField(G, X, N) {
+  const fx = clamp((X - G.x0) / G.step, 0, G.nx - 1.001), fn = clamp((N - G.n0) / G.step, 0, G.nn - 1.001);
+  const i = Math.floor(fx), j = Math.floor(fn), tx = fx - i, tn = fn - j, k = j * G.nx + i, a = G.a;
+  return (a[k] * (1 - tx) + a[k + 1] * tx) * (1 - tn) + (a[k + G.nx] * (1 - tx) + a[k + G.nx + 1] * tx) * tn;
+}
+
+function frPrepare() {
+  MT.rivers = []; MT.flats = []; MT.ridges = [];
+  INNER.step = 10;   // the cliff and the shelf need a finer grid than farm country or the mountain
+  let x0 = Infinity, x1 = -Infinity, n0 = Infinity, n1 = -Infinity;
+  for (const e of NET.edges) for (let i = 0; i < e.n; i += 10) { x0 = Math.min(x0, e.X[i]); x1 = Math.max(x1, e.X[i]); n0 = Math.min(n0, e.N[i]); n1 = Math.max(n1, e.N[i]); }
+  Object.assign(INNER, { x0: Math.floor((x0 - 3000) / 1500) * 1500, x1: Math.ceil((x1 + 3000) / 1500) * 1500, n0: Math.floor((n0 - 3000) / 1500) * 1500, n1: Math.ceil((n1 + 3000) / 1500) * 1500 });
+
+  /* ---------- the water: signed distance to the shore (negative on the ice) on a 10 m grid ---------- */
+  {
+    const L = FROST.lake, R = FROST.river.pts;
+    let a = Infinity, b = -Infinity, c = Infinity, d = -Infinity;
+    for (const p of [...L, ...R]) { a = Math.min(a, p[0]); b = Math.max(b, p[0]); c = Math.min(c, p[1]); d = Math.max(d, p[1]); }
+    const st = 10, M = 1500, gx0 = Math.floor((a - M) / st) * st, gn0 = Math.floor((c - M) / st) * st, nx = Math.ceil((b + M - gx0) / st) + 1, nn = Math.ceil((d + M - gn0) / st) + 1;
+    // the shore, sampled every 4 m
+    const sh = [];
+    for (let i = 0; i < L.length; i++) { const p = L[i], q = L[(i + 1) % L.length], n = Math.max(1, Math.ceil(Math.hypot(q[0] - p[0], q[1] - p[1]) / 4)), c0 = FROST.lakeC[i], c1 = FROST.lakeC[(i + 1) % L.length]; for (let k = 0; k < n; k++) sh.push(p[0] + (q[0] - p[0]) * k / n, p[1] + (q[1] - p[1]) * k / n, lerp(c0, c1, k / n)); }
+    const lk = frChamfer(gx0, gn0, st, nx, nn, sh);
+    // the outlet's middle line, with its half-width
+    const rv = []; let rs = 0;
+    for (let i = 0; i < R.length - 1; i++) { const p = R[i], q = R[i + 1], l = Math.hypot(q[0] - p[0], q[1] - p[1]), n = Math.max(1, Math.ceil(l / 4)); for (let k = 0; k < n; k++) rv.push(p[0] + (q[0] - p[0]) * k / n, p[1] + (q[1] - p[1]) * k / n, FROST.river.halfW(rs + l * k / n)); rs += l; }
+    const rk = frChamfer(gx0, gn0, st, nx, nn, rv);
+    const A = new Float32Array(nx * nn), C = new Float32Array(nx * nn);
+    for (let j = 0; j < nn; j++) {
+      // inside the lake: scanline crossings of this row
+      const N = gn0 + j * st, xs = [];
+      for (let i = 0; i < L.length; i++) { const p = L[i], q = L[(i + 1) % L.length]; if ((p[1] > N) !== (q[1] > N)) xs.push(p[0] + (N - p[1]) / (q[1] - p[1]) * (q[0] - p[0])); }
+      xs.sort((u, v) => u - v);
+      for (let i = 0; i < nx; i++) {
+        const X = gx0 + i * st, k = j * nx + i;
+        let inside = false; for (const x of xs) if (x < X) inside = !inside;
+        const dl = inside ? -lk.d[k] : lk.d[k], q = rk.near[k], dr = q >= 0 ? rk.d[k] - rv[q + 2] : 1e9;
+        A[k] = Math.min(dl, dr);
+        // how sheer the nearest shore is (the outlet's banks are gentle)
+        C[k] = dl <= dr && lk.near[k] >= 0 ? sh[lk.near[k] + 2] : 0;
+      }
+    }
+    // the sheerness changes where the nearest shore point does: spread it over 150 m so the land has no seams
+    for (let pass = 0; pass < 3; pass++) {
+      const r = 5, tmp = new Float32Array(C.length);
+      for (let j = 0; j < nn; j++) { let acc = 0; const o = j * nx; for (let i = -r; i <= r; i++) acc += C[o + clamp(i, 0, nx - 1)]; for (let i = 0; i < nx; i++) { tmp[o + i] = acc / (2 * r + 1); acc += C[o + Math.min(nx - 1, i + r + 1)] - C[o + Math.max(0, i - r)]; } }
+      for (let i = 0; i < nx; i++) { let acc = 0; for (let j = -r; j <= r; j++) acc += tmp[clamp(j, 0, nn - 1) * nx + i]; for (let j = 0; j < nn; j++) { C[j * nx + i] = acc / (2 * r + 1); acc += tmp[Math.min(nn - 1, j + r + 1) * nx + i] - tmp[Math.max(0, j - r) * nx + i]; } }
+    }
+    FROST.wd = { x0: gx0, n0: gn0, step: st, nx, nn, a: A }; FROST.wc = { x0: gx0, n0: gn0, step: st, nx, nn, a: C };
+    // the ice is drawn over the whole of this box; terrain stands above it everywhere but the water
+    FROST.box = [gx0, gx0 + (nx - 1) * st, gn0, gn0 + (nn - 1) * st];
+  }
+
+  /* ---------- the track: elevation spread round it, distance to it, and which side of the cliff ---------- */
+  {
+    const st = 25, gx0 = INNER.x0, gn0 = INNER.n0, nx = Math.round((INNER.x1 - gx0) / st) + 1, nn = Math.round((INNER.n1 - gn0) / st) + 1;
+    const seeds = [], m = ROUTE.main, [c0, c1] = FROST.cliff;
+    for (const e of NET.edges) for (let s = 0; s <= e.len; s += 8) {
+      if (e.ice && e.isIce(s)) continue;
+      const [X, N] = e.xz(s); seeds.push(X, N, e.elev(s));
+    }
+    const ch = frChamfer(gx0, gn0, st, nx, nn, seeds);
+    const D = new Float32Array(nx * nn), CK = new Float32Array(nx * nn), SK = new Float32Array(nx * nn);
+    const ts = 50, tnx = Math.round((INNER.x1 - gx0) / ts) + 1, tnn = Math.round((INNER.n1 - gn0) / ts) + 1, T = new Float32Array(tnx * tnn);
+    // the elevation: a Gaussian average of the track within a few hundred metres, so the land follows the grade
+    const hash = new Map(), cw = 260;
+    for (let q = 0; q < seeds.length; q += 3) { const key = Math.floor(seeds[q] / 500) + ',' + Math.floor(seeds[q + 1] / 500); let l = hash.get(key); if (!l) hash.set(key, l = []); l.push(seeds[q], seeds[q + 1], seeds[q + 2]); }
+    // the cliff shelf: main-line points down the cliff, for which side of it a point is
+    const shelf = []; for (let s = c0 + 150; s <= c1 + 100; s += 10) { const p = m.poseAt(s); shelf.push(p); }
+    for (let j = 0; j < nn; j++) for (let i = 0; i < nx; i++) {
+      const X = gx0 + i * st, N = gn0 + j * st, k = j * nx + i, ci = Math.floor(X / 500), cj = Math.floor(N / 500);
+      D[k] = ch.d[k];
+      // the cliff face stands on the left (uphill) side of the shelf, within 400 m of it
+      let best = 1e9, side = 0;
+      if (D[k] < 500) for (const p of shelf) { const dd = (p.X - X) ** 2 + (p.N - N) ** 2; if (dd < best) { best = dd; side = -Math.sin(p.h) * (X - p.X) + Math.cos(p.h) * (N - p.N); } }
+      CK[k] = best < 400 * 400 && side > 0 ? 1 : 0;
+      SK[k] = best < 450 * 450 ? 1 : 0;
+    }
+    // soften the cliff mask a little so the face has no seam where it starts
+    for (let j = 0; j < tnn; j++) for (let i = 0; i < tnx; i++) {
+      const X = gx0 + i * ts, N = gn0 + j * ts, ci = Math.floor(X / 500), cj = Math.floor(N / 500);
+      let sw = 0, sy = 0, bd = 1e18, by = FROST.plateau;
+      for (let b = cj - 2; b <= cj + 2; b++) for (let a = ci - 2; a <= ci + 2; a++) { const l = hash.get(a + ',' + b); if (!l) continue; for (let q = 0; q < l.length; q += 6) { const d2 = (l[q] - X) ** 2 + (l[q + 1] - N) ** 2; if (d2 < bd) { bd = d2; by = l[q + 2]; } if (d2 > 9 * cw * cw) continue; const w = Math.exp(-d2 / (2 * cw * cw)); sw += w; sy += w * l[q + 2]; } }
+      T[j * tnx + i] = (sy + by * 1e-4) / (sw + 1e-4);   // far from the track (where it is not used) it eases to the nearest track's height
+    }
+    const blur = A => { const O = new Float32Array(A.length); for (let j = 0; j < nn; j++) for (let i = 0; i < nx; i++) { let s = 0, n = 0; for (let b = -2; b <= 2; b++) for (let a = -2; a <= 2; a++) { const ii = i + a, jj = j + b; if (ii < 0 || jj < 0 || ii >= nx || jj >= nn) continue; s += A[jj * nx + ii]; n++; } O[j * nx + i] = s / n; } return O; };
+    const G = a => ({ x0: gx0, n0: gn0, step: st, nx, nn, a });
+    FROST.dT = G(D); FROST.T = { x0: gx0, n0: gn0, step: ts, nx: tnx, nn: tnn, a: T }; FROST.CK = G(blur(CK)); FROST.SK = G(blur(SK));
+    // the forest and far scenery read the track distance as the mountain's does
+    MT.dT = { step: st, nx, nn, a: D };
+    MT.dV = { step: st, nx, nn, a: new Float32Array(nx * nn).fill(1e9) };
+  }
+  WORLD.riverPts = [];
+}
+
+/* how far from the shore: negative out on the ice (far from the water, a large number) */
+function frShore(X, N) {
+  const W = FROST.wd; if (!W) return 1e9;
+  if (X < W.x0 || N < W.n0 || X > W.x0 + (W.nx - 1) * W.step || N > W.n0 + (W.nn - 1) * W.step) return 1500;
+  return frField(W, X, N);
+}
+const frOnIce = (X, N) => frShore(X, N) < 0;
+/* how much of a shore is cliff: the north shore under the shelf and on west under the plateau */
+function frShoreCliff(X, N) { const W = FROST.wc; if (X < W.x0 || N < W.n0 || X > W.x0 + (W.nx - 1) * W.step || N > W.n0 + (W.nn - 1) * W.step) return 0; return frField(W, X, N); }
+/* how wide the track's grading spreads: narrow on the cliff shelf, so the face rises close beside it */
+function frGradeW(X, N) { return lerp(76, 26, frField(FROST.SK, X, N)); }
+/* the country away from the line: a snowbound plateau of low hills that slopes gently down to the lake on its south
+   and west shores and breaks off sheer along the north one, mountains rising beyond */
+function frBase(X, N, dm, ds) {
+  const hills = 16 * Noise.fbm(X / 1400 + 2.3, N / 1400 - 1.1, 4) + 7 * Noise.fbm(X / 330, N / 330, 3);
+  let h = FROST.plateau + 6 + hills * smooth(150, 900, ds);
+  const far = smooth(900, 4200, dm);
+  h += far * (90 + 330 * mtRidged(X / 2600 + 4.1, N / 2600 - 2.2, 5) * (0.6 + 0.4 * Noise.fbm(X / 5000, N / 5000, 2)));
+  return h;
+}
+/* the natural ground before the track is graded in */
+function frNaturalH(X, N) {
+  const out = X < INNER.x0 || X > INNER.x1 || N < INNER.n0 || N > INNER.n1;
+  const dm = out ? 5000 : frField(FROST.dT, X, N), ds = frShore(X, N);
+  let h = frBase(X, N, dm, ds);
+  // the lake's basin: the shore climbs away from the ice, sheer under the cliff, in long slopes elsewhere
+  if (ds < 1400) {
+    const cl = frShoreCliff(X, N), lip = FROST.iceY + 0.45 + 0.25 * Noise.n2(X / 17, N / 17);
+    if (ds < 0) h = FROST.iceY - 1.6;
+    else {
+      const gentle = lerp(lip + ds * 0.09, h, Math.pow(smooth(0, 1400, ds), 0.8));
+      const sheer = lip + ds * 3.2 + 3 * Noise.fbm(X / 40, N / 40, 2) * smooth(0, 20, ds);
+      h = Math.min(h, lerp(gentle, sheer, cl * cl));
+    }
+  }
+  if (out) return h;
+  // near the line the land follows its grade; up against the cliff shelf it rises sheer to the plateau
+  const T = frField(FROST.T, X, N), ck = frField(FROST.CK, X, N), W = lerp(420, 50, ck);
+  const k = smooth(6, W, dm);
+  return ds < 0 ? h : lerp(Math.min(T, Math.max(h, FROST.iceY + 0.5)), Math.max(h, lerp(h, T + 4, ck)), k);
+}
+function frRiverDist(X, N) { return Math.max(0, frShore(X, N)) + 21; }
+
+/* the snow-covered ground: the colours under the snow the ground shader lays over everything level */
+function frGroundColor(X, N, h, lat, out) {
+  const n = 0.9 + 0.2 * (Noise.n2(X / 37, N / 37) * 0.5 + 0.5);
+  let r = 0.80, g = 0.84, b = 0.90;
+  // under the pines the snow is thinner and dirtier, needles and shadow
+  const wood = (0.55 + 0.5 * Noise.fbm(X / 420 + 9, N / 420 - 4, 3)) * (1 - 0.55 * smooth(700, 2600, frField(FROST.dT, X, N)));
+  const k = smooth(0.25, 0.5, wood) * 0.35; r = lerp(r, 0.5, k); g = lerp(g, 0.54, k); b = lerp(b, 0.56, k);
+  if (lat && lat.d < 9) { const k2 = 1 - smooth(3.5, 9, lat.d); r = lerp(r, 0.42, k2 * 0.6); g = lerp(g, 0.42, k2 * 0.6); b = lerp(b, 0.43, k2 * 0.6); }   // plowed and sooty by the rails
+  const ds = frShore(X, N);
+  if (ds < 10) { const k3 = 1 - smooth(0, 10, ds); r = lerp(r, 0.74, k3); g = lerp(g, 0.8, k3); b = lerp(b, 0.88, k3); }   // shore ice and drift
   out[0] = r * n; out[1] = g * n; out[2] = b * n; out[3] = 0;
 }
 
@@ -5312,6 +5691,7 @@ function buildStations() {
       // spout reaches over the track: modelled in waterTower toward -z of base (which faces track)
     }
   }
+  if (WORLD.frost) { frFacilities(); return; }
   if (WORLD.mtn) { mtFacilities(); return; }
   if (WORLD.custom) return;   // the rest is the Berkshire Division's own terminal
   const eng = ROUTE.features.engine;
@@ -6241,7 +6621,7 @@ function updateDetailLOD(cam, scene, dt) {
   let budget = 1;
   for (const p of WORLD.pieces) {
     const U = p.userData, d = U.sphere.center.distanceTo(cp) - U.sphere.radius;
-    if (!U.grass && d < 360 && budget > 0) { genGrass(p, scene); budget--; }
+    if (!U.grass && d < 360 && budget > 0 && !WORLD.frost) { genGrass(p, scene); budget--; }   // nothing grows through the snow at Raven Lake
     if (U.grass) { U.grass.visible = d < 420; for (const m of U.grass.children) { const k = m.userData.kind; m.visible = k === 'bush' ? d < 420 : !SKY.snow && d < (k === 'grass' ? 230 : 300); } }
   }
   coverUpdate(cam, scene);
@@ -6293,7 +6673,7 @@ function coverCell(ci, cj, scene) {
   return { grp, c: sph.center };
 }
 function coverUpdate(cam, scene) {
-  if (!WORLD.trackHash) return;
+  if (!WORLD.trackHash || WORLD.frost) return;
   const S = COVER.size, R = GFX.lite ? 125 : 200, cp = cam.position, X = cp.x, N = -cp.z;
   // nothing to grow when the camera is high above the ground (an aerial view sees it all as texture)
   const high = cp.y - groundAt(X, N) > 140;
@@ -6814,7 +7194,7 @@ function mtForestTile(key, scene) {
     const lat = latticeAt(X, N); if (lat && lat.d < 17 + r() * 8) continue;
     if (mtClearing(X, N, r() * 12)) continue;
     if (trackWithin(X, N, 14)) continue;   // the lattice is a 20 m grid; check the real distance close in
-    if (mtRiverDist(X, N) < 24) continue;
+    if (WORLD.frost ? frShore(X, N) < 10 : mtRiverDist(X, N) < 24) continue;
     if (inTown(X, N) || kept(X, N, 2) || inFoot(X, N, 5)) continue;
     const gy = groundAt(X, N);
     // the woods thin out on rock steeper than about 45 degrees
@@ -6822,7 +7202,7 @@ function mtForestTile(key, scene) {
     if (sl > 1 && r() < 0.75) continue;
     // ledge rock breaks out on the steep ground, and a boulder now and then on the forest floor
     if (r() < (sl > 0.55 ? 0.22 : 0.025) && !(lat && lat.d < 16) && !trackWithin(X, N, 17)) { const sz = sl > 0.55 ? 0.8 + r() * 1.6 : 0.5 + r() * 0.9; RK.push([X, gy, N, sz, r() * TAU, (r() * 3) | 0]); }
-    const conK = clamp(0.18 + 0.55 * smooth(260, 560, gy) + 0.35 * Noise.fbm(X / 300 - 2, N / 300 + 5, 2), 0.05, 0.9);
+    const conK = WORLD.frost ? 0.82 : clamp(0.18 + 0.55 * smooth(260, 560, gy) + 0.35 * Noise.fbm(X / 300 - 2, N / 300 + 5, 2), 0.05, 0.9);   // Raven Lake: mostly spruce and pine
     if (r() < conK) L.con.push([X, gy - 0.3, N, 0.95 + r() * 0.8, [0.12 + r() * 0.05, 0.22 + r() * 0.07, 0.13 + r() * 0.03]]);
     else { const x2 = r(); L.dec.push([X, gy - 0.3, N, 0.85 + r() * 0.6, x2 < 0.45 ? [0.28 + r() * 0.1, 0.40 + r() * 0.12, 0.16] : x2 < 0.72 ? [0.74 + r() * 0.14, 0.52 + r() * 0.16, 0.15] : x2 < 0.9 ? [0.68 + r() * 0.1, 0.26 + r() * 0.1, 0.11] : [0.55, 0.40, 0.2]]); }
   }
@@ -6934,6 +7314,155 @@ function mtUpdate(cam, scene) {
   const k = b && cam.position.y < b.rail + BORE.crown + 0.5 ? smooth(4, 60, b.depth) : 0;
   SKY.boreK = k;
   if (SKY.sun && SKY.sunBase !== undefined) { SKY.sun.intensity = SKY.sunBase * (1 - 0.94 * k); SKY.hemi.intensity = SKY.hemiBase * (1 - 0.85 * k); }
+}
+
+/* ============================================================================
+   Raven Lake scenery: the frozen lake itself (black ice swept clear in places
+   and drifted over with snow in others, glinting under the moon), the plowed
+   snow banks along the track on the ice, the little spruces set out to mark
+   the line across it, and the engine terminal at Hollow Pine.
+   ========================================================================== */
+
+/* ---------------- the ice ----------------
+   One flat sheet at the ice level over the lake and its outlet (only the cells near the water; the land stands
+   over the rest). Clear black ice with white bubbles and old frozen-over cracks in it, wind-blown drifts of snow
+   lying in long streaks across it, more snow along the shores. Clear ice is nearly a mirror: the sky and the
+   moon shine in it. */
+const ICE_GLSL = `
+  {
+    vec2 xz = vIW.xz;
+    // the wind came out of the north-west: drifts are long that way and narrow across
+    vec2 q = vec2(dot(xz, vec2(0.80, 0.60)), dot(xz, vec2(-0.60, 0.80)));
+    float d1 = texture2D(uDetail, q * vec2(0.0019, 0.0062) + 0.21).b, d2 = texture2D(uDetail, q * vec2(0.0072, 0.026) - 0.4).g;
+    float d3 = texture2D(uDetail, xz * 0.0009 + 0.6).b;
+    float snow = smoothstep(0.50, 0.66, d1 * 0.62 + d2 * 0.28 + d3 * 0.25 - 0.08 + vShore * 0.45);
+    // a dusting on the clear ice, thicker toward the drifts
+    float dust = smoothstep(0.35, 0.6, d2) * 0.25 + snow;
+    // inside the clear ice: old cracks that froze over (white seams), and bubbles
+    float c1 = texture2D(uDetail, xz * 0.011).r, c2 = texture2D(uDetail, xz * 0.047 + 0.3).g;
+    float seam = (1.0 - smoothstep(0.0, 0.018, abs(c1 - 0.5))) * 0.8 + (1.0 - smoothstep(0.0, 0.012, abs(c2 - 0.5))) * 0.45;
+    float fwI = fwidth(xz.x) + fwidth(xz.y);
+    seam *= 1.0 - smoothstep(0.15, 0.9, fwI);
+    float bub = smoothstep(0.72, 0.9, texture2D(uDetail, xz * 0.35).r) * (1.0 - smoothstep(0.05, 0.25, fwI));
+    vec3 ice = vec3(0.010, 0.020, 0.030) + vec3(0.10, 0.13, 0.16) * (seam + bub * 0.5);
+    vec3 sn = vec3(0.78, 0.82, 0.88) * (0.88 + 0.2 * d2);
+    diffuseColor.rgb = mix(ice, sn, clamp(dust, 0.0, 1.0));
+    vIceSnow = clamp(dust, 0.0, 1.0);
+  }`;
+function frIceMaterial() {
+  const m = new THREE.MeshStandardMaterial({ color: 0xffffff, metalness: 0, roughness: 0.1, envMapIntensity: 0.9 });
+  m.extensions = { derivatives: true };
+  m.onBeforeCompile = sh => {
+    sh.uniforms.uDetail = { value: TEX.detail };
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute float aShore; varying float vShore; varying vec3 vIW;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvShore = aShore; vIW = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform sampler2D uDetail; varying float vShore; varying vec3 vIW; float vIceSnow;')
+      .replace('#include <color_fragment>', '#include <color_fragment>\n' + ICE_GLSL)
+      // clear ice is glassy (the moon and sky in it); snow is matte
+      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\n roughnessFactor = mix(0.06, 0.92, vIceSnow);');
+  };
+  m.customProgramCacheKey = () => 'frIce';
+  return m;
+}
+function frBuildIce(scene) {
+  const [x0, x1, n0, n1] = FROST.box, st = 20;
+  const nx = Math.ceil((x1 - x0) / st), nn = Math.ceil((n1 - n0) / st);
+  const D = new Float32Array((nx + 1) * (nn + 1));
+  for (let j = 0; j <= nn; j++) for (let i = 0; i <= nx; i++) D[j * (nx + 1) + i] = frShore(x0 + i * st, n0 + j * st);
+  const pos = [], sho = [], idx = [], vi = new Map();
+  const vert = (i, j) => {
+    const k = j * (nx + 1) + i; let v = vi.get(k); if (v !== undefined) return v;
+    v = pos.length / 3; vi.set(k, v);
+    pos.push(x0 + i * st, FROST.iceY, -(n0 + j * st)); sho.push(1 - smooth(-90, -5, D[k]));
+    return v;
+  };
+  for (let j = 0; j < nn; j++) for (let i = 0; i < nx; i++) {
+    const k = j * (nx + 1) + i;
+    // a cell goes in if any corner is on the water or within 40 m of it (the land covers what is past the shore)
+    if (Math.min(D[k], D[k + 1], D[k + nx + 1], D[k + nx + 2]) > 40) continue;
+    const a = vert(i, j), b = vert(i + 1, j), c = vert(i, j + 1), d = vert(i + 1, j + 1);
+    idx.push(a, b, c, b, d, c);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(new Array(pos.length).fill(0).map((_, i) => (i % 3 === 1 ? 1 : 0)), 3));
+  g.setAttribute('aShore', new THREE.Float32BufferAttribute(sho, 1));
+  g.setIndex(idx); g.computeBoundingSphere();
+  // wound to face up
+  { const p = g.attributes.position, a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3(); a.fromBufferAttribute(p, idx[0]); b.fromBufferAttribute(p, idx[1]); c.fromBufferAttribute(p, idx[2]);
+    if (b.sub(a).cross(c.sub(a)).y < 0) { for (let i = 0; i < idx.length; i += 3) { const t = idx[i + 1]; idx[i + 1] = idx[i + 2]; idx[i + 2] = t; } g.setIndex(idx); } }
+  MAT.ice = frIceMaterial();
+  const m = new THREE.Mesh(g, MAT.ice); m.receiveShadow = true; m.renderOrder = 0;
+  scene.add(m); FROST.iceMesh = m;
+}
+
+/* ---------------- along the track on the ice ----------------
+   The snow plowed off the track lies in two low banks either side, and a little spruce is stuck in the snow every
+   fifty metres on both sides to show where the line runs at night or in a blow. */
+function frTrackOnIce(scene) {
+  const m = ROUTE.main, [s0, s1] = FROST.sIce;
+  // the banks: a rounded profile across (metres out from the centre line, height over the ice)
+  const PU = [-5.6, -4.6, -3.7, -3.0, -2.55, 2.55, 3.0, 3.7, 4.6, 5.6], PV = [0, 0.22, 0.42, 0.36, 0.05, 0.05, 0.36, 0.42, 0.22, 0];
+  const pos = [], col = [], idx = [];
+  let rows = 0;
+  for (let s = s0 - 4; s <= s1 + 4; s += 2) {
+    const p = m.poseAt(s), wob = 0.08 * Math.sin(s * 0.37) + 0.06 * Math.sin(s * 0.11 + 1);
+    for (let q = 0; q < PU.length; q++) {
+      const u = PU[q] * (1 + (q === 0 || q === PU.length - 1 ? wob : 0)), v = PV[q] * (1 + 1.4 * wob);
+      const X = p.X - Math.sin(p.h) * u, N = p.N + Math.cos(p.h) * u;
+      pos.push(X, FROST.iceY + v - 0.02, -N);
+      const sh = 0.9 + 0.1 * Math.sin(s * 1.7 + q);
+      col.push(0.8 * sh, 0.84 * sh, 0.9 * sh);
+    }
+    if (rows) { const k = (rows - 1) * PU.length; for (let q = 0; q < PU.length - 1; q++) { if (q === 4) continue; idx.push(k + q, k + q + PU.length, k + q + 1, k + q + 1, k + q + PU.length, k + q + PU.length + 1); } }
+    rows++;
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  g.setIndex(idx); g.computeVertexNormals();
+  { const n = g.attributes.normal; if (n.getY(1) < 0) { for (let i = 0; i < idx.length; i += 3) { const t = idx[i + 1]; idx[i + 1] = idx[i + 2]; idx[i + 2] = t; } g.setIndex(idx); g.computeVertexNormals(); } }
+  g.computeBoundingSphere();
+  const bank = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors: true }));
+  bank.receiveShadow = true; scene.add(bank);
+  // the marker spruces: a small snowy cone tree, instanced
+  const tree = frSpruceGeo(), list = [];
+  for (let s = s0 + 20; s < s1 - 10; s += 50) for (const side of [-1, 1]) {
+    const p = m.poseAt(s + side * 7), o = side * (6.4 + 0.5 * Math.sin(s));
+    list.push([p.X - Math.sin(p.h) * o, p.N + Math.cos(p.h) * o, 0.85 + 0.35 * Math.abs(Math.sin(s * 3.1 + side))]);
+  }
+  const im = new THREE.InstancedMesh(tree, new THREE.MeshLambertMaterial({ vertexColors: true }), list.length);
+  list.forEach((q, i) => { _m4.compose(_v1.set(q[0], FROST.iceY + 0.3, -q[1]), _q.setFromEuler(_e.set(0.04 * Math.sin(i), i * 1.7, 0.05 * Math.cos(i))), _v2.set(q[2], q[2], q[2])); im.setMatrixAt(i, _m4); });
+  im.castShadow = true; im.receiveShadow = true; im.computeBoundingSphere && im.computeBoundingSphere();
+  scene.add(im);
+  for (const q of list) solid(q[0], -q[1], 0.6 * q[2], FROST.iceY, FROST.iceY + 2.6 * q[2]);
+}
+/* a little spruce, about 2.6 m: tiers of drooping boughs with snow on their tops, a bare stick of a trunk */
+function frSpruceGeo() {
+  const parts = [], add = (g, c) => { const n = g.attributes.position.count, a = new Float32Array(n * 3); for (let i = 0; i < n; i++) { a[i * 3] = c[0]; a[i * 3 + 1] = c[1]; a[i * 3 + 2] = c[2]; } g.setAttribute('color', new THREE.BufferAttribute(a, 3)); parts.push(g); };
+  const trunk = new THREE.CylinderGeometry(0.035, 0.06, 2.7, 5); trunk.translate(0, 1.2, 0); add(trunk, [0.16, 0.11, 0.07]);
+  for (let t = 0; t < 4; t++) {
+    const r = 0.62 - t * 0.13, y = 0.35 + t * 0.52, h = 0.75 - t * 0.08;
+    const c = new THREE.ConeGeometry(r, h, 7, 1, true); c.translate(0, y + h / 2, 0);
+    // the top of each tier carries snow, the underside stays dark green
+    const p = c.attributes.position, a = new Float32Array(p.count * 3);
+    for (let i = 0; i < p.count; i++) { const k = smooth(y + h * 0.35, y + h * 0.75, p.getY(i)); a[i * 3] = lerp(0.05, 0.78, k); a[i * 3 + 1] = lerp(0.12, 0.82, k); a[i * 3 + 2] = lerp(0.07, 0.88, k); }
+    c.setAttribute('color', new THREE.BufferAttribute(a, 3)); parts.push(c);
+  }
+  const g = mergeGeos(parts);
+  { const c = g.attributes.color.array; for (let i = 0; i < c.length; i++) c[i] = Math.pow(c[i], 2.2); (linearizeObject.done || (linearizeObject.done = new WeakSet())).add(c); }
+  return g;
+}
+
+/* ---------------- Hollow Pine ---------------- */
+function frFacilities() {
+  const eng = ROUTE.features.engine;
+  coalingTower(linePlace(eng, ROUTE.coal.sLine, 0));
+  sandHouse(linePlace(eng, 400, 0));
+  engineHouse(linePlace(eng, eng.len - 24, 0));
+  yardOffice(clearPlace(ROUTE.main, 1450, -10, 6));
+}
+function frBuildScenery(scene) {
+  frTrackOnIce(scene);
 }
 
 /* ============================================================================
@@ -16779,6 +17308,7 @@ class WreckSim {
   ground(b, P) {
     this.onBed = false; this.slope = 0;
     let g = groundAt(P.x, -P.z);
+    this.onIce = WORLD.frost && g <= FROST.iceY + 0.02 && frOnIce(P.x, -P.z);   // out on the frozen lake (10n_ice.js)
     if (WORLD.mtn && P.y < g) { const t = mtInBore(P.x, P.z, 0.5); if (t) g = t.rail - 0.3; }   // in a tunnel: the bore's floor, not the hill over it
     const B = b.bed; _we.subVectors(P, B.o);
     if (Math.abs(_we.dot(B.f)) < B.len * 1.5) {
@@ -16922,6 +17452,8 @@ class WreckSim {
         const n = _wb.set(0, 1, 0); if (b.truck && this.slope) n.addScaledVector(b.bed.r, 0.66 * this.slope).normalize();
         const c = this.contact(b, null, null, P, n, pen * n.y, WK.MU, WK.E_G); c.bed = this.onBed;
         const vh = Math.hypot(c.v0.x, c.v0.z);
+        // steel on ice: it slides, and a car going sideways skates rather than digging in (ties lying on the ice, a little more)
+        if (this.onIce) { c.mu = ICE.MU * (this.onBed ? 1.8 : 1) + (vh > 0.3 ? ICE.TRIP * Math.abs(c.v0.x * b.ax[2].x + c.v0.z * b.ax[2].z) / vh : 0); continue; }
         if (vh > 0.3) c.mu = WK.MU + WK.TRIP * (this.onBed ? 0.5 : 1) * Math.abs(c.v0.x * b.ax[2].x + c.v0.z * b.ax[2].z) / vh;
       }
     }
@@ -17882,7 +18414,7 @@ function slkCurves(T, s, dt) {
     // the harder-worked end: its coupler's side force lands mostly on the truck under it (levered out by the
     // overhang, about a quarter more) and mostly on that truck's leading axle, against an eighth of the car's weight
     const tf = i > 0 ? t[i - 1] : 0, tr = i < n - 1 ? t[i] : 0, pull = Math.abs(tf) > Math.abs(tr) ? tf : tr;
-    const side = pull * (v.len || 15) * k / 2 * 1.25 * 0.75, lv = Math.abs(side) / (s.M[i] * 9.81 / 8), lim = pull > 0 ? SLK.LV : SLK.LV_BUFF;
+    const side = pull * (v.len || 15) * k / 2 * 1.25 * 0.75, lv = Math.abs(side) / (s.M[i] * 9.81 / 8), lim = (pull > 0 ? SLK.LV : SLK.LV_BUFF) * (p0.tp.e.ice && p0.tp.e.ice.length && p0.tp.e.isIce(p0.tp.s) && typeof ICE !== 'undefined' ? ICE.LV_K : 1);   // ties lying on ice give way to far less
     if (lv > lim) s.climb[i] += sp * dt * lv / lim;
     else s.climb[i] = Math.max(0, s.climb[i] - sp * dt * 2);
     if (s.climb[i] < SLK.CLIMB) continue;
@@ -19095,7 +19627,7 @@ function wxGround() {
 /* the clock: a job runs on its own railroad clock; otherwise time passes at the chosen rate */
 function skyTick(dt) {
   if (JOB.run && !JOB.run.over) SKY.hour = dnWrap(JOB.clock() / 3600);
-  else if (GAME.running && !S.paused) SKY.hour = dnWrap(SKY.hour + dt * ((DN.rates[GAME.settings.cycle] || DN.rates.x30).k) / 3600);
+  else if (GAME.running && !S.paused && !GAME.frostNight) SKY.hour = dnWrap(SKY.hour + dt * ((DN.rates[GAME.settings.cycle] || DN.rates.x30).k) / 3600);
   // the weather runs on real time whatever the clock does, so a spell lasts minutes at any clock rate
   if (!S.paused) { wxStep(dt, (1 - SKY.dark) * (1 - CLOUD.shade)); wxNews(); wxWind(dt); }
   if (typeof snowFrame === 'function') snowFrame();
@@ -19635,7 +20167,9 @@ function wxBlend(a, b, t, out = {}) {
 }
 /* pick the menu's weather. A changing sky starts in a settled kind (with a wet rail if it starts wet) */
 function wxSet(key, seed) {
-  const M = WEATHER[key] || WEATHER.changing, was = WX.season;
+  let M = WEATHER[key] || WEATHER.changing; const was = WX.season;
+  // Raven Lake is always deep winter: summer skies come as their winter kind, rain as snow
+  if (typeof WORLD !== 'undefined' && WORLD.frost && M.season !== 'winter') M = Object.assign({}, M, { season: 'winter', kind: M.kind === 'rain' || M.kind === 'storm' ? 'snow' : M.kind });
   WX.key = WEATHER[key] ? key : 'changing'; WX.season = M.season; WX.walk = !!M.walk;
   if (seed !== undefined) WX.seed = (Math.abs(Math.floor(seed)) % 2147483646) + 1;
   let k = M.kind;
@@ -19645,6 +20179,7 @@ function wxSet(key, seed) {
   // turning to winter, it has snowed before: a light coat on the trees and trains (heavier if it is snowing now).
   // Changing between winter skies keeps what lies; back to summer, it thaws in wxStep
   if (M.season === 'winter' && was !== 'winter') WX.lay = Math.max(WX.lay, k === 'snow' ? 0.5 : 0.3);
+  if (typeof WORLD !== 'undefined' && WORLD.frost) WX.lay = Math.max(WX.lay, 0.85);   // deep snow on the pines at Raven Lake
   WX.flash = 0; WX.bolts = []; WX.boltIn = 8 + 20 * wxRand(); WX.changed = null;
   wxBlend(k, k, 1, WX.P);
   return WX;
@@ -19696,7 +20231,7 @@ const WX_LAY_BUILD = 360;
 function wxLayStep(lay, dt, P, sunLight = 1, winter = true) {
   const fall = (P.snow || 0) / 0.8;
   if (fall > 0.05) return Math.min(1, lay + dt * fall / WX_LAY_BUILD);
-  return Math.max(0, lay - dt * (winter ? 0.00025 + 0.0005 * sunLight * (P.sunK ?? 1) : 1 / 60));
+  return Math.max(typeof WORLD !== 'undefined' && WORLD.frost ? Math.min(lay, 0.7) : 0, lay - dt * (winter ? 0.00025 + 0.0005 * sunLight * (P.sunK ?? 1) : 1 / 60));
 }
 /* adhesion on the rail: dry 0.27; a film of water on a dirty railhead is the worst (about 0.16),
    and a long rain washes it a little better; snow and frost 0.15 */
@@ -20139,6 +20674,19 @@ const RAINGLASS_GLSL = `
     float head = smoothstep( 0.009, 0.004, length( vec2( fx, ( b - 0.9 ) * seg * 0.6 ) ) );
     float trail = smoothstep( 0.0025, 0.001, abs( fx ) ) * smoothstep( 0.35, 0.88, b ) * step( b, 0.9 ) * 0.55;
     return max( head, trail );
+  }
+  float rgVN( vec2 p ) { vec2 i = floor( p ), f = fract( p ); f = f * f * ( 3.0 - 2.0 * f );
+    return mix( mix( rgH( i ), rgH( i + vec2( 1.0, 0.0 ) ), f.x ), mix( rgH( i + vec2( 0.0, 1.0 ) ), rgH( i + 1.0 ), f.x ), f.y ); }
+  // hoar frost creeping in from the pane edges: feathery fern streaks over a fine frosted grain
+  float rgFrost( vec2 p, vec2 uv, float amt ) {
+    float fe = min( min( uv.x, 1.0 - uv.x ), min( uv.y, 1.0 - uv.y ) );
+    float n = rgVN( p * 30.0 ) * 0.55 + rgVN( p * 85.0 ) * 0.3 + rgVN( p * 240.0 ) * 0.15;
+    float reach = amt * ( 0.16 + 0.26 * n );
+    float body = smoothstep( reach, reach * 0.35, fe );
+    vec2 q = p * 120.0; float a = rgVN( p * 9.0 ) * 6.2831853;
+    float fern = abs( sin( dot( q, vec2( cos( a ), sin( a ) ) ) + rgVN( q * 0.35 ) * 5.0 ) );
+    fern = smoothstep( 0.82, 1.0, fern ) * smoothstep( reach * 1.8, reach * 0.6, fe );
+    return clamp( body * ( 0.55 + 0.45 * n ) + fern * 0.6, 0.0, 1.0 );
   }`;
 /* draw rain on this pane material; wiper: true for panes that have a wiper (the diesel's windshield) */
 function rainGlass(mat, wiper) {
@@ -20154,7 +20702,7 @@ function rainGlass(mat, wiper) {
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', '#include <common>\n' + RAINGLASS_GLSL)
       .replace('#include <color_fragment>', `#include <color_fragment>
-      if ( uRG.x > 0.004 || ${wiper ? 'true' : 'false'} ) {
+      if ( uRG.x > 0.004 || uRW.z > 0.01 || ${wiper ? 'true' : 'false'} ) {
         vec3 an = abs( vRN ); bool front = an.x > 0.6;
         vec2 p = front ? vRP.zy : vRP.xy;
         float spd = uRG.z, t = uRG.y, amt = uRG.x, since = 1e3, blade = 0.0;
@@ -20177,6 +20725,12 @@ function rainGlass(mat, wiper) {
         if ( since > 2.0 ) m = max( m, rgRuns( p, dir, amt, t, 0.12 + 0.02 * abs( spd ) ) );
         diffuseColor.rgb = mix( diffuseColor.rgb, vec3( 0.62, 0.66, 0.7 ), m * 0.8 );
         diffuseColor.a = mix( diffuseColor.a + 0.06 * amt, 0.62, m );
+        if ( uRW.z > 0.01 ) {
+          // frost; the wiper's sweep and the defroster keep the swept arc mostly clear
+          float fr = rgFrost( p, vRUv, uRW.z ) * ( since < 1e3 ? 0.18 : 1.0 );
+          diffuseColor.rgb = mix( diffuseColor.rgb, vec3( 0.8, 0.86, 0.94 ), fr * 0.85 );
+          diffuseColor.a = mix( diffuseColor.a, 0.82, fr );
+        }
         diffuseColor.rgb = mix( diffuseColor.rgb, vec3( 0.03 ), blade ); diffuseColor.a = max( diffuseColor.a, blade );
       }`);
   };
@@ -20207,6 +20761,7 @@ function rainGlassFrame(dt) {
   const g = RAINGLASS.u.uRG.value, ww = RAINGLASS.u.uRW.value;
   g[0] = w; g[1] = (S.time || 0); g[2] = S.v || 0; g[3] = RAINGLASS.phase;
   ww[0] = RAINGLASS.run ? 1 : 0; ww[1] = rate; ww[3] = RAINGLASS.phase;
+  ww[2] = typeof ICE !== 'undefined' && ICE.frost ? ICE.frost.value * (1 - inside) : 0;   // frost on the panes (winter nights on the lake route)
   if (WORLD.rainU) { WORLD.rainU.value = P.rain * (1 - inside); WORLD.rainT.value = S.time || 0; }
 }
 
@@ -21082,6 +21637,20 @@ function digScarTex() {
   });
 }
 
+/* scored ice: a band of fine white scratches along the slide, frosted powder packed into the deepest ones */
+function digIceScarTex() {
+  return canvasTex(64, 256, (c) => {
+    const r = rng(91), img = c.createImageData(64, 256), d = img.data, lines = [];
+    for (let i = 0; i < 26; i++) lines.push([4 + r() * 56, 0.2 + r() * 0.8, (r() - 0.5) * 0.04, 0.6 + r() * 1.8]);
+    for (let y = 0; y < 256; y++) for (let x = 0; x < 64; x++) {
+      const k = (y * 64 + x) * 4, edge = 1 - smooth(22, 31, Math.abs(x - 31.5) + 3 * Math.sin(y * 0.13));
+      let a = 0.12 * r();
+      for (const [x0, s, sl, w] of lines) { const dx = Math.abs(x - (x0 + sl * y + 1.5 * Math.sin(y * 0.05 + x0))); a = Math.max(a, s * (1 - smooth(0, w, dx))); }
+      d[k] = 232; d[k + 1] = 240; d[k + 2] = 250; d[k + 3] = 255 * clamp(a * edge, 0, 1);
+    }
+    c.putImageData(img, 0, 0);
+  });
+}
 function buildDig(scene) {
   const mobile = /iPhone|iPad|Android/i.test(navigator.userAgent) || Math.min(screen.width, screen.height) < 600;
   DIG.U = { uScale: { value: 800 }, uLight: { value: 1 } };
@@ -21099,6 +21668,13 @@ function buildDig(scene) {
   DIG.scar = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ map: tex, vertexColors: true, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 }));
   DIG.scar.frustumCulled = false; DIG.scar.receiveShadow = true; DIG.scar.renderOrder = 1; DIG.scar.visible = false;
   scene.add(DIG.scar);
+  // out on a frozen lake the steel scores the ice instead: white scrape marks, a ring of their own (10n_ice.js)
+  if (WORLD.frost) {
+    const gi = g.clone(), ti = digIceScarTex(); ti.wrapT = THREE.RepeatWrapping;
+    DIG.scarIce = new THREE.Mesh(gi, new THREE.MeshLambertMaterial({ map: ti, vertexColors: true, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 }));
+    DIG.scarIce.frustumCulled = false; DIG.scarIce.renderOrder = 1; DIG.scarIce.visible = false; DIG.scarIceN = 0;
+    scene.add(DIG.scarIce);
+  }
 }
 
 function digEmit(P, x, y, z, vx, vy, vz, size, life, r, g, b, floor, ref) {
@@ -21112,18 +21688,19 @@ function digEmit(P, x, y, z, vx, vy, vz, size, life, r, g, b, floor, ref) {
 }
 
 /* one strip of gouge from A to B, w wide, following whatever the car rests on there */
-function digSegment(R, b, A, B, w, ballast) {
+function digSegment(R, b, A, B, w, ballast, ice) {
   if (!DIG.scar) return;
   const dx = B.x - A.x, dz = B.z - A.z, L = Math.hypot(dx, dz); if (L < 0.05) return;
   const sx = -dz / L * w / 2, sz = dx / L * w / 2;
-  const s = DIG.scarN % DIG.SEG; DIG.scarN++;
-  const at = DIG.scar.geometry.attributes, pos = at.position.array, nor = at.normal.array, uv = at.uv.array, col = at.color.array;
+  const mesh = ice && DIG.scarIce ? DIG.scarIce : DIG.scar;
+  const s = (ice && DIG.scarIce ? DIG.scarIceN++ : DIG.scarN++) % DIG.SEG;
+  const at = mesh.geometry.attributes, pos = at.position.array, nor = at.normal.array, uv = at.uv.array, col = at.color.array;
   const v0 = b.dgD / 5, v1 = (b.dgD += L) / 5;
   // rows: A left, A mid, A right, B left, B mid, B right
   const row = [];
   for (const [P, v] of [[A, v0], [B, v1]]) for (const k of [-1, 0, 1]) {
     _dgc.set(P.x + sx * k, 0, P.z + sz * k); _dgc.y = P.y + 0.3;
-    const y = R.ground(b, _dgc) + 0.05 - (k === 0 ? 0.015 : 0);
+    const y = R.ground(b, _dgc) + (ice ? 0.02 : 0.05) - (k === 0 && !ice ? 0.015 : 0);
     row.push([_dgc.x, y, _dgc.z, (k + 1) / 2, v]);
   }
   const tris = [0, 3, 1, 1, 3, 4, 1, 4, 2, 2, 4, 5];
@@ -21135,7 +21712,7 @@ function digSegment(R, b, A, B, w, ballast) {
     uv[o * 2] = q[3]; uv[o * 2 + 1] = q[4];
     col[o * 3] = tint[0]; col[o * 3 + 1] = tint[1]; col[o * 3 + 2] = tint[2];
   }
-  DIG.scarDirty = true;
+  if (mesh === DIG.scarIce) DIG.scarIceDirty = true; else DIG.scarDirty = true;
 }
 
 /* called by WreckSim.step: spray and scar where each body is digging in this frame */
@@ -21148,6 +21725,9 @@ function digWreck(R, dt) {
       const P = b.dgP, V = b.dgV, im = b.dgI;
       const hs = Math.hypot(V.x, V.z);
       const gr = groundAt(P.x, -P.z), gy = R.ground(b, P), ballast = gy > gr + 0.05;
+      // on a frozen lake: ice chips and powder snow, scrape marks, and cracks (10n_ice.js)
+      const ice = WORLD.frost && !ballast && frOnIce(P.x, -P.z);
+      if (ice) iceDig(b, P, V, hs, dt);
       // the gouge: a strip each time the car has plowed on another metre, none across a bounce
       if (b.dgD === undefined) b.dgD = 0;
       if (!b.dgL) b.dgL = new THREE.Vector3();
@@ -21155,19 +21735,26 @@ function digWreck(R, dt) {
       if (!b.dgOn || dist > 6) b.dgL.copy(P);
       else if (dist >= 0.9 && hs > 0.5) {
         const w = clamp(1.1 + 0.12 * hs + 0.5 * b.dgN, 1.1, 3.2);
-        digSegment(R, b, b.dgL, P, w, ballast); b.dgL.copy(P);
+        digSegment(R, b, b.dgL, P, ice ? w * 1.3 : w, ballast, ice); b.dgL.copy(P);
       }
       b.dgOn = true;
       // the spray, only where someone can see it
       if (cp && P.distanceToSquared(cp) > 300 * 300) continue;
       const k = clamp(im / 9, 0.25, 1.6), q = DIG.q;
-      b.dgA = (b.dgA || 0) + dt * q * Math.min(90, im * 14 * (0.5 + b.dgN));
-      b.dgB = (b.dgB || 0) + dt * q * Math.min(14, im * 1.6);
+      b.dgA = (b.dgA || 0) + dt * q * Math.min(ice ? 140 : 90, im * (ice ? 22 : 14) * (0.5 + b.dgN));
+      b.dgB = (b.dgB || 0) + dt * q * Math.min(ice ? 26 : 14, im * (ice ? 3 : 1.6));
       const fx = hs > 0.1 ? V.x / hs : 0, fz = hs > 0.1 ? V.z / hs : 0, ref = [R, b];
       while (b.dgA >= 1) {
         b.dgA--;
         const side = Math.random() < 0.5 ? -1 : 1, out = (0.6 + 3 * Math.random()) * k, f = hs * (0.2 + 0.55 * Math.random());
         const sh = ballast ? 0.42 + 0.12 * Math.random() : 0.2 + 0.12 * Math.random();
+        if (ice) {   // chips of ice, glassy and pale, flung low and far across the sheet
+          const c = 0.62 + 0.3 * Math.random(), o2 = out * 1.5;
+          digEmit(DIG.clods, P.x + (Math.random() - 0.5) * 0.8, gy + 0.1, P.z + (Math.random() - 0.5) * 0.8,
+            fx * f * 1.2 - fz * side * o2 + (Math.random() - 0.5), (0.8 + 3 * Math.random()) * k, fz * f * 1.2 + fx * side * o2 + (Math.random() - 0.5),
+            0.03 + Math.random() * 0.09, 20 + 12 * Math.random(), c * 0.86, c * 0.93, c, gy, ref);
+          continue;
+        }
         digEmit(DIG.clods, P.x + (Math.random() - 0.5) * 0.8, gy + 0.15, P.z + (Math.random() - 0.5) * 0.8,
           fx * f - fz * side * out + (Math.random() - 0.5), (1.4 + 4 * Math.random()) * k, fz * f + fx * side * out + (Math.random() - 0.5),
           (ballast ? 0.06 : 0.07) + Math.random() * (ballast ? 0.08 : 0.18), 25 + 15 * Math.random(),
@@ -21176,6 +21763,12 @@ function digWreck(R, dt) {
       while (b.dgB >= 1) {
         b.dgB--;
         const t = Math.random();
+        if (ice) {   // powder snow off the drifts and frost off the ice: a bright, billowing spray
+          digEmit(DIG.dust, P.x + (Math.random() - 0.5) * 2.5, gy + 0.3, P.z + (Math.random() - 0.5) * 2.5,
+            V.x * 0.5 + (Math.random() - 0.5) * 3, 0.8 + 2.2 * Math.random() * k, V.z * 0.5 + (Math.random() - 0.5) * 3,
+            1.0 + 2.2 * k * Math.random(), 2.5 + 3.5 * Math.random(), 0.86 + 0.06 * t, 0.9 + 0.05 * t, 0.96, gy, null);
+          continue;
+        }
         digEmit(DIG.dust, P.x + (Math.random() - 0.5) * 2, gy + 0.4, P.z + (Math.random() - 0.5) * 2,
           V.x * 0.35 + (Math.random() - 0.5) * 2, 0.4 + 1.2 * Math.random() * k, V.z * 0.35 + (Math.random() - 0.5) * 2,
           1.2 + 1.5 * k * Math.random(), 2.5 + 3 * Math.random(),
@@ -21228,6 +21821,11 @@ function digPoolStep(P, dt, soft) {
 /* every frame from the main loop */
 function digFrame(dt, cam) {
   if (!DIG.clods) return;
+  if (DIG.scarIceDirty) {
+    const at = DIG.scarIce.geometry.attributes;
+    at.position.needsUpdate = at.normal.needsUpdate = at.uv.needsUpdate = at.color.needsUpdate = true;
+    DIG.scarIceDirty = false; DIG.scarIce.visible = true;
+  }
   if (DIG.scarDirty) {
     const at = DIG.scar.geometry.attributes;
     at.position.needsUpdate = at.normal.needsUpdate = at.uv.needsUpdate = at.color.needsUpdate = true;
@@ -21401,6 +21999,250 @@ function wfxRestore(T) {
     b.dented = null;
   }
   if (T === GAME.train) wfxQuiet();
+}
+
+/* ============================================================================
+   Raven Lake: running on the ice, and what it does to the ice.
+
+   The track across the lake is ties laid straight on the ice with no ballast
+   to hold them, so it has little to resist a train pushing it sideways.
+   Too fast through the curves out there and the track slews out from under
+   the train; brake hard at speed and the slack running in buckles the train
+   and it folds up across the ice. Either way the cars come off as wreck
+   bodies (07d_wreck.js), and on the ice they slide a long way: steel on ice
+   holds about a seventh of what steel on frozen ground does.
+
+   And the ice answers back: a heavy train out on it sets long cracks running
+   off across the lake with that singing ping lake ice makes; a car slamming
+   down on it shatters a star of cracks; anything sliding over it throws up
+   chips and powder and scores white scrape marks into it (10h_dig.js does
+   the spray and the scars). On the cliff, the brake shoes throw sparks.
+   ========================================================================== */
+const ICE = {
+  on: false, t: 0,
+  MU: 0.075, TRIP: 0.1,           // wreck bodies on the ice: steel sliding on ice, and a little more for a car going sideways
+  LAT: 0.95,                      // m/s2 of unbalanced side force the ties will take on the ice before the track slews
+  SKID_V: 13.5,                   // m/s (30 mph): hard braking above this out on the ice buckles the train
+  FAST: 30,                       // m/s (67 mph): straight track on the ice heaves and kinks under a train this fast
+  LV_K: 0.5,                      // in-train side force a car on the ice can stand, against one on ballast
+  creep: 0, skid: 0, fastT: 0, crackIn: 3, warnT: 0,
+  segN: 0, seg: 0, dirty: false,
+};
+const _ica = new THREE.Vector3(), _icb = new THREE.Vector3();
+
+/* which bits of a train are out on the ice */
+function iceTP(tp) { return !!(tp && tp.e && tp.e.ice && tp.e.ice.length && tp.e.isIce(tp.s)); }
+function iceCount(T) { let n = 0; for (const v of T.vehicles) if (v.tp && iceTP(v.tp[0])) n++; return n; }
+
+/* ---------------- cracks ----------------
+   A pool of thin quads lying on the ice, each with the moment it appears, so a crack runs out from where it
+   started at the speed cracks run. They stay until the pool comes round to them again. */
+function buildIceFX(scene) {
+  ICE.on = !!WORLD.frost;
+  ICE.frost = { value: ICE.on ? 0.8 : 0 };
+  if (!ICE.on) return;
+  const mobile = /iPhone|iPad|Android/i.test(navigator.userAgent) || Math.min(screen.width, screen.height) < 600;
+  const n = ICE.SEG = mobile ? 1500 : 5000;
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(n * 4 * 3), 3));
+  g.setAttribute('aT', new THREE.BufferAttribute(new Float32Array(n * 4).fill(1e9), 1));
+  g.setAttribute('aU', new THREE.BufferAttribute(new Float32Array(n * 4), 1));
+  const idx = new (n * 4 > 65535 ? Uint32Array : Uint16Array)(n * 6);
+  for (let i = 0; i < n; i++) { const k = i * 4; idx.set([k, k + 1, k + 2, k + 1, k + 3, k + 2], i * 6); }
+  g.setIndex(new THREE.BufferAttribute(idx, 1));
+  ICE.U = { uTime: { value: 0 }, uCol: { value: new THREE.Color(1, 1, 1) } };
+  ICE.cracks = new THREE.Mesh(g, new THREE.ShaderMaterial({
+    uniforms: ICE.U, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4,
+    vertexShader: `#include <common>
+      #include <logdepthbuf_pars_vertex>
+      attribute float aT; attribute float aU; varying float vT; varying float vU; varying float vD;
+      void main(){ vT = aT; vU = aU; vec4 mv = modelViewMatrix * vec4(position, 1.0); vD = -mv.z; gl_Position = projectionMatrix * mv;
+        #include <logdepthbuf_vertex>
+      }`,
+    fragmentShader: `#include <common>
+      #include <logdepthbuf_pars_fragment>
+      uniform float uTime; uniform vec3 uCol; varying float vT; varying float vU; varying float vD;
+      void main(){
+        #include <logdepthbuf_fragment>
+        float a = smoothstep(vT, vT + 0.05, uTime);
+        if (a <= 0.0) discard;
+        // a bright fracture plane down the middle catching the light, a frosted halo either side
+        float u = abs(vU), core = 1.0 - smoothstep(0.12, 0.45, u), halo = (1.0 - u) * 0.4;
+        float far = 1.0 - smoothstep(250.0, 700.0, vD);
+        gl_FragColor = vec4(uCol * (0.75 + 0.6 * core), (core + halo) * a * far);
+      }`,
+  }));
+  ICE.cracks.frustumCulled = false; ICE.cracks.renderOrder = 2; ICE.cracks.visible = false;
+  scene.add(ICE.cracks);
+}
+/* one crack segment from (x0, n0) to (x1, n1), w wide, appearing at time t */
+function iceSeg(x0, n0, x1, n1, w, t) {
+  const dx = x1 - x0, dn = n1 - n0, L = Math.hypot(dx, dn); if (L < 0.01) return;
+  const sx = -dn / L * w / 2, sn = dx / L * w / 2, y = FROST.iceY + 0.012;
+  const i = ICE.seg % ICE.SEG; ICE.seg++; ICE.segN = Math.min(ICE.SEG, ICE.segN + 1);
+  const at = ICE.cracks.geometry.attributes, p = at.position.array, T = at.aT.array, U = at.aU.array, k = i * 4;
+  const put = (j, X, N, u, tt) => { p[(k + j) * 3] = X; p[(k + j) * 3 + 1] = y; p[(k + j) * 3 + 2] = -N; U[k + j] = u; T[k + j] = tt; };
+  // the far end appears a moment after the near end: the crack is seen running
+  put(0, x0 + sx, n0 + sn, -1, t); put(1, x0 - sx, n0 - sn, 1, t); put(2, x1 + sx, n1 + sn, -1, t + L / 90); put(3, x1 - sx, n1 - sn, 1, t + L / 90);
+  ICE.dirty = true;
+}
+/* a crack running from (X, N) heading h for about len metres, branching as it goes; it stops at the shore */
+function iceRun(X, N, h, len, w, t, depth = 0, r = Math.random) {
+  let x = X, n = N, a = h, s = 0;
+  const speed = 140 + 60 * r();   // m/s: fast, but you see it go
+  while (s < len) {
+    const st = 0.8 + 1.6 * r();
+    a += (r() - 0.5) * 0.5;
+    const x1 = x + Math.cos(a) * st, n1 = n + Math.sin(a) * st;
+    if (!frOnIce(x1, n1)) break;
+    const ww = w * (1 - 0.6 * s / len);
+    iceSeg(x, n, x1, n1, ww, t + s / speed);
+    // a branch now and then, shorter and finer
+    if (depth < 2 && r() < 0.045 * st) iceRun(x1, n1, a + (r() < 0.5 ? -1 : 1) * (0.4 + 0.8 * r()), (len - s) * (0.25 + 0.4 * r()), ww * 0.6, t + s / speed, depth + 1, r);
+    x = x1; n = n1; s += st;
+  }
+}
+/* a star of cracks from a point: power 0..1 */
+function iceStar(X, N, power) {
+  if (!ICE.on || !ICE.cracks || !frOnIce(X, N)) return;
+  const t = ICE.t, nb = 3 + Math.round(5 * power), a0 = Math.random() * TAU;
+  for (let k = 0; k < nb; k++) iceRun(X, N, a0 + k * TAU / nb + (Math.random() - 0.5) * 0.6, (3 + 26 * power) * (0.5 + Math.random()), 0.1 + 0.16 * power, t, 1);
+  // a ring or two of shorter arcs round a hard hit
+  if (power > 0.45) for (let k = 0; k < 6; k++) { const a = Math.random() * TAU, r = 3 + 6 * power * Math.random(); iceRun(X + Math.cos(a) * r, N + Math.sin(a) * r, a + Math.PI / 2, 3 + 5 * power, 0.07, t + r / 120, 2); }
+  iceSound(power, Math.hypot(X - camera.position.x, -N - camera.position.z));
+}
+
+/* the sound lake ice makes when it cracks: a sharp tick, then a singing chirp falling away (the high notes travel
+   through the sheet faster than the low ones, so they arrive first), and under a big one a deep boom */
+function iceSound(power, dist) {
+  if (typeof AU === 'undefined' || !AU.on) return;
+  const g = clamp(power, 0.15, 1) / (1 + (dist / 120) ** 1.4); if (g < 0.01) return;
+  const t = AU.ctx.currentTime + 0.01 + dist / 340;
+  envNoise(t, 0.05, 3200, 3, 0.35 * g, AU.world, 'bandpass', AU.white, 0.001);
+  for (let k = 0; k < 3; k++) { const f = 2400 + 900 * Math.random(); envTone(t + 0.01 + k * 0.035, 0.45 + 0.35 * power, f, 0.06 * g, AU.world, 'sine', 160 + 120 * Math.random()); }
+  if (power > 0.5) envTone(t + 0.02, 1.4, 58, 0.5 * g, AU.world, 'sine', 32);
+}
+
+/* ---------------- the train on the ice ---------------- */
+/* called from the sim each frame while the train is on the rails */
+function iceStep(dt, T) {
+  if (!ICE.on || S.derailed || !T || !T.lead) return;
+  const lt = T.lead.leadPt && T.lead.leadPt.tp, onLead = iceTP(lt), n = iceCount(T), v = Math.abs(S.v);
+  if (!n) { ICE.creep = ICE.skid = ICE.fastT = 0; return; }
+  // a heavy train out on the ice: cracks shoot off across the lake from under it, more the faster and heavier it is
+  ICE.crackIn -= dt * (0.25 + v / 10) * Math.min(1, n / 6);
+  if (ICE.crackIn <= 0) {
+    ICE.crackIn = 2 + 5 * Math.random();
+    const on = T.vehicles.filter(x => x.tp && iceTP(x.tp[0]) && x.pos), x = on[(Math.random() * on.length) | 0];
+    if (x) {
+      x.tp[0].pose(FR);
+      const side = Math.random() < 0.5 ? -1 : 1, X = FR.p.x + FR.r.x * side * 3.2, N = -(FR.p.z + FR.r.z * side * 3.2);
+      const h = Math.atan2(-FR.r.z * side, FR.r.x * side) + (Math.random() - 0.5) * 0.9;
+      const p = clamp(0.3 + v / 30, 0.3, 1);
+      iceRun(X, N, h, (40 + 160 * Math.random()) * p, 0.12 + 0.12 * p, ICE.t);
+      iceSound(0.35 + 0.4 * p, Math.hypot(X - camera.position.x, -N - camera.position.z));
+    }
+  }
+  // the track slews: too much side force on a curve, where the ties have nothing but the ice to hold them
+  if (onLead) {
+    const ub = curveUnbalanced(lt, S.v);
+    ICE.creep = ub > ICE.LAT ? ICE.creep + dt * (ub - ICE.LAT) * 1.6 : Math.max(0, ICE.creep - dt);
+    if (ICE.creep > 0.6 && ICE.warnT <= 0) { toast('The track is shifting on the ice! Slow down.', 'bad', 2400, 'icecurve'); ICE.warnT = 3; }
+    if (ICE.creep > 1.2) {
+      lt.pose(FR); const k = lt.e.curv(lt.s), out = _ica.copy(FR.r).multiplyScalar(Math.sign(k) || 1);
+      const L = T.lead, e = L.root.matrix.elements, side = Math.sign(out.x * e[8] + out.y * e[9] + out.z * e[10]) || 1;
+      GAME.derail(`The track slewed out from under the engine on the ice at ${Math.round(v / MPH)} mph. Out on the lake the ties lie on bare ice with no ballast to hold them: take the curves there at the posted 25.`, 'Derailed', { a: 0, side, k: clamp(0.35 + ub / 6, 0.35, 0.9) });
+      iceStar(FR.p.x, -FR.p.z, 1);
+      return;
+    }
+  } else ICE.creep = Math.max(0, ICE.creep - dt);
+  // straight track heaves under a train going much too fast: the joints kink and it goes over
+  ICE.fastT = v > ICE.FAST ? ICE.fastT + dt : 0;
+  if (ICE.fastT > 1.5) {
+    const j = Math.min(T.vehicles.length - 1, 1 + ((Math.random() * 3) | 0)), x = T.vehicles[j];
+    GAME.derail(`The rails kinked on the ice under the train at ${Math.round(v / MPH)} mph. Track laid on a frozen lake is good for 25.`, 'Derailed', { a: x.a0 + x.len / 2, side: Math.random() < 0.5 ? -1 : 1, k: 0.8 });
+    if (x.pos) iceStar(x.pos.x, -x.pos.z, 1);
+    return;
+  }
+  // braking hard out on the ice: the wheels pick up and slide, the slack runs in, and the train buckles
+  const hard = v > ICE.SKID_V && (S.slideN > 0 || brakeZone(S.brakeH) === 'EMG' || (S.accel || 0) < -1.05);
+  ICE.skid = hard ? ICE.skid + dt * v / ICE.SKID_V : Math.max(0, ICE.skid - dt * 2);
+  if (hard && ICE.warnT <= 0) { toast('Wheels sliding on the ice: ease off the brake!', 'bad', 2400, 'iceskid'); ICE.warnT = 3; }
+  if (ICE.skid > 1.4) {
+    // the slack runs in hardest just behind the engine: the first heavy car there is shoved out sideways
+    let j = Math.min(T.vehicles.length - 1, (T.li || 0) + 1);
+    for (let q = j; q < T.vehicles.length; q++) if (T.vehicles[q].kind !== 'tender' && T.vehicles[q].tp && iceTP(T.vehicles[q].tp[0])) { j = q; break; }
+    const x = T.vehicles[j];
+    GAME.derail(`Jackknifed on the ice at ${Math.round(v / MPH)} mph. The wheels slid on the icy rail, the slack ran in hard and ${x.kind === 'tender' ? 'the tender' : 'the train'} buckled sideways off the track. Out on the lake, brake early and gently.`, 'Derailed', { a: x.a0 + x.len / 2, side: Math.random() < 0.5 ? -1 : 1, k: clamp(0.4 + (v - ICE.SKID_V) / 25, 0.4, 0.9) });
+    if (x.pos) iceStar(x.pos.x, -x.pos.z, 0.9);
+    return;
+  }
+  ICE.warnT = Math.max(0, ICE.warnT - dt);
+}
+
+/* a wreck body digging into or sliding over the ice (from digWreck): stars of cracks where it slams down, and a
+   crack now and then along its path */
+function iceDig(b, P, V, hs, dt) {
+  if (!ICE.on) return;
+  b.icT = (b.icT || 0) - dt;
+  if (b.icT > 0) return;
+  const down = -V.y * 1.5;
+  if (down > 2.5) { iceStar(P.x, -P.z, clamp(down / 9, 0.25, 1)); b.icT = 0.35; }
+  else if (hs > 2 && Math.random() < dt * hs * 0.12) { iceStar(P.x, -P.z, 0.15 + 0.1 * Math.random()); b.icT = 0.2; }
+}
+
+/* ---------------- the brakes on the cliff ----------------
+   Brake shoes bearing hard on wheels turning fast throw sparks off the treads. Every braked wheel within reach of
+   the camera, more the harder the brake and the faster the wheel; brightest at night. */
+const _ibs = [];
+function iceBrakeSparks(dt, T, cam) {
+  if (!SPK.lines || !(dt > 0) || S.derailed || !GAME.running || S.paused) return;
+  const v = Math.abs(S.v); if (v < 6) return;
+  const cp = cam.position, out = _ibs; out.length = 0;
+  for (const x of T.vehicles) {
+    const bc = x.brake ? x.brake.BC : 0; if (bc < 30 || x.slide || !x.pos || x.pos.distanceTo(cp) > 140) continue;
+    const k = (bc - 30) / 34;
+    if (x.kind === 'loco' && !T.diesel && !T.elec) { for (const a of LG.aD) for (const z of [-RAIL_OFF, RAIL_OFF]) out.push([_ica.set(ax(a) - 0.5, 0.35, z * 1.05).applyMatrix4(x.root.matrix).clone(), k]); continue; }
+    if (!x.trucks || !x.tp) continue;
+    for (let q = 0; q < x.trucks.length; q++) {
+      const t = x.trucks[q], sp = t.sp || 1.676;
+      frameMatrix(x.tp[q].F, _sm); if (x.flip) _sm.multiply(_sn.makeRotationY(Math.PI));
+      for (const px of t.type === 'four' ? [-0.865, 0.865] : [-sp, 0, sp]) for (const z of [-RAIL_OFF, RAIL_OFF]) out.push([_ica.set(px + (px < 0 ? -0.42 : 0.42), 0.3, z * 1.05).applyMatrix4(_sm).clone(), k]);
+    }
+  }
+  if (!out.length) return;
+  out.sort((a, b) => a[0].distanceToSquared(cp) - b[0].distanceToSquared(cp));
+  const fwd = _icb.copy(T.lead.fwd).multiplyScalar(Math.sign(S.v)), side = new THREE.Vector3(-fwd.z, 0, fwd.x);
+  const rate = 26 * Math.min(1, v / 20) * (0.35 + 0.65 * (SKY.dark || 0));
+  for (let i = 0; i < Math.min(out.length, 64); i++) {
+    const [p, k] = out[i], w = rate * k / (1 + (p.distanceTo(cp) / 25) ** 2) * dt;
+    let m = Math.floor(w + Math.random()); while (m-- > 0) sparkEmit(p, fwd, side, v * 0.35);
+  }
+}
+
+/* ---------------- every frame ---------------- */
+function iceFrame(dt, cam, T) {
+  if (!ICE.on) return;
+  ICE.t += dt;
+  ICE.U.uTime.value = ICE.t;
+  // the cracks catch whatever light there is: moonlight blue at night
+  const d = SKY.dark || 0; ICE.U.uCol.value.setRGB(lerp(0.95, 0.42, d), lerp(0.97, 0.5, d), lerp(1.0, 0.62, d));
+  if (ICE.dirty) { const at = ICE.cracks.geometry.attributes; at.position.needsUpdate = at.aT.needsUpdate = at.aU.needsUpdate = true; ICE.dirty = false; ICE.cracks.visible = true; }
+  if (T) iceBrakeSparks(dt, T, cam);
+  // the windows frost over in the cold; a cab with the fire going keeps the middle of the glass clear
+  ICE.frost.value = 0.8;
+}
+
+/* After a wreck on the lake: lift the train back onto the main on the far shore,
+   facing up the climb, so the lap can go on. */
+function iceRerailFar() {
+  const T = GAME.train, M = FROST.main; if (!T || !M) return;
+  GAME.rerail();
+  const s = FROST.sIce[1] + 160 + T.length;
+  const loc = M.locate(Math.min(s, M.len - 5));
+  T.place(new TrackPos(loc.edge, loc.s, 1));
+  S.v = 0; S.vw = 0; MP.dirty = true;
+  toast('Re-railed on the far shore. The climb back to Hollow Pine is ahead.', 'good', 4000);
 }
 
 /* ============================================================================
@@ -23852,7 +24694,7 @@ MP.worldReady = function () {
   MP.ready = true;
   MP.edges = new Map(NET.edges.map(e => [e.id, e]));
   MP.ui();
-  MP.ly = WORLD.custom ? layoutHash(PLAY_LAYOUT) : WORLD.mtn ? 'route:laurel' : '';
+  MP.ly = WORLD.custom ? layoutHash(PLAY_LAYOUT) : WORLD.mtn ? 'route:' + ROUTE_KEY : '';
   if (MP.autoJoin) MP.join(MP.autoJoin);
 };
 MP.create = function () {
@@ -24142,11 +24984,11 @@ MP.spawnSlot = function (T) {
     }
     return true;
   };
-  for (const [name, off] of (WORLD.mtn ? MTN_SPAWNS : MP_SPAWNS)) {
+  for (const [name, off] of (WORLD.frost ? FROST_SPAWNS : WORLD.mtn ? MTN_SPAWNS : MP_SPAWNS)) {
     const line = ROUTE.lines[name]; if (!line) continue;
     const sF = off < 0 ? line.len + off : off;
     if (!line.loop && sF - T.length < 5) continue;
-    if (clear(line, sF)) return { line, s: sF, name: (WORLD.mtn ? MTN_SPAWN_NAMES : MP_SPAWN_NAMES)[name] || name };
+    if (clear(line, sF)) return { line, s: sF, name: (WORLD.frost ? FROST_SPAWN_NAMES : WORLD.mtn ? MTN_SPAWN_NAMES : MP_SPAWN_NAMES)[name] || name };
   }
   // every usual place is taken: anywhere on either main
   for (const name of ['Main', 'Main 2']) {
@@ -24409,7 +25251,7 @@ MP.pubWorld = function (txt, retain) { for (const l of MP.links) l.publish(MP.to
 MP.sendWorld = function (retain) {
   if (!MP.on || !MP.world || MP.world.ly !== MP.ly) return;
   const lay = WORLD.custom ? layoutCanon(PLAY_LAYOUT) : '';
-  MP.pubWorld(JSON.stringify({ id: MP.world.id, at: MP.world.at, cr: MP.world.cr, ly: MP.ly, nm: WORLD.custom ? PLAY_LAYOUT.name : ROUTES[WORLD.mtn ? 'laurel' : 'ohio'].name, lay }), retain);
+  MP.pubWorld(JSON.stringify({ id: MP.world.id, at: MP.world.at, cr: MP.world.cr, ly: MP.ly, nm: WORLD.custom ? PLAY_LAYOUT.name : ROUTES[WORLD.mtn ? ROUTE_KEY : 'ohio'].name, lay }), retain);
 };
 MP.onWorldText = function (txt) {
   if (!MP.on || txt.length > 2e6) return;
@@ -25588,7 +26430,7 @@ AI.clear = function () {
 AI.setup = function () {
   AI.clear();
   if (!AI.enabled()) return;
-  const job = JOB.wanted(), list = job ? job.traffic || [] : WORLD.mtn ? MTN_TRAFFIC : FREE_TRAFFIC;
+  const job = JOB.wanted(), list = job ? job.traffic || [] : WORLD.frost ? [] : WORLD.mtn ? MTN_TRAFFIC : FREE_TRAFFIC;   // Raven Lake is yours alone
   // while the game is still loading the trains are made up one at a time after the menu is ready (AI.lazy, set by
   // loadWorld), so the menu is not kept waiting for them; AI.flush() finishes the job at once when you start
   if (AI.lazy) { AI.pending = list.slice(); AI.drip(); return; }
@@ -28963,6 +29805,7 @@ async function loadWorld() {
   WORLD.custom = !!PLAY_LAYOUT;
   if (WORLD.custom) { WORLD.roadsX = []; WORLD.roadN = 1e7; buildLayoutRoute(PLAY_LAYOUT); }
   else if (ROUTE_KEY === 'laurel') { WORLD.roadsX = []; WORLD.roadN = 1e7; buildMountainRoute(); mtPrepare(); }
+  else if (ROUTE_KEY === 'frost') { WORLD.roadsX = []; WORLD.roadN = 1e7; buildFrostRoute(); frPrepare(); }
   else buildRoute();
   mapPrepare();
   prog(0.06, 'Grading the right of way…'); await frame();
@@ -28971,30 +29814,32 @@ async function loadWorld() {
   const T = 1500; let k = 0; const tot = ((INNER.x1 - INNER.x0) / T) * ((INNER.n1 - INNER.n0) / T);
   for (let x = INNER.x0; x < INNER.x1; x += T) for (let n = INNER.n0; n < INNER.n1; n += T) {
     buildTerrainTile(x, n, T, INNER.step, scene, !!WORLD.lazy); k++;
-    if (k % (WORLD.lazy ? 24 : 3) === 0) { prog(0.08 + 0.42 * k / tot, WORLD.mtn ? `Raising the mountains… ${k}/${tot}` : `Shaping farm country… ${k}/${tot}`); await frame(); }
+    if (k % (WORLD.lazy ? 24 : 3) === 0) { prog(0.08 + 0.42 * k / tot, WORLD.frost ? `Freezing the lake… ${k}/${tot}` : WORLD.mtn ? `Raising the mountains… ${k}/${tot}` : `Shaping farm country… ${k}/${tot}`); await frame(); }
   }
   WORLD.hgrid.ready = true;
   terrainLoMerge(scene);
-  buildFarTerrain(scene); if (!WORLD.custom) buildWater(scene);
+  buildFarTerrain(scene); if (!WORLD.custom) buildWater(scene); if (WORLD.frost) frBuildIce(scene);
   prog(0.52, WORLD.custom ? `Laying ${fmtMi(ROUTE.mainLen)} of track on ${PLAY_LAYOUT.name || 'your layout'}…` : `Laying ${(ROUTE.mainLen / MILE).toFixed(1)} miles of jointed rail…`); await frame();
   buildTrack(scene); buildTrackHash();
-  prog(0.68, WORLD.mtn ? 'Boring Summit tunnel and raising the Bear Run trestle…' : 'Raising depots, towers and the river bridge…'); await frame();
+  prog(0.68, WORLD.frost ? 'Cutting the shelf into Raven Cliff…' : WORLD.mtn ? 'Boring Summit tunnel and raising the Bear Run trestle…' : 'Raising depots, towers and the river bridge…'); await frame();
   if (WORLD.custom) { buildStations(); buildSignals(scene); }
+  else if (WORLD.frost) { buildStations(); buildSignals(scene); buildSigns(); frBuildScenery(scene); }
   else if (WORLD.mtn) { buildStations(); buildBridge(scene); mtBuildViaduct(scene); mtBuildTunnels(scene); buildSignals(scene); buildSigns(); }
   else { buildStations(); buildBridge(scene); buildRoads(scene); buildSignals(scene); buildSigns(); }
   prog(0.78, 'Stringing the pole line…'); await frame();
   if (WORLD.custom) { SCN.farms = []; buildTowns(scene); }
+  else if (WORLD.frost) { SCN.farms = []; buildTowns(scene); }
   else if (WORLD.mtn) { SCN.farms = []; buildTowns(scene); buildPoleLine(scene); }
   else { buildFarms(); buildTowns(scene); buildPoleLine(scene); }
   if (!WORLD.mtn) {
     prog(0.82, 'Planting corn and fencing pastures…'); await frame();
     buildCorn(scene); buildPastureLife(scene);
   }
-  prog(0.86, WORLD.mtn ? 'Growing the forest…' : 'Planting woodlots…'); await frame();
+  prog(0.86, WORLD.frost ? 'Snow on the pines…' : WORLD.mtn ? 'Growing the forest…' : 'Planting woodlots…'); await frame();
   if (WORLD.mtn) mtBuildForest(scene); else buildTrees(scene);
   finalizeScenery(scene);
   prog(0.92, 'Lighting the fire…'); await frame();
-  buildSky(scene, renderer); postSetup(renderer); buildClouds(scene); buildFX(scene); buildTreeFX(scene); rainGlassAll(); buildSparks(scene); buildDig(scene); buildLamps(scene); buildBirds(scene);
+  buildSky(scene, renderer); postSetup(renderer); buildClouds(scene); buildFX(scene); buildTreeFX(scene); rainGlassAll(); buildSparks(scene); buildDig(scene); buildIceFX(scene); buildLamps(scene); buildBirds(scene);
   for (const st of ROUTE.stations) { st.edge.pose(st.s, FR); st.p = FR.p.clone(); }
   for (const w of ROUTE.water) { w.edge.pose(w.s, FR); w.p = FR.p.clone(); }
   if (ROUTE.coal) { const c = ROUTE.coal; c.edge.pose(c.s, FR); c.p = FR.p.clone(); }
@@ -29002,7 +29847,9 @@ async function loadWorld() {
   linearizeObject(scene);
   sceneryUpload(renderer);
   AI.lazy = true; makeTrain(); AI.lazy = false;
-  applyLook(GAME.settings.time, GAME.settings.weather, renderer, scene);
+  // Raven Lake is a moonlit night until you pick another time in the menu (nothing is saved for it)
+  GAME.frostNight = !!WORLD.frost;
+  applyLook(GAME.frostNight ? 'night' : GAME.settings.time, GAME.settings.weather, renderer, scene);
   prog(0.97, 'Raising steam…');
   GAME.ready = true;
   MP.worldReady();
@@ -29044,7 +29891,7 @@ function makeTrain() {
   if (was) freeObjects(trainRoots(was));   // the old engine and cars are gone for good: give their memory back
   if (WORLD.custom) { placeOnLayout(t); return; }
   let line = ROUTE.startLine, sFront = line.len - 175, o = 1;
-  GAME.spawnName = WORLD.mtn ? 'Riverton 2, Riverton Yard' : 'Yard 2, Bellevue';
+  GAME.spawnName = ROUTE.spawnName || (WORLD.mtn ? 'Riverton 2, Riverton Yard' : 'Yard 2, Bellevue');
   const job = JOB.wanted(), sp = job && JOB.spawn(job);
   if (MP.on) {
     // in a room the switches belong to everyone, so leave them alone and find an empty track
@@ -29056,7 +29903,7 @@ function makeTrain() {
     // points under one of your standing trains stay as they are
     for (const s of NET.switches) if (!keep || !CARS.occupied(s)) { s.state = 0; s.anim = 0; }
     // a job says where its train is made up and how the switches are lined
-    for (const n of sp ? sp.lined : WORLD.mtn ? ['Riverton ladder E2', 'Riverton East'] : ['Yard ladder E2', 'Bellevue East']) sw(n).state = sw(n).anim = 1;
+    for (const n of sp ? sp.lined : ROUTE.lined || (WORLD.mtn ? ['Riverton ladder E2', 'Riverton East'] : ['Yard ladder E2', 'Bellevue East'])) sw(n).state = sw(n).anim = 1;
     if (sp) { line = sp.line; sFront = sp.s; o = sp.o; GAME.spawnName = sp.name; }
     else if (keep) { const slot = MP.spawnSlot(t); if (slot) { line = slot.line; sFront = slot.s; GAME.spawnName = slot.name; } }
   }
@@ -29280,7 +30127,7 @@ function buildMenu() {
   const locoOpts = { '765': { name: 'NKP 765', sub: 'S-2 · Lima 1944' }, '1225': { name: 'PM 1225', sub: 'N-1 · Lima 1941' }, '4014': { name: 'UP 4014 Big Boy', sub: '4-8-8-4 · Alco 1941' }, '1308': { name: 'C&O 1308', sub: 'H-6 Mallet · Baldwin 1949' }, '18': { name: 'UP 18 gas turbine', sub: 'GTEL · 8,500 hp · GE 1960' }, 'diesel': { name: 'Wide-cab diesel', sub: 'AC · 4,400 hp' },
     'e5': { name: 'E5 Shinkansen', sub: 'Bullet train · 200 mph' }, 'acela': { name: 'Acela Express', sub: 'High speed · 150 mph' } };
   // the mountain has no wires up for the high-speed sets
-  if (ROUTE_KEY === 'laurel' && !PLAY_LAYOUT) { delete locoOpts.e5; delete locoOpts.acela; if (LOCO_SPEC[GAME.settings.loco].hs) GAME.settings.loco = '765'; }
+  if ((ROUTE_KEY === 'laurel' || ROUTE_KEY === 'frost') && !PLAY_LAYOUT) { delete locoOpts.e5; delete locoOpts.acela; if (LOCO_SPEC[GAME.settings.loco].hs) GAME.settings.loco = '765'; }
   for (const k in locoOpts) locoOpts[k].art = locoGlyph(k);
   segButtons('optLoco', locoOpts, 'loco', () => { GAME.swapLive(); roadCoachPaint(); jobMenu(); specGrid(); startLabel(); refreshMenuGroups(); saveSettings(); });
   const livOpts = {}; for (const k in LIVERIES) { const L = LIVERIES[k]; livOpts[k] = { name: L.name, sub: L.sub, swatch: `linear-gradient(90deg, ${hexCss(k === 'custom' ? GAME.settings.custom.body : L.body)} 0 64%, ${hexCss(k === 'custom' ? GAME.settings.custom.accent : L.accent)} 64% 100%)` }; }
@@ -29314,18 +30161,19 @@ function buildMenu() {
   for (const id of ['cBody', 'cAccent', 'cLetter', 'cNum']) $(id).addEventListener('input', onCustom);
   refreshMenuGroups();
   segButtons('optTrain', Object.fromEntries(Object.entries(CONSISTS).filter(([, c]) => !c.hidden)), 'consist', () => { GAME.swapLive(); startLabel(); saveSettings(); });
-  segButtons('optTime', DN.starts, 'time', k => { if (GAME.ready) applyLook(k, null); saveSettings(); });
-  segButtons('optCycle', DN.rates, 'cycle', () => saveSettings());
+  segButtons('optTime', DN.starts, 'time', k => { GAME.frostNight = false; if (GAME.ready) applyLook(k, null); saveSettings(); });
+  segButtons('optCycle', DN.rates, 'cycle', () => { GAME.frostNight = false; saveSettings(); });
   segButtons('optGfx', GFX_MENU, 'gfx', k => { if (POST.ready) { postQuality(postResolve(k)); gfxNote(); } saveSettings(); });
   segButtons('optWeather', WEATHER, 'weather', k => { if (GAME.ready) applyLook(null, k); saveSettings(); });
   segButtons('optFire', { easy: { name: 'Easy', sub: 'Fireman, and the reverser hooks up for you' }, auto: { name: 'Fireman', sub: 'Stoker & water handled, you work the reverser' }, hand: { name: 'Hand fired', sub: 'You run the boiler' } }, 'fire', k => { applyFireSetting(k); GAME.refreshKeys(); saveSettings(); });
-  segButtons('optTraffic', { on: { name: 'Timetable', sub: ROUTE_KEY === 'laurel' ? 'No. 21, No. 22 and coal trains on the mountain' : 'No. 5, No. 12 and freights on the road' }, off: { name: 'Clear road', sub: 'Just you and the signals' } }, 'traffic', () => { if (GAME.ready && GAME.train) AI.setup(); saveSettings(); });
+  segButtons('optTraffic', { on: { name: 'Timetable', sub: ROUTE_KEY === 'frost' ? 'No timetable trains out on the ice' : ROUTE_KEY === 'laurel' ? 'No. 21, No. 22 and coal trains on the mountain' : 'No. 5, No. 12 and freights on the road' }, off: { name: 'Clear road', sub: 'Just you and the signals' } }, 'traffic', () => { if (GAME.ready && GAME.train) AI.setup(); saveSettings(); });
   specGrid();
   jobSetup();
   volumeSliders();
   menuTabs();
   $('btnStart').addEventListener('click', () => GAME.start());
   $('bigRetry').addEventListener('click', () => GAME.rerail());
+  $('bigFar').addEventListener('click', () => iceRerailFar());
   $('bigMenu').addEventListener('click', () => { $('bigMsg').hidden = true; GAME.pause(true); });
 }
 function specGrid() {
@@ -29436,6 +30284,7 @@ GAME.intro = function () {
   if (JOB.run) JOB.intro();
   else if (MP.on) setTimeout(() => toast(`Made up on ${GAME.spawnName}. The switches and the cars standing about are shared with everyone in the room.`, '', 5600), 600);
   else if (WORLD.custom) setTimeout(() => toast(`On ${GAME.spawnName}. Every switch is lined straight: tap one or use Throw to change it.`, '', 5000), 600);
+  else if (WORLD.frost) setTimeout(() => toast('Hollow Pine, on the plateau over Raven Lake. Out of the siding the line drops 4 per cent down the cliff to the ice: brake on the way down, and take the ice gently. Hard braking or speed out on the ice can put you off the rails.', '', 7500), 600);
   else if (WORLD.mtn) setTimeout(() => toast('Riverton Yard, at the foot of Laurel Mountain. The ladder is lined out to the main; the climb starts past Hollins and runs 1.9 per cent to Summit.', '', 6500), 600);
   else setTimeout(() => toast('Yard 2, Bellevue. The ladder is lined out to the main.', '', 5000), 600);
   if (!MP.on && !JOB.run && CARS.cuts.length) setTimeout(() => toast('Cars are waiting on Yard 3, Yard 4, the elevator track and quarry storage. Back in gently to couple; tap a coupler on the cars, or open Couplers (U), to work the knuckles and cut them off.', '', 7000, 'carsIntro'), 11500);
@@ -29495,6 +30344,7 @@ GAME.wreckBar = function () {
   const W = GAME.wrecking; if (!W || !W.done || PLACE.on) return;
   // just the way out: re-rail or the menu. The wreck itself shows what happened
   $('bigTitle').textContent = ''; $('bigBody').textContent = '';
+  $('bigFar').hidden = !(WORLD.frost && FROST.main);
   $('bigMsg').classList.add('wreck'); $('bigMsg').hidden = false;
 };
 GAME.rerail = function () {
@@ -29710,6 +30560,7 @@ function simStep(dt, T) {
     const ub = curveUnbalanced(T.lead.leadPt.tp, S.v);
     tipT = ub > CURVE_TIP && !S.derailed ? tipT + dt : 0;
     if (tipT > CURVE_HOLD) GAME.derail(`Overturned on the curve at ${Math.round(Math.abs(S.v) / MPH)} mph.`);
+    if (ICE.on && !S.derailed) iceStep(dt, T);   // out on the frozen lake (10n_ice.js)
     else if (ub > CURVE_WARN) { toast('Too fast for this curve!', 'warn', 2000, 'curve'); JOB.note('curve', { mph: Math.abs(S.v) / MPH }); }
     // filling at water column / coal chute
     if (GAME.filling) {
@@ -29786,6 +30637,7 @@ function renderStep(dt, T) {
   updateFX(dt, camera); precipFrame(camera, dt); treeFxFrame(camera, dt); rainGlassFrame(dt); birdsFrame(dt, camera);
   updateSparks(dt, T, camera);
   digFrame(dt, camera);
+  iceFrame(dt, camera, T);
   wfxFrame(dt, T);
   if (GAME.running) { updateHUD(dt); FLEET.frame(dt); }
   cloudRender(renderer, camera, dt);

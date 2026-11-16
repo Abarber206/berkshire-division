@@ -37,6 +37,7 @@ async function loadWorld() {
   WORLD.custom = !!PLAY_LAYOUT;
   if (WORLD.custom) { WORLD.roadsX = []; WORLD.roadN = 1e7; buildLayoutRoute(PLAY_LAYOUT); }
   else if (ROUTE_KEY === 'laurel') { WORLD.roadsX = []; WORLD.roadN = 1e7; buildMountainRoute(); mtPrepare(); }
+  else if (ROUTE_KEY === 'frost') { WORLD.roadsX = []; WORLD.roadN = 1e7; buildFrostRoute(); frPrepare(); }
   else buildRoute();
   mapPrepare();
   prog(0.06, 'Grading the right of way…'); await frame();
@@ -45,30 +46,32 @@ async function loadWorld() {
   const T = 1500; let k = 0; const tot = ((INNER.x1 - INNER.x0) / T) * ((INNER.n1 - INNER.n0) / T);
   for (let x = INNER.x0; x < INNER.x1; x += T) for (let n = INNER.n0; n < INNER.n1; n += T) {
     buildTerrainTile(x, n, T, INNER.step, scene, !!WORLD.lazy); k++;
-    if (k % (WORLD.lazy ? 24 : 3) === 0) { prog(0.08 + 0.42 * k / tot, WORLD.mtn ? `Raising the mountains… ${k}/${tot}` : `Shaping farm country… ${k}/${tot}`); await frame(); }
+    if (k % (WORLD.lazy ? 24 : 3) === 0) { prog(0.08 + 0.42 * k / tot, WORLD.frost ? `Freezing the lake… ${k}/${tot}` : WORLD.mtn ? `Raising the mountains… ${k}/${tot}` : `Shaping farm country… ${k}/${tot}`); await frame(); }
   }
   WORLD.hgrid.ready = true;
   terrainLoMerge(scene);
-  buildFarTerrain(scene); if (!WORLD.custom) buildWater(scene);
+  buildFarTerrain(scene); if (!WORLD.custom) buildWater(scene); if (WORLD.frost) frBuildIce(scene);
   prog(0.52, WORLD.custom ? `Laying ${fmtMi(ROUTE.mainLen)} of track on ${PLAY_LAYOUT.name || 'your layout'}…` : `Laying ${(ROUTE.mainLen / MILE).toFixed(1)} miles of jointed rail…`); await frame();
   buildTrack(scene); buildTrackHash();
-  prog(0.68, WORLD.mtn ? 'Boring Summit tunnel and raising the Bear Run trestle…' : 'Raising depots, towers and the river bridge…'); await frame();
+  prog(0.68, WORLD.frost ? 'Cutting the shelf into Raven Cliff…' : WORLD.mtn ? 'Boring Summit tunnel and raising the Bear Run trestle…' : 'Raising depots, towers and the river bridge…'); await frame();
   if (WORLD.custom) { buildStations(); buildSignals(scene); }
+  else if (WORLD.frost) { buildStations(); buildSignals(scene); buildSigns(); frBuildScenery(scene); }
   else if (WORLD.mtn) { buildStations(); buildBridge(scene); mtBuildViaduct(scene); mtBuildTunnels(scene); buildSignals(scene); buildSigns(); }
   else { buildStations(); buildBridge(scene); buildRoads(scene); buildSignals(scene); buildSigns(); }
   prog(0.78, 'Stringing the pole line…'); await frame();
   if (WORLD.custom) { SCN.farms = []; buildTowns(scene); }
+  else if (WORLD.frost) { SCN.farms = []; buildTowns(scene); }
   else if (WORLD.mtn) { SCN.farms = []; buildTowns(scene); buildPoleLine(scene); }
   else { buildFarms(); buildTowns(scene); buildPoleLine(scene); }
   if (!WORLD.mtn) {
     prog(0.82, 'Planting corn and fencing pastures…'); await frame();
     buildCorn(scene); buildPastureLife(scene);
   }
-  prog(0.86, WORLD.mtn ? 'Growing the forest…' : 'Planting woodlots…'); await frame();
+  prog(0.86, WORLD.frost ? 'Snow on the pines…' : WORLD.mtn ? 'Growing the forest…' : 'Planting woodlots…'); await frame();
   if (WORLD.mtn) mtBuildForest(scene); else buildTrees(scene);
   finalizeScenery(scene);
   prog(0.92, 'Lighting the fire…'); await frame();
-  buildSky(scene, renderer); postSetup(renderer); buildClouds(scene); buildFX(scene); buildTreeFX(scene); rainGlassAll(); buildSparks(scene); buildDig(scene); buildLamps(scene); buildBirds(scene);
+  buildSky(scene, renderer); postSetup(renderer); buildClouds(scene); buildFX(scene); buildTreeFX(scene); rainGlassAll(); buildSparks(scene); buildDig(scene); buildIceFX(scene); buildLamps(scene); buildBirds(scene);
   for (const st of ROUTE.stations) { st.edge.pose(st.s, FR); st.p = FR.p.clone(); }
   for (const w of ROUTE.water) { w.edge.pose(w.s, FR); w.p = FR.p.clone(); }
   if (ROUTE.coal) { const c = ROUTE.coal; c.edge.pose(c.s, FR); c.p = FR.p.clone(); }
@@ -76,7 +79,9 @@ async function loadWorld() {
   linearizeObject(scene);
   sceneryUpload(renderer);
   AI.lazy = true; makeTrain(); AI.lazy = false;
-  applyLook(GAME.settings.time, GAME.settings.weather, renderer, scene);
+  // Raven Lake is a moonlit night until you pick another time in the menu (nothing is saved for it)
+  GAME.frostNight = !!WORLD.frost;
+  applyLook(GAME.frostNight ? 'night' : GAME.settings.time, GAME.settings.weather, renderer, scene);
   prog(0.97, 'Raising steam…');
   GAME.ready = true;
   MP.worldReady();
@@ -118,7 +123,7 @@ function makeTrain() {
   if (was) freeObjects(trainRoots(was));   // the old engine and cars are gone for good: give their memory back
   if (WORLD.custom) { placeOnLayout(t); return; }
   let line = ROUTE.startLine, sFront = line.len - 175, o = 1;
-  GAME.spawnName = WORLD.mtn ? 'Riverton 2, Riverton Yard' : 'Yard 2, Bellevue';
+  GAME.spawnName = ROUTE.spawnName || (WORLD.mtn ? 'Riverton 2, Riverton Yard' : 'Yard 2, Bellevue');
   const job = JOB.wanted(), sp = job && JOB.spawn(job);
   if (MP.on) {
     // in a room the switches belong to everyone, so leave them alone and find an empty track
@@ -130,7 +135,7 @@ function makeTrain() {
     // points under one of your standing trains stay as they are
     for (const s of NET.switches) if (!keep || !CARS.occupied(s)) { s.state = 0; s.anim = 0; }
     // a job says where its train is made up and how the switches are lined
-    for (const n of sp ? sp.lined : WORLD.mtn ? ['Riverton ladder E2', 'Riverton East'] : ['Yard ladder E2', 'Bellevue East']) sw(n).state = sw(n).anim = 1;
+    for (const n of sp ? sp.lined : ROUTE.lined || (WORLD.mtn ? ['Riverton ladder E2', 'Riverton East'] : ['Yard ladder E2', 'Bellevue East'])) sw(n).state = sw(n).anim = 1;
     if (sp) { line = sp.line; sFront = sp.s; o = sp.o; GAME.spawnName = sp.name; }
     else if (keep) { const slot = MP.spawnSlot(t); if (slot) { line = slot.line; sFront = slot.s; GAME.spawnName = slot.name; } }
   }
@@ -354,7 +359,7 @@ function buildMenu() {
   const locoOpts = { '765': { name: 'NKP 765', sub: 'S-2 · Lima 1944' }, '1225': { name: 'PM 1225', sub: 'N-1 · Lima 1941' }, '4014': { name: 'UP 4014 Big Boy', sub: '4-8-8-4 · Alco 1941' }, '1308': { name: 'C&O 1308', sub: 'H-6 Mallet · Baldwin 1949' }, '18': { name: 'UP 18 gas turbine', sub: 'GTEL · 8,500 hp · GE 1960' }, 'diesel': { name: 'Wide-cab diesel', sub: 'AC · 4,400 hp' },
     'e5': { name: 'E5 Shinkansen', sub: 'Bullet train · 200 mph' }, 'acela': { name: 'Acela Express', sub: 'High speed · 150 mph' } };
   // the mountain has no wires up for the high-speed sets
-  if (ROUTE_KEY === 'laurel' && !PLAY_LAYOUT) { delete locoOpts.e5; delete locoOpts.acela; if (LOCO_SPEC[GAME.settings.loco].hs) GAME.settings.loco = '765'; }
+  if ((ROUTE_KEY === 'laurel' || ROUTE_KEY === 'frost') && !PLAY_LAYOUT) { delete locoOpts.e5; delete locoOpts.acela; if (LOCO_SPEC[GAME.settings.loco].hs) GAME.settings.loco = '765'; }
   for (const k in locoOpts) locoOpts[k].art = locoGlyph(k);
   segButtons('optLoco', locoOpts, 'loco', () => { GAME.swapLive(); roadCoachPaint(); jobMenu(); specGrid(); startLabel(); refreshMenuGroups(); saveSettings(); });
   const livOpts = {}; for (const k in LIVERIES) { const L = LIVERIES[k]; livOpts[k] = { name: L.name, sub: L.sub, swatch: `linear-gradient(90deg, ${hexCss(k === 'custom' ? GAME.settings.custom.body : L.body)} 0 64%, ${hexCss(k === 'custom' ? GAME.settings.custom.accent : L.accent)} 64% 100%)` }; }
@@ -388,18 +393,19 @@ function buildMenu() {
   for (const id of ['cBody', 'cAccent', 'cLetter', 'cNum']) $(id).addEventListener('input', onCustom);
   refreshMenuGroups();
   segButtons('optTrain', Object.fromEntries(Object.entries(CONSISTS).filter(([, c]) => !c.hidden)), 'consist', () => { GAME.swapLive(); startLabel(); saveSettings(); });
-  segButtons('optTime', DN.starts, 'time', k => { if (GAME.ready) applyLook(k, null); saveSettings(); });
-  segButtons('optCycle', DN.rates, 'cycle', () => saveSettings());
+  segButtons('optTime', DN.starts, 'time', k => { GAME.frostNight = false; if (GAME.ready) applyLook(k, null); saveSettings(); });
+  segButtons('optCycle', DN.rates, 'cycle', () => { GAME.frostNight = false; saveSettings(); });
   segButtons('optGfx', GFX_MENU, 'gfx', k => { if (POST.ready) { postQuality(postResolve(k)); gfxNote(); } saveSettings(); });
   segButtons('optWeather', WEATHER, 'weather', k => { if (GAME.ready) applyLook(null, k); saveSettings(); });
   segButtons('optFire', { easy: { name: 'Easy', sub: 'Fireman, and the reverser hooks up for you' }, auto: { name: 'Fireman', sub: 'Stoker & water handled, you work the reverser' }, hand: { name: 'Hand fired', sub: 'You run the boiler' } }, 'fire', k => { applyFireSetting(k); GAME.refreshKeys(); saveSettings(); });
-  segButtons('optTraffic', { on: { name: 'Timetable', sub: ROUTE_KEY === 'laurel' ? 'No. 21, No. 22 and coal trains on the mountain' : 'No. 5, No. 12 and freights on the road' }, off: { name: 'Clear road', sub: 'Just you and the signals' } }, 'traffic', () => { if (GAME.ready && GAME.train) AI.setup(); saveSettings(); });
+  segButtons('optTraffic', { on: { name: 'Timetable', sub: ROUTE_KEY === 'frost' ? 'No timetable trains out on the ice' : ROUTE_KEY === 'laurel' ? 'No. 21, No. 22 and coal trains on the mountain' : 'No. 5, No. 12 and freights on the road' }, off: { name: 'Clear road', sub: 'Just you and the signals' } }, 'traffic', () => { if (GAME.ready && GAME.train) AI.setup(); saveSettings(); });
   specGrid();
   jobSetup();
   volumeSliders();
   menuTabs();
   $('btnStart').addEventListener('click', () => GAME.start());
   $('bigRetry').addEventListener('click', () => GAME.rerail());
+  $('bigFar').addEventListener('click', () => iceRerailFar());
   $('bigMenu').addEventListener('click', () => { $('bigMsg').hidden = true; GAME.pause(true); });
 }
 function specGrid() {
@@ -510,6 +516,7 @@ GAME.intro = function () {
   if (JOB.run) JOB.intro();
   else if (MP.on) setTimeout(() => toast(`Made up on ${GAME.spawnName}. The switches and the cars standing about are shared with everyone in the room.`, '', 5600), 600);
   else if (WORLD.custom) setTimeout(() => toast(`On ${GAME.spawnName}. Every switch is lined straight: tap one or use Throw to change it.`, '', 5000), 600);
+  else if (WORLD.frost) setTimeout(() => toast('Hollow Pine, on the plateau over Raven Lake. Out of the siding the line drops 4 per cent down the cliff to the ice: brake on the way down, and take the ice gently. Hard braking or speed out on the ice can put you off the rails.', '', 7500), 600);
   else if (WORLD.mtn) setTimeout(() => toast('Riverton Yard, at the foot of Laurel Mountain. The ladder is lined out to the main; the climb starts past Hollins and runs 1.9 per cent to Summit.', '', 6500), 600);
   else setTimeout(() => toast('Yard 2, Bellevue. The ladder is lined out to the main.', '', 5000), 600);
   if (!MP.on && !JOB.run && CARS.cuts.length) setTimeout(() => toast('Cars are waiting on Yard 3, Yard 4, the elevator track and quarry storage. Back in gently to couple; tap a coupler on the cars, or open Couplers (U), to work the knuckles and cut them off.', '', 7000, 'carsIntro'), 11500);
@@ -569,6 +576,7 @@ GAME.wreckBar = function () {
   const W = GAME.wrecking; if (!W || !W.done || PLACE.on) return;
   // just the way out: re-rail or the menu. The wreck itself shows what happened
   $('bigTitle').textContent = ''; $('bigBody').textContent = '';
+  $('bigFar').hidden = !(WORLD.frost && FROST.main);
   $('bigMsg').classList.add('wreck'); $('bigMsg').hidden = false;
 };
 GAME.rerail = function () {
@@ -784,6 +792,7 @@ function simStep(dt, T) {
     const ub = curveUnbalanced(T.lead.leadPt.tp, S.v);
     tipT = ub > CURVE_TIP && !S.derailed ? tipT + dt : 0;
     if (tipT > CURVE_HOLD) GAME.derail(`Overturned on the curve at ${Math.round(Math.abs(S.v) / MPH)} mph.`);
+    if (ICE.on && !S.derailed) iceStep(dt, T);   // out on the frozen lake (10n_ice.js)
     else if (ub > CURVE_WARN) { toast('Too fast for this curve!', 'warn', 2000, 'curve'); JOB.note('curve', { mph: Math.abs(S.v) / MPH }); }
     // filling at water column / coal chute
     if (GAME.filling) {
@@ -860,6 +869,7 @@ function renderStep(dt, T) {
   updateFX(dt, camera); precipFrame(camera, dt); treeFxFrame(camera, dt); rainGlassFrame(dt); birdsFrame(dt, camera);
   updateSparks(dt, T, camera);
   digFrame(dt, camera);
+  iceFrame(dt, camera, T);
   wfxFrame(dt, T);
   if (GAME.running) { updateHUD(dt); FLEET.frame(dt); }
   cloudRender(renderer, camera, dt);

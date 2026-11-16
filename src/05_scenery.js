@@ -1110,6 +1110,7 @@ function buildStations() {
       // spout reaches over the track: modelled in waterTower toward -z of base (which faces track)
     }
   }
+  if (WORLD.frost) { frFacilities(); return; }
   if (WORLD.mtn) { mtFacilities(); return; }
   if (WORLD.custom) return;   // the rest is the Berkshire Division's own terminal
   const eng = ROUTE.features.engine;

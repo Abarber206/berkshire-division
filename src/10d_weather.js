@@ -86,7 +86,9 @@ function wxBlend(a, b, t, out = {}) {
 }
 /* pick the menu's weather. A changing sky starts in a settled kind (with a wet rail if it starts wet) */
 function wxSet(key, seed) {
-  const M = WEATHER[key] || WEATHER.changing, was = WX.season;
+  let M = WEATHER[key] || WEATHER.changing; const was = WX.season;
+  // Raven Lake is always deep winter: summer skies come as their winter kind, rain as snow
+  if (typeof WORLD !== 'undefined' && WORLD.frost && M.season !== 'winter') M = Object.assign({}, M, { season: 'winter', kind: M.kind === 'rain' || M.kind === 'storm' ? 'snow' : M.kind });
   WX.key = WEATHER[key] ? key : 'changing'; WX.season = M.season; WX.walk = !!M.walk;
   if (seed !== undefined) WX.seed = (Math.abs(Math.floor(seed)) % 2147483646) + 1;
   let k = M.kind;
@@ -96,6 +98,7 @@ function wxSet(key, seed) {
   // turning to winter, it has snowed before: a light coat on the trees and trains (heavier if it is snowing now).
   // Changing between winter skies keeps what lies; back to summer, it thaws in wxStep
   if (M.season === 'winter' && was !== 'winter') WX.lay = Math.max(WX.lay, k === 'snow' ? 0.5 : 0.3);
+  if (typeof WORLD !== 'undefined' && WORLD.frost) WX.lay = Math.max(WX.lay, 0.85);   // deep snow on the pines at Raven Lake
   WX.flash = 0; WX.bolts = []; WX.boltIn = 8 + 20 * wxRand(); WX.changed = null;
   wxBlend(k, k, 1, WX.P);
   return WX;
@@ -147,7 +150,7 @@ const WX_LAY_BUILD = 360;
 function wxLayStep(lay, dt, P, sunLight = 1, winter = true) {
   const fall = (P.snow || 0) / 0.8;
   if (fall > 0.05) return Math.min(1, lay + dt * fall / WX_LAY_BUILD);
-  return Math.max(0, lay - dt * (winter ? 0.00025 + 0.0005 * sunLight * (P.sunK ?? 1) : 1 / 60));
+  return Math.max(typeof WORLD !== 'undefined' && WORLD.frost ? Math.min(lay, 0.7) : 0, lay - dt * (winter ? 0.00025 + 0.0005 * sunLight * (P.sunK ?? 1) : 1 / 60));
 }
 /* adhesion on the rail: dry 0.27; a film of water on a dirty railhead is the worst (about 0.16),
    and a long rain washes it a little better; snow and frost 0.15 */

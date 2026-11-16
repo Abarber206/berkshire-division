@@ -7,6 +7,7 @@
 const ROUTES = {
   ohio: { name: 'Berkshire Division', sub: 'Ohio farm country · 13.8 mi double-track loop' },
   laurel: { name: 'Laurel Mountain', sub: 'Mountain grades · 35.6 mi double track, horseshoe curve, tunnel' },
+  frost: { name: 'Raven Lake', sub: 'Winter night · 9-mile loop, 4% cliff grade, track across the frozen lake' },
 };
 /* ?route= picks the railroad; without it, the one last driven. A layout from the editor overrides both. */
 const ROUTE_KEY = (() => {

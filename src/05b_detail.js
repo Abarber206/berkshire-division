@@ -669,7 +669,7 @@ function updateDetailLOD(cam, scene, dt) {
   let budget = 1;
   for (const p of WORLD.pieces) {
     const U = p.userData, d = U.sphere.center.distanceTo(cp) - U.sphere.radius;
-    if (!U.grass && d < 360 && budget > 0) { genGrass(p, scene); budget--; }
+    if (!U.grass && d < 360 && budget > 0 && !WORLD.frost) { genGrass(p, scene); budget--; }   // nothing grows through the snow at Raven Lake
     if (U.grass) { U.grass.visible = d < 420; for (const m of U.grass.children) { const k = m.userData.kind; m.visible = k === 'bush' ? d < 420 : !SKY.snow && d < (k === 'grass' ? 230 : 300); } }
   }
   coverUpdate(cam, scene);
@@ -721,7 +721,7 @@ function coverCell(ci, cj, scene) {
   return { grp, c: sph.center };
 }
 function coverUpdate(cam, scene) {
-  if (!WORLD.trackHash) return;
+  if (!WORLD.trackHash || WORLD.frost) return;
   const S = COVER.size, R = GFX.lite ? 125 : 200, cp = cam.position, X = cp.x, N = -cp.z;
   // nothing to grow when the camera is high above the ground (an aerial view sees it all as texture)
   const high = cp.y - groundAt(X, N) > 140;
