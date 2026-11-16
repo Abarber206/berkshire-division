@@ -1869,6 +1869,10 @@ function freightModel(type, num, r) {
 const CH = { L: 24.7, hw: 1.52, yT: 1.30, sill: [1.05, 1.47], belt: 2.13, win: [2.2, 3.0], lint: 3.1, eave: 3.43, xb: 11.0, xv: 11.76 };
 /* the coach's window pairs (centres) and each window opening [x0, x1], shared with the seating inside (06g_person.js) */
 const coachPairs = () => { const a = []; for (let i = 0; i < 13; i++) a.push(-9.5 + i * 1.58); return a; };
+/* the saloon's ceiling in section, from the eave (y 0 at CH.eave): the lower deck curving up from the wall lining (hi)
+   through ctl to the clerestory wall at rD (height hD), up the clerestory to hC, and its arch (control height cr).
+   The roof (coachModel) is a shell outside it, and the saloon (06g_person.js) lines it. */
+function coachCeilingProfile() { const hi = CH.hw - 0.085; return { hi, ctl: hi * 0.85, rD: 0.8, hD: 0.29, hC: 0.53, cr: 0.95 }; }
 function coachOpens() { const o = []; for (const x of coachPairs()) for (const d of [-0.33, 0.33]) o.push([x + d - 0.28, x + d + 0.28]); return o; }
 function coachModel(spec, num, observation, trim = '') {
   carMaterials();
@@ -1949,7 +1953,17 @@ function coachModel(spec, num, observation, trim = '') {
   const rL0 = observation ? -(L / 2 - 0.1) : -(CH.xv + 0.06), rL1 = CH.xv + 0.06;
   // the observation end is rounded in plan, the roof sweeping round the platform's corners (radius RR)
   const RR = observation ? 0.8 : 0, rW = d => rE - RR + Math.sqrt(Math.max(0, RR * RR - (RR - d) * (RR - d)));
-  gb.add('roof', new THREE.ExtrudeGeometry(deck, { depth: rL1 - rL0 - RR, bevelEnabled: false, curveSegments: 10 }).rotateY(Math.PI / 2).translate(rL0 + RR, yE, 0));
+  // The roof is a shell, open underneath: the saloon's own ceiling (06g_person.js coachInterior) curves up inside it, so
+  // nothing may close the roof off flat at the eaves (a flat underside there hid the lit ceiling and its lamps).
+  // Each side of the lower deck runs from the eave in over the saloon ceiling's shoulder to the clerestory wall.
+  const cin = coachCeilingProfile();
+  for (const s of [-1, 1]) {
+    const sh = new THREE.Shape(); sh.moveTo(s * rE, 0); sh.quadraticCurveTo(s * hw * 0.9, 0.3, s * rD, hD); sh.lineTo(s * cin.rD, hD);
+    sh.lineTo(s * cin.rD, cin.hD); sh.quadraticCurveTo(s * cin.ctl, 0.2, s * (cin.hi + 0.005), 0); sh.closePath();
+    gb.add('roof', new THREE.ExtrudeGeometry(sh, { depth: rL1 - rL0 - RR, bevelEnabled: false, curveSegments: 10 }).rotateY(Math.PI / 2).translate(rL0 + RR, yE, 0));
+  }
+  // over the vestibules and past the bulkheads the shell is closed underneath by a flat panel at the eaves
+  for (const [a, b] of observation ? [[CH.xb, rL1], [rL0 + RR, -CH.xb]] : [[CH.xb, rL1], [rL0, -CH.xb]]) gb.box('roof', b - a, 0.012, 2 * rE - 0.02, (a + b) / 2, yE - 0.002, 0);
   if (observation) {
     const prof = deck.getPoints(10).map(p => [p.x, p.y]); if (prof.length > 1 && Math.hypot(prof[0][0] - prof[prof.length - 1][0], prof[0][1] - prof[prof.length - 1][1]) < 1e-6) prof.pop();
     const n = prof.length, N = 12, pos = [], ring = d => prof.map(([z, y]) => [rL0 + d, yE + y, z * rW(d) / rE]);
@@ -1967,7 +1981,11 @@ function coachModel(spec, num, observation, trim = '') {
     gb.add('roof', g);
   }
   const clr = []; clr.push([-rD, hD - 0.02], [rD, hD - 0.02], [rD, hC]); for (let i = 1; i < 12; i++) { const t = i / 12, z = lerp(rD, -rD, t); clr.push([z, (1 - t) * (1 - t) * hC + 2 * (1 - t) * t * cr + t * t * hC]); } clr.push([-rD, hC]);
-  const cs = new THREE.Shape(); cs.moveTo(...clr[0]); for (const p of clr.slice(1)) cs.lineTo(...p); cs.closePath();
+  // the clerestory: its side walls and arched top as a shell over the saloon's clerestory ceiling
+  const cs = new THREE.Shape(); cs.moveTo(rD, hD - 0.02); for (const p of clr.slice(2)) cs.lineTo(...p);   // up one wall, over the arch, down the other
+  cs.lineTo(-rD, hD - 0.02); cs.lineTo(-cin.rD, hD - 0.02); cs.lineTo(-cin.rD, cin.hC);
+  for (let i = 1; i < 12; i++) { const t = i / 12, z = lerp(-cin.rD, cin.rD, t); cs.lineTo(z, (1 - t) * (1 - t) * cin.hC + 2 * (1 - t) * t * cin.cr + t * t * cin.hC); }
+  cs.lineTo(cin.rD, cin.hC); cs.lineTo(cin.rD, hD - 0.02); cs.closePath();
   const xc0 = rL0 + (observation ? 0.6 : 0.62), xc1 = rL1 - 0.62;
   gb.add('roof', new THREE.ExtrudeGeometry(cs, { depth: xc1 - xc0, bevelEnabled: false }).rotateY(Math.PI / 2).translate(xc0, yE, 0));
   for (const [xa, xb] of [[xc1, rL1 - 0.02], [xc0, rL0 + 0.02]]) {      // the hoods: the clerestory section lofted down to the deck
