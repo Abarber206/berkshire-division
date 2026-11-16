@@ -197,7 +197,7 @@ function windowsRow(gb, base, x0, x1, y, z, w, h, n, face = 1, opt) {
 /* -------- buildings -------- */
 /* every lamp on the railroad: { kind, p (where the light comes from), gp (where its glow shows, if not p) }.
    Lit after dark, and the nearest ones really light their surroundings: see 10c_lamps.js */
-const LAMPS = { lights: [], sig: [] };
+const LAMPS = { lights: [], sig: [], tmp: [] };   // tmp: lamps rebuilt every frame (the rear markers' glow, 10m_winlight.js)
 const lampAt = (kind, m, x, y, z, more) => { const l = { kind, p: new THREE.Vector3(x, y, z).applyMatrix4(m), ...more }; LAMPS.lights.push(l); return l; };
 /* a platform lamp post on a depot's platform: cast iron plinth and post, a glazed lantern and its cap.
    x, z are in the depot's own frame, whose platform top is at y = 0.16. */

@@ -200,7 +200,7 @@ function lampsLevels(dark, dt) {
 const _lampCand = [];
 function lampsPick(cam) {
   const cp = cam.position; _lampCand.length = 0;
-  for (const l of LAMPS.lights) {
+  for (const l of LAMPS.tmp.length ? LAMPS.lights.concat(LAMPS.tmp) : LAMPS.lights) {
     if (!(l.lv > 0.002)) continue;
     const dx = l.p.x - cp.x, dy = l.p.y - cp.y, dz = l.p.z - cp.z, d = Math.max(0, Math.sqrt(dx * dx + dy * dy + dz * dz) - (l.r || LAMP_KINDS[l.kind].r) * 0.5);
     if (d > 700) continue;
@@ -235,6 +235,7 @@ function lampsFrame(cam, dt = 0) {
   if (LAMPS.glows) lampsLevels(SKY.dark || 0, dt);
   WIN.u.value[2] = S.time || 0;
   lampsPick(cam);
+  if (typeof wlCars === 'function' && typeof IX !== 'undefined' && IX.consists) wlCars(IX.consists(), cam.position, SKY.dark || 0);
 }
 
 /* ---------------- house and depot windows ----------------
@@ -416,8 +417,9 @@ function fredModel() {
   return g;
 }
 function railLamps() {
+  LAMPS.tmp.length = 0;
   if (typeof IX === 'undefined' || !IX.consists) return;
-  const dk = SKY.dark || 0, day = lerp(0.3, 1, smooth(0.1, 0.5, dk)), t = S.time || 0;
+  const dk = SKY.dark || 0, day = lerp(0.3, 1, smooth(0.1, 0.5, dk)), t = S.time || 0, glowK = smooth(0.1, 0.5, dk);
   for (const c of IX.consists()) {
     const vs = c.vehicles, n = vs.length; if (!n) continue;
     let rv = null, end = 0;
@@ -434,6 +436,7 @@ function railLamps() {
         v.lamps.mat.color.setRGB(lit ? 1 : 0.16, lit ? 0.12 : 0.03, lit ? 0.07 : 0.02);
         for (const g of v.lamps.glows) { g.visible = !!lit; g.material.opacity = 0.9 * day; }
       }
+      if (lit && glowK > 0.003 && typeof wlMarker === 'function') wlMarker(v, glowK, LAMPS.tmp);   // the red glow they throw on the rails behind
     }
     // an end-of-train device where there are no markers to show
     const need = rv && !(rv.lamps && end === -1) && ['box', 'hopper', 'tank', 'gon', 'caboose'].includes(rv.kind);

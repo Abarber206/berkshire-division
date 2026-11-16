@@ -412,6 +412,8 @@ function buildE5Car(def, idx) {
   root.traverse(o => { if (o.isMesh && o.material !== RMAT.hsGlass && o.material !== RMAT.hit) { o.castShadow = true; o.receiveShadow = true; } });
   hsNoCast([...cabParts, inner]);
   if (beam) beam.castShadow = false;
+  // the windows' light on the ground at night (10m_winlight.js): a cool white from the saloon's ceiling
+  root.userData.winLight = { x0: x(wins[n - 1]), pitch, n, so: 0, hw: wW / 2, side: E5.HW - 0.1, sill: WY[0], head: WY[1], yL: 3.3, half: (S1 - S0) / 2, col: 0xf4f2ea, I: 4.0, lit: 'hs' };
   return {
     root, body, trucks, wheels, rW: E5.R, wb: E5.WB, len: L, frame: [t0, t1], ref, pans, lens, lenses, beam, halo, ditch: [], set: 'e5', nose, motor: def.motor, mass: def.t * 1000, num: def.num,
     cab, cabEye: cab ? cab.eye : new THREE.Vector3(x(10.35), 3.18, -0.3),
@@ -719,6 +721,7 @@ function buildAcelaCar(def, idx) {
   root.traverse(o => { if (o.isMesh && o.material !== RMAT.hsGlass && o.material !== RMAT.hit) { o.castShadow = true; o.receiveShadow = true; } });
   hsNoCast([...cabParts, inner]);
   if (beam) beam.castShadow = false;
+  if (!power && n) root.userData.winLight = { x0: x(wins[n - 1]), pitch, n, so: 0, hw: 0.5, side: AC.CW - 0.1, sill: 2.31, head: 2.93, yL: 3.65, half: (S1 - S0) / 2, col: 0xfff0dc, I: 4.2, lit: 'hs' };
   return {
     root, body, trucks, wheels, rW: power ? AC.PR : AC.CR, wb: power ? AC.PWB : AC.CWB, len: L, frame: [t0, t1], ref, pans, lens, lenses, beam, halo, ditch, set: 'acela', nose: power, motor: power, mass: def.t * 1000, num: def.num,
     tilt: !power, tiltY: 1.3,
