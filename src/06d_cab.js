@@ -172,6 +172,7 @@ function handwheel(gb, key, r, spokes = 3) {
    bh (firebox back sheet), FB (firebox outline), ceil(z) (roof underside), fwin {y0, y1, zi, zo} (front windows),
    eyeY (optional). Local frame: +X forward, +Z the engineer's (right) side. */
 function steamCab(gb, body, d) {
+  gb = inBin(gb);   // the cab's inside stays dry of snow
   cabMaterials();
   const K = new CabKit(gb, body), FB = d.FB;
   const F = d.bh - 0.04;                      // the backhead's face, toward the crew
@@ -725,6 +726,7 @@ function cabChair(gb, key, x, z, seatTop, floorY) {
 /* d: dx (model x from distance a back from the nose), CAB0, CAB1, FL (floor top), W (half width to the wall's centre),
    sill (windshield foot), ceil (ceiling), lead (live screens only on the lead unit) */
 function dieselCab(gb, body, d) {
+  gb = inBin(gb);   // the cab's inside stays dry of snow
   cabMaterials();
   const K = new CabKit(gb, body), dx = d.dx, FL = d.FL, wallZ = d.W - 0.03;
   const V = (x, y, z) => new THREE.Vector3(x, y, z);

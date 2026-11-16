@@ -1137,15 +1137,23 @@ class GeoBin {
     const g = new THREE.Group();
     for (const k in this.bins) {
       if (!this.bins[k].length) continue;
-      // snow on the engines and cars: snowMat (10i_snow.js) gives the outside its coat and keeps the inside dry
-      const mesh = new THREE.Mesh(mergeGeos(this.bins[k]), typeof snowMat === 'function' ? snowMat(mats, k, opt) : mats[k]);
-      mesh.castShadow = opt.cast !== false && !(mats[k] && mats[k].userData.noShadow);
+      // snow on the engines and cars: snowMat (10i_snow.js) gives the outside its coat and keeps the inside dry;
+      // keys marked 'in:' (inBin) are inside a cab built into the body's own bin, so they stay dry too
+      const inside = k.startsWith('in:'), mk = inside ? k.slice(3) : k;
+      const mesh = new THREE.Mesh(mergeGeos(this.bins[k]), typeof snowMat === 'function' ? snowMat(mats, mk, inside ? { ...opt, cast: false } : opt) : mats[mk]);
+      mesh.castShadow = opt.cast !== false && !(mats[mk] && mats[mk].userData.noShadow);
       mesh.receiveShadow = opt.receive !== false;
-      mesh.name = k;
+      mesh.name = mk;
       g.add(mesh);
     }
     return g;
   }
+}
+/* a view of a GeoBin for the inside of a cab: the same bins, every key marked 'in:' so build() keeps it dry of snow */
+function inBin(gb) {
+  const v = Object.create(gb);
+  v.add = (key, geo, m) => gb.add(key.startsWith('in:') ? key : 'in:' + key, geo, m);
+  return v;
 }
 /* a round bar from point a to point b ([x, y, z] arrays) */
 function barGeo(r, a, b, seg = 8) {
@@ -10884,6 +10892,7 @@ function handwheel(gb, key, r, spokes = 3) {
    bh (firebox back sheet), FB (firebox outline), ceil(z) (roof underside), fwin {y0, y1, zi, zo} (front windows),
    eyeY (optional). Local frame: +X forward, +Z the engineer's (right) side. */
 function steamCab(gb, body, d) {
+  gb = inBin(gb);   // the cab's inside stays dry of snow
   cabMaterials();
   const K = new CabKit(gb, body), FB = d.FB;
   const F = d.bh - 0.04;                      // the backhead's face, toward the crew
@@ -11437,6 +11446,7 @@ function cabChair(gb, key, x, z, seatTop, floorY) {
 /* d: dx (model x from distance a back from the nose), CAB0, CAB1, FL (floor top), W (half width to the wall's centre),
    sill (windshield foot), ceil (ceiling), lead (live screens only on the lead unit) */
 function dieselCab(gb, body, d) {
+  gb = inBin(gb);   // the cab's inside stays dry of snow
   cabMaterials();
   const K = new CabKit(gb, body), dx = d.dx, FL = d.FL, wallZ = d.W - 0.03;
   const V = (x, y, z) => new THREE.Vector3(x, y, z);
@@ -15626,6 +15636,7 @@ const GTT_EMPTY = 171000 * 0.4536;   // 24-C-GTE tender light weight, lb (about 
 
 /* ---------------- the cab: GE control stand of the 1950s, gauges on the panel, 20-notch throttle ---------------- */
 function turbineCab(gb, body, d) {
+  gb = inBin(gb);   // the cab's inside stays dry of snow
   const K = new CabKit(gb, body), dx = d.dx, FL = d.FL, wallZ = d.W - 0.04;
   const V = (x, y, z) => new THREE.Vector3(x, y, z);
   const box = (k, a0, a1, y0, y1, z0, z1) => gb.box(k, Math.abs(a1 - a0), Math.abs(y1 - y0), Math.abs(z1 - z0), dx((a0 + a1) / 2), (y0 + y1) / 2, (z0 + z1) / 2);
