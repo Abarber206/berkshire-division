@@ -18,7 +18,7 @@ function load() {
   return ctx;
 }
 // the coach's windows as coachModel describes them (13 pairs, 1.58 m apart, glass 1.47 m out, band 2.2-3.0 m)
-const COACH = { x0: -9.5, pitch: 1.58, n: 13, so: 0.33, hw: 0.28, side: 1.47, sill: 2.2, head: 3.0, yL: 3.83, half: 11, col: 0xffc47c, I: 4.4, lit: 'coach' };
+const COACH = { x0: -9.5, pitch: 1.58, n: 13, so: 0.33, hw: 0.28, side: 1.47, skin: 1.6, sill: 2.2, head: 3.0, yL: 3.83, half: 11, col: 0xffc47c, I: 2.0, lit: 'coach' };
 function car(c, at = [0, 0, 0], yaw = 0, w = COACH) {
   const T = c.X.THREE, scene = new T.Scene(), root = new T.Group();
   root.position.set(...at); root.rotation.y = yaw; root.userData.winLight = w; scene.add(root); scene.updateMatrixWorld(true);
@@ -27,12 +27,12 @@ function car(c, at = [0, 0, 0], yaw = 0, w = COACH) {
 const at = (c, x, y, z) => new c.X.THREE.Vector3(x, y, z);
 function one(c, v) { const p = v.root.position; return c.X.wlCars([{ vehicles: [v] }], at(c, p.x, p.y + 5, p.z + 20), 1)[0]; }
 
-test('the panes land on the ground a few metres out from the car, on both sides', () => {
+test('the light starts just off the car\'s side and fades out several metres away, on both sides', () => {
   const c = load(), e = one(c, car(c)), x = -9.5 + 6 * 1.58 + 0.33;   // the middle of a pane
   const prof = []; for (let z = 1.6; z < 15; z += 0.2) prof.push([z, c.X.wlAt(e, at(c, x, 0, z))]);
   const lit = prof.filter(([, v]) => v > 0.05 * Math.max(...prof.map(p => p[1])));
   const near = lit[0][0], far = lit[lit.length - 1][0];
-  assert.ok(near > 2.6 && near < 4.6, `near edge ${near.toFixed(1)} m from the centre line`);
+  assert.ok(near > 1.6 && near < 2.4, `near edge ${near.toFixed(1)} m from the centre line`);
   assert.ok(far > 6 && far < 11, `far edge ${far.toFixed(1)} m`);
   assert.strictEqual(c.X.wlAt(e, at(c, x, 0, 1.0)), 0, 'nothing under the car');
   const L = c.X.wlAt(e, at(c, x, 0, 5)), R = c.X.wlAt(e, at(c, x, 0, -5));
@@ -40,12 +40,13 @@ test('the panes land on the ground a few metres out from the car, on both sides'
   assert.strictEqual(c.X.wlAt(e, at(c, x, 6, 5)), 0, 'nothing above the line through the window head');
 });
 
-test('close to the car each pane shows, with dark piers between; further out they blur into a band', () => {
+test('right by the car the panes show softly; further out they blur into one band; nothing on the car itself', () => {
   const c = load(), e = one(c, car(c)), x0 = -9.5 + 6 * 1.58;
-  const pane = c.X.wlAt(e, at(c, x0 + 0.33, 1.8, 2.0)), pier = c.X.wlAt(e, at(c, x0 + 0.79, 1.8, 2.0)), mull = c.X.wlAt(e, at(c, x0, 1.8, 2.0));
-  assert.ok(pier < pane * 0.3 && mull < pane * 0.6, `pane ${pane.toFixed(3)}, pier ${pier.toFixed(3)}, between the pair ${mull.toFixed(3)}`);
+  const pane = c.X.wlAt(e, at(c, x0 + 0.33, 1.6, 1.75)), pier = c.X.wlAt(e, at(c, x0 + 0.79, 1.6, 1.75));
+  assert.ok(pier < pane * 0.85 && pier > pane * 0.3, `pane ${pane.toFixed(3)}, pier ${pier.toFixed(3)}: soft, not hard stripes`);
+  assert.strictEqual(c.X.wlAt(e, at(c, x0 + 0.33, 2.19, 1.55)), 0, 'the window sill itself is not lit up');
   const fp = c.X.wlAt(e, at(c, x0 + 0.33, 0, 8.5)), fq = c.X.wlAt(e, at(c, x0 + 0.79, 0, 8.5));
-  assert.ok(fq > fp * 0.3, `far out it is one soft band (${fp.toFixed(3)} / ${fq.toFixed(3)})`);
+  assert.ok(fq > fp * 0.75, `far out it is one soft band (${fp.toFixed(3)} / ${fq.toFixed(3)})`);
   assert.ok(c.X.wlAt(e, at(c, 14, 0, 5)) < 0.02, 'nothing past the ends of the window run');
   // a wall beside the train (facing the car) catches it too
   assert.ok(c.X.wlAt(e, at(c, x0 + 0.33, 1.5, 4), at(c, 0, 0, -1)) > 0.1, 'lights a wall facing the car');

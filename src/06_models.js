@@ -2115,7 +2115,7 @@ function coachModel(spec, num, observation, trim = '') {
   // the windows' light on the ground beside the car at night (10m_winlight.js): the pairs, the glass, and the lamps
   // along the clerestory ceiling that shine out through them
   const cp = coachPairs();
-  root.userData.winLight = { x0: cp[0], pitch: cp[1] - cp[0], n: cp.length, so: 0.33, hw: 0.28, side: hw - 0.05, sill: w0, head: w1, yL: yE + 0.4, half: CH.xb, col: T ? 0xffbb6a : 0xffc47c, I: T ? 5.0 : 4.4, lit: 'coach' };
+  root.userData.winLight = { x0: cp[0], pitch: cp[1] - cp[0], n: cp.length, so: 0.33, hw: 0.28, side: hw - 0.05, skin: hw + 0.08, sill: w0, head: w1, yL: yE + 0.4, half: CH.xb, col: T ? 0xffbb6a : 0xffc47c, I: T ? 2.3 : 2.0, lit: 'coach' };
   return { root, len: L, trucks: [{ a: 3.5, type: 'six', R: 0.457 }, { a: 21.2, type: 'six', R: 0.457 }], frame: [3.5, 21.2], weight: 82 * STON, kind: 'coach', axles: 6, area: 120, couplers };
 }
 

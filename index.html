@@ -9053,7 +9053,7 @@ function coachModel(spec, num, observation, trim = '') {
   // the windows' light on the ground beside the car at night (10m_winlight.js): the pairs, the glass, and the lamps
   // along the clerestory ceiling that shine out through them
   const cp = coachPairs();
-  root.userData.winLight = { x0: cp[0], pitch: cp[1] - cp[0], n: cp.length, so: 0.33, hw: 0.28, side: hw - 0.05, sill: w0, head: w1, yL: yE + 0.4, half: CH.xb, col: T ? 0xffbb6a : 0xffc47c, I: T ? 5.0 : 4.4, lit: 'coach' };
+  root.userData.winLight = { x0: cp[0], pitch: cp[1] - cp[0], n: cp.length, so: 0.33, hw: 0.28, side: hw - 0.05, skin: hw + 0.08, sill: w0, head: w1, yL: yE + 0.4, half: CH.xb, col: T ? 0xffbb6a : 0xffc47c, I: T ? 2.3 : 2.0, lit: 'coach' };
   return { root, len: L, trucks: [{ a: 3.5, type: 'six', R: 0.457 }, { a: 21.2, type: 'six', R: 0.457 }], frame: [3.5, 21.2], weight: 82 * STON, kind: 'coach', axles: 6, area: 120, couplers };
 }
 
@@ -11846,7 +11846,7 @@ function buildE5Car(def, idx) {
   hsNoCast([...cabParts, inner]);
   if (beam) beam.castShadow = false;
   // the windows' light on the ground at night (10m_winlight.js): a cool white from the saloon's ceiling
-  root.userData.winLight = { x0: x(wins[n - 1]), pitch, n, so: 0, hw: wW / 2, side: E5.HW - 0.1, sill: WY[0], head: WY[1], yL: 3.3, half: (S1 - S0) / 2, col: 0xf4f2ea, I: 4.0, lit: 'hs' };
+  root.userData.winLight = { x0: x(wins[n - 1]), pitch, n, so: 0, hw: wW / 2, side: E5.HW - 0.1, skin: E5.HW + 0.06, sill: WY[0], head: WY[1], yL: 3.3, half: (S1 - S0) / 2, col: 0xf4f2ea, I: 1.9, lit: 'hs' };
   return {
     root, body, trucks, wheels, rW: E5.R, wb: E5.WB, len: L, frame: [t0, t1], ref, pans, lens, lenses, beam, halo, ditch: [], set: 'e5', nose, motor: def.motor, mass: def.t * 1000, num: def.num,
     cab, cabEye: cab ? cab.eye : new THREE.Vector3(x(10.35), 3.18, -0.3),
@@ -12154,7 +12154,7 @@ function buildAcelaCar(def, idx) {
   root.traverse(o => { if (o.isMesh && o.material !== RMAT.hsGlass && o.material !== RMAT.hit) { o.castShadow = true; o.receiveShadow = true; } });
   hsNoCast([...cabParts, inner]);
   if (beam) beam.castShadow = false;
-  if (!power && n) root.userData.winLight = { x0: x(wins[n - 1]), pitch, n, so: 0, hw: 0.5, side: AC.CW - 0.1, sill: 2.31, head: 2.93, yL: 3.65, half: (S1 - S0) / 2, col: 0xfff0dc, I: 4.2, lit: 'hs' };
+  if (!power && n) root.userData.winLight = { x0: x(wins[n - 1]), pitch, n, so: 0, hw: 0.5, side: AC.CW - 0.1, skin: AC.CW + 0.06, sill: 2.31, head: 2.93, yL: 3.65, half: (S1 - S0) / 2, col: 0xfff0dc, I: 2.0, lit: 'hs' };
   return {
     root, body, trucks, wheels, rW: power ? AC.PR : AC.CR, wb: power ? AC.PWB : AC.CWB, len: L, frame: [t0, t1], ref, pans, lens, lenses, beam, halo, ditch, set: 'acela', nose: power, motor: power, mass: def.t * 1000, num: def.num,
     tilt: !power, tiltY: 1.3,
@@ -22010,9 +22010,10 @@ function ownHeadlight(own, L, I, col) {
    At night a lit passenger car throws its windows onto everything beside it: a row of warm panes on the
    ballast and the ground, stretched out from the car, sliding along with the train, climbing a platform
    edge, a fence or the side of a train on the next track. The light comes from the lamps along the
-   ceiling, so a pane lands where the line from the ceiling through the window meets the ground: the sill
-   puts the near edge a few metres out, the window head the far edge, and the panes blur into one soft band
-   further out as the light from many lamps spreads. Worked out per pixel for every lit material, a few
+   ceiling, wall to wall and end to end, so the light reaching any spot is the part of that ceiling it can see
+   through the glass: it starts just off the car's side under the sills, is brightest a few metres out, fades
+   to nothing past the line through the window heads, and each pane spreads into its neighbours the further
+   it falls, as the light from many lamps does. Worked out per pixel for every lit material, a few
    sums per car near the camera. The observation car's red marker (and a caboose's) lights the rails behind.
    ========================================================================== */
 // the cars nearest the camera that light the ground: a computer 12, a phone 4
@@ -22024,7 +22025,7 @@ const WLIT = { O: new Float32Array(WL_MAX * 4), X: new Float32Array(WL_MAX * 4),
    wlX: the car's length axis, the window pitch      wlY: its up axis, how many windows
    wlW: half the gap between a pair's panes (0: single windows), half a pane's width, the glass's distance from the
         centre line, the ceiling lamps' height
-   wlC: colour x brightness, the sill's height        wlH: the window head's height */
+   wlC: colour x brightness, the sill's height        wlH: the window head's height, half the car, its outside (sills, grabs) */
 (function wlChunks() {
   const C = THREE.ShaderChunk, DECL = `
 #ifndef WL_DECL
@@ -22045,22 +22046,26 @@ const WLIT = { O: new Float32Array(WL_MAX * 4), X: new Float32Array(WL_MAX * 4),
       float lx = dot( d, ax ), ly = dot( d, ay ), lz = dot( d, cross( ax, ay ) );
       float side = wlW[ i ].z, az = abs( lz ), wo = az - side;
       float mid = ( wlY[ i ].w - 1.0 ) * wlX[ i ].w * 0.5, along = abs( lx - wlO[ i ].w - mid ) - mid;   // past the end of the window run
-      if ( wo < 0.03 || wo > 15.0 || along > 4.0 ) continue;
-      // the line from the ceiling lamps through the glass to here: the height where it crosses the side
-      float yL = wlW[ i ].w, t = side / az, yc = yL + ( ly - yL ) * t;
-      float blur = 0.03 + wo * 0.035;
-      float band = smoothstep( wlC[ i ].w - blur, wlC[ i ].w + blur, yc ) * ( 1.0 - smoothstep( wlH[ i ].x - blur, wlH[ i ].x + blur, yc ) );
+      if ( az < wlH[ i ].z || wo > 15.0 || along > 4.0 ) continue;   // nothing on the car's own skin, sills and grab irons
+      // the lit ceiling spans the car from wall to wall: where the lines from its far and near edges cross the glass
+      float yL = wlW[ i ].w, zc = side - 0.3, uA = ( side + zc ) / ( az + zc ), uB = ( side - zc ) / ( az - zc );
+      float ya = yL + ( ly - yL ) * uA, yb = yL + ( ly - yL ) * uB;
+      // how much of the window's height that span looks through: a soft edge of its own, wider the further out
+      float sill = wlC[ i ].w, head = wlH[ i ].x;
+      float band = clamp( min( max( ya, yb ), head ) - max( min( ya, yb ), sill ), 0.0, head - sill ) / ( head - sill );
       if ( band <= 0.0 ) continue;
-      // which pane: the panes blur together further wo, as the light from many lamps spreads
-      float pitch = wlX[ i ].w, so = wlW[ i ].x, hp = wlW[ i ].y, xb = 0.03 + wo * 0.06;
-      float k = clamp( floor( ( lx - wlO[ i ].w ) / pitch + 0.5 ), 0.0, wlY[ i ].w - 1.0 );
-      float dx = abs( lx - wlO[ i ].w - k * pitch ), e = so > 0.0 ? abs( dx - so ) : dx;
-      float pane = 1.0 - smoothstep( hp - xb, hp + xb, e );
-      float frac = clamp( ( so > 0.0 ? 4.0 : 2.0 ) * hp / pitch, 0.0, 1.0 );
-      float runEnd = 1.0 - smoothstep( 0.0, xb + 0.2, along - so - hp );
-      pane = mix( pane, frac * runEnd, clamp( xb / pitch, 0.0, 0.85 ) );
+      // along the car the lamps run the whole length, so each pane spreads more the further it falls from the glass
+      float pitch = wlX[ i ].w, so = wlW[ i ].x, hp = wlW[ i ].y, um = 0.5 * ( uA + uB ), B = 1.0 * ( 1.0 - um ) + 0.02;
+      float pane = 0.0;
+      for ( int j = 0; j < 7; j ++ ) {
+        float x = lx + B * ( float( j ) / 3.0 - 1.0 );
+        float k = clamp( floor( ( x - wlO[ i ].w ) / pitch + 0.5 ), 0.0, wlY[ i ].w - 1.0 );
+        float dx = abs( x - wlO[ i ].w - k * pitch ), e = so > 0.0 ? abs( dx - so ) : dx;
+        pane += 1.0 - smoothstep( hp - 0.04, hp + 0.04, e );
+      }
+      pane /= 7.0;
       // from the glass to here, and the way the light comes in
-      float r = ( 1.0 - t ) * length( vec2( ly - yL, az ) );
+      float r = ( 1.0 - um ) * length( vec2( ly - yL, az ) );
       vec3 src = wlO[ i ].xyz + ax * lx + ay * yL;
       float nl = max( dot( wlN, normalize( src - vLampP ) ) * 0.85 + 0.15, 0.0 );
       wlSum += wlC[ i ].rgb * ( band * pane * nl * ( 1.0 - smoothstep( 10.0, 15.0, wo ) ) / ( 1.0 + 0.05 * r * r ) );
@@ -22079,17 +22084,20 @@ function wlAt(c, p, n) {
   const lx = d[0] * ax.x + d[1] * ax.y + d[2] * ax.z, ly = d[0] * ay.x + d[1] * ay.y + d[2] * ay.z, lz = d[0] * az3.x + d[1] * az3.y + d[2] * az3.z;
   const w = c.w, az = Math.abs(lz), out = az - w.side;
   const mid = (w.n - 1) * w.pitch * 0.5, along = Math.abs(lx - w.x0 - mid) - mid;
-  if (out < 0.03 || out > 15 || along > 4) return 0;
-  const t = w.side / az, yc = w.yL + (ly - w.yL) * t, blur = 0.03 + out * 0.035;
-  const band = smooth(w.sill - blur, w.sill + blur, yc) * (1 - smooth(w.head - blur, w.head + blur, yc));
+  if (az < w.skin || out > 15 || along > 4) return 0;
+  const zc = w.side - 0.3, uA = (w.side + zc) / (az + zc), uB = (w.side - zc) / (az - zc);
+  const ya = w.yL + (ly - w.yL) * uA, yb = w.yL + (ly - w.yL) * uB;
+  const band = clamp(Math.min(Math.max(ya, yb), w.head) - Math.max(Math.min(ya, yb), w.sill), 0, w.head - w.sill) / (w.head - w.sill);
   if (band <= 0) return 0;
-  const xb = 0.03 + out * 0.06, k = clamp(Math.floor((lx - w.x0) / w.pitch + 0.5), 0, w.n - 1);
-  const dx = Math.abs(lx - w.x0 - k * w.pitch), e = w.so > 0 ? Math.abs(dx - w.so) : dx;
-  let pane = 1 - smooth(w.hw - xb, w.hw + xb, e);
-  const frac = clamp((w.so > 0 ? 4 : 2) * w.hw / w.pitch, 0, 1);
-  const runEnd = 1 - smooth(0, xb + 0.2, along - w.so - w.hw);
-  pane = lerp(pane, frac * runEnd, clamp(xb / w.pitch, 0, 0.85));
-  const r = (1 - t) * Math.hypot(ly - w.yL, az);
+  const um = 0.5 * (uA + uB), B = 1.0 * (1 - um) + 0.02;
+  let pane = 0;
+  for (let j = 0; j < 7; j++) {
+    const x = lx + B * (j / 3 - 1), k = clamp(Math.floor((x - w.x0) / w.pitch + 0.5), 0, w.n - 1);
+    const dx = Math.abs(x - w.x0 - k * w.pitch), e = w.so > 0 ? Math.abs(dx - w.so) : dx;
+    pane += 1 - smooth(w.hw - 0.04, w.hw + 0.04, e);
+  }
+  pane /= 7;
+  const r = (1 - um) * Math.hypot(ly - w.yL, az);
   const src = c.o.clone().addScaledVector(ax, lx).addScaledVector(ay, w.yL), L = src.sub(p).normalize(), N = n || new THREE.Vector3(0, 1, 0);
   const nl = Math.max(N.dot(L) * 0.85 + 0.15, 0);
   return c.I * band * pane * nl * (1 - smooth(10, 15, out)) / (1 + 0.05 * r * r);
@@ -22138,7 +22146,7 @@ function wlCars(consists, cam, dark) {
     Y[j] = e.ay.x; Y[j + 1] = e.ay.y; Y[j + 2] = e.ay.z; Y[j + 3] = w.n;
     W[j] = w.so; W[j + 1] = w.hw; W[j + 2] = w.side; W[j + 3] = w.yL;
     C[j] = _lc.r; C[j + 1] = _lc.g; C[j + 2] = _lc.b; C[j + 3] = w.sill;
-    H[j] = w.head; H[j + 1] = w.half;
+    H[j] = w.head; H[j + 1] = w.half; H[j + 2] = w.skin;
     k++;
   }
   WLIT.info[0] = k;
