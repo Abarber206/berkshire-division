@@ -54,7 +54,8 @@ function buildPerson(opts = {}) {
   const mt = personMaterials(opts.shirt || 0x5f7896);
   const root = new THREE.Group(); root.name = 'person';
   const joint = (parent, x, y, z) => { const g = new THREE.Group(); g.position.set(x, y, z); parent.add(g); return g; };
-  const put = (parent, bin) => { const g = bin.build(mt); g.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } }); parent.add(g); return g; };
+  const hull = [];
+  const put = (parent, bin) => { const g = bin.build(mt); g.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } }); parent.add(g); hull.push([parent, personHull(g)]); return g; };
   const hips = joint(root, 0, PD.hips, 0), spine = joint(hips, 0, PD.spine, 0), neck = joint(spine, 0, PD.neck, 0), head = joint(neck, 0, PD.head, 0);
   const j = { hips, spine, neck, head, sh: [], el: [], wr: [], hip: [], kn: [], an: [] };
   // pelvis, in the overalls
@@ -128,7 +129,7 @@ function buildPerson(opts = {}) {
     }
     j.hip.push(hp); j.kn.push(kn); j.an.push(an);
   }
-  const rig = { root, j, soles, shirt: opts.shirt, _inv: new THREE.Matrix4(), _p: new THREE.Vector3() };
+  const rig = { root, j, soles, hull, shirt: opts.shirt, _inv: new THREE.Matrix4(), _p: new THREE.Vector3() };
   rig.pose = st => posePerson(rig, st);
   posePerson(rig, {});
   return rig;
@@ -167,19 +168,135 @@ function posePerson(rig, st) {
     j.neck.rotation.x = -j.spine.rotation.x * 0.7 + (st.look || 0) * 0.35;
     j.hips.position.y = PD.hips;
   }
+  // in the air off a moving train: knees up to take the landing, arms out for balance
+  if (st.air > 0) {
+    const k = st.air;
+    for (let s = 0; s < 2; s++) {
+      const sg = s ? -1 : 1;
+      j.hip[s].rotation.x = lerp(j.hip[s].rotation.x, -0.55 + (s ? 0.25 : -0.1), k); j.kn[s].rotation.x = lerp(j.kn[s].rotation.x, 0.85 + (s ? 0.2 : 0), k);
+      j.an[s].rotation.x = lerp(j.an[s].rotation.x, -0.2, k);
+      j.sh[s].rotation.set(lerp(j.sh[s].rotation.x, -0.5, k), 0, lerp(j.sh[s].rotation.z, sg * 1.15, k)); j.el[s].rotation.x = lerp(j.el[s].rotation.x, -0.5, k);
+    }
+    j.spine.rotation.x = lerp(j.spine.rotation.x, 0.18, k);
+  }
+  // running it out after a jump: thrown forward, arms flung out ahead
+  if (st.flail > 0) {
+    const k = st.flail, ph = st.phase || 0;
+    for (let s = 0; s < 2; s++) { const sg = s ? -1 : 1; j.sh[s].rotation.set(lerp(j.sh[s].rotation.x, -1.3 - 0.45 * Math.sin(ph * 1.7 + s * 2), k), 0, lerp(j.sh[s].rotation.z, sg * 0.75, k)); j.el[s].rotation.x = lerp(j.el[s].rotation.x, -0.35, k); }
+    j.spine.rotation.x += 0.3 * k; j.neck.rotation.x -= 0.25 * k;
+  }
+  // tucked into a ball to roll: knees to the chest, chin down, arms wrapped round the shins
+  if (st.tuck > 0) {
+    const k = st.tuck;
+    for (let s = 0; s < 2; s++) {
+      const sg = s ? -1 : 1;
+      j.hip[s].rotation.set(lerp(j.hip[s].rotation.x, -2.05, k), 0, lerp(j.hip[s].rotation.z, sg * 0.12, k));
+      j.kn[s].rotation.x = lerp(j.kn[s].rotation.x, 2.3, k); j.an[s].rotation.x = lerp(j.an[s].rotation.x, 0.35, k);
+      j.sh[s].rotation.set(lerp(j.sh[s].rotation.x, -1.15, k), 0, lerp(j.sh[s].rotation.z, sg * 0.25, k)); j.el[s].rotation.x = lerp(j.el[s].rotation.x, -1.75, k);
+    }
+    j.spine.rotation.x = lerp(j.spine.rotation.x, 0.62, k); j.neck.rotation.x = lerp(j.neck.rotation.x, 0.5, k);
+  }
   if (st.wave !== undefined && st.wave >= 0) {
     const w = st.wave, up = smooth(0, 0.35, w) * (1 - smooth(2.2, 2.7, w));
     j.sh[1].rotation.set(-0.35 * up, 0, -2.55 * up - 0.07);
     j.el[1].rotation.set(0, 0, -(0.25 + 0.45 * Math.sin(w * 9)) * up);
   }
-  // stand him on his lowest sole
-  if (!st.sit) {
+  // stand him on his lowest sole (a man tumbling is put down by the whole of him instead: personLow)
+  if (!st.sit && !st.free) {
     rig.root.updateMatrixWorld(true);
     rig._inv.copy(rig.root.matrixWorld).invert();
     let lo = Infinity;
     for (const o of rig.soles) { rig._p.setFromMatrixPosition(o.matrixWorld).applyMatrix4(rig._inv); if (rig._p.y < lo) lo = rig._p.y; }
     j.hips.position.y -= lo;
   }
+}
+
+/* the outermost points of a piece of him, in its joint's frame: the farthest vertex each way of 96 directions,
+   so the lowest of him however he lies can be found from a few hundred points, not every vertex */
+const PHULL_D = (() => { const d = [], n = 96, ga = Math.PI * (3 - Math.sqrt(5)); for (let i = 0; i < n; i++) { const y = 1 - 2 * (i + 0.5) / n, r = Math.sqrt(1 - y * y); d.push([Math.cos(ga * i) * r, y, Math.sin(ga * i) * r]); } return d; })();
+function personHull(g) {
+  const best = PHULL_D.map(() => [-Infinity, 0, 0, 0]), v = new THREE.Vector3();
+  g.updateMatrixWorld(true);
+  const inv = new THREE.Matrix4().copy(g.matrixWorld).invert(), m = new THREE.Matrix4();
+  g.traverse(o => {
+    if (!o.isMesh) return;
+    m.multiplyMatrices(inv, o.matrixWorld).premultiply(g.matrix);
+    const a = o.geometry.attributes.position;
+    for (let i = 0; i < a.count; i++) {
+      v.set(a.getX(i), a.getY(i), a.getZ(i)).applyMatrix4(m);
+      for (let k = 0; k < PHULL_D.length; k++) { const d = PHULL_D[k], e = v.x * d[0] + v.y * d[1] + v.z * d[2]; if (e > best[k][0]) best[k] = [e, v.x, v.y, v.z]; }
+    }
+  });
+  const out = []; for (const b of best) if (b[0] > -Infinity) out.push(b[1], b[2], b[3]);
+  return new Float32Array(out);
+}
+/* the lowest point of the posed man in the world. The rig's matrices must be up to date. */
+function personLow(rig) {
+  let lo = Infinity;
+  for (const [o, P] of rig.hull) {
+    const e = o.matrixWorld.elements;
+    for (let i = 0; i < P.length; i += 3) { const y = e[1] * P[i] + e[5] * P[i + 1] + e[9] * P[i + 2] + e[13]; if (y < lo) lo = y; }
+  }
+  return lo;
+}
+
+/* ======== off a moving train ========
+   He leaves the step with the train's speed. Landing slower than a brisk walk he just steps down; up to a fast
+   run he runs it out, arms flung forward, until he has his feet; faster than that (or dropping hard) he goes down,
+   tucks and rolls along the way he was going, ends up sprawled on his front or his back, lies a moment, and gets
+   up. On the ground he is slowed by his feet or by the ground he rolls over (FALL.mu* in g). B is
+   { ph: 'air'|'land'|'stumble'|'roll'|'lie'|'up', v: horizontal velocity {x, z}, th: forward roll angle (0 on his
+   feet, pi/2 face down, 3pi/2 on his back), tuck, t: time in this phase, hit: speed he hit the ground at }. */
+const FALL = { run: 2.4, roll: 5.4, hard: -7.5, muRun: 0.42, muRoll: 0.58, R: 0.5, lie: 0.9, up: 1.35, free: 1.25 };
+function fallLand(B, vy) {
+  const u = Math.hypot(B.v.x, B.v.z);
+  B.hit = Math.hypot(u, vy); B.t = 0;
+  B.ph = u >= FALL.roll || vy < FALL.hard ? 'roll' : u >= FALL.run ? 'stumble' : 'land';
+  return B.ph;
+}
+/* one step on the ground; returns true once he has his feet again and is his own man */
+function fallStep(B, dt) {
+  B.t += dt;
+  const u = Math.hypot(B.v.x, B.v.z), slow = (mu) => { const k = u > 1e-6 ? Math.max(0, u - mu * 9.81 * dt) / u : 0; B.v.x *= k; B.v.z *= k; };
+  switch (B.ph) {
+    case 'air': return false;
+    case 'land': slow(0.8); B.tuck = Math.max(0, B.tuck - dt * 4); return B.t > 0.3;
+    case 'stumble': slow(FALL.muRun); B.tuck = 0; return u < FALL.free;
+    case 'roll': {
+      // the roll turns over at the speed he goes along the ground, as a ball of his size would
+      B.tuck = Math.min(1, B.tuck + dt * 6);
+      slow(FALL.muRoll);
+      B.th += Math.max(u, 2.2) / FALL.R * dt;
+      if (u < 1.0) {
+        // the roll runs out: he goes down flat on whichever is next, front or back
+        B.ph = 'flop'; B.t = 0; B.th0 = B.th; B.th1 = Math.PI / 2 + Math.ceil((B.th - Math.PI / 2) / Math.PI) * Math.PI;
+      }
+      return false;
+    }
+    case 'flop': {
+      slow(1.2);
+      const k = Math.min(1, B.t / 0.35);
+      B.th = lerp(B.th0, B.th1, 1 - (1 - k) * (1 - k)); B.tuck = Math.max(0, B.tuck - dt * 4);
+      if (k >= 1) { B.ph = 'lie'; B.t = 0; B.v.x = B.v.z = 0; }
+      return false;
+    }
+    case 'lie': {
+      B.tuck = Math.max(0, B.tuck - dt * 3);
+      if (B.t > FALL.lie + clamp((B.hit - 8) * 0.05, 0, 1.2)) {
+        // up from his front by pushing back onto his knees; from his back by sitting up and coming forward
+        B.ph = 'up'; B.t = 0; B.th0 = B.th; const back = ((B.th % TAU) + TAU) % TAU > Math.PI;
+        B.th1 = back ? Math.ceil(B.th / TAU - 1e-6) * TAU : Math.floor(B.th / TAU + 1e-6) * TAU;
+      }
+      return false;
+    }
+    case 'up': {
+      const k = Math.min(1, B.t / FALL.up), e = k * k * (3 - 2 * k);
+      B.th = lerp(B.th0, B.th1, e); B.tuck = 0.85 * Math.sin(Math.PI * Math.min(1, k * 1.1));
+      if (k >= 1) { B.th = 0; B.tuck = 0; return true; }
+      return false;
+    }
+  }
+  return true;
 }
 
 /* ======== inside a heavyweight coach ========
