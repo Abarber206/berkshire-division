@@ -16171,7 +16171,7 @@ class WreckSim {
   }
   /* take vehicle i off the rails: a rigid body with the speed the train had (times keep) */
   derail(i, keep = 1) {
-    const v = this.T.vehicles[i]; if (!v || v.rb || this.bodies.length - (this.nTruck || 0) >= WK.MAXB) return null;
+    const v = this.T.vehicles[i]; if (!v || v.rb || this.room || this.bodies.length - (this.nTruck || 0) >= WK.MAXB) return null;   // room: another player says which cars come off
     // part way through a step the train has run on kx metres from where it is drawn: it comes off from there
     const kx = this.kx || 0, sh = new THREE.Matrix4();
     if (kx) { sh.makeTranslation(...new THREE.Vector3().setFromMatrixColumn(v.root.matrix, 0).normalize().multiplyScalar(WreckSim.sF(v) * kx).toArray()); v.root.matrix.premultiply(sh); }
@@ -16751,7 +16751,7 @@ KNOCK.on = c => !!(c && (c.knk || (c === GAME.train && S.derailed && c.rb)));
 /* make consist c part of the wreck. spec as for WreckSim: left out, nothing comes off yet (its cars come off
    as they are hit); { a, side, k } knocks the car at a metres back from its front off its rails, thrown to side */
 KNOCK.strike = function (c, spec) {
-  if (!c || c === GAME.train || c.knk) return c && c.knk;
+  if (!c || c === GAME.train || c.knk || c.knkRoom) return c && c.knk;   // knkRoom: another player's wreck has these cars
   if (!c.vehicles || !c.vehicles.length || !c.vehicles[0].pos || typeof WreckSim === 'undefined') return null;
   const v = velOf(c) || 0;
   c.wreck(Object.assign({ a: 0, side: Math.random() < 0.5 ? -1 : 1, k: 0.5, none: true, v0: Math.abs(v), vs: v, seed: 1 + ((Math.random() * 1e9) | 0) }, spec || {}));
@@ -16791,6 +16791,12 @@ KNOCK.step = function (dt, player, kin) {
     const k = rt.kin || (rt.kin = { v: 0, mass: 0, force: 0 });
     k.v = rt.v; k.mass = 0; k.x0 = 0; R.fixed = true; R.kin = k; sims.push(R);
   }
+  // cars in a room that another player's wreck knocked about (11h_mpcars.js): run on between their reports
+  if (typeof MP !== 'undefined' && MP.on) for (const c of CARS.cuts) {
+    const R = c.rb; if (!c.knkRoom || !R) continue;
+    const k = c.knkKin || (c.knkKin = { v: 0, mass: 0, force: 0 });
+    R.fixed = true; R.kin = k; sims.push(R);
+  }
   if (!sims.length) return;
   try { WreckSim.stepAll(sims, dt, KNOCK.clk); }
   catch (e) { console.warn('wreck', e); for (const R of sims) { R.asleep = true; R.kin.v = 0; R.kin.dx = 0; } }
@@ -16807,6 +16813,7 @@ KNOCK.step = function (dt, player, kin) {
     c.rolling = false;
     if (R && !R.asleep) { c.dirty = true; if (c.ai) c.ai.dirty = true; }
   }
+  for (const c of CARS.cuts) if (c.knkRoom && c.rb && !c.rb.asleep) c.dirty = true;
 };
 /* a consist moving under its own power or rolling touched one in the wreck (A moving toward its dir end) */
 KNOCK.meet = function (A, dir, hit) {
@@ -25606,9 +25613,14 @@ function seatConsist(c, o, E) {
 const m4Out = m => m.elements.map(x => rnd(x, 1e5));
 const m4In = a => new THREE.Matrix4().fromArray(a);
 function wreckOut(T) {
-  const R = T.rb, W = GAME.wrecking; if (!R || !S.derailed) return null;
+  const W = GAME.wrecking; if (!T.rb || !S.derailed) return null;
+  return wreckData(T, W ? W.title : 'Derailed', W ? W.why : '');
+}
+/* the cars of consist T off the rails, each where it lies */
+function wreckData(T, title = '', why = '') {
+  const R = T.rb; if (!R) return null;
   return {
-    spec: T.wk, broken: [...R.broken], title: W ? W.title : 'Derailed', why: W ? W.why : '',
+    spec: T.wk, broken: [...R.broken], title, why,
     bodies: R.bodies.filter(b => b.v).map(b => ({ i: T.vehicles.indexOf(b.v), M0: m4Out(b.M0), t0: b.t0.map(m4Out), u0: b.u0 ? b.u0.map(m4Out) : null, l0: b.l0 ? m4Out(b.l0) : null, f0: b.f0 ? m4Out(b.f0) : null, s0: b.s0 ? m4Out(b.s0) : null, p: b.p.toArray().map(x => rnd(x)), q: b.q.toArray().map(x => rnd(x, 1e5)) })),
   };
 }
@@ -25630,6 +25642,16 @@ function wreckIn(T, w) {
     }
   } finally { AU.on = au; }
 }
+/* a train your wreck knocked about, lying where it came to rest (07e_knock.js) */
+const knockOut = c => c.knk && c.rb ? wreckData(c) : null;
+function knockIn(c, w) {
+  if (!w || !w.bodies) return;
+  c.update(0);
+  wreckIn(c, w);
+  c.knk = { kin: { v: 0, mass: 0, force: 0 } }; c.v = 0; c.rolling = false;
+  KNOCK.list.push(c);
+  c.update(0); c.dirty = true;
+}
 
 /* ---------------- the job, the traffic, the camera ---------------- */
 function jobOut(uid) {
@@ -25648,7 +25670,7 @@ function jobIn(o, V) {
   carPanelState.key = '';
   JOB.ui();
 }
-const aiOut = () => AI.trains.map(a => ({ id: a.id, f: tpOut(a.train.endTP('front')), fl: lineOut(a.train.endTP('front')), v: rnd(a.v), dwell: rnd(a.dwell), odo: rnd(a.odo), d: a.dir }));
+const aiOut = () => AI.trains.map(a => ({ id: a.id, f: tpOut(a.train.endTP('front')), fl: lineOut(a.train.endTP('front')), v: rnd(a.v), dwell: rnd(a.dwell), odo: rnd(a.odo), d: a.dir, wk: knockOut(a.train) }));
 /* the timetable trains, each where it was; each asks the signals for its road again, so one that had
    a clear road carries on at the speed it can still stop from */
 function aiIn(list, E) {
@@ -25660,9 +25682,11 @@ function aiIn(list, E) {
     const a = new AITrain(o.id, def);
     a.place(tp); a.odo = o.odo || 0; a.dwell = o.dwell || 0; if (o.d) a.dir = o.d;
     AI.trains.push(a); IX.idx = null;
+    if (o.wk) knockIn(a.train, o.wk);   // knocked off the rails by your wreck: lying where it came to rest
   }
   for (const a of AI.trains) {
     const o = list.find(x => x.id === a.id), def = a.def;
+    if (a.train.knk) { a.v = 0; continue; }
     a.v = a.ask() ? Math.min(o.v || 0, Math.sqrt(2 * def.brake * 0.5 * Math.max(0, a.authLeft - 200))) : 0;
   }
 }
@@ -25678,7 +25702,7 @@ const powerOf = T => T.vehicles.filter(v => !v.helper && (isPower(v) || (T.elec 
 function fleetOut(c) {
   return Object.assign(consistOut(c, powerOf(c)), { loco: c.locoKey, ck: c.consistKey, units: c.nUnits || 1, opts: JSON.parse(JSON.stringify(c.opts || {})), cfg: c.cfg || null,
     ps: c.parkS, cv: rnd(c.v || 0), rolling: !!c.rolling, stopT: rnd(c.stopT || 0), fid: c.fid || 0,
-    crew: c.crew ? { mph: c.crew.mph, dir: c.crew.dir, keep: c.crew.keep ? 1 : 0 } : null, crewMph: c.crewMph || 0 });
+    crew: c.crew ? { mph: c.crew.mph, dir: c.crew.dir, keep: c.crew.keep ? 1 : 0 } : null, crewMph: c.crewMph || 0, wk: knockOut(c) });
 }
 /* a helper engine's vehicle from its record { g, loco, opts, i }: the engine is built once per helper (g) and
    its vehicles handed out one by one */
@@ -25729,7 +25753,7 @@ SAVE.snapshot = function () {
     S: st, sw: NET.switches.map(s => [s.name, s.state]),
     train: Object.assign(consistOut(T, power), { loco: T.locoKey, ck: T.consistKey, units: T.nUnits || 1, fid: T.fid || 0 }),
     fleet: CARS.cuts.filter(c => c.parkS).map(fleetOut),
-    cuts: CARS.cuts.filter(c => !c.parkS).map(c => Object.assign(consistOut(c), { cv: rnd(c.v), rolling: !!c.rolling, stopT: rnd(c.stopT || 0), vented: !!c.vented, home: c.home || null })),
+    cuts: CARS.cuts.filter(c => !c.parkS).map(c => Object.assign(consistOut(c), { cv: rnd(c.v), rolling: !!c.rolling, stopT: rnd(c.stopT || 0), vented: !!c.vented, home: c.home || null, wk: knockOut(c) })),
     job, ai: aiOut(), sky: { hour: rnd(SKY.hour, 1e5), weather: SKY.weather, wx: wxOut() }, cam, wreck,
     ind: IND.out(),
     misc: { placed: PLACE.made || 0, lastStation: GAME.lastStation || null, spawnName: GAME.spawnName || '' },
@@ -25766,7 +25790,7 @@ SAVE.blocked = function () {
   if (!GAME.ready || !GAME.running || !T) return 'Start a run first.';
   if (MP.on) return 'Saves are for single player: leave the room to save.';
   if (PLACE.on) return 'Finish placing first.';
-  if (S.derailed && (!T.rb || !T.rb.asleep || Math.abs(S.v) > 0.05)) return 'Wait until the wreck has come to rest.';
+  if (S.derailed && (!T.rb || !T.rb.asleep || Math.abs(S.v) > 0.05 || KNOCK.list.some(c => c.rb && !c.rb.asleep))) return 'Wait until the wreck has come to rest.';
   return '';
 };
 SAVE.now = function (slot, quiet) {
@@ -25842,6 +25866,7 @@ SAVE.apply = function (d) {
     Object.assign(c, { v: o.cv || 0, rolling: !!o.rolling, stopT: o.stopT || 0, vented: !!o.vented, home: o.home || undefined });
     c.update(0);
     CARS.cuts.push(c); all.push(...cv);
+    if (o.wk) knockIn(c, o.wk);
   }
   // your other trains, standing as they were left; an engine that can no longer be built is left out
   for (const o of d.fleet || []) {
@@ -25855,6 +25880,7 @@ SAVE.apply = function (d) {
     if (o.crew) c.crew = crewNew(c, o.crew.mph, o.crew.dir, !!o.crew.keep);   // its engineer carries on
     c.update(0); FLEET.dim(c);
     CARS.cuts.push(c);
+    if (o.wk) knockIn(c, o.wk);
   }
   ROAD_SHORT = LOCO_SPEC[g.loco].short;
   FLEET.n = Math.max(FLEET.n, t.fid || 0, ...FLEET.parked().map(c => c.fid || 0));
@@ -25886,7 +25912,7 @@ SAVE.apply = function (d) {
     wreckIn(t, d.wreck);
     GAME.wrecking = { title: d.wreck.title, why: d.wreck.why, clunkT: 0, done: false, kin: { v: 0, mass: 0, force: 0 } };
     S.v = S.vw = 0;
-  } else S.derailed = false;
+  } else { S.derailed = false; KNOCK.clear(); }
   t.update(0, S.theta, S.reverser);
   // the camera
   cycleCamera(d.cam.mode && CAM.modes.includes(d.cam.mode) ? d.cam.mode : 'chase');
@@ -26006,7 +26032,7 @@ function mpcBeats(r, rec) {
 /* a car with its two knuckles and its handbrake */
 const mpcCar = v => carToken(v) + ':' + ((v.kn && v.kn[0]) || 0) + ((v.kn && v.kn[1]) || 0) + (v.hb ? 1 : 0);
 /* everything about a cut but where it stands and how fast it rolls */
-MPC.sig = c => c.vehicles.map(mpcCar).join(',') + (c.vented ? '|v' : '');
+MPC.sig = c => c.vehicles.map(mpcCar).join(',') + (c.vented ? '|v' : '') + (c.knk && c.rb ? '|w' + c.rb.bodies.filter(b => b.v).length : '');
 /* which cars, in what order and which way round */
 MPC.ids = c => c.vehicles.map(carToken).join(',');
 MPC.find = mid => CARS.cuts.find(c => c.mid === mid) || null;
@@ -26125,13 +26151,17 @@ MPC.diff = function (now) {
     if (rec.g) { MPC.take(c, rec, now); continue; }   // picked up and set down again
     const sig = again || rec.sig === undefined ? MPC.sig(c) : rec.sig;
     const v = c.v || 0, rolling = c.rolling ? 1 : 0;
+    // knocked about by our wreck (07e_knock.js): ours to report, while it moves and once more when it comes to rest
+    const wl = c.knk && c.rb ? (c.rb.asleep ? 1 : 2) : 0;
     if (rec.o !== MP.id) {
       // someone else's (or nobody's) cars, changed here: we coupled up, shoved them, worked a knuckle
-      if (sig !== rec.sig || v !== rec.v || rolling !== rec.r) MPC.take(c, rec, now);
+      if (sig !== rec.sig || v !== rec.v || rolling !== rec.r || wl) MPC.take(c, rec, now);
       continue;
     }
     if (sig !== rec.sig) { rec.n++; MPC.mark(c, rec, sig, now); }
     else if (rolling !== rec.r || (rolling && now - rec.at > MPC_ROLL_EVERY)) MPC.mark(c, rec, sig, now);
+    else if (wl && (wl !== rec.wl || (wl === 2 && now - rec.at > MPC_ROLL_EVERY))) MPC.mark(c, rec, sig, now);
+    rec.wl = wl;
   }
   for (const [mid, rec] of MPC.recs) {
     if (rec.g || seen.has(mid)) continue;
@@ -26157,7 +26187,13 @@ MPC.record = function (mid) {
   const f = c.endTP('front');
   // while our game is stopped (the menu, placing, a wreck) our cars stand still, so they are reported standing
   const still = !GAME.running || S.paused || S.derailed || (typeof PLACE !== 'undefined' && PLACE.on);
-  return { k: mid, n: rec.n, o: rec.o, q: rec.q, c: c.vehicles.map(mpcCar), f: [f.e.id, Math.round(f.s * 1000) / 1000, f.o], v: still ? 0 : Math.round((c.v || 0) * 1000) / 1000, r: c.rolling ? 1 : 0, vt: c.vented ? 1 : 0, h: c.home || '' };
+  const o = { k: mid, n: rec.n, o: rec.o, q: rec.q, c: c.vehicles.map(mpcCar), f: [f.e.id, Math.round(f.s * 1000) / 1000, f.o], v: still ? 0 : Math.round((c.v || 0) * 1000) / 1000, r: c.rolling ? 1 : 0, vt: c.vented ? 1 : 0, h: c.home || '' };
+  // knocked off the rails by our wreck: where each car lies, so everyone sees the same pile (07e_knock.js)
+  if (c.knk && c.rb) {
+    const R = c.rb, r3 = x => Math.round(x * 1000) / 1000;
+    o.w = { z: R.asleep ? 1 : 0, b: R.bodies.filter(b => b.v).slice(0, 40).map(b => [c.vehicles.indexOf(b.v), ...b.p.toArray().map(r3), ...b.q.toArray().map(r3), ...b.lv.toArray().map(r3)]) };
+  }
+  return o;
 };
 MPC.post = function (t, list, extra) {
   for (let i = 0; i < list.length; i += 40) MPC.send(Object.assign({ t, c: list.slice(i, i + 40) }, extra || {}));
@@ -26223,7 +26259,17 @@ MPC.clean = function (r) {
   if (!e || typeof r.f[1] !== 'number' || !isFinite(r.f[1])) return null;
   const v = typeof r.v === 'number' && isFinite(r.v) ? clamp(r.v, -30, 30) : 0;
   const h = typeof r.h === 'string' ? r.h.replace(/[^\w &'.,-]/g, '').slice(0, 24) : '';
-  return { k: r.k, n: r.n, o: r.o, q, cars, e, s: clamp(r.f[1], 0, e.len), fo: r.f[2] < 0 ? -1 : 1, v, r: r.r ? 1 : 0, vt: r.vt ? 1 : 0, h };
+  // cars of it off the rails: [car index, position, rotation, velocity] each
+  let w = null;
+  if (r.w && typeof r.w === 'object' && Array.isArray(r.w.b)) {
+    w = { z: r.w.z ? 1 : 0, b: [] };
+    for (const x of r.w.b.slice(0, 40)) {
+      if (!Array.isArray(x) || x.length !== 11 || !x.every(n => typeof n === 'number' && isFinite(n))) continue;
+      if (!Number.isInteger(x[0]) || x[0] < 0 || x[0] >= cars.length) continue;
+      w.b.push([x[0], clamp(x[1], -1e5, 1e5), clamp(x[2], -1e4, 1e4), clamp(x[3], -1e5, 1e5), ...x.slice(4, 8).map(n => clamp(n, -1, 1)), ...x.slice(8, 11).map(n => clamp(n, -60, 60))]);
+    }
+  }
+  return { k: r.k, n: r.n, o: r.o, q, cars, e, s: clamp(r.f[1], 0, e.len), fo: r.f[2] < 0 ? -1 : 1, v, r: r.r ? 1 : 0, vt: r.vt ? 1 : 0, h, w };
 };
 MPC.apply = function (r, lag = 0) {
   const rec = MPC.recs.get(r.k);
@@ -26250,6 +26296,7 @@ MPC.apply = function (r, lag = 0) {
   c.vented = !!r.vt; c.v = r.v; c.rolling = !!r.r; c.stopT = 0; if (r.h) c.home = r.h;
   nrec.tp = new TrackPos(r.e, r.s, r.fo); nrec.lag = lag; nrec.v = c.v; nrec.r = c.rolling ? 1 : 0;
   c.place(nrec.tp); c.dirty = true;
+  mpcWreck(c, r.w);
   nrec.sig = MPC.sig(c);
   MPC.objs.set(r.k, c);
   // a cut that has only rolled on needs no more than a fresh look at what stands where
@@ -26274,6 +26321,25 @@ CARS.wall = function (c, d) {
   }
   return false;
 };
+/* Another player's wreck knocked these cars about: the cars off the rails lie where they report them. Between
+   reports each runs on at the speed it was reported going (the wreck physics here, which can't take any more cars
+   off: KNOCK.step steps it with the rest), and the next report puts it right. w null: back on the rails. */
+function mpcWreck(c, w) {
+  if (!w || !w.b.length) { if (c.rb && c.knkRoom) { c.wreck(null); c.knkRoom = false; } return; }
+  if (c.knk) return;   // knocked about by our own wreck: ours says where it goes
+  if (!c.rb || !c.knkRoom) { c.wreck({ none: true, a: 0, side: 1, k: 0.5, v0: 20, vs: 0, seed: 1 }); c.knkRoom = true; }
+  const R = c.rb; R.room = true; R.asleep = false; R.still = 0;
+  for (const x of w.b) {
+    const v = c.vehicles[x[0]]; if (!v) continue;
+    let b = v.rb;
+    if (!b) { if (!v.pos) c.update(0); R.room = false; try { b = R.derail(x[0], 0); } finally { R.room = true; } if (!b) continue; }   // it comes off here too, with a clunk
+    b.p.set(x[1], x[2], x[3]); b.q.set(x[4], x[5], x[6], x[7]).normalize();
+    b.lv.set(x[8], x[9], x[10]); b.av.set(0, 0, 0); b.sleep = !!w.z; b.restT = 0;
+    R.pose(b); v.pos.copy(b.p);
+  }
+  if (w.z) R.asleep = true;
+  c.dirty = true;
+}
 MPC.drop = function (c) {
   CARS.cuts = CARS.cuts.filter(x => x !== c);
   c.dispose(); c.vehicles.forEach(freeVehicle);

@@ -17,7 +17,7 @@ KNOCK.on = c => !!(c && (c.knk || (c === GAME.train && S.derailed && c.rb)));
 /* make consist c part of the wreck. spec as for WreckSim: left out, nothing comes off yet (its cars come off
    as they are hit); { a, side, k } knocks the car at a metres back from its front off its rails, thrown to side */
 KNOCK.strike = function (c, spec) {
-  if (!c || c === GAME.train || c.knk) return c && c.knk;
+  if (!c || c === GAME.train || c.knk || c.knkRoom) return c && c.knk;   // knkRoom: another player's wreck has these cars
   if (!c.vehicles || !c.vehicles.length || !c.vehicles[0].pos || typeof WreckSim === 'undefined') return null;
   const v = velOf(c) || 0;
   c.wreck(Object.assign({ a: 0, side: Math.random() < 0.5 ? -1 : 1, k: 0.5, none: true, v0: Math.abs(v), vs: v, seed: 1 + ((Math.random() * 1e9) | 0) }, spec || {}));
@@ -57,6 +57,12 @@ KNOCK.step = function (dt, player, kin) {
     const k = rt.kin || (rt.kin = { v: 0, mass: 0, force: 0 });
     k.v = rt.v; k.mass = 0; k.x0 = 0; R.fixed = true; R.kin = k; sims.push(R);
   }
+  // cars in a room that another player's wreck knocked about (11h_mpcars.js): run on between their reports
+  if (typeof MP !== 'undefined' && MP.on) for (const c of CARS.cuts) {
+    const R = c.rb; if (!c.knkRoom || !R) continue;
+    const k = c.knkKin || (c.knkKin = { v: 0, mass: 0, force: 0 });
+    R.fixed = true; R.kin = k; sims.push(R);
+  }
   if (!sims.length) return;
   try { WreckSim.stepAll(sims, dt, KNOCK.clk); }
   catch (e) { console.warn('wreck', e); for (const R of sims) { R.asleep = true; R.kin.v = 0; R.kin.dx = 0; } }
@@ -73,6 +79,7 @@ KNOCK.step = function (dt, player, kin) {
     c.rolling = false;
     if (R && !R.asleep) { c.dirty = true; if (c.ai) c.ai.dirty = true; }
   }
+  for (const c of CARS.cuts) if (c.knkRoom && c.rb && !c.rb.asleep) c.dirty = true;
 };
 /* a consist moving under its own power or rolling touched one in the wreck (A moving toward its dir end) */
 KNOCK.meet = function (A, dir, hit) {
