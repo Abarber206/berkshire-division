@@ -7131,6 +7131,46 @@ const CABDIM = (() => {
   return C;
 })();
 let ROAD_SHORT = 'NKP';
+/* ---- whose freight cars: a 1950s train is a mix of roads ----
+   The home road (the engine's, '@') owns a share of the cars; the rest come from the roads they would have in
+   Ohio, by kind: coal hoppers from the Pocahontas roads, tank cars from the private leasing lines. The owner
+   comes from the car's number, so a car rebuilt from a save or a room token keeps its marks. */
+const FREIGHT_ROADS = {
+  PRR: { name: ['PENNSYLVANIA'], herald: 'prr', font: 'serif' },
+  NYC: { name: ['NEW YORK', 'CENTRAL'], herald: 'nyc', font: 'sans' },
+  'B&O': { name: ['BALTIMORE', '& OHIO'], herald: 'bo', font: 'serif' },
+  'C&O': { name: ['CHESAPEAKE', 'AND OHIO'], herald: 'co', font: 'sans' },
+  'N&W': { name: ['NORFOLK AND', 'WESTERN'], herald: 'nw', font: 'serif' },
+  NKP: { name: ['NICKEL', 'PLATE ROAD'], herald: 'nkp', font: 'serif' },
+  PM: { name: ['PERE', 'MARQUETTE'], herald: 'pm', font: 'serif' },
+  WAB: { name: ['WABASH'], herald: 'wab', font: 'sans' },
+  ERIE: { name: ['ERIE'], herald: 'diamond', init: 'ERIE', font: 'serif' },
+  'DT&I': { name: ['DETROIT, TOLEDO', '& IRONTON'], herald: 'oval', init: 'DT&I', font: 'sans' },
+  ATSF: { name: ['SANTA FE'], herald: 'atsf', font: 'sans' },
+  UP: { name: ['UNION', 'PACIFIC'], herald: 'shield', init: 'UP', font: 'sans' },
+  VGN: { name: ['VIRGINIAN'], font: 'serif' },
+  'P&LE': { name: ['PITTSBURGH &', 'LAKE ERIE'], font: 'serif' },
+};
+const FREIGHT_MIX = {
+  box: [['@', 4], ['PRR', 3], ['NYC', 3], ['B&O', 2], ['C&O', 2], ['N&W', 1], ['NKP', 2], ['PM', 1], ['WAB', 2], ['ERIE', 2], ['DT&I', 1], ['ATSF', 1], ['UP', 1]],
+  hopper: [['@', 2], ['C&O', 4], ['N&W', 3], ['B&O', 2], ['PRR', 2], ['VGN', 1], ['NYC', 1]],
+  gon: [['@', 3], ['PRR', 2], ['NYC', 2], ['B&O', 1], ['P&LE', 1], ['NKP', 1], ['C&O', 1]],
+  tank: [['UTLX', 3], ['GATX', 2], ['SHPX', 1]],
+};
+function carOwner(type, num, home) {
+  const mix = FREIGHT_MIX[type]; if (!mix) return home;
+  let tot = 0; for (const [, w] of mix) tot += w;
+  let h = Math.imul((num | 0) ^ 0x5bd1e995, 2654435761) >>> 0; h = (h ^ (h >>> 15)) >>> 0;
+  let pick = h % tot;
+  for (const [k, w] of mix) { if (pick < w) return k === '@' ? home : k; pick -= w; }
+  return home;
+}
+/* a road's herald and name for a boxcar side: the real roads above, or a made-up road's diesel herald */
+function freightRoad(k) {
+  if (FREIGHT_ROADS[k]) return FREIGHT_ROADS[k];
+  if (typeof LIVERIES !== 'undefined') for (const id in LIVERIES) { const L = LIVERIES[id]; if (id !== 'custom' && L.init === k) { const [a, b] = L.road.split(' & '); return { name: b ? [a, '& ' + b] : [a], herald: L.herald, init: L.init, font: L.font }; } }
+  return null;
+}
 /* Baker valve gear, as both engines carry it. An eccentric crank on the main pin drives the eccentric rod
    forward to the foot of the gear connecting rod. That rod hangs from radius bars on the reverse yoke and
    works a bell crank in the gear frame; the bell crank's vertical arm drives the valve rod forward to the
@@ -7863,7 +7903,7 @@ function coachInk(k, txt, w, h, px, role, gold) {
 }
 const coachBoardKey = spec => 'lb' + spec.short + '|' + spec.road;
 function coachBoardMat(spec) { return coachInk(coachBoardKey(spec), spec.road, 1024, 128, 72, 'lb'); }
-/* the observation car's markers: a pair on the platform canopy's corners, or one red lamp on the roof */
+/* the observation car's markers: a pair on the platform canopy's corners, or one red lamp up top on the car's end */
 function obsLampStyle() { return typeof GAME !== 'undefined' && GAME.settings && GAME.settings.obsLamp === 'roof' ? 'roof' : 'side'; }
 
 /* =================== HOLIDAY TRIM =================== */
@@ -8125,6 +8165,80 @@ function buildTender(key, trim = '', D = TD) {
    cast steel underframe (centre sill, bolsters, crossbearers, end sills) with AB brake gear and a train line,
    and rides on trucks whose journals run out into their journal boxes. x along the car (front +), y up from the
    rail top, z across; the car's centre is at x = 0. */
+/* letters set round a circle: centred on the top (bottom = false) or the bottom, reading left to right */
+function ringText(g, s, cx, cy, r, px, bottom, spread = 0.66) {
+  const step = px * spread / r, n = s.length;
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+  for (let i = 0; i < n; i++) {
+    const off = (i - (n - 1) / 2) * step, a = bottom ? Math.PI / 2 - off : -Math.PI / 2 + off;
+    g.save(); g.translate(cx + r * Math.cos(a), cy + r * Math.sin(a)); g.rotate(bottom ? a - Math.PI / 2 : a + Math.PI / 2); g.fillText(s[i], 0, 0); g.restore();
+  }
+}
+/* A railroad herald on a 256 px square canvas: T the ink, B the paint behind it (for knocked-out lettering),
+   font "serif" or "sans", init the road initials for the generic shapes. Shared by the diesel liveries and the
+   boxcars' heralds. */
+function drawHerald(g, kind, T, B, font, init) {
+  g.strokeStyle = T; g.fillStyle = T; g.lineJoin = 'round';
+  const fnt = px => (font === 'serif' ? `700 ${px}px Georgia, serif` : `800 ${px}px "Arial Narrow", Arial, sans-serif`);
+  const txt = (s, y, px, x = 128) => { g.font = fnt(px); g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(s, x, y); };
+  const px = init.length > 3 ? 58 : 78;
+  if (kind === 'ring') { g.lineWidth = 14; g.beginPath(); g.arc(128, 128, 110, 0, TAU); g.stroke(); g.lineWidth = 5; g.beginPath(); g.arc(128, 128, 90, 0, TAU); g.stroke(); txt(init, 132, px); }
+  else if (kind === 'diamond') { g.lineWidth = 12; g.beginPath(); g.moveTo(128, 12); g.lineTo(244, 128); g.lineTo(128, 244); g.lineTo(12, 128); g.closePath(); g.stroke(); txt(init, 132, px * 0.85); }
+  else if (kind === 'shield') { g.lineWidth = 12; g.beginPath(); g.moveTo(28, 26); g.lineTo(228, 26); g.lineTo(228, 120); g.quadraticCurveTo(220, 205, 128, 238); g.quadraticCurveTo(36, 205, 28, 120); g.closePath(); g.stroke(); txt(init, 118, px * 0.9); }
+  else if (kind === 'oval') { g.lineWidth = 12; g.beginPath(); g.ellipse(128, 128, 118, 74, 0, 0, TAU); g.stroke(); txt(init, 132, px * 0.9); }
+  else if (kind === 'sheaf') {
+    g.lineWidth = 10; g.beginPath(); g.arc(128, 128, 112, 0, TAU); g.stroke();
+    g.lineWidth = 5; for (const a of [-0.35, 0, 0.35]) { g.save(); g.translate(128, 196); g.rotate(a); g.beginPath(); g.moveTo(0, 0); g.lineTo(0, -120); g.stroke(); for (let k = 0; k < 6; k++) { g.beginPath(); g.ellipse(-9, -64 - k * 10, 6, 11, -0.5, 0, TAU); g.fill(); g.beginPath(); g.ellipse(9, -64 - k * 10, 6, 11, 0.5, 0, TAU); g.fill(); } g.restore(); }
+    txt(init, 214, 34);
+  }
+  // the real roads' heralds
+  else if (kind === 'nkp') {        // the box: NICKEL PLATE over ROAD, ruled between
+    g.lineWidth = 9; g.strokeRect(10, 66, 236, 124); g.lineWidth = 4; g.strokeRect(20, 76, 216, 104);
+    g.fillRect(34, 127, 188, 4); txt('NICKEL PLATE', 104, 34); txt('ROAD', 157, 40);
+  }
+  else if (kind === 'prr') {        // the keystone, Tuscan red with a gold edge and the PRR monogram
+    const ks = () => { g.beginPath(); g.moveTo(40, 22); g.lineTo(216, 22); g.lineTo(236, 62); g.lineTo(206, 150); g.lineTo(166, 236); g.lineTo(90, 236); g.lineTo(50, 150); g.lineTo(20, 62); g.closePath(); };
+    ks(); g.fillStyle = '#8c2a1f'; g.fill(); g.lineWidth = 10; g.stroke();
+    g.fillStyle = T; txt('PRR', 128, 76);
+  }
+  else if (kind === 'nyc') {        // the oval: NEW YORK over a band carrying CENTRAL, SYSTEM under it
+    g.lineWidth = 9; g.beginPath(); g.ellipse(128, 128, 120, 86, 0, 0, TAU); g.stroke();
+    g.fillRect(8, 104, 240, 48); g.fillStyle = B; txt('CENTRAL', 130, 40); g.fillStyle = T;
+    txt('NEW YORK', 77, 30); txt('SYSTEM', 180, 26);
+  }
+  else if (kind === 'bo') {         // the Capitol dome inside the BALTIMORE & OHIO ring
+    g.lineWidth = 8; g.beginPath(); g.arc(128, 128, 118, 0, TAU); g.stroke(); g.lineWidth = 4; g.beginPath(); g.arc(128, 128, 82, 0, TAU); g.stroke();
+    g.font = fnt(22); ringText(g, 'BALTIMORE', 128, 128, 100, 22, false, 0.8); ringText(g, 'OHIO', 128, 128, 100, 22, true, 0.8);
+    g.beginPath(); g.moveTo(84, 168); g.lineTo(172, 168); g.lineTo(172, 156); g.lineTo(84, 156); g.closePath(); g.fill();          // the base
+    g.fillRect(98, 128, 60, 28); for (let x = 101; x < 156; x += 9) { g.fillStyle = B; g.fillRect(x, 133, 4, 20); g.fillStyle = T; }   // the drum's columns
+    g.beginPath(); g.arc(128, 128, 30, Math.PI, 0); g.fill(); g.fillRect(124, 84, 8, 16); g.beginPath(); g.arc(128, 82, 5, 0, TAU); g.fill();   // dome, lantern
+    txt('&', 202, 22, 30); txt('&', 202, 22, 226);
+  }
+  else if (kind === 'co') {         // FOR PROGRESS: C&O in a ring
+    g.lineWidth = 10; g.beginPath(); g.arc(128, 128, 116, 0, TAU); g.stroke(); g.lineWidth = 4; g.beginPath(); g.arc(128, 128, 96, 0, TAU); g.stroke();
+    txt('C&O', 118, 66); g.fillRect(56, 156, 144, 4); txt('FOR PROGRESS', 180, 20);
+  }
+  else if (kind === 'nw') {         // the round herald: NORFOLK and WESTERN round a bar carrying N&W
+    g.lineWidth = 9; g.beginPath(); g.arc(128, 128, 118, 0, TAU); g.stroke();
+    g.font = fnt(26); ringText(g, 'NORFOLK', 128, 128, 94, 26, false, 0.78); ringText(g, 'WESTERN', 128, 128, 94, 26, true, 0.78);
+    g.fillRect(10, 102, 236, 52); g.fillStyle = B; txt('N&W', 130, 46); g.fillStyle = T;
+  }
+  else if (kind === 'pm') {         // PERE MARQUETTE round a PM monogram
+    g.lineWidth = 9; g.beginPath(); g.arc(128, 128, 118, 0, TAU); g.stroke(); g.lineWidth = 4; g.beginPath(); g.arc(128, 128, 78, 0, TAU); g.stroke();
+    g.font = fnt(26); ringText(g, 'PERE', 128, 128, 98, 26, false, 0.85); ringText(g, 'MARQUETTE', 128, 128, 98, 26, true, 0.8);
+    txt('PM', 132, 70);
+  }
+  else if (kind === 'wab') {          // the Wabash flag: a pennant on its staff, WABASH across it
+    g.fillRect(22, 30, 9, 206);
+    g.beginPath(); g.moveTo(31, 46); g.lineTo(236, 78); g.lineTo(236, 176); g.lineTo(31, 150); g.closePath(); g.fill();
+    g.fillStyle = B; g.save(); g.translate(134, 113); g.rotate(0.07); txt('WABASH', 0, 40, 0); g.restore(); g.fillStyle = T;
+  }
+  else if (kind === 'atsf') {         // Santa Fe: the cross in a circle, SANTA FE across the cross
+    g.lineWidth = 12; g.beginPath(); g.arc(128, 128, 112, 0, TAU); g.stroke();
+    g.fillRect(96, 28, 64, 200); g.fillRect(28, 96, 200, 64);
+    g.fillStyle = B; txt('SANTA FE', 129, 30); g.fillStyle = T;
+  }
+}
 function textDecal(lines, w = 1024, h = 128, color = '#e9e3c9', font = 'serif', size = 80) {
   return decalMat(w, h, (g, W, H) => {
     if (font === 'serif') romanText(g, lines, W / 2, H / 2 + 6, size, color, 0.12);
@@ -8445,6 +8559,24 @@ function freightModel(type, num, r) {
       gb.add(k, g, M(s > 0 ? -mx : mx, y, s * zf, 0, s > 0 ? 0 : Math.PI, 0));
     }
   };
+  const owner = carOwner(type, num, ROAD_SHORT);
+  // a boxcar's herald and road name, high on the side past the door (behind any graffiti sprayed over it)
+  const boxHerald = zf => {
+    const R = freightRoad(owner); if (!R) return;
+    const k = 'fh_' + owner;
+    if (!RMAT[k]) {
+      RMAT[k] = decalMat(512, 256, (g, w, h) => {
+        const ink = '#ece9df', x0 = R.herald ? 248 : 20;
+        if (R.herald) { g.save(); g.translate(8, 14); g.scale(0.89, 0.89); drawHerald(g, R.herald, ink, '#6b2b1e', R.font, R.init || owner); g.restore(); }
+        g.fillStyle = ink; g.textAlign = 'left'; g.textBaseline = 'middle';
+        const n = R.name.length, px = Math.min(54, Math.floor(260 / Math.max(...R.name.map(s => s.length)) * 1.7));
+        g.font = (R.font === 'serif' ? `700 ${px}px Georgia, "Times New Roman", serif` : `800 ${px}px "Arial Narrow", Arial, sans-serif`);
+        R.name.forEach((s, i) => g.fillText(s, x0, h / 2 + (i - (n - 1) / 2) * px * 1.15, w - x0 - 10));
+      });
+      RMAT[k].polygonOffsetFactor = -1;
+    }
+    for (const s of [-1, 1]) gb.add(k, new THREE.PlaneGeometry(2.6, 1.3), M(s > 0 ? 3.45 : -3.45, 3.38, s * zf, 0, s > 0 ? 0 : Math.PI, 0));
+  };
   // the data stencilled at the other end of the side: built date, light weight, the last brake test
   const data = (y, zf, x, color = '#e6e2d6') => {
     const k = 'fd_' + type; if (!RMAT[k]) RMAT[k] = decalMat(256, 128, (g, w, h) => { g.fillStyle = color; g.font = '22px "Arial Narrow", Arial'; g.textAlign = 'left'; g.textBaseline = 'top'; ['LT WT 44200', 'BLT 4-41', 'IL 40 6  IH 10 0', 'CU FT 3712'].forEach((t, i) => g.fillText(t, 10, 10 + i * 28)); });
@@ -8513,8 +8645,9 @@ function freightModel(type, num, r) {
     // hand brake on the B end, high on the end with the brake step below it
     brakeWheel(gb, G, -(xe + 0.36), yE - 0.42, 0.62, -(xe + 0.06));
     gb.box('wood', 0.32, 0.04, 0.8, -(xe + 0.24), 2.6, 0.62); for (const z of [0.3, 0.94]) slab(gb, G, -(xe + 0.08), 2.35, -(xe + 0.38), 2.58, z - 0.02, z + 0.02, 0.03);
-    marks(ROAD_SHORT + ' ' + num, 'CAPY 100000  LD LMT 110700', 'oxide', 3.1, null, hw + 0.006, 0, 0, 2.6, 3.6);
+    marks(owner + ' ' + num, 'CAPY 100000  LD LMT 110700', 'oxide', 3.1, null, hw + 0.006, 0, 0, 2.6, 3.6);
     data(1.75, hw + 0.006, 4.1);
+    boxHerald(hw + 0.0015);
     gfN = addGraffiti(gb, type, num, { hw });
   } else if (type === 'hopper') {
     /* AAR twin offset-side hopper, 55 t: 10 ft 8 in high, 10 ft 4 in wide, two bays with bottom doors */
@@ -8554,7 +8687,7 @@ function freightModel(type, num, r) {
     const g = new THREE.PlaneGeometry(2 * xe - 0.1, 2 * hw - 0.08, 22, 8); g.rotateX(-Math.PI / 2); const p = g.attributes.position;
     for (let i = 0; i < p.count; i++) { const x = p.getX(i), z = p.getZ(i), u = 1 - (z / (hw - 0.04)) ** 2, v = 1 - (x / (xe - 0.05)) ** 8; p.setY(i, top - 0.08 + 0.42 * Math.max(0, u * v) * (0.75 + 0.25 * Math.cos(x * 1.3 + 0.4)) + Math.sin(x * 9.1 + z * 7.3) * 0.02 * u * v); }
     g.computeVertexNormals(); gb.add('coal', g);
-    marks(ROAD_SHORT + ' ' + num, 'CAPY 110000', 'black', 2.6, null, hw + 0.006, 0, 0, 1.15, 3.05);
+    marks(owner + ' ' + num, 'CAPY 110000', 'black', 2.6, null, hw + 0.006, 0, 0, 1.15, 3.05);
     gfN = addGraffiti(gb, type, num, { hw });
   } else if (type === 'tank') {
     /* AAR type 103 10,000 gal tank car: an 88 in barrel on a full underframe, banded to the bolster saddles,
@@ -8611,7 +8744,7 @@ function freightModel(type, num, r) {
     staffWheel(gb, G, -(he - 0.2), 0.75, yT + 0.05, 2.3);
     corner(he - 0.05, 0, hw - 0.1, 1.17);
     for (const e of [-1, 1]) endLadder(gb, G, -0.5, -0.9, 0.6, yT + 0.03, e, he - 0.03, 0.3);
-    marks('UTLX ' + num, 'NON-ACCIDENT  CAPY 10000 GAL', 'tank', 2.0, null, R, R, yc);
+    marks(owner + ' ' + num, 'NON-ACCIDENT  CAPY 10000 GAL', 'tank', 2.0, null, R, R, yc);
     gfN = addGraffiti(gb, type, num, { R, yc });
   } else if (type === 'gon') {
     /* 46 ft steel gondola with pressed exterior posts, fixed corrugated ends and a heaped stone load */
@@ -8640,7 +8773,7 @@ function freightModel(type, num, r) {
     const g = new THREE.PlaneGeometry(2 * xe - 0.12, 2 * hw - 0.09, 30, 8); g.rotateX(-Math.PI / 2); const p = g.attributes.position; const rr = rng(num);
     for (let i = 0; i < p.count; i++) { const z = p.getZ(i), x = p.getX(i), edge = Math.min(1, (xe - 0.06 - Math.abs(x)) * 3) * Math.min(1, (hw - 0.05 - Math.abs(z)) * 3); p.setY(i, 1.95 + 0.42 * Math.max(0, 1 - (z / 1.45) ** 2) * edge + (rr() - 0.5) * 0.1 * edge); }
     g.computeVertexNormals(); gb.add('stoneLoad', g);
-    marks(ROAD_SHORT + ' ' + num, 'CAPY 140000', 'oxide2', 1.85, null, hw + 0.06, 0, 0, 1.15, 4.6);
+    marks(owner + ' ' + num, 'CAPY 140000', 'oxide2', 1.85, null, hw + 0.06, 0, 0, 1.15, 4.6);
     gfN = addGraffiti(gb, type, num, { hw });
   } else if (type === 'caboose') {
     /* steel cupola caboose: a 30 ft body on a 36 ft frame, open end platforms with railings and steps, a centre
@@ -8823,7 +8956,25 @@ function coachModel(spec, num, observation, trim = '') {
   const rE = hw + 0.06, rD = 0.86, hD = 0.35, hC = 0.59, cr = 1.03;
   const deck = new THREE.Shape(); deck.moveTo(-rE, 0); deck.quadraticCurveTo(-hw * 0.9, 0.3, -rD, hD); deck.lineTo(rD, hD); deck.quadraticCurveTo(hw * 0.9, 0.3, rE, 0); deck.closePath();
   const rL0 = observation ? -(L / 2 - 0.1) : -(CH.xv + 0.06), rL1 = CH.xv + 0.06;
-  gb.add('roof', new THREE.ExtrudeGeometry(deck, { depth: rL1 - rL0, bevelEnabled: false, curveSegments: 10 }).rotateY(Math.PI / 2).translate(rL0, yE, 0));
+  // the observation end is rounded in plan, the roof sweeping round the platform's corners (radius RR)
+  const RR = observation ? 0.8 : 0, rW = d => rE - RR + Math.sqrt(Math.max(0, RR * RR - (RR - d) * (RR - d)));
+  gb.add('roof', new THREE.ExtrudeGeometry(deck, { depth: rL1 - rL0 - RR, bevelEnabled: false, curveSegments: 10 }).rotateY(Math.PI / 2).translate(rL0 + RR, yE, 0));
+  if (observation) {
+    const prof = deck.getPoints(10).map(p => [p.x, p.y]); if (prof.length > 1 && Math.hypot(prof[0][0] - prof[prof.length - 1][0], prof[0][1] - prof[prof.length - 1][1]) < 1e-6) prof.pop();
+    const n = prof.length, N = 12, pos = [], ring = d => prof.map(([z, y]) => [rL0 + d, yE + y, z * rW(d) / rE]);
+    let prev = ring(0);
+    for (let i = 1; i <= N; i++) {
+      const d = RR * (1 - Math.cos(i / N * Math.PI / 2)), cur = ring(d);      // slices bunched toward the end, where it curves most
+      for (let j = 0; j < n; j++) { const a = prev[j], b = prev[(j + 1) % n], c = cur[(j + 1) % n], e = cur[j]; pos.push(...a, ...b, ...c, ...a, ...c, ...e); }
+      prev = cur;
+    }
+    // the end cap: the profile at its narrowest
+    const cap = ring(0), tri = THREE.ShapeUtils.triangulateShape(prof.map(([z, y]) => new THREE.Vector2(z, y)), []);
+    for (const [a, b, c] of tri) pos.push(...cap[a], ...cap[c], ...cap[b]);
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.computeVertexNormals();
+    const uv = []; for (let i = 0; i < pos.length / 3; i++) uv.push(pos[i * 3] * 0.5, pos[i * 3 + 2] * 0.5); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    gb.add('roof', g);
+  }
   const clr = []; clr.push([-rD, hD - 0.02], [rD, hD - 0.02], [rD, hC]); for (let i = 1; i < 12; i++) { const t = i / 12, z = lerp(rD, -rD, t); clr.push([z, (1 - t) * (1 - t) * hC + 2 * (1 - t) * t * cr + t * t * hC]); } clr.push([-rD, hC]);
   const cs = new THREE.Shape(); cs.moveTo(...clr[0]); for (const p of clr.slice(1)) cs.lineTo(...p); cs.closePath();
   const xc0 = rL0 + (observation ? 0.6 : 0.62), xc1 = rL1 - 0.62;
@@ -8856,11 +9007,11 @@ function coachModel(spec, num, observation, trim = '') {
     gb.box(G, 0.04, 3.1 - CH.yT, 0.8, xw - 0.06, (3.1 + CH.yT) / 2, 0); gb.box(win, 0.02, 0.8, 0.5, xw - 0.08, 2.55, 0);
     // the platform in the style of the great observation-car ends: rounded corners, a deck of teak boards, a railing of
     // turned balusters with scrollwork between the rails, a lantern hung at each corner of the canopy, a valance under it
-    const xr = xP + 0.04, zR = 1.42, Rc = 0.38, rail = T ? 'gold' : 'brass', yTop = 2.3, yMid = 1.78;
+    const xr = xP + 0.04, zR = 1.42, Rc = 0.52, rail = T ? 'gold' : 'brass', yTop = 2.3, yMid = 1.78;   // corners swept round, like the roof over them
     const outline = [];   // the railing's line: down one side, round the corner, across the end, round and back up
     for (const s of [-1, 1]) {
       const pts = [[xw - 0.62, s * zR], [xr + Rc, s * zR]];
-      for (let i = 1; i <= 6; i++) { const a = i / 6 * Math.PI / 2; pts.push([xr + Rc - Math.sin(a) * Rc, s * (zR - Rc + Math.cos(a) * Rc)]); }
+      for (let i = 1; i <= 12; i++) { const a = i / 12 * Math.PI / 2; pts.push([xr + Rc - Math.sin(a) * Rc, s * (zR - Rc + Math.cos(a) * Rc)]); }
       if (s < 0) outline.push(...pts); else outline.push(...pts.reverse());
     }
     const deck = new THREE.Shape(); deck.moveTo(xw, -hw + 0.02);
@@ -8879,8 +9030,6 @@ function coachModel(spec, num, observation, trim = '') {
       acc = (acc + L) % 0.16;
     }
     for (const [x, z] of [outline[0], outline[outline.length - 1], [xr, -(zR - Rc)], [xr, zR - Rc], [xr + Rc, -zR], [xr + Rc, zR]]) { gb.cyl(rail, 0.03, 0.035, yTop - CH.yT, 10, x, (yTop + CH.yT) / 2, z); gb.add(rail, new THREE.SphereGeometry(0.045, 10, 8).translate(x, yTop + 0.04, z)); }
-    for (const z of [-0.74, 0.74]) gb.add(rail, new THREE.TorusGeometry(0.2, 0.012, 6, 24).rotateY(Math.PI / 2).translate(xr, (yTop + yMid) / 2, z));
-    for (const s of [-1, 1]) gb.add(rail, new THREE.TorusGeometry(0.2, 0.012, 6, 24).translate(xw - 0.95, (yTop + yMid) / 2, s * zR));
     for (const s of [-1, 1]) {
       // the gate opening, steps and a grab post at the body corner
       gb.add(rail, barGeo(0.02, [xw - 0.06, yTop, s * (hw - 0.04)], [xw - 0.06, CH.yT + 0.1, s * (hw - 0.04)], 6));
@@ -8889,19 +9038,30 @@ function coachModel(spec, num, observation, trim = '') {
       for (const d of [-0.26, 0.26]) gb.box(G, 0.04, CH.yT - 0.4, 0.3, xs + d, (CH.yT + 0.4) / 2 - 0.06, s * (hw - 0.2));
       for (const y of [0.42, 0.85]) gb.box(G, 0.52, 0.04, 0.3, xs, y, s * (hw - 0.2));
     }
-    if (T) for (const s of [-1, 1]) addSwags(gb, [xw - 0.62, (xw - 0.62 + xr + Rc) / 2, xr + Rc], yTop - 0.01, 0.1, s * zR, 0.035);
     // valance under the canopy's edge, and a lantern on a bracket at each corner
-    gb.box(body, 0.05, 0.16, 2 * hw + 0.08, xP - 0.03, yE - 0.06, 0);
-    if (T) gb.box('gold', 0.012, 0.03, 2 * hw + 0.04, xP - 0.058, yE - 0.06, 0);
+    // (it follows the roof's rounded end, just inside its edge)
+    const vpts = [];
+    for (const s of [-1, 1]) { const side = []; for (let i = 0; i <= 10; i++) { const d = RR * (1 - Math.cos(i / 10 * Math.PI / 2)); side.push([rL0 + d + 0.025, s * (rW(d) - 0.025)]); } if (s < 0) vpts.push(...side.reverse()); else vpts.push(...side); }
+    for (let i = 0; i + 1 < vpts.length; i++) {
+      const [x0, z0] = vpts[i], [x1, z1] = vpts[i + 1], len = Math.hypot(x1 - x0, z1 - z0); if (len < 1e-4) continue;
+      const ry = -Math.atan2(z1 - z0, x1 - x0) + Math.PI / 2;
+      gb.add(body, new THREE.BoxGeometry(0.05, 0.16, len + 0.02), M((x0 + x1) / 2, yE - 0.06, (z0 + z1) / 2, 0, ry, 0));
+      if (T) gb.add('gold', new THREE.BoxGeometry(0.058, 0.03, len + 0.02), M((x0 + x1) / 2, yE - 0.06, (z0 + z1) / 2, 0, ry, 0));   // gold line round it
+    }
+    // (in their own group: with the single top marker chosen they come off the car, see setObsLamps)
+    const sb = new GeoBin();
     for (const z of [-1.2, 1.2]) {
       const xl = xP + 0.13, yl = yE - 0.42;
-      gb.add(G, barGeo(0.012, [xl, yE + 0.02, z], [xl, yl + 0.2, z], 5));
-      gb.add(G, new THREE.ConeGeometry(0.11, 0.12, 12).translate(xl, yl + 0.17, z));
-      gb.cyl(G, 0.1, 0.1, 0.03, 12, xl, yl + 0.11, z);
-      for (let i = 0; i < 4; i++) { const a = i * Math.PI / 2 + Math.PI / 4; gb.add(G, barGeo(0.008, [xl + Math.cos(a) * 0.085, yl - 0.11, z + Math.sin(a) * 0.085], [xl + Math.cos(a) * 0.085, yl + 0.11, z + Math.sin(a) * 0.085], 4)); }
-      gb.cyl('glass', 0.08, 0.08, 0.2, 12, xl, yl, z);
-      gb.cyl(G, 0.1, 0.07, 0.05, 12, xl, yl - 0.12, z);
+      sb.add(G, barGeo(0.012, [xl, yE + 0.02, z], [xl, yl + 0.2, z], 5));
+      sb.add(G, new THREE.ConeGeometry(0.11, 0.12, 12).translate(xl, yl + 0.17, z));
+      sb.cyl(G, 0.1, 0.1, 0.03, 12, xl, yl + 0.11, z);
+      for (let i = 0; i < 4; i++) { const a = i * Math.PI / 2 + Math.PI / 4; sb.add(G, barGeo(0.008, [xl + Math.cos(a) * 0.085, yl - 0.11, z + Math.sin(a) * 0.085], [xl + Math.cos(a) * 0.085, yl + 0.11, z + Math.sin(a) * 0.085], 4)); }
+      sb.cyl('glass', 0.08, 0.08, 0.2, 12, xl, yl, z);
+      sb.cyl(G, 0.1, 0.07, 0.05, 12, xl, yl - 0.12, z);
     }
+    const sideLamps = sb.build(RMAT); sideLamps.name = 'sideLamps';
+    sideLamps.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+    root.add(sideLamps);
     const ink = T ? '#8a1219' : '#6b1f1a';
     const dh = decalMat(256, 256, (g, w, h) => {
       g.fillStyle = '#e9dfc2'; g.beginPath(); g.arc(128, 128, 122, 0, TAU); g.fill(); g.strokeStyle = ink; g.lineWidth = 10; g.stroke(); g.fillStyle = ink; g.font = '600 30px "Times New Roman", serif'; g.textAlign = 'center';
@@ -8921,21 +9081,21 @@ function coachModel(spec, num, observation, trim = '') {
     if (T) addWreath(gb, 0.5, 0.06, M(xd2 - 0.03, 1.95, 0, 0, -Math.PI / 2, 0));   // the drumhead ringed with fir
     gb.add('brass', new THREE.TorusGeometry(0.43, 0.025, 6, 28).rotateY(Math.PI / 2).translate(xd2 - 0.025, 1.95, 0));
     const side = [new THREE.Vector3(xP + 0.045, yE - 0.42, -1.2), new THREE.Vector3(xP + 0.045, yE - 0.42, 1.2)];
-    // or one red lamp on the roof: a lamp case on a pedestal at the back of the clerestory, its lens to the rear.
+    // or one red lamp up top on the car's end: set into the sloping hood of the roof above the platform, centred,
+    // its lens facing straight back. The hood here lofts from the clerestory top (xc0) down to the deck at the end
+    // (rL0); the case runs level, its back end buried in the slope and its front clear of it.
     // Kept in its own group so the menu can switch between the two on cars already built (setObsLamps).
-    const lb = new GeoBin(), yR = yE + 0.5 * (hC + cr), xL = xc0 + 0.24;
-    lb.box(G, 0.26, 0.07, 0.22, xL + 0.02, yR + 0.025, 0);                         // base plate, bedded into the roof
-    lb.cyl(G, 0.035, 0.045, 0.14, 10, xL + 0.02, yR + 0.12, 0);                     // pedestal
-    lb.cyl(G, 0.11, 0.11, 0.2, 14, xL, yR + 0.29, 0, 0, 0, Math.PI / 2);            // the lamp case, lying fore and aft
-    lb.add(G, new THREE.TorusGeometry(0.1, 0.018, 6, 16).rotateY(Math.PI / 2).translate(xL - 0.1, yR + 0.29, 0));   // lens rim
-    lb.add(G, new THREE.ConeGeometry(0.09, 0.09, 12).translate(xL, yR + 0.43, 0));  // vented cap
-    lb.add(G, barGeo(0.01, [xL, yR + 0.45, 0], [xL, yR + 0.53, 0], 4)); lb.add(G, new THREE.TorusGeometry(0.03, 0.008, 4, 10).translate(xL, yR + 0.56, 0));   // bail
+    const lb = new GeoBin(), yPk = 0.5 * (hC + cr), yLow = hD - 0.02 + (yPk - hD + 0.02) * 0.04, span = xc0 - (rL0 + 0.02);
+    const tL = 0.35, xS = xc0 - span * tL, yS = yE + yPk - (yPk - yLow) * tL;   // where the lamp meets the hood
+    lb.cyl(G, 0.12, 0.12, 0.37, 20, xS - 0.015, yS, 0, 0, 0, Math.PI / 2);             // the case, lying fore and aft
+    // the lens end rounded over: a fat bead round the rim, so the lamp reads as a round drum from behind
+    lb.add(G, new THREE.TorusGeometry(0.11, 0.03, 10, 28).rotateY(Math.PI / 2).translate(xS - 0.2, yS, 0));
     const roofLamp = lb.build(RMAT); roofLamp.name = 'roofLamp';
     roofLamp.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
     root.add(roofLamp);
-    const roof = [new THREE.Vector3(xL - 0.112, yR + 0.29, 0)];
-    root.userData.markerSets = { side, roof }; root.userData.roofLamp = roofLamp;
-    const st = obsLampStyle(); roofLamp.visible = st === 'roof';
+    const roof = [new THREE.Vector3(xS - 0.213, yS, 0)];
+    root.userData.markerSets = { side, roof }; root.userData.markerR = { side: 0.075, roof: 0.11 }; root.userData.roofLamp = roofLamp; root.userData.sideLamps = sideLamps;
+    const st = obsLampStyle(); roofLamp.visible = st === 'roof'; sideLamps.visible = st !== 'roof';
     root.userData.markers = st === 'roof' ? roof : side;
   }
   if (T) {
@@ -9218,7 +9378,7 @@ const LIVERIES = {
     bands: [[1.98, 2.04, 0xeeeeea], [2.04, 2.46, 0x989da0], [2.46, 2.52, 0xeeeeea]] },
   bo: { name: 'Baltimore & Ohio', sub: 'Blue & grey · B&O', road: 'BALTIMORE & OHIO', init: 'B&O', num: 1827, body: 0x1d3a6c, roof: 0x1a3360, accent: 0xe8b52e, letter: 0xe8b52e, rail: 0xe8b52e, nose: 'plain', herald: 'bo', font: 'serif', real: true,
     bands: [[1.10, 2.48, 0xa4a9ac], [2.48, 2.56, 0xe8b52e]] },
-  co: { name: 'Chesapeake & Ohio', sub: 'Enchantment blue · C&O', road: 'C&O', roadPx: 112, init: 'C&O', num: 1869, body: 0x1f4c88, roof: 0x1b4277, accent: 0xf4c41c, letter: 0xf4c41c, rail: 0xf4c41c, nose: 'plain', herald: 'co', font: 'sans', real: true },
+  co: { name: 'Chesapeake & Ohio', sub: 'Enchantment blue · C&O', road: 'C&O', roadPx: 112, coachRoad: 'CHESAPEAKE AND OHIO', init: 'C&O', num: 1869, body: 0x1f4c88, roof: 0x1b4277, accent: 0xf4c41c, letter: 0xf4c41c, rail: 0xf4c41c, nose: 'plain', herald: 'co', font: 'sans', real: true },
   nw: { name: 'Norfolk & Western', sub: 'Black & gold · N&W', road: 'NORFOLK AND WESTERN', init: 'N&W', num: 8103, body: 0x131415, roof: 0x171819, accent: 0x131415, letter: 0xd8b25a, rail: 0xd8b25a, safety: 0xd8b25a, nose: 'plain', herald: 'nw', font: 'serif', real: true },
   pm: { name: 'Pere Marquette', sub: 'Blue, grey & yellow · PM', road: 'PERE MARQUETTE', init: 'PM', num: 1900, body: 0x24467a, roof: 0x1f3d6b, accent: 0xefc33a, letter: 0xefc33a, rail: 0xefc33a, nose: 'plain', herald: 'pm', font: 'serif', real: true,
     bands: [[1.96, 2.03, 0xefc33a], [2.03, 2.44, 0xa9adaf], [2.44, 2.51, 0xefc33a]] },
@@ -9235,72 +9395,12 @@ const liveryMixOrder = base => LIVERY_ORDER.filter(k => k !== base && !!LIVERIES
 /* the sides' band decal spans these heights; its texture is one column of the bands */
 const LSIDE = { y0: 1.10, y1: 4.75 };
 
-/* letters set round a circle: centred on the top (bottom = false) or the bottom, reading left to right */
-function ringText(g, s, cx, cy, r, px, bottom, spread = 0.66) {
-  const step = px * spread / r, n = s.length;
-  g.textAlign = 'center'; g.textBaseline = 'middle';
-  for (let i = 0; i < n; i++) {
-    const off = (i - (n - 1) / 2) * step, a = bottom ? Math.PI / 2 - off : -Math.PI / 2 + off;
-    g.save(); g.translate(cx + r * Math.cos(a), cy + r * Math.sin(a)); g.rotate(bottom ? a - Math.PI / 2 : a + Math.PI / 2); g.fillText(s[i], 0, 0); g.restore();
-  }
-}
 function liveryTextures(L, num) {
   const B = hexCss(L.body), A = hexCss(L.accent), T = hexCss(L.letter), S = hexCss(L.safety !== undefined ? L.safety : L.accent);
   const font = (w, px) => (L.font === 'serif' ? `700 ${px}px Georgia, "Times New Roman", serif` : `800 ${px}px "Arial Narrow", "Helvetica Neue", Arial, sans-serif`);
   const road = canvasTex(1024, 128, (g, w, h) => { g.font = font(w, L.roadPx || (L.road.length > 18 ? 66 : 76)); g.fillStyle = T; g.textAlign = 'center'; g.textBaseline = 'middle'; if (g.letterSpacing !== undefined) g.letterSpacing = (L.roadPx ? 14 : 5) + 'px'; g.fillText(L.road, w / 2, h / 2 + 4); });
   const number = canvasTex(256, 128, (g, w, h) => { g.font = font(w, 96); g.fillStyle = T; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(String(num), w / 2, h / 2 + 4); });
-  const herald = canvasTex(256, 256, (g, w, h) => {
-    g.strokeStyle = T; g.fillStyle = T; g.lineJoin = 'round';
-    const fnt = px => (L.font === 'serif' ? `700 ${px}px Georgia, serif` : `800 ${px}px "Arial Narrow", Arial, sans-serif`);
-    const txt = (s, y, px, x = 128) => { g.font = fnt(px); g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(s, x, y); };
-    const px = L.init.length > 3 ? 58 : 78;
-    if (L.herald === 'ring') { g.lineWidth = 14; g.beginPath(); g.arc(128, 128, 110, 0, TAU); g.stroke(); g.lineWidth = 5; g.beginPath(); g.arc(128, 128, 90, 0, TAU); g.stroke(); txt(L.init, 132, px); }
-    else if (L.herald === 'diamond') { g.lineWidth = 12; g.beginPath(); g.moveTo(128, 12); g.lineTo(244, 128); g.lineTo(128, 244); g.lineTo(12, 128); g.closePath(); g.stroke(); txt(L.init, 132, px * 0.85); }
-    else if (L.herald === 'shield') { g.lineWidth = 12; g.beginPath(); g.moveTo(28, 26); g.lineTo(228, 26); g.lineTo(228, 120); g.quadraticCurveTo(220, 205, 128, 238); g.quadraticCurveTo(36, 205, 28, 120); g.closePath(); g.stroke(); txt(L.init, 118, px * 0.9); }
-    else if (L.herald === 'oval') { g.lineWidth = 12; g.beginPath(); g.ellipse(128, 128, 118, 74, 0, 0, TAU); g.stroke(); txt(L.init, 132, px * 0.9); }
-    else if (L.herald === 'sheaf') {
-      g.lineWidth = 10; g.beginPath(); g.arc(128, 128, 112, 0, TAU); g.stroke();
-      g.lineWidth = 5; for (const a of [-0.35, 0, 0.35]) { g.save(); g.translate(128, 196); g.rotate(a); g.beginPath(); g.moveTo(0, 0); g.lineTo(0, -120); g.stroke(); for (let k = 0; k < 6; k++) { g.beginPath(); g.ellipse(-9, -64 - k * 10, 6, 11, -0.5, 0, TAU); g.fill(); g.beginPath(); g.ellipse(9, -64 - k * 10, 6, 11, 0.5, 0, TAU); g.fill(); } g.restore(); }
-      txt(L.init, 214, 34);
-    }
-    // the real roads' heralds
-    else if (L.herald === 'nkp') {        // the box: NICKEL PLATE over ROAD, ruled between
-      g.lineWidth = 9; g.strokeRect(10, 66, 236, 124); g.lineWidth = 4; g.strokeRect(20, 76, 216, 104);
-      g.fillRect(34, 127, 188, 4); txt('NICKEL PLATE', 104, 34); txt('ROAD', 157, 40);
-    }
-    else if (L.herald === 'prr') {        // the keystone, Tuscan red with a gold edge and the PRR monogram
-      const ks = () => { g.beginPath(); g.moveTo(40, 22); g.lineTo(216, 22); g.lineTo(236, 62); g.lineTo(206, 150); g.lineTo(166, 236); g.lineTo(90, 236); g.lineTo(50, 150); g.lineTo(20, 62); g.closePath(); };
-      ks(); g.fillStyle = '#8c2a1f'; g.fill(); g.lineWidth = 10; g.stroke();
-      g.fillStyle = T; txt('PRR', 128, 76);
-    }
-    else if (L.herald === 'nyc') {        // the oval: NEW YORK over a band carrying CENTRAL, SYSTEM under it
-      g.lineWidth = 9; g.beginPath(); g.ellipse(128, 128, 120, 86, 0, 0, TAU); g.stroke();
-      g.fillRect(8, 104, 240, 48); g.fillStyle = B; txt('CENTRAL', 130, 40); g.fillStyle = T;
-      txt('NEW YORK', 77, 30); txt('SYSTEM', 180, 26);
-    }
-    else if (L.herald === 'bo') {         // the Capitol dome inside the BALTIMORE & OHIO ring
-      g.lineWidth = 8; g.beginPath(); g.arc(128, 128, 118, 0, TAU); g.stroke(); g.lineWidth = 4; g.beginPath(); g.arc(128, 128, 82, 0, TAU); g.stroke();
-      g.font = fnt(22); ringText(g, 'BALTIMORE', 128, 128, 100, 22, false, 0.8); ringText(g, 'OHIO', 128, 128, 100, 22, true, 0.8);
-      g.beginPath(); g.moveTo(84, 168); g.lineTo(172, 168); g.lineTo(172, 156); g.lineTo(84, 156); g.closePath(); g.fill();          // the base
-      g.fillRect(98, 128, 60, 28); for (let x = 101; x < 156; x += 9) { g.fillStyle = B; g.fillRect(x, 133, 4, 20); g.fillStyle = T; }   // the drum's columns
-      g.beginPath(); g.arc(128, 128, 30, Math.PI, 0); g.fill(); g.fillRect(124, 84, 8, 16); g.beginPath(); g.arc(128, 82, 5, 0, TAU); g.fill();   // dome, lantern
-      txt('&', 202, 22, 30); txt('&', 202, 22, 226);
-    }
-    else if (L.herald === 'co') {         // FOR PROGRESS: C&O in a ring
-      g.lineWidth = 10; g.beginPath(); g.arc(128, 128, 116, 0, TAU); g.stroke(); g.lineWidth = 4; g.beginPath(); g.arc(128, 128, 96, 0, TAU); g.stroke();
-      txt('C&O', 118, 66); g.fillRect(56, 156, 144, 4); txt('FOR PROGRESS', 180, 20);
-    }
-    else if (L.herald === 'nw') {         // the round herald: NORFOLK and WESTERN round a bar carrying N&W
-      g.lineWidth = 9; g.beginPath(); g.arc(128, 128, 118, 0, TAU); g.stroke();
-      g.font = fnt(26); ringText(g, 'NORFOLK', 128, 128, 94, 26, false, 0.78); ringText(g, 'WESTERN', 128, 128, 94, 26, true, 0.78);
-      g.fillRect(10, 102, 236, 52); g.fillStyle = B; txt('N&W', 130, 46); g.fillStyle = T;
-    }
-    else if (L.herald === 'pm') {         // PERE MARQUETTE round a PM monogram
-      g.lineWidth = 9; g.beginPath(); g.arc(128, 128, 118, 0, TAU); g.stroke(); g.lineWidth = 4; g.beginPath(); g.arc(128, 128, 78, 0, TAU); g.stroke();
-      g.font = fnt(26); ringText(g, 'PERE', 128, 128, 98, 26, false, 0.85); ringText(g, 'MARQUETTE', 128, 128, 98, 26, true, 0.8);
-      txt('PM', 132, 70);
-    }
-  });
+  const herald = canvasTex(256, 256, g => drawHerald(g, L.herald, T, B, L.font, L.init));
   // nose: the side bands carried round (v = 0 at the deck, 1 at the nose top), then the scheme's own nose design
   const nose = canvasTex(256, 128, (g, w, h) => {
     g.fillStyle = B; g.fillRect(0, 0, w, h);
@@ -13302,7 +13402,7 @@ function buildBigBoyTender(key, trim = '') {
    ML.refR - a, on the front engine ML.refF - a (see 06h_bigboy.js).
    ========================================================================== */
 Object.assign(LOCO_SPEC, {
-  '1308': { road: 'CHESAPEAKE & OHIO', num: '1308', short: 'C&O', cls: 'H-6 · 2-6-6-2', built: 'Baldwin, 1949', weight: 434900, adhesive: 366700, te: 77900, whistle: 'co3',
+  '1308': { road: 'CHESAPEAKE AND OHIO', num: '1308', short: 'C&O', cls: 'H-6 · 2-6-6-2', built: 'Baldwin, 1949', weight: 434900, adhesive: 366700, te: 77900, whistle: 'co3',
     art: true, mallet: true, wheels: 'spoked', psi: 210, rD: 0.7112, teK: 436, vcyl: 4 * Math.PI / 4 * 0.5588 * 0.5588 * 0.8128, boil: 0.85,
     water: 45425, coal: 14515, tenderEmpty: 34560, axles: 8 },
 });
@@ -15128,9 +15228,11 @@ class Train extends Consist {
     if (!v.markers || v.lamps) return;
     const mat = new THREE.MeshBasicMaterial({ color: 0x2a0806 });
     v.lamps = { mat, lit: -1, glows: [], meshes: [] };
+    const u = v.model && v.model.root && v.model.root.userData, big = u && u.markerSets && v.markers === u.markerSets.roof;   // the observation car's one big top lamp
+    const lr = big ? u.markerR.roof : 0.075;
     for (const p of v.markers) {
-      const m = new THREE.Mesh(new THREE.CircleGeometry(0.075, 14), mat); m.position.copy(p); m.rotation.y = -Math.PI / 2; v.root.add(m); v.lamps.meshes.push(m);
-      if (typeof markerGlow === 'function') { const g = markerGlow(0.8); g.position.copy(p).x -= 0.05; v.root.add(g); v.lamps.glows.push(g); }
+      const m = new THREE.Mesh(new THREE.CircleGeometry(lr, 18), mat); m.position.copy(p); m.rotation.y = -Math.PI / 2; v.root.add(m); v.lamps.meshes.push(m);
+      if (typeof markerGlow === 'function') { const g = markerGlow(big ? 1.15 : 0.8); g.position.copy(p).x -= 0.05; v.root.add(g); v.lamps.glows.push(g); }
     }
   }
   update(dt, theta = 0, rev = 0) {
@@ -25808,7 +25910,7 @@ IND.pay = function (v, d) {
   IND.cash += amt; IND.cars++; IND.career.cash += amt; IND.career.cars++; IND.save();
   toast(`+$${amt} · ${IND.mark(v)} ${d.id === 'yard' ? 'delivered to' : 'spotted at'} ${d.name}`, 'good', 3200, 'indpay');
 };
-IND.mark = v => `${(v.made && v.made.rs) || ROAD_SHORT} ${(v.made && v.made.num) || ''}`.trim();
+IND.mark = v => { const m = v.made || {}, home = m.rs || ROAD_SHORT; return `${m.type && m.num ? carOwner(m.type, m.num, home) : home} ${m.num || ''}`.trim(); };
 IND.note = function (msg) { IND.log.unshift({ t: S.time, msg }); IND.log.length = Math.min(IND.log.length, 8); CARS.gen++; };
 
 /* ---------------- making up the railroad ---------------- */
@@ -27703,7 +27805,7 @@ function roadCoachPaint() {
 function setObsLamps(st) {
   for (const c of IX.consists()) for (const v of c.vehicles) {
     const u = v.model && v.model.root && v.model.root.userData; if (!u || !u.markerSets) continue;
-    u.roofLamp.visible = st === 'roof'; u.markers = v.markers = u.markerSets[st === 'roof' ? 'roof' : 'side'];
+    u.roofLamp.visible = st === 'roof'; if (u.sideLamps) u.sideLamps.visible = st !== 'roof'; u.markers = v.markers = u.markerSets[st === 'roof' ? 'roof' : 'side'];
     if (v.lamps) { for (const o of [...v.lamps.meshes, ...v.lamps.glows]) { if (o.parent) o.parent.remove(o); if (o.geometry) o.geometry.dispose(); } v.lamps.mat.dispose(); v.lamps = null; }
   }
 }
@@ -27773,7 +27875,7 @@ function buildMenu() {
   const coachSw = k => coachSwatch(k, GAME.settings.coachColor);
   const coachOpts = {}; for (const k in COACH_PAINT) coachOpts[k] = { name: COACH_PAINT[k].name, sub: COACH_PAINT[k].sub, swatch: coachSw(k) };
   segButtons('optCoach', coachOpts, 'coach', k => { applyCoachPaint(k, GAME.settings.coachColor); refreshMenuGroups(); saveSettings(); });
-  segButtons('optObsLamp', { side: { name: 'Canopy corners', sub: 'A pair of markers' }, roof: { name: 'On the roof', sub: 'One red lamp up top' } }, 'obsLamp', k => { setObsLamps(k); saveSettings(); });
+  segButtons('optObsLamp', { side: { name: 'Canopy corners', sub: 'A pair of markers' }, roof: { name: 'One on top', sub: 'A single red lamp, no lanterns' } }, 'obsLamp', k => { setObsLamps(k); saveSettings(); });
   $('cCoach').value = hexCss(GAME.settings.coachColor);
   $('cCoach').addEventListener('input', () => {
     GAME.settings.coachColor = parseInt($('cCoach').value.slice(1), 16);

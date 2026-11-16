@@ -17,7 +17,7 @@
    ML.refR - a, on the front engine ML.refF - a (see 06h_bigboy.js).
    ========================================================================== */
 Object.assign(LOCO_SPEC, {
-  '1308': { road: 'CHESAPEAKE & OHIO', num: '1308', short: 'C&O', cls: 'H-6 · 2-6-6-2', built: 'Baldwin, 1949', weight: 434900, adhesive: 366700, te: 77900, whistle: 'co3',
+  '1308': { road: 'CHESAPEAKE AND OHIO', num: '1308', short: 'C&O', cls: 'H-6 · 2-6-6-2', built: 'Baldwin, 1949', weight: 434900, adhesive: 366700, te: 77900, whistle: 'co3',
     art: true, mallet: true, wheels: 'spoked', psi: 210, rD: 0.7112, teK: 436, vcyl: 4 * Math.PI / 4 * 0.5588 * 0.5588 * 0.8128, boil: 0.85,
     water: 45425, coal: 14515, tenderEmpty: 34560, axles: 8 },
 });
