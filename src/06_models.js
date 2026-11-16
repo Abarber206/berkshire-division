@@ -704,7 +704,7 @@ function buildBerkshire(key, trim = '') {
     RMAT['cab' + key] = cabNum;
     for (const s of [-1, 1]) gb.add('cab' + key, new THREE.PlaneGeometry(1.0, 0.5), M(ax(15.95), 2.5, s * (hw + 0.026), 0, s > 0 ? 0 : Math.PI, 0));
     // interior: backhead, gauges, firedoor, seats, levers
-    cab = steamCab(gb, body, { x0: C.x0, x1: C.x1, fl: C.fl, floor: C.fl, hw: C.hw, bh: C.bh, FB: C.FB, ceil: C.ceil, fwin: C.front, side: C.side, eyeY: 3.6 });
+    cab = steamCab(gb, body, { x0: C.x0, x1: C.x1, fl: C.fl, floor: C.fl, hw: C.hw, bh: C.bh, FB: C.FB, ceil: C.ceil, fwin: C.front, side: C.side, eyeY: 3.6, key, spec, ax });
   }
   /* ---- trailing truck: Delta cast frame outside the wheels, pivoted ahead of the firebox ---- */
   {

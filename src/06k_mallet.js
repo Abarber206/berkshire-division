@@ -358,7 +358,7 @@ function buildMallet(key, trim = '') {
     for (const s of [-1, 1]) gb.box('dark', L, C.bottom - 1.45, 0.12, x1 + L / 2, (C.bottom + 1.45) / 2, s * 0.9);
     RMAT['cab' + key] = decalMat(256, 128, (g, w, h) => romanText(g, spec.num, w / 2, h / 2 + 4, 104, '#ebe8dd', 0.02));
     for (const s of [-1, 1]) gb.add('cab' + key, new THREE.PlaneGeometry(1.0, 0.5), M(ax((C.side.a0 + C.side.a1) / 2), 2.45, s * (hw + 0.026), 0, s > 0 ? 0 : Math.PI, 0));
-    cab = steamCab(gb, body, { x0: C.x0, x1: C.x1, fl: C.fl, floor: C.fl, hw: C.hw, bh: C.bh, FB: C.FB, ceil: C.ceil, fwin: C.front, side: C.side, eyeY: 3.62 });
+    cab = steamCab(gb, body, { x0: C.x0, x1: C.x1, fl: C.fl, floor: C.fl, hw: C.hw, bh: C.bh, FB: C.FB, ceil: C.ceil, fwin: C.front, side: C.side, eyeY: 3.62, key, spec, ax });
   }
   /* ---- trailing truck: one axle in a cast frame outside the wheels, radius bars forward to its pivot ---- */
   { const aT = ML.aT, rT = ML.rT;

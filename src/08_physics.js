@@ -66,10 +66,14 @@ function physicsStep(dt, train) {
   const back = 1.0 + 0.55 * n * n * cut;
   let mep = Math.max(0, S.Psc * ratio * wire - (S.Psc > 5 ? back : 0));
   if (S.priming) mep *= 0.55 + 0.25 * Math.sin(S.time * 9);
+  // a Mallet worked simple (the intercepting valve open) puts live steam in the low pressure cylinders too: about a
+  // fifth more pull for a start, at a great cost in steam; the easy crew shuts it once she's rolling
+  const simple = !!(S.simple && spec.mallet);
+  if (simple) { mep *= 1.2; if (S.autoCut && Math.abs(S.v) > 4) S.simple = false; }
   TEcmd = dir * mep * SK.teK * LBF;                   // mep * d^2 * s / D, every cylinder
   // steam consumption
   const rho = (S.Psc + 14.7) * 0.02323;
-  const useCyl = dir ? n * SK.vcyl * (cut + 0.08) * rho : 0;
+  const useCyl = dir ? n * SK.vcyl * (cut + 0.08) * rho * (simple ? 1.6 : 1) : 0;
   const aux = (S.pumping ? 0.07 : 0) + (S.light ? 0.02 : 0) + S.blower * 0.38 + (S.injector ? 0.28 : 0) + (S.cocks ? 0.45 * valve : 0) + S.whistle * 0.3 + (S.safety ? 4.8 : 0);
   S.use = useCyl + aux * K;
   // firing: stoker feeds, draft from exhaust & blower burns
@@ -80,6 +84,7 @@ function physicsStep(dt, train) {
   S.fire = Math.max(0, S.fire);
   S.coal = Math.max(0, S.coal - S.fire * 1.35 * K * dt);
   S.gen = 9.9 * K * S.fire * (1 - 0.22 * clamp((S.P - (PL - 45)) / 60, 0, 1));
+  if (S.fdoor) S.gen *= 0.9;   // an open firedoor pulls cold air over the fire
   // water
   let cooling = 0;
   if (S.injector && S.water > 0 && S.P > 60) { const feed = 11.5 * K; S.W += feed * dt / (2600 * K); S.water -= feed * dt; cooling = feed * (spec.fw === 'Worthington' ? 0.1 : 0.13); }

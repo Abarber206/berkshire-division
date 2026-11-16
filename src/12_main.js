@@ -100,6 +100,7 @@ function resetState() {
   Object.assign(S, { pan: 1, panUp: true, vcb: true, vcbT: 0, kW: 0, kWh: 0, rbMax: 0, blend: 0 });   // a trainset comes with its pantograph up and the breaker in
   // the gas turbine comes up running at idle on Bunker C, the tender full, the aux diesel running beside it
   Object.assign(S, LOCO_SPEC[GAME.settings.loco].turb ? { tOn: true, tStart: 0, tspd: GTE.idle, oil: GTP.oilFull, egt: GTE.egtIdle, fuel: GTP.dslFull, rpm: 450 } : { tOn: false, tStart: 0, tspd: 0, oil: 0, egt: 90 });
+  S.fdoor = false; S.simple = false; S.blowdown = false;
   if (LOCO_SPEC[GAME.settings.loco].diesel) { S.cocks = false; S.light = SKY.night ? 2 : 2; }
   else { const k = steamK(LOCO_SPEC[GAME.settings.loco]); Object.assign(S, { P: k.PL - 7, water: k.water, coal: k.coal }); }   // a bigger engine comes with its own pressure and tender
 }
@@ -828,7 +829,7 @@ function renderStep(dt, T) {
     T.loco.ditch.forEach((d, k) => { const b = lv(k); d.lens.material.color.setScalar(0.25 + 0.75 * b); d.halo.material.opacity = b * lerp(0.45, 1, night) * (T.diesel ? 1 : lampFacing(T.loco, camera)); });
   }
   if (T.diesel) T.fireLight.intensity = 0;
-  else T.fireLight.intensity = S.fire * lerp(0.25, 4.2, night) * flick * (CAM.mode === 'cab' ? 1 : 0.85);
+  else T.fireLight.intensity = S.fire * lerp(0.25, 4.2, night) * flick * (CAM.mode === 'cab' ? 1 + 0.8 * (CAB.fdoor || 0) : 0.85);
   // the fire showing under the ashpan lights the ties and the trailing truck (the headlight is set just above)
   trainLights(LAMPS.own || (LAMPS.own = {}), T.loco, 0, T.diesel || T.elec ? 0 : S.fire, night, S.time);
   T.loco.beam.material.opacity = S.light === 0 ? 0 : Math.max(night * (S.light === 2 ? 0.075 : 0.035), wxBeam());
