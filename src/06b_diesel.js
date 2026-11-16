@@ -6,14 +6,31 @@
    aux cab behind the cab on the conductor's side, a roof hump over the dynamic
    brake grids, and a tall radiator section with flared wings, a bulge along the
    top edge, and intake grilles set at two angles underneath.
-   All paint is original: fictional railroads, plus custom colours.
+   Paint: real Ohio roads in their classic schemes (as their heritage units wear them), the division's
+   made-up roads, and custom colours.
    Local frame: +X forward, origin midway between truck centres at rail top.
    ========================================================================== */
 const DG = { len: 22.30, ref: 11.15, trucks: [4.05, 18.25], axle: 2.0, rW: 0.533, deck: 1.72, uid: 0 };
 const dx = a => DG.ref - a;
 
-/* ---------------- liveries (all invented) ---------------- */
+/* ---------------- liveries ----------------
+   Real roads that ran through Ohio, in their classic freight schemes, as the railroads' own heritage units wear
+   them on this same GE wide cab today (NS 8100 Nickel Plate, 8102 Pennsylvania, 8103 Norfolk & Western, 1066 New York
+   Central; CSX 1827 Baltimore & Ohio, 1869 Chesapeake & Ohio), then the made-up roads of the division, then custom.
+   bands: [y0, y1, colour] in metres above the rail, painted along the sides and carried round the nose.
+   safety: the pilot stripe colour when the scheme has no accent colour of its own. */
 const LIVERIES = {
+  nkp: { name: 'Nickel Plate Road', sub: 'Black & yellow · NKP', road: 'NICKEL PLATE ROAD', init: 'NKP', num: 8100, body: 0x141516, roof: 0x18191a, accent: 0xf1b82a, letter: 0xf1b82a, rail: 0xf1b82a, nose: 'zebra', herald: 'nkp', font: 'serif', real: true,
+    bands: [[2.04, 2.12, 0xf1b82a]] },
+  prr: { name: 'Pennsylvania', sub: 'Brunswick green · PRR', road: 'PENNSYLVANIA', init: 'PRR', num: 8102, body: 0x1b2a21, roof: 0x18241d, accent: 0x1b2a21, letter: 0xd9b55e, rail: 0xd9b55e, safety: 0xd9b55e, nose: 'plain', herald: 'prr', font: 'serif', real: true },
+  nyc: { name: 'New York Central', sub: 'Lightning stripe · NYC', road: 'NEW YORK CENTRAL', init: 'NYC', num: 1066, body: 0x3a3d40, roof: 0x303336, accent: 0xeeeeea, letter: 0xeeeeea, rail: 0xeeeeea, nose: 'lightning', herald: 'nyc', font: 'sans', real: true,
+    bands: [[1.98, 2.04, 0xeeeeea], [2.04, 2.46, 0x989da0], [2.46, 2.52, 0xeeeeea]] },
+  bo: { name: 'Baltimore & Ohio', sub: 'Blue & grey · B&O', road: 'BALTIMORE & OHIO', init: 'B&O', num: 1827, body: 0x1d3a6c, roof: 0x1a3360, accent: 0xe8b52e, letter: 0xe8b52e, rail: 0xe8b52e, nose: 'plain', herald: 'bo', font: 'serif', real: true,
+    bands: [[1.10, 2.48, 0xa4a9ac], [2.48, 2.56, 0xe8b52e]] },
+  co: { name: 'Chesapeake & Ohio', sub: 'Enchantment blue · C&O', road: 'C&O', roadPx: 112, init: 'C&O', num: 1869, body: 0x1f4c88, roof: 0x1b4277, accent: 0xf4c41c, letter: 0xf4c41c, rail: 0xf4c41c, nose: 'plain', herald: 'co', font: 'sans', real: true },
+  nw: { name: 'Norfolk & Western', sub: 'Black & gold · N&W', road: 'NORFOLK AND WESTERN', init: 'N&W', num: 8103, body: 0x131415, roof: 0x171819, accent: 0x131415, letter: 0xd8b25a, rail: 0xd8b25a, safety: 0xd8b25a, nose: 'plain', herald: 'nw', font: 'serif', real: true },
+  pm: { name: 'Pere Marquette', sub: 'Blue, grey & yellow · PM', road: 'PERE MARQUETTE', init: 'PM', num: 1900, body: 0x24467a, roof: 0x1f3d6b, accent: 0xefc33a, letter: 0xefc33a, rail: 0xefc33a, nose: 'plain', herald: 'pm', font: 'serif', real: true,
+    bands: [[1.96, 2.03, 0xefc33a], [2.03, 2.44, 0xa9adaf], [2.44, 2.51, 0xefc33a]] },
   ss: { name: 'Sandusky & Scioto', sub: 'Green & cream', road: 'SANDUSKY & SCIOTO', init: 'S&S', num: 4401, body: 0x1d4634, roof: 0x16372a, accent: 0xe6d6a6, letter: 0xece0b6, rail: 0xe6d6a6, nose: 'bands', herald: 'ring', font: 'sans' },
   fle: { name: 'Fostoria & Lake Erie', sub: 'Lake red & silver', road: 'FOSTORIA & LAKE ERIE', init: 'F&LE', num: 2210, body: 0x7c1e19, roof: 0x5b5f63, accent: 0xd8d8d2, letter: 0xf2f0ea, rail: 0xd8d8d2, nose: 'chevrons', herald: 'diamond', font: 'serif' },
   kn: { name: 'Kenton & Northern', sub: 'Teal & gold', road: 'KENTON & NORTHERN', init: 'K&N', num: 1907, body: 0x1e4b55, roof: 0x173a42, accent: 0xd6a43c, letter: 0xe8c46a, rail: 0xd6a43c, nose: 'split', herald: 'shield', font: 'sans' },
@@ -21,16 +38,30 @@ const LIVERIES = {
   bvt: { name: 'Bellevue Terminal', sub: 'Graphite & orange', road: 'BELLEVUE TERMINAL', init: 'BVT', num: 3104, body: 0x44494f, roof: 0x33373b, accent: 0xe3742b, letter: 0xf0f0ea, rail: 0xe3742b, nose: 'chevrons', herald: 'oval', font: 'sans' },
   custom: { name: 'Custom', sub: 'Your colours', road: 'SANDUSKY & SCIOTO', init: 'S&S', num: 4401, body: 0x2c5f8a, roof: 0x24384a, accent: 0xf0f0ea, letter: 0xf0f0ea, rail: 0xf0f0ea, nose: 'bands', herald: 'ring', font: 'sans' },
 };
-const LIVERY_ORDER = ['ss', 'fle', 'kn', 'dgl', 'bvt'];
+/* run-through power in a mixed lashup: other real roads behind a real road, the made-up roads behind a made-up one */
+const LIVERY_ORDER = Object.keys(LIVERIES).filter(k => k !== 'custom');
+const liveryMixOrder = base => LIVERY_ORDER.filter(k => k !== base && !!LIVERIES[k].real === !!(LIVERIES[base] || {}).real);
+/* the sides' band decal spans these heights; its texture is one column of the bands */
+const LSIDE = { y0: 1.10, y1: 4.75 };
 
+/* letters set round a circle: centred on the top (bottom = false) or the bottom, reading left to right */
+function ringText(g, s, cx, cy, r, px, bottom, spread = 0.66) {
+  const step = px * spread / r, n = s.length;
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+  for (let i = 0; i < n; i++) {
+    const off = (i - (n - 1) / 2) * step, a = bottom ? Math.PI / 2 - off : -Math.PI / 2 + off;
+    g.save(); g.translate(cx + r * Math.cos(a), cy + r * Math.sin(a)); g.rotate(bottom ? a - Math.PI / 2 : a + Math.PI / 2); g.fillText(s[i], 0, 0); g.restore();
+  }
+}
 function liveryTextures(L, num) {
-  const B = hexCss(L.body), A = hexCss(L.accent), T = hexCss(L.letter);
+  const B = hexCss(L.body), A = hexCss(L.accent), T = hexCss(L.letter), S = hexCss(L.safety !== undefined ? L.safety : L.accent);
   const font = (w, px) => (L.font === 'serif' ? `700 ${px}px Georgia, "Times New Roman", serif` : `800 ${px}px "Arial Narrow", "Helvetica Neue", Arial, sans-serif`);
-  const road = canvasTex(1024, 128, (g, w, h) => { g.font = font(w, L.road.length > 18 ? 66 : 76); g.fillStyle = T; g.textAlign = 'center'; g.textBaseline = 'middle'; if (g.letterSpacing !== undefined) g.letterSpacing = '5px'; g.fillText(L.road, w / 2, h / 2 + 4); });
+  const road = canvasTex(1024, 128, (g, w, h) => { g.font = font(w, L.roadPx || (L.road.length > 18 ? 66 : 76)); g.fillStyle = T; g.textAlign = 'center'; g.textBaseline = 'middle'; if (g.letterSpacing !== undefined) g.letterSpacing = (L.roadPx ? 14 : 5) + 'px'; g.fillText(L.road, w / 2, h / 2 + 4); });
   const number = canvasTex(256, 128, (g, w, h) => { g.font = font(w, 96); g.fillStyle = T; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(String(num), w / 2, h / 2 + 4); });
   const herald = canvasTex(256, 256, (g, w, h) => {
     g.strokeStyle = T; g.fillStyle = T; g.lineJoin = 'round';
-    const txt = (s, y, px) => { g.font = (L.font === 'serif' ? `700 ${px}px Georgia, serif` : `800 ${px}px "Arial Narrow", Arial, sans-serif`); g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(s, 128, y); };
+    const fnt = px => (L.font === 'serif' ? `700 ${px}px Georgia, serif` : `800 ${px}px "Arial Narrow", Arial, sans-serif`);
+    const txt = (s, y, px, x = 128) => { g.font = fnt(px); g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(s, x, y); };
     const px = L.init.length > 3 ? 58 : 78;
     if (L.herald === 'ring') { g.lineWidth = 14; g.beginPath(); g.arc(128, 128, 110, 0, TAU); g.stroke(); g.lineWidth = 5; g.beginPath(); g.arc(128, 128, 90, 0, TAU); g.stroke(); txt(L.init, 132, px); }
     else if (L.herald === 'diamond') { g.lineWidth = 12; g.beginPath(); g.moveTo(128, 12); g.lineTo(244, 128); g.lineTo(128, 244); g.lineTo(12, 128); g.closePath(); g.stroke(); txt(L.init, 132, px * 0.85); }
@@ -41,22 +72,84 @@ function liveryTextures(L, num) {
       g.lineWidth = 5; for (const a of [-0.35, 0, 0.35]) { g.save(); g.translate(128, 196); g.rotate(a); g.beginPath(); g.moveTo(0, 0); g.lineTo(0, -120); g.stroke(); for (let k = 0; k < 6; k++) { g.beginPath(); g.ellipse(-9, -64 - k * 10, 6, 11, -0.5, 0, TAU); g.fill(); g.beginPath(); g.ellipse(9, -64 - k * 10, 6, 11, 0.5, 0, TAU); g.fill(); } g.restore(); }
       txt(L.init, 214, 34);
     }
+    // the real roads' heralds
+    else if (L.herald === 'nkp') {        // the box: NICKEL PLATE over ROAD, ruled between
+      g.lineWidth = 9; g.strokeRect(10, 66, 236, 124); g.lineWidth = 4; g.strokeRect(20, 76, 216, 104);
+      g.fillRect(34, 127, 188, 4); txt('NICKEL PLATE', 104, 34); txt('ROAD', 157, 40);
+    }
+    else if (L.herald === 'prr') {        // the keystone, Tuscan red with a gold edge and the PRR monogram
+      const ks = () => { g.beginPath(); g.moveTo(40, 22); g.lineTo(216, 22); g.lineTo(236, 62); g.lineTo(206, 150); g.lineTo(166, 236); g.lineTo(90, 236); g.lineTo(50, 150); g.lineTo(20, 62); g.closePath(); };
+      ks(); g.fillStyle = '#8c2a1f'; g.fill(); g.lineWidth = 10; g.stroke();
+      g.fillStyle = T; txt('PRR', 128, 76);
+    }
+    else if (L.herald === 'nyc') {        // the oval: NEW YORK over a band carrying CENTRAL, SYSTEM under it
+      g.lineWidth = 9; g.beginPath(); g.ellipse(128, 128, 120, 86, 0, 0, TAU); g.stroke();
+      g.fillRect(8, 104, 240, 48); g.fillStyle = B; txt('CENTRAL', 130, 40); g.fillStyle = T;
+      txt('NEW YORK', 77, 30); txt('SYSTEM', 180, 26);
+    }
+    else if (L.herald === 'bo') {         // the Capitol dome inside the BALTIMORE & OHIO ring
+      g.lineWidth = 8; g.beginPath(); g.arc(128, 128, 118, 0, TAU); g.stroke(); g.lineWidth = 4; g.beginPath(); g.arc(128, 128, 82, 0, TAU); g.stroke();
+      g.font = fnt(22); ringText(g, 'BALTIMORE', 128, 128, 100, 22, false, 0.8); ringText(g, 'OHIO', 128, 128, 100, 22, true, 0.8);
+      g.beginPath(); g.moveTo(84, 168); g.lineTo(172, 168); g.lineTo(172, 156); g.lineTo(84, 156); g.closePath(); g.fill();          // the base
+      g.fillRect(98, 128, 60, 28); for (let x = 101; x < 156; x += 9) { g.fillStyle = B; g.fillRect(x, 133, 4, 20); g.fillStyle = T; }   // the drum's columns
+      g.beginPath(); g.arc(128, 128, 30, Math.PI, 0); g.fill(); g.fillRect(124, 84, 8, 16); g.beginPath(); g.arc(128, 82, 5, 0, TAU); g.fill();   // dome, lantern
+      txt('&', 202, 22, 30); txt('&', 202, 22, 226);
+    }
+    else if (L.herald === 'co') {         // FOR PROGRESS: C&O in a ring
+      g.lineWidth = 10; g.beginPath(); g.arc(128, 128, 116, 0, TAU); g.stroke(); g.lineWidth = 4; g.beginPath(); g.arc(128, 128, 96, 0, TAU); g.stroke();
+      txt('C&O', 118, 66); g.fillRect(56, 156, 144, 4); txt('FOR PROGRESS', 180, 20);
+    }
+    else if (L.herald === 'nw') {         // the round herald: NORFOLK and WESTERN round a bar carrying N&W
+      g.lineWidth = 9; g.beginPath(); g.arc(128, 128, 118, 0, TAU); g.stroke();
+      g.font = fnt(26); ringText(g, 'NORFOLK', 128, 128, 94, 26, false, 0.78); ringText(g, 'WESTERN', 128, 128, 94, 26, true, 0.78);
+      g.fillRect(10, 102, 236, 52); g.fillStyle = B; txt('N&W', 130, 46); g.fillStyle = T;
+    }
+    else if (L.herald === 'pm') {         // PERE MARQUETTE round a PM monogram
+      g.lineWidth = 9; g.beginPath(); g.arc(128, 128, 118, 0, TAU); g.stroke(); g.lineWidth = 4; g.beginPath(); g.arc(128, 128, 78, 0, TAU); g.stroke();
+      g.font = fnt(26); ringText(g, 'PERE', 128, 128, 98, 26, false, 0.85); ringText(g, 'MARQUETTE', 128, 128, 98, 26, true, 0.8);
+      txt('PM', 132, 70);
+    }
   });
+  // nose: the side bands carried round (v = 0 at the deck, 1 at the nose top), then the scheme's own nose design
   const nose = canvasTex(256, 128, (g, w, h) => {
-    g.fillStyle = B; g.fillRect(0, 0, w, h); g.fillStyle = A;
+    g.fillStyle = B; g.fillRect(0, 0, w, h);
+    const row = y => h * (1 - (y - DG.deck) / (3.48 - DG.deck));
+    const bands = L.bands || [];
+    if (L.nose !== 'lightning') for (const [y0, y1, c] of bands) { g.fillStyle = hexCss(c); g.fillRect(0, row(y1), w, row(y0) - row(y1) + 0.5); }
+    g.fillStyle = A;
     if (L.nose === 'bands') { g.fillRect(0, h * 0.18, w, h * 0.12); g.fillRect(0, h * 0.62, w, h * 0.2); }
     else if (L.nose === 'chevrons') { for (let k = -2; k < 6; k++) { const y = h * 0.95 - k * 34; g.beginPath(); g.moveTo(0, y); g.lineTo(w / 2, y - 60); g.lineTo(w, y); g.lineTo(w, y + 16); g.lineTo(w / 2, y - 44); g.lineTo(0, y + 16); g.closePath(); g.fill(); } }
     else if (L.nose === 'split') { g.beginPath(); g.moveTo(0, h * 0.55); g.lineTo(w, h * 0.25); g.lineTo(w, h); g.lineTo(0, h); g.closePath(); g.fill(); }
+    else if (L.nose === 'zebra') {          // NKP: slanted stripes rising toward the middle of the nose from each side
+      const s = row(2.12);                  // they start off the side stripe
+      for (const side of [-1, 1]) for (let k = 0; k < 4; k++) {
+        const x0 = w / 2 + side * (w / 2 - k * 30), x1 = x0 - side * 44;
+        g.beginPath(); g.moveTo(x0, s + 6); g.lineTo(x0 - side * 16, s + 6); g.lineTo(x1 - side * 16, s - 60); g.lineTo(x1, s - 60); g.closePath(); g.fill();
+      }
+    }
+    else if (L.nose === 'lightning') {      // NYC: the band and its pinstripes sweep down into a point on the nose front
+      const tip = h * 0.92, mid = w / 2;
+      for (let i = bands.length - 1; i >= 0; i--) {
+        const [y0, y1, c] = bands[i], a0 = row(y0), a1 = row(y1), d = a0 - a1;
+        g.fillStyle = hexCss(c); g.beginPath(); g.moveTo(0, a1); g.lineTo(mid, Math.min(h, tip - (row(bands[0][0]) - a1) * 0.6)); g.lineTo(w, a1);
+        g.lineTo(w, a1 + d); g.lineTo(mid, Math.min(h, tip - (row(bands[0][0]) - a1) * 0.6 + d * 1.4)); g.lineTo(0, a1 + d); g.closePath(); g.fill();
+      }
+    }
   });
   const dark = (() => { const r = (L.body >> 16) & 255, gg = (L.body >> 8) & 255, b = L.body & 255, k = 0.55; return `rgb(${r * k | 0},${gg * k | 0},${b * k | 0})`; })();
   const pilot = canvasTex(256, 64, (g, w, h) => {
     g.fillStyle = dark; g.fillRect(0, 0, w, h);
-    g.fillStyle = A; g.fillRect(0, 0, w, h * 0.16);
+    g.fillStyle = S; g.fillRect(0, 0, w, h * 0.16);
     // short diagonal safety stripes only at the outer corners
     for (const [x0, dir] of [[0, 1], [w, -1]]) for (let k = 0; k < 3; k++) { const x = x0 + dir * (6 + k * 16); g.beginPath(); g.moveTo(x, h); g.lineTo(x + dir * 8, h); g.lineTo(x + dir * 26, h * 0.2); g.lineTo(x + dir * 18, h * 0.2); g.closePath(); g.fill(); }
   });
   const board = canvasTex(128, 48, (g, w, h) => { g.fillStyle = '#e9e4cf'; g.fillRect(0, 0, w, h); g.fillStyle = '#111'; g.font = 'bold 34px Arial'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(String(num), w / 2, h / 2 + 2); });
-  return { road, number, herald, nose, pilot, board };
+  // the side bands: one column, transparent where there is no band
+  const side = canvasTex(16, 512, (g, w, h) => {
+    const row = y => h * (1 - (y - LSIDE.y0) / (LSIDE.y1 - LSIDE.y0));
+    for (const [y0, y1, c] of L.bands || []) { g.fillStyle = hexCss(c); g.fillRect(0, row(y1), w, row(y0) - row(y1) + 0.5); }
+  });
+  return { road, number, herald, nose, pilot, board, side };
 }
 /* One material set per unit, so every unit in a lashup can wear its own paint and be re-skinned live. */
 function liveryMaterials(L, num) {
@@ -72,6 +165,7 @@ function liveryMaterials(L, num) {
     lNose: mk(0xffffff, 0.3, 0.42, { map: t.nose, side: THREE.DoubleSide }),
     lPilot: mk(0xffffff, 0.25, 0.5, { map: t.pilot }),
     lRoad: dec(t.road), lNum: dec(t.number), lHerald: dec(t.herald),
+    lSide: new THREE.MeshStandardMaterial({ map: t.side, transparent: true, alphaTest: 0.5, metalness: 0.3, roughness: 0.45, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1 }),
     lBoard: new THREE.MeshBasicMaterial({ map: t.board }),
   });
 }
@@ -82,7 +176,7 @@ function applyLivery(model, L, num) {
   const set = (m, hex) => { m.color.set(hex).convertSRGBToLinear(); m.userData.lin = true; };
   set(M.lBody, L.body); set(M.lRoof, L.roof); set(M.lAccent, L.accent); set(M.lRail, L.rail); set(M.lLouver, L.body);
   const swap = (m, tex) => { if (m.map) m.map.dispose(); m.map = tex; m.needsUpdate = true; };
-  swap(M.lNose, t.nose); swap(M.lPilot, t.pilot); swap(M.lRoad, t.road); swap(M.lNum, t.number); swap(M.lHerald, t.herald); swap(M.lBoard, t.board);
+  swap(M.lNose, t.nose); swap(M.lPilot, t.pilot); swap(M.lRoad, t.road); swap(M.lNum, t.number); swap(M.lHerald, t.herald); swap(M.lBoard, t.board); swap(M.lSide, t.side);
   model.livery = L; model.number = num;
 }
 
@@ -325,6 +419,26 @@ function buildDiesel(opts) {
     rod('lRail', 0.022, [dx(a0), 2.75, s * 1.49], [dx(21.5), 2.75, s * 1.49]);
     for (let a = a0; a < 21.6; a += 1.55) rod('lRail', 0.019, [dx(a), D, s * 1.49], [dx(a), 2.75, s * 1.49]);
     rod('lRail', 0.019, [dx(21.5), D, s * 1.49], [dx(21.5), 2.75, s * 1.49]);
+  }
+  /* ---- side bands (lSide): one decal over each flat run of the sides, mapped by height so the bands line up ---- */
+  const band = (a0, a1, y0, y1, z, face) => {
+    const g = new THREE.PlaneGeometry(Math.abs(a1 - a0), y1 - y0), uv = g.attributes.uv, p = g.attributes.position;
+    for (let i = 0; i < uv.count; i++) uv.setY(i, (p.getY(i) + (y0 + y1) / 2 - LSIDE.y0) / (LSIDE.y1 - LSIDE.y0));
+    gb.add('lSide', g.applyMatrix4(M(dx((a0 + a1) / 2), (y0 + y1) / 2, z, 0, face, 0)));
+  };
+  for (const s of [-1, 1]) {
+    const f = s > 0 ? 0 : Math.PI;
+    band(1.26, DG.len - 1.26, 1.16, 1.70, s * (W + 0.003), f);                 // frame sill
+    band(1.70, CAB0 + CHc, D, 3.48, s * (W + 0.003), f);                        // behind the nose cheek, under the windshield corner
+    band(CAB0 + CHc, CAB1, D, 3.5, s * (W + 0.033), f);                         // cab side, under the window
+    band(s < 0 ? 7.1 : CAB1, RAD1, D, HOOD, s * (HZ + 0.003), f);                // long hood and radiator section
+    band(RAD0 + 0.75, RAD1, 3.32, RADH, s * (WING + 0.003), f);                 // the radiator wing's face
+  }
+  band(CAB1, 7.1, D, DBH, -(W + 0.003), Math.PI);                                // aux cab, conductor's side
+  {                                                                              // the rear wall, so the bands turn the corner
+    const g = new THREE.PlaneGeometry(2 * WING, RADH - D), uv = g.attributes.uv, p = g.attributes.position;
+    for (let i = 0; i < uv.count; i++) uv.setY(i, (p.getY(i) + (RADH + D) / 2 - LSIDE.y0) / (LSIDE.y1 - LSIDE.y0));
+    gb.add('lSide', g.applyMatrix4(M(dx(RAD1 + 0.023), (RADH + D) / 2, 0, 0, -Math.PI / 2, 0)));
   }
   /* ---- fuel tank ---- */
   {

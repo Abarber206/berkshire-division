@@ -872,21 +872,80 @@ function applySteamFinish(k) {
   RMAT.dWall.roughness = wt ? 0.62 : 0.5;
 }
 
-/* Paint for the coaches (the holiday trim keeps its own maroon): a few railroad standards, or any colour */
+/* Paint for the coaches (the holiday trim keeps its own maroon): the road's own colours to match the engine,
+   a few railroad standards, or any colour */
 const COACH_PAINT = {
+  road: { name: 'Match the engine', sub: "The road's own colours", c: null },
   pullman: { name: 'Pullman green', sub: 'Heavyweight standard', c: 0x2a3a2a },
   tuscan: { name: 'Tuscan red', sub: 'Pennsy style', c: 0x5a2219 },
   blue: { name: 'Royal blue', sub: 'Limited express', c: 0x1d3150 },
   black: { name: 'Black', sub: 'Business car', c: 0x18191a },
   custom: { name: 'Custom', sub: 'Pick a colour', c: null },
 };
-function coachPaintHex(k, custom) { return k === 'custom' ? (custom >>> 0) & 0xffffff : (COACH_PAINT[k] || COACH_PAINT.pullman).c; }
+/* each road's passenger colours: up = window band and letterboard, low = the sheets below the belt rail,
+   lb / no = the letterboard and car number lettering */
+const GOLD_LETTER = 0xd9c27a;
+const ROAD_COACH = {
+  NKP: { up: 0xc9ccc6, low: 0x25406c, lb: 0x25406c, no: 0xe9e6dc },   // Nickel Plate blue and white
+  PM: { up: 0xa9adaf, low: 0x24467a, lb: 0x24467a, no: 0xefc33a },    // Pere Marquette blue and grey
+  'C&O': { up: 0xa7abad, low: 0x1f4c88, lb: 0x1f4c88, no: 0xf4c41c }, // C&O blue and grey, yellow lettering
+  UP: { up: 0xa3a49c, low: 0xe8b632, lb: 0xb3302a, no: 0xb3302a },    // Armour yellow and Harbor Mist grey, red lettering
+  PRR: { up: 0x5a2219, low: 0x5a2219, lb: GOLD_LETTER, no: GOLD_LETTER },     // Tuscan red, gold
+  NYC: { up: 0x9a9fa2, low: 0x45494d, lb: 0x2b2e31, no: 0xe9e9e4 },   // the Century's two-tone grey
+  'B&O': { up: 0xa4a9ac, low: 0x1d3a6c, lb: 0x1d3a6c, no: 0xe8b52e }, // B&O blue and grey
+  'N&W': { up: 0x55201a, low: 0x55201a, lb: GOLD_LETTER, no: GOLD_LETTER },   // N&W Tuscan red, gold
+};
+/* the road the coaches belong to: the engine's, or behind the diesel the livery's */
+function coachRoadKey() {
+  const g = typeof GAME !== 'undefined' && GAME.settings; if (!g) return '';
+  const s = LOCO_SPEC[g.loco]; if (!s) return '';
+  if (g.loco === 'diesel' && typeof LIVERIES !== 'undefined') { const L = g.livery === 'custom' ? null : LIVERIES[g.livery]; return L ? L.init : ''; }
+  return s.short;
+}
+function coachScheme(k, custom) {
+  if (k === 'road') {
+    const r = ROAD_COACH[coachRoadKey()];
+    if (r) return r;
+    // a made-up road or custom paint: the diesel's body colour with its lettering colour
+    const g = typeof GAME !== 'undefined' && GAME.settings, L = g && g.loco === 'diesel' && typeof LIVERIES !== 'undefined' ? (g.livery === 'custom' ? Object.assign({}, LIVERIES.custom, g.custom) : LIVERIES[g.livery]) : null;
+    if (L) return { up: L.body, low: L.body, lb: L.letter, no: L.letter };
+    return { up: COACH_PAINT.pullman.c, low: COACH_PAINT.pullman.c, lb: GOLD_LETTER, no: GOLD_LETTER };
+  }
+  const c = k === 'custom' ? (custom >>> 0) & 0xffffff : (COACH_PAINT[k] || COACH_PAINT.pullman).c;
+  return { up: c, low: c, lb: GOLD_LETTER, no: GOLD_LETTER };
+}
+function coachPaintHex(k, custom) { return coachScheme(k, custom).low; }
+/* the swatch for a menu button: the two tones side by side */
+function coachSwatch(k, custom) { const s = coachScheme(k, custom); return s.up === s.low ? hexCss(s.low) : `linear-gradient(180deg, ${hexCss(s.up)} 0 50%, ${hexCss(s.low)} 50% 100%)`; }
+const COACH_TINT = { lb: GOLD_LETTER, no: GOLD_LETTER };
+const setLin = (m, hex) => { m.color.set(hex).convertSRGBToLinear(); m.userData.lin = true; };
+/* letterboards and car numbers are drawn in white and tinted, so a repaint reletters every car at once */
+function tintCoachLetters() { for (const k in RMAT) { const m = RMAT[k]; if (!m || !m.userData || !m.userData.coachInk) continue; setLin(m, COACH_TINT[m.userData.coachInk]); } }
 function applyCoachPaint(k, custom) {
   if (!RMAT.green) return;
   carMaterials();
-  const hex = coachPaintHex(k, custom);
-  for (const m of [RMAT.green, RMAT.greenLow, RMAT.greenSill]) { m.color.set(hex).convertSRGBToLinear(); m.userData.lin = true; }
+  const s = coachScheme(k, custom);
+  setLin(RMAT.green, s.up); setLin(RMAT.greenLow, s.low); setLin(RMAT.greenSill, s.low);
+  COACH_TINT.lb = s.lb; COACH_TINT.no = s.no; tintCoachLetters();
 }
+/* the spec a coach is lettered from: the engine's, or behind the diesel its livery's road */
+function coachSpecOf(rk, lv) {
+  const s = LOCO_SPEC[rk] || LOCO_SPEC['765'];
+  const L = rk === 'diesel' && lv && lv !== 'custom' && typeof LIVERIES !== 'undefined' ? LIVERIES[lv] : null;
+  return L ? Object.assign({}, s, { road: L.coachRoad || L.road, short: L.init }) : s;
+}
+/* a coach's lettering material, shared by every car that carries the same words: gold for the holiday trim,
+   otherwise drawn in white and tinted to the paint scheme */
+function coachInk(k, txt, w, h, px, role, gold) {
+  if (RMAT[k] && RMAT[k].map) return RMAT[k];
+  RMAT[k] = textDecal(txt, w, h, gold || '#ffffff', 'serif', px);
+  if (!gold) { RMAT[k].userData.coachInk = role; setLin(RMAT[k], COACH_TINT[role]); }
+  return RMAT[k];
+}
+const coachBoardKey = spec => 'lb' + spec.short + '|' + spec.road;
+function coachBoardMat(spec) { return coachInk(coachBoardKey(spec), spec.road, 1024, 128, 72, 'lb'); }
+/* the observation car's markers: a pair on the platform canopy's corners, or one red lamp on the roof */
+function obsLampStyle() { return typeof GAME !== 'undefined' && GAME.settings && GAME.settings.obsLamp === 'roof' ? 'roof' : 'side'; }
 
 /* =================== HOLIDAY TRIM =================== */
 /* The "North Pole" finish dresses a steam train for a Christmas excursion: a wreath on the smokebox front,
@@ -1800,10 +1859,13 @@ function coachModel(spec, num, observation, trim = '') {
     gb.box(body, 2 * xb0 + 0.02, 0.05, 0.09, 0, yE - 0.02, s * (hw + 0.01));                           // cornice
   }
   // letterboard and car number
-  const lk = 'lb' + (T ? trim : spec.short);
-  RMAT[lk] = textDecal(T ? T.road : spec.road, 1024, 128, gold, 'serif', 72);
+  // in white and tinted to the paint scheme (tintCoachLetters); the holiday trim keeps its gold. Shared by every car
+  // of the road, so a repaint reletters them all.
+  const ink = (k, txt, w, h, px, role) => coachInk(k, txt, w, h, px, role, T ? gold : null);
+  const lk = T ? 'lb' + trim : coachBoardKey(spec);
+  ink(lk, T ? T.road : spec.road, 1024, 128, 72, 'lb');
   for (const s of [-1, 1]) gb.add(lk, new THREE.PlaneGeometry(11, 0.32), M(0, (yE + CH.lint) / 2, s * (hw + 0.002), 0, s > 0 ? 0 : Math.PI, 0));
-  const nk = 'cn' + num + trim; RMAT[nk] = textDecal(String(num), 256, 96, gold, 'serif', 64);
+  const nk = 'cn' + num + trim; ink(nk, String(num), 256, 96, 64, 'no');
   for (const s of [-1, 1]) gb.add(nk, new THREE.PlaneGeometry(0.9, 0.32), M(-7.5, 1.8, s * (hw + 0.002), 0, s > 0 ? 0 : Math.PI, 0));
   // vestibules: side walls with the Dutch door, steps under it, grab irons beside it, the end wall and the diaphragm
   const xd = (CH.xb + CH.xv) / 2, dw = 0.62;
@@ -1939,7 +2001,23 @@ function coachModel(spec, num, observation, trim = '') {
     gb.add('brass', barGeo(0.015, [xd2, 2.39, 0], [xr, 2.3, 0], 5));
     if (T) addWreath(gb, 0.5, 0.06, M(xd2 - 0.03, 1.95, 0, 0, -Math.PI / 2, 0));   // the drumhead ringed with fir
     gb.add('brass', new THREE.TorusGeometry(0.43, 0.025, 6, 28).rotateY(Math.PI / 2).translate(xd2 - 0.025, 1.95, 0));
-    root.userData.markers = [new THREE.Vector3(xP + 0.045, yE - 0.42, -1.2), new THREE.Vector3(xP + 0.045, yE - 0.42, 1.2)];
+    const side = [new THREE.Vector3(xP + 0.045, yE - 0.42, -1.2), new THREE.Vector3(xP + 0.045, yE - 0.42, 1.2)];
+    // or one red lamp on the roof: a lamp case on a pedestal at the back of the clerestory, its lens to the rear.
+    // Kept in its own group so the menu can switch between the two on cars already built (setObsLamps).
+    const lb = new GeoBin(), yR = yE + 0.5 * (hC + cr), xL = xc0 + 0.24;
+    lb.box(G, 0.26, 0.07, 0.22, xL + 0.02, yR + 0.025, 0);                         // base plate, bedded into the roof
+    lb.cyl(G, 0.035, 0.045, 0.14, 10, xL + 0.02, yR + 0.12, 0);                     // pedestal
+    lb.cyl(G, 0.11, 0.11, 0.2, 14, xL, yR + 0.29, 0, 0, 0, Math.PI / 2);            // the lamp case, lying fore and aft
+    lb.add(G, new THREE.TorusGeometry(0.1, 0.018, 6, 16).rotateY(Math.PI / 2).translate(xL - 0.1, yR + 0.29, 0));   // lens rim
+    lb.add(G, new THREE.ConeGeometry(0.09, 0.09, 12).translate(xL, yR + 0.43, 0));  // vented cap
+    lb.add(G, barGeo(0.01, [xL, yR + 0.45, 0], [xL, yR + 0.53, 0], 4)); lb.add(G, new THREE.TorusGeometry(0.03, 0.008, 4, 10).translate(xL, yR + 0.56, 0));   // bail
+    const roofLamp = lb.build(RMAT); roofLamp.name = 'roofLamp';
+    roofLamp.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+    root.add(roofLamp);
+    const roof = [new THREE.Vector3(xL - 0.112, yR + 0.29, 0)];
+    root.userData.markerSets = { side, roof }; root.userData.roofLamp = roofLamp;
+    const st = obsLampStyle(); roofLamp.visible = st === 'roof';
+    root.userData.markers = st === 'roof' ? roof : side;
   }
   if (T) {
     // gold lining along the belt rail and the sill, garland swagged between the window pairs, snow on the roof

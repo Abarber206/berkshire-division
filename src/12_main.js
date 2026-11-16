@@ -2,7 +2,7 @@
    Game: boot, world loading, main loop, rules, HUD
    ========================================================================== */
 const GAME = {
-  settings: { traffic: 'on', loco: '765', consist: 'passenger', time: 'morning', gfx: 'auto', cycle: 'x30', weather: 'changing', wxV: 1, fire: 'easy', fireV: 2, units: 1, livery: 'ss', mix: false, finish: 'standard', job: '', custom: { body: 0x2c5f8a, roof: 0x24384a, accent: 0xf0f0ea, letter: 0xf0f0ea, rail: 0xf0f0ea }, number: 4401, coach: 'pullman', coachColor: 0x2a3a2a },
+  settings: { traffic: 'on', loco: '765', consist: 'passenger', time: 'morning', gfx: 'auto', cycle: 'x30', weather: 'changing', wxV: 1, fire: 'easy', fireV: 2, units: 1, livery: 'ss', mix: false, finish: 'standard', job: '', custom: { body: 0x2c5f8a, roof: 0x24384a, accent: 0xf0f0ea, letter: 0xf0f0ea, rail: 0xf0f0ea }, number: 4401, coach: 'road', coachV: 1, obsLamp: 'side', coachColor: 0x2a3a2a },
   train: null, running: false, ready: false, stats: { runThrough: 0 },
   events: {}, stopped: 0, lastStation: null, filling: null,
 };
@@ -265,9 +265,10 @@ GAME.swapLive = function () {
 /* the same car, lettered for the road of train t */
 function relettered(t, old, v) {
   const { type, num, flag } = v.made;
-  const m = type === 'coach' ? coachModel(LOCO_SPEC[t.locoKey], num, flag, t.trim) : freightModel(type, num, rng(num));
+  const lv = t.locoKey === 'diesel' ? GAME.settings.livery : '';
+  const m = type === 'coach' ? coachModel(coachSpecOf(t.locoKey, lv), num, flag, t.trim) : freightModel(type, num, rng(num));
   scene.add(m.root);
-  const made = { ...v.made, rk: t.locoKey, rs: LOCO_SPEC[t.locoKey].short }; delete made.tr; if (type === 'coach' && t.trim) made.tr = t.trim;
+  const made = { ...v.made, rk: t.locoKey, rs: LOCO_SPEC[t.locoKey].short }; delete made.tr; if (type === 'coach' && t.trim) made.tr = t.trim; delete made.lv; if (type === 'coach' && lv) made.lv = lv;
   return Object.assign(carVehicle(m), { made, flip: v.flip, hb: v.hb, brake: v.brake, roll: old.dist * (v.flip ? -1 : 1) + (v.roll || 0) });
 }
 /* steam to diesel or back: the run keeps its speed, air and lights; the new engine comes with full
@@ -286,16 +287,43 @@ function applyLiveriesLive() {
   const t = GAME.train; if (!t || !t.diesel || t.turb) return;
   const o = dieselOpts();
   t.units.forEach((m, u) => { const lv = dieselLiveryFor(o, u); applyLivery(m, lv, (o.number || lv.num) + u); });
+  if (!t.elec) reletterCoaches(t, GAME.settings.livery);
+  applyCoachPaint(GAME.settings.coach, GAME.settings.coachColor);
 }
-const SAVE_KEYS = ['job', 'traffic', 'loco', 'consist', 'time', 'cycle', 'weather', 'wxV', 'fire', 'fireV', 'units', 'livery', 'mix', 'finish', 'custom', 'number', 'coach', 'coachColor', 'gfx'];
+/* the diesel's coaches take the new livery's road on their letterboards: the board's material is swapped in place */
+function reletterCoaches(t, lv) {
+  for (const v of t.vehicles) {
+    if (!v.made || v.made.type !== 'coach' || v.made.tr || v.made.rk !== 'diesel' || v.yard) continue;
+    const mat = coachBoardMat(coachSpecOf('diesel', lv));
+    v.root.traverse(o => { if (o.isMesh && o.material && o.material.userData && o.material.userData.coachInk === 'lb') o.material = mat; });
+    v.made.lv = lv;
+  }
+}
+/* the engine or its paint changed: "Match the engine" coaches take the new road's colours, and its swatch shows them */
+function roadCoachPaint() {
+  applyCoachPaint(GAME.settings.coach, GAME.settings.coachColor);
+  const b = $('optCoach_road'), sw = b && b.querySelector('.sw'); if (sw) sw.style.background = coachSwatch('road', GAME.settings.coachColor);
+}
+/* the observation cars' markers: the pair on the canopy corners, or one lamp on the roof, on every car already built */
+function setObsLamps(st) {
+  for (const c of IX.consists()) for (const v of c.vehicles) {
+    const u = v.model && v.model.root && v.model.root.userData; if (!u || !u.markerSets) continue;
+    u.roofLamp.visible = st === 'roof'; u.markers = v.markers = u.markerSets[st === 'roof' ? 'roof' : 'side'];
+    if (v.lamps) { for (const o of [...v.lamps.meshes, ...v.lamps.glows]) { if (o.parent) o.parent.remove(o); if (o.geometry) o.geometry.dispose(); } v.lamps.mat.dispose(); v.lamps = null; }
+  }
+}
+const SAVE_KEYS = ['job', 'traffic', 'loco', 'consist', 'time', 'cycle', 'weather', 'wxV', 'fire', 'fireV', 'units', 'livery', 'mix', 'finish', 'custom', 'number', 'coach', 'coachV', 'obsLamp', 'coachColor', 'gfx'];
 function saveSettings() { try { const o = {}; for (const k of SAVE_KEYS) o[k] = GAME.settings[k]; localStorage.setItem('bd_settings', JSON.stringify(o)); } catch (e) {} }
 function loadSettings() { try { const o = JSON.parse(localStorage.getItem('bd_settings') || 'null'); if (o) for (const k of SAVE_KEYS) if (o[k] !== undefined) GAME.settings[k] = o[k]; } catch (e) {}
   // easy steam came in as the default after 'auto' had been saved by everyone: move them up to it once
   if (GAME.settings.fireV !== 2) { if (GAME.settings.fire === 'auto') GAME.settings.fire = 'easy'; GAME.settings.fireV = 2; }
   // changing weather came in after everyone had Clear saved as the old default: move them over once
   if (GAME.settings.wxV !== 1) { if (GAME.settings.weather === 'clear') GAME.settings.weather = 'changing'; GAME.settings.wxV = 1; }
+  // the coaches matching the engine's road came in as the default after Pullman green had been saved by everyone
+  if (GAME.settings.coachV !== 1) { if (GAME.settings.coach === 'pullman') GAME.settings.coach = 'road'; GAME.settings.coachV = 1; }
+  if (GAME.settings.obsLamp !== 'roof') GAME.settings.obsLamp = 'side';
   if (!WEATHER[GAME.settings.weather]) GAME.settings.weather = 'changing';
-  if (!['easy', 'auto', 'hand'].includes(GAME.settings.fire)) GAME.settings.fire = 'easy'; if (!LOCO_SPEC[GAME.settings.loco]) GAME.settings.loco = '765'; if (!LIVERIES[GAME.settings.livery]) GAME.settings.livery = 'ss'; if (!DN.starts[GAME.settings.time]) GAME.settings.time = 'morning'; if (!DN.rates[GAME.settings.cycle]) GAME.settings.cycle = 'x30'; if (!COACH_PAINT[GAME.settings.coach]) GAME.settings.coach = 'pullman'; if (!GFX_MENU[GAME.settings.gfx]) GAME.settings.gfx = 'auto'; }
+  if (!['easy', 'auto', 'hand'].includes(GAME.settings.fire)) GAME.settings.fire = 'easy'; if (!LOCO_SPEC[GAME.settings.loco]) GAME.settings.loco = '765'; if (!LIVERIES[GAME.settings.livery]) GAME.settings.livery = 'ss'; if (!DN.starts[GAME.settings.time]) GAME.settings.time = 'morning'; if (!DN.rates[GAME.settings.cycle]) GAME.settings.cycle = 'x30'; if (!COACH_PAINT[GAME.settings.coach]) GAME.settings.coach = 'road'; if (!GFX_MENU[GAME.settings.gfx]) GAME.settings.gfx = 'auto'; }
 GAME.needNewTrain = function () { const t = GAME.train, g = GAME.settings, j = JOB.wanted(); return !t || MP.needSpawn || t.locoKey !== g.loco || (!t.elec && t.consistKey !== JOB.consist()) || (j ? j.id : '') !== JOB.activeId() || (t.diesel && !t.elec && t.nUnits !== (+g.units || 1)) || (!t.diesel && (t.trim || '') !== trimWanted()); };
 function buildWhistleIfReady() { if (!AU.on) return; buildWhistle(WHISTLES[LOCO_SPEC[GAME.settings.loco].whistle]); }
 
@@ -340,16 +368,17 @@ function buildMenu() {
   // the mountain has no wires up for the high-speed sets
   if (ROUTE_KEY === 'laurel' && !PLAY_LAYOUT) { delete locoOpts.e5; delete locoOpts.acela; if (LOCO_SPEC[GAME.settings.loco].hs) GAME.settings.loco = '765'; }
   for (const k in locoOpts) locoOpts[k].art = locoGlyph(k);
-  segButtons('optLoco', locoOpts, 'loco', () => { GAME.swapLive(); jobMenu(); specGrid(); startLabel(); refreshMenuGroups(); saveSettings(); });
+  segButtons('optLoco', locoOpts, 'loco', () => { GAME.swapLive(); roadCoachPaint(); jobMenu(); specGrid(); startLabel(); refreshMenuGroups(); saveSettings(); });
   const livOpts = {}; for (const k in LIVERIES) { const L = LIVERIES[k]; livOpts[k] = { name: L.name, sub: L.sub, swatch: `linear-gradient(90deg, ${hexCss(k === 'custom' ? GAME.settings.custom.body : L.body)} 0 64%, ${hexCss(k === 'custom' ? GAME.settings.custom.accent : L.accent)} 64% 100%)` }; }
-  segButtons('optLivery', livOpts, 'livery', () => { applyLiveriesLive(); refreshMenuGroups(); specGrid(); saveSettings(); });
+  segButtons('optLivery', livOpts, 'livery', () => { applyLiveriesLive(); roadCoachPaint(); refreshMenuGroups(); specGrid(); saveSettings(); });
   segButtons('optUnits', { 1: { name: '1 unit', sub: '4,400 hp' }, 2: { name: '2 units', sub: '8,800 hp' }, 3: { name: '3 units', sub: '13,200 hp' } }, 'units', k => { GAME.settings.units = +k; GAME.swapLive(); startLabel(); refreshMenuGroups(); saveSettings(); });
   segButtons('optMix', { matched: { name: 'Matched', sub: 'All one scheme' }, mixed: { name: 'Mixed', sub: 'Run-through power' } }, 'mixKey', k => { GAME.settings.mix = k === 'mixed'; applyLiveriesLive(); saveSettings(); });
   [...$('optMix').children].forEach(c => c.setAttribute('aria-pressed', String(c.id === 'optMix_' + (GAME.settings.mix ? 'mixed' : 'matched'))));
   segButtons('optFinish', { standard: { name: 'As delivered', sub: 'Graphite smokebox' }, white: { name: 'White trim', sub: 'Excursion style' }, black: { name: 'All black', sub: 'Plain' }, polar: { name: 'Polar Limited', sub: 'Holiday trim · wreaths & snow' } }, 'finish', k => { applySteamFinish(k); GAME.swapLive(); startLabel(); saveSettings(); });
-  const coachSw = k => hexCss(coachPaintHex(k, GAME.settings.coachColor));
+  const coachSw = k => coachSwatch(k, GAME.settings.coachColor);
   const coachOpts = {}; for (const k in COACH_PAINT) coachOpts[k] = { name: COACH_PAINT[k].name, sub: COACH_PAINT[k].sub, swatch: coachSw(k) };
   segButtons('optCoach', coachOpts, 'coach', k => { applyCoachPaint(k, GAME.settings.coachColor); refreshMenuGroups(); saveSettings(); });
+  segButtons('optObsLamp', { side: { name: 'Canopy corners', sub: 'A pair of markers' }, roof: { name: 'On the roof', sub: 'One red lamp up top' } }, 'obsLamp', k => { setObsLamps(k); saveSettings(); });
   $('cCoach').value = hexCss(GAME.settings.coachColor);
   $('cCoach').addEventListener('input', () => {
     GAME.settings.coachColor = parseInt($('cCoach').value.slice(1), 16);
