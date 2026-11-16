@@ -43,7 +43,7 @@ MP.pubWorld = function (txt, retain) { for (const l of MP.links) l.publish(MP.to
 MP.sendWorld = function (retain) {
   if (!MP.on || !MP.world || MP.world.ly !== MP.ly) return;
   const lay = WORLD.custom ? layoutCanon(PLAY_LAYOUT) : '';
-  MP.pubWorld(JSON.stringify({ id: MP.world.id, at: MP.world.at, cr: MP.world.cr, ly: MP.ly, nm: WORLD.custom ? PLAY_LAYOUT.name : ROUTES[WORLD.mtn ? 'laurel' : 'ohio'].name, lay }), retain);
+  MP.pubWorld(JSON.stringify({ id: MP.world.id, at: MP.world.at, cr: MP.world.cr, ly: MP.ly, nm: WORLD.custom ? PLAY_LAYOUT.name : ROUTES[WORLD.mtn ? ROUTE_KEY : 'ohio'].name, lay }), retain);
 };
 MP.onWorldText = function (txt) {
   if (!MP.on || txt.length > 2e6) return;

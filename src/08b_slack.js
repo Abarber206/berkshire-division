@@ -129,7 +129,7 @@ function slkCurves(T, s, dt) {
     // the harder-worked end: its coupler's side force lands mostly on the truck under it (levered out by the
     // overhang, about a quarter more) and mostly on that truck's leading axle, against an eighth of the car's weight
     const tf = i > 0 ? t[i - 1] : 0, tr = i < n - 1 ? t[i] : 0, pull = Math.abs(tf) > Math.abs(tr) ? tf : tr;
-    const side = pull * (v.len || 15) * k / 2 * 1.25 * 0.75, lv = Math.abs(side) / (s.M[i] * 9.81 / 8), lim = pull > 0 ? SLK.LV : SLK.LV_BUFF;
+    const side = pull * (v.len || 15) * k / 2 * 1.25 * 0.75, lv = Math.abs(side) / (s.M[i] * 9.81 / 8), lim = (pull > 0 ? SLK.LV : SLK.LV_BUFF) * (p0.tp.e.ice && p0.tp.e.ice.length && p0.tp.e.isIce(p0.tp.s) && typeof ICE !== 'undefined' ? ICE.LV_K : 1);   // ties lying on ice give way to far less
     if (lv > lim) s.climb[i] += sp * dt * lv / lim;
     else s.climb[i] = Math.max(0, s.climb[i] - sp * dt * 2);
     if (s.climb[i] < SLK.CLIMB) continue;

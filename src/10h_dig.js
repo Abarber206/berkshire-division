@@ -58,6 +58,20 @@ function digScarTex() {
   });
 }
 
+/* scored ice: a band of fine white scratches along the slide, frosted powder packed into the deepest ones */
+function digIceScarTex() {
+  return canvasTex(64, 256, (c) => {
+    const r = rng(91), img = c.createImageData(64, 256), d = img.data, lines = [];
+    for (let i = 0; i < 26; i++) lines.push([4 + r() * 56, 0.2 + r() * 0.8, (r() - 0.5) * 0.04, 0.6 + r() * 1.8]);
+    for (let y = 0; y < 256; y++) for (let x = 0; x < 64; x++) {
+      const k = (y * 64 + x) * 4, edge = 1 - smooth(22, 31, Math.abs(x - 31.5) + 3 * Math.sin(y * 0.13));
+      let a = 0.12 * r();
+      for (const [x0, s, sl, w] of lines) { const dx = Math.abs(x - (x0 + sl * y + 1.5 * Math.sin(y * 0.05 + x0))); a = Math.max(a, s * (1 - smooth(0, w, dx))); }
+      d[k] = 232; d[k + 1] = 240; d[k + 2] = 250; d[k + 3] = 255 * clamp(a * edge, 0, 1);
+    }
+    c.putImageData(img, 0, 0);
+  });
+}
 function buildDig(scene) {
   const mobile = /iPhone|iPad|Android/i.test(navigator.userAgent) || Math.min(screen.width, screen.height) < 600;
   DIG.U = { uScale: { value: 800 }, uLight: { value: 1 } };
@@ -75,6 +89,13 @@ function buildDig(scene) {
   DIG.scar = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ map: tex, vertexColors: true, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 }));
   DIG.scar.frustumCulled = false; DIG.scar.receiveShadow = true; DIG.scar.renderOrder = 1; DIG.scar.visible = false;
   scene.add(DIG.scar);
+  // out on a frozen lake the steel scores the ice instead: white scrape marks, a ring of their own (10n_ice.js)
+  if (WORLD.frost) {
+    const gi = g.clone(), ti = digIceScarTex(); ti.wrapT = THREE.RepeatWrapping;
+    DIG.scarIce = new THREE.Mesh(gi, new THREE.MeshLambertMaterial({ map: ti, vertexColors: true, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 }));
+    DIG.scarIce.frustumCulled = false; DIG.scarIce.renderOrder = 1; DIG.scarIce.visible = false; DIG.scarIceN = 0;
+    scene.add(DIG.scarIce);
+  }
 }
 
 function digEmit(P, x, y, z, vx, vy, vz, size, life, r, g, b, floor, ref) {
@@ -88,18 +109,19 @@ function digEmit(P, x, y, z, vx, vy, vz, size, life, r, g, b, floor, ref) {
 }
 
 /* one strip of gouge from A to B, w wide, following whatever the car rests on there */
-function digSegment(R, b, A, B, w, ballast) {
+function digSegment(R, b, A, B, w, ballast, ice) {
   if (!DIG.scar) return;
   const dx = B.x - A.x, dz = B.z - A.z, L = Math.hypot(dx, dz); if (L < 0.05) return;
   const sx = -dz / L * w / 2, sz = dx / L * w / 2;
-  const s = DIG.scarN % DIG.SEG; DIG.scarN++;
-  const at = DIG.scar.geometry.attributes, pos = at.position.array, nor = at.normal.array, uv = at.uv.array, col = at.color.array;
+  const mesh = ice && DIG.scarIce ? DIG.scarIce : DIG.scar;
+  const s = (ice && DIG.scarIce ? DIG.scarIceN++ : DIG.scarN++) % DIG.SEG;
+  const at = mesh.geometry.attributes, pos = at.position.array, nor = at.normal.array, uv = at.uv.array, col = at.color.array;
   const v0 = b.dgD / 5, v1 = (b.dgD += L) / 5;
   // rows: A left, A mid, A right, B left, B mid, B right
   const row = [];
   for (const [P, v] of [[A, v0], [B, v1]]) for (const k of [-1, 0, 1]) {
     _dgc.set(P.x + sx * k, 0, P.z + sz * k); _dgc.y = P.y + 0.3;
-    const y = R.ground(b, _dgc) + 0.05 - (k === 0 ? 0.015 : 0);
+    const y = R.ground(b, _dgc) + (ice ? 0.02 : 0.05) - (k === 0 && !ice ? 0.015 : 0);
     row.push([_dgc.x, y, _dgc.z, (k + 1) / 2, v]);
   }
   const tris = [0, 3, 1, 1, 3, 4, 1, 4, 2, 2, 4, 5];
@@ -111,7 +133,7 @@ function digSegment(R, b, A, B, w, ballast) {
     uv[o * 2] = q[3]; uv[o * 2 + 1] = q[4];
     col[o * 3] = tint[0]; col[o * 3 + 1] = tint[1]; col[o * 3 + 2] = tint[2];
   }
-  DIG.scarDirty = true;
+  if (mesh === DIG.scarIce) DIG.scarIceDirty = true; else DIG.scarDirty = true;
 }
 
 /* called by WreckSim.step: spray and scar where each body is digging in this frame */
@@ -124,6 +146,9 @@ function digWreck(R, dt) {
       const P = b.dgP, V = b.dgV, im = b.dgI;
       const hs = Math.hypot(V.x, V.z);
       const gr = groundAt(P.x, -P.z), gy = R.ground(b, P), ballast = gy > gr + 0.05;
+      // on a frozen lake: ice chips and powder snow, scrape marks, and cracks (10n_ice.js)
+      const ice = WORLD.frost && !ballast && frOnIce(P.x, -P.z);
+      if (ice) iceDig(b, P, V, hs, dt);
       // the gouge: a strip each time the car has plowed on another metre, none across a bounce
       if (b.dgD === undefined) b.dgD = 0;
       if (!b.dgL) b.dgL = new THREE.Vector3();
@@ -131,19 +156,26 @@ function digWreck(R, dt) {
       if (!b.dgOn || dist > 6) b.dgL.copy(P);
       else if (dist >= 0.9 && hs > 0.5) {
         const w = clamp(1.1 + 0.12 * hs + 0.5 * b.dgN, 1.1, 3.2);
-        digSegment(R, b, b.dgL, P, w, ballast); b.dgL.copy(P);
+        digSegment(R, b, b.dgL, P, ice ? w * 1.3 : w, ballast, ice); b.dgL.copy(P);
       }
       b.dgOn = true;
       // the spray, only where someone can see it
       if (cp && P.distanceToSquared(cp) > 300 * 300) continue;
       const k = clamp(im / 9, 0.25, 1.6), q = DIG.q;
-      b.dgA = (b.dgA || 0) + dt * q * Math.min(90, im * 14 * (0.5 + b.dgN));
-      b.dgB = (b.dgB || 0) + dt * q * Math.min(14, im * 1.6);
+      b.dgA = (b.dgA || 0) + dt * q * Math.min(ice ? 140 : 90, im * (ice ? 22 : 14) * (0.5 + b.dgN));
+      b.dgB = (b.dgB || 0) + dt * q * Math.min(ice ? 26 : 14, im * (ice ? 3 : 1.6));
       const fx = hs > 0.1 ? V.x / hs : 0, fz = hs > 0.1 ? V.z / hs : 0, ref = [R, b];
       while (b.dgA >= 1) {
         b.dgA--;
         const side = Math.random() < 0.5 ? -1 : 1, out = (0.6 + 3 * Math.random()) * k, f = hs * (0.2 + 0.55 * Math.random());
         const sh = ballast ? 0.42 + 0.12 * Math.random() : 0.2 + 0.12 * Math.random();
+        if (ice) {   // chips of ice, glassy and pale, flung low and far across the sheet
+          const c = 0.62 + 0.3 * Math.random(), o2 = out * 1.5;
+          digEmit(DIG.clods, P.x + (Math.random() - 0.5) * 0.8, gy + 0.1, P.z + (Math.random() - 0.5) * 0.8,
+            fx * f * 1.2 - fz * side * o2 + (Math.random() - 0.5), (0.8 + 3 * Math.random()) * k, fz * f * 1.2 + fx * side * o2 + (Math.random() - 0.5),
+            0.03 + Math.random() * 0.09, 20 + 12 * Math.random(), c * 0.86, c * 0.93, c, gy, ref);
+          continue;
+        }
         digEmit(DIG.clods, P.x + (Math.random() - 0.5) * 0.8, gy + 0.15, P.z + (Math.random() - 0.5) * 0.8,
           fx * f - fz * side * out + (Math.random() - 0.5), (1.4 + 4 * Math.random()) * k, fz * f + fx * side * out + (Math.random() - 0.5),
           (ballast ? 0.06 : 0.07) + Math.random() * (ballast ? 0.08 : 0.18), 25 + 15 * Math.random(),
@@ -152,6 +184,12 @@ function digWreck(R, dt) {
       while (b.dgB >= 1) {
         b.dgB--;
         const t = Math.random();
+        if (ice) {   // powder snow off the drifts and frost off the ice: a bright, billowing spray
+          digEmit(DIG.dust, P.x + (Math.random() - 0.5) * 2.5, gy + 0.3, P.z + (Math.random() - 0.5) * 2.5,
+            V.x * 0.5 + (Math.random() - 0.5) * 3, 0.8 + 2.2 * Math.random() * k, V.z * 0.5 + (Math.random() - 0.5) * 3,
+            1.0 + 2.2 * k * Math.random(), 2.5 + 3.5 * Math.random(), 0.86 + 0.06 * t, 0.9 + 0.05 * t, 0.96, gy, null);
+          continue;
+        }
         digEmit(DIG.dust, P.x + (Math.random() - 0.5) * 2, gy + 0.4, P.z + (Math.random() - 0.5) * 2,
           V.x * 0.35 + (Math.random() - 0.5) * 2, 0.4 + 1.2 * Math.random() * k, V.z * 0.35 + (Math.random() - 0.5) * 2,
           1.2 + 1.5 * k * Math.random(), 2.5 + 3 * Math.random(),
@@ -204,6 +242,11 @@ function digPoolStep(P, dt, soft) {
 /* every frame from the main loop */
 function digFrame(dt, cam) {
   if (!DIG.clods) return;
+  if (DIG.scarIceDirty) {
+    const at = DIG.scarIce.geometry.attributes;
+    at.position.needsUpdate = at.normal.needsUpdate = at.uv.needsUpdate = at.color.needsUpdate = true;
+    DIG.scarIceDirty = false; DIG.scarIce.visible = true;
+  }
   if (DIG.scarDirty) {
     const at = DIG.scar.geometry.attributes;
     at.position.needsUpdate = at.normal.needsUpdate = at.uv.needsUpdate = at.color.needsUpdate = true;

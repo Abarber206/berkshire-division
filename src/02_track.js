@@ -47,6 +47,7 @@ class Edge {
     this.cantOK = opt.cant !== false && this.kind === 'main';
     this.bridges = opt.bridges || [];      // [[s0,s1],...]
     this.tunnels = opt.tunnels || [];      // [[s0,s1],...] bored through the hill: no ground is graded over them
+    this.ice = opt.ice || [];              // [[s0,s1],...] ties laid straight on a frozen lake: no ballast, no grading
     this.noTies = false;
     const total = pts[pts.length - 1].s - pts[0].s;
     this.len = total;
@@ -71,9 +72,15 @@ class Edge {
       const E = this.cantOK ? clamp(105 * Math.abs(this.K[i]), 0, 0.1) : 0;
       this.C[i] = Math.sign(this.K[i]) * Math.asin(E / 1.5);
     }
+    // ties laid flat on lake ice: no superelevation, ramped out over 40 m either side
+    for (const r of this.ice) for (let i = 0; i < this.n; i++) {
+      const s = i * this.ds, d = s < r[0] ? r[0] - s : s > r[1] ? s - r[1] : 0;
+      if (d < 40) this.C[i] *= d / 40;
+    }
   }
   isBridge(s) { for (const b of this.bridges) if (s >= b[0] && s <= b[1]) return true; return false; }
   isTunnel(s) { for (const b of this.tunnels) if (s >= b[0] && s <= b[1]) return true; return false; }
+  isIce(s) { for (const b of this.ice) if (s >= b[0] && s <= b[1]) return true; return false; }
   _idx(s) { const f = clamp(s, 0, this.len) / this.ds; let i = Math.floor(f); if (i >= this.n - 1) i = this.n - 2; return [i, f - i]; }
   heading(s) { const [i, t] = this._idx(s); return lerp(this.H[i], this.H[i + 1], t); }
   curv(s) { const [i, t] = this._idx(s); return lerp(this.K[i], this.K[i + 1], t); }

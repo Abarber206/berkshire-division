@@ -80,7 +80,7 @@ class Line {
       const pts = this.slice(sg.s0, sg.s1);
       const local = R => (R || []).map(b => [b[0] - sg.s0, b[1] - sg.s0]).filter(b => b[1] > 0 && b[0] < sg.s1 - sg.s0);
       const limit = opt.limitAt ? opt.limitAt((sg.s0 + sg.s1) / 2) : opt.limit;
-      const e = NET.edge(pts, { kind: opt.kind, name: this.name, limit, cant: opt.cant, bridges: local(opt.bridges), tunnels: local(opt.tunnels) });
+      const e = NET.edge(pts, { kind: opt.kind, name: this.name, limit, cant: opt.cant, bridges: local(opt.bridges), tunnels: local(opt.tunnels), ice: local(opt.ice) });
       e.line = this; e.lineS0 = sg.s0;
       e.setProfile((s, X, N) => profile(sg.s0 + s, X, N));
       NET.attach(e, 0, sg.na); NET.attach(e, 1, sg.nb);

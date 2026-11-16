@@ -42,6 +42,19 @@ const RAINGLASS_GLSL = `
     float head = smoothstep( 0.009, 0.004, length( vec2( fx, ( b - 0.9 ) * seg * 0.6 ) ) );
     float trail = smoothstep( 0.0025, 0.001, abs( fx ) ) * smoothstep( 0.35, 0.88, b ) * step( b, 0.9 ) * 0.55;
     return max( head, trail );
+  }
+  float rgVN( vec2 p ) { vec2 i = floor( p ), f = fract( p ); f = f * f * ( 3.0 - 2.0 * f );
+    return mix( mix( rgH( i ), rgH( i + vec2( 1.0, 0.0 ) ), f.x ), mix( rgH( i + vec2( 0.0, 1.0 ) ), rgH( i + 1.0 ), f.x ), f.y ); }
+  // hoar frost creeping in from the pane edges: feathery fern streaks over a fine frosted grain
+  float rgFrost( vec2 p, vec2 uv, float amt ) {
+    float fe = min( min( uv.x, 1.0 - uv.x ), min( uv.y, 1.0 - uv.y ) );
+    float n = rgVN( p * 30.0 ) * 0.55 + rgVN( p * 85.0 ) * 0.3 + rgVN( p * 240.0 ) * 0.15;
+    float reach = amt * ( 0.16 + 0.26 * n );
+    float body = smoothstep( reach, reach * 0.35, fe );
+    vec2 q = p * 120.0; float a = rgVN( p * 9.0 ) * 6.2831853;
+    float fern = abs( sin( dot( q, vec2( cos( a ), sin( a ) ) ) + rgVN( q * 0.35 ) * 5.0 ) );
+    fern = smoothstep( 0.82, 1.0, fern ) * smoothstep( reach * 1.8, reach * 0.6, fe );
+    return clamp( body * ( 0.55 + 0.45 * n ) + fern * 0.6, 0.0, 1.0 );
   }`;
 /* draw rain on this pane material; wiper: true for panes that have a wiper (the diesel's windshield) */
 function rainGlass(mat, wiper) {
@@ -57,7 +70,7 @@ function rainGlass(mat, wiper) {
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', '#include <common>\n' + RAINGLASS_GLSL)
       .replace('#include <color_fragment>', `#include <color_fragment>
-      if ( uRG.x > 0.004 || ${wiper ? 'true' : 'false'} ) {
+      if ( uRG.x > 0.004 || uRW.z > 0.01 || ${wiper ? 'true' : 'false'} ) {
         vec3 an = abs( vRN ); bool front = an.x > 0.6;
         vec2 p = front ? vRP.zy : vRP.xy;
         float spd = uRG.z, t = uRG.y, amt = uRG.x, since = 1e3, blade = 0.0;
@@ -80,6 +93,12 @@ function rainGlass(mat, wiper) {
         if ( since > 2.0 ) m = max( m, rgRuns( p, dir, amt, t, 0.12 + 0.02 * abs( spd ) ) );
         diffuseColor.rgb = mix( diffuseColor.rgb, vec3( 0.62, 0.66, 0.7 ), m * 0.8 );
         diffuseColor.a = mix( diffuseColor.a + 0.06 * amt, 0.62, m );
+        if ( uRW.z > 0.01 ) {
+          // frost; the wiper's sweep and the defroster keep the swept arc mostly clear
+          float fr = rgFrost( p, vRUv, uRW.z ) * ( since < 1e3 ? 0.18 : 1.0 );
+          diffuseColor.rgb = mix( diffuseColor.rgb, vec3( 0.8, 0.86, 0.94 ), fr * 0.85 );
+          diffuseColor.a = mix( diffuseColor.a, 0.82, fr );
+        }
         diffuseColor.rgb = mix( diffuseColor.rgb, vec3( 0.03 ), blade ); diffuseColor.a = max( diffuseColor.a, blade );
       }`);
   };
@@ -110,6 +129,7 @@ function rainGlassFrame(dt) {
   const g = RAINGLASS.u.uRG.value, ww = RAINGLASS.u.uRW.value;
   g[0] = w; g[1] = (S.time || 0); g[2] = S.v || 0; g[3] = RAINGLASS.phase;
   ww[0] = RAINGLASS.run ? 1 : 0; ww[1] = rate; ww[3] = RAINGLASS.phase;
+  ww[2] = typeof ICE !== 'undefined' && ICE.frost ? ICE.frost.value * (1 - inside) : 0;   // frost on the panes (winter nights on the lake route)
   if (WORLD.rainU) { WORLD.rainU.value = P.rain * (1 - inside); WORLD.rainT.value = S.time || 0; }
 }
 

@@ -309,7 +309,7 @@ function mtForestTile(key, scene) {
     const lat = latticeAt(X, N); if (lat && lat.d < 17 + r() * 8) continue;
     if (mtClearing(X, N, r() * 12)) continue;
     if (trackWithin(X, N, 14)) continue;   // the lattice is a 20 m grid; check the real distance close in
-    if (mtRiverDist(X, N) < 24) continue;
+    if (WORLD.frost ? frShore(X, N) < 10 : mtRiverDist(X, N) < 24) continue;
     if (inTown(X, N) || kept(X, N, 2) || inFoot(X, N, 5)) continue;
     const gy = groundAt(X, N);
     // the woods thin out on rock steeper than about 45 degrees
@@ -317,7 +317,7 @@ function mtForestTile(key, scene) {
     if (sl > 1 && r() < 0.75) continue;
     // ledge rock breaks out on the steep ground, and a boulder now and then on the forest floor
     if (r() < (sl > 0.55 ? 0.22 : 0.025) && !(lat && lat.d < 16) && !trackWithin(X, N, 17)) { const sz = sl > 0.55 ? 0.8 + r() * 1.6 : 0.5 + r() * 0.9; RK.push([X, gy, N, sz, r() * TAU, (r() * 3) | 0]); }
-    const conK = clamp(0.18 + 0.55 * smooth(260, 560, gy) + 0.35 * Noise.fbm(X / 300 - 2, N / 300 + 5, 2), 0.05, 0.9);
+    const conK = WORLD.frost ? 0.82 : clamp(0.18 + 0.55 * smooth(260, 560, gy) + 0.35 * Noise.fbm(X / 300 - 2, N / 300 + 5, 2), 0.05, 0.9);   // Raven Lake: mostly spruce and pine
     if (r() < conK) L.con.push([X, gy - 0.3, N, 0.95 + r() * 0.8, [0.12 + r() * 0.05, 0.22 + r() * 0.07, 0.13 + r() * 0.03]]);
     else { const x2 = r(); L.dec.push([X, gy - 0.3, N, 0.85 + r() * 0.6, x2 < 0.45 ? [0.28 + r() * 0.1, 0.40 + r() * 0.12, 0.16] : x2 < 0.72 ? [0.74 + r() * 0.14, 0.52 + r() * 0.16, 0.15] : x2 < 0.9 ? [0.68 + r() * 0.1, 0.26 + r() * 0.1, 0.11] : [0.55, 0.40, 0.2]]); }
   }

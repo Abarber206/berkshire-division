@@ -561,7 +561,7 @@ AI.clear = function () {
 AI.setup = function () {
   AI.clear();
   if (!AI.enabled()) return;
-  const job = JOB.wanted(), list = job ? job.traffic || [] : WORLD.mtn ? MTN_TRAFFIC : FREE_TRAFFIC;
+  const job = JOB.wanted(), list = job ? job.traffic || [] : WORLD.frost ? [] : WORLD.mtn ? MTN_TRAFFIC : FREE_TRAFFIC;   // Raven Lake is yours alone
   // while the game is still loading the trains are made up one at a time after the menu is ready (AI.lazy, set by
   // loadWorld), so the menu is not kept waiting for them; AI.flush() finishes the job at once when you start
   if (AI.lazy) { AI.pending = list.slice(); AI.drip(); return; }
