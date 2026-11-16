@@ -926,7 +926,8 @@ function steamFX(dt, T, tv) {
     if (a > 0.02 && Math.random() < 0.4 + 0.6 * smkQuality()) smkDrift(stack, tv, Math.min(0.5, a), lerp(0.66, 0.38, clamp(S.fire - 0.3, 0, 1)), 2.5 + S.blower * 6);
     if (S.injector && Math.random() < 0.6) emit(T.worldOf(L.injPos), new THREE.Vector3(tv.x, -0.4, tv.z), 0.9, 0.3, 1.5, 0.35, [0.95, 0.95, 0.97], 0.3, 1.5);
   }
-  if (S.safety) for (let j = 0; j < 2; j++) emit(T.worldOf(L.safetyPos), new THREE.Vector3(tv.x + (Math.random() - 0.5), 16 + Math.random() * 6, tv.z), 2.2, 0.5, 5, 0.7, [0.97, 0.97, 0.99], 0.3, 1.4);
+  // a popping safety valve: a hard white jet that bursts into a billow a few metres up and is gone, not a pencil line into the sky
+  if (S.safety) for (let j = 0; j < 2; j++) emit(T.worldOf(L.safetyPos), new THREE.Vector3(tv.x + (Math.random() - 0.5) * 2, 9 + Math.random() * 4, tv.z + (Math.random() - 0.5) * 2), 1.8 + Math.random() * 0.8, 0.6, 7 + Math.random() * 3, 0.75, [0.97, 0.97, 0.99], 0.3, 1.4, 0.5);
   if (S.whistle > 0.05 && Math.random() < 0.8) emit(T.worldOf(L.whistlePos), new THREE.Vector3(tv.x * 0.8, 6 + S.whistle * 6, tv.z * 0.8), 1.6, 0.35, 3.2, 0.55 * S.whistle, [0.97, 0.97, 0.99], 0.4, 1.4);
   if (S.pumping && S.P > 50) { pumpT += dt; if (pumpT > 0.52) { pumpT = 0; GAME.pumpPh = (GAME.pumpPh || 0) + 1; sndPump(GAME.pumpPh); if (GAME.pumpPh % 2) emit(T.worldOf(L.pumpPos), new THREE.Vector3(tv.x, 2.5, tv.z), 1.2, 0.3, 1.6, 0.35, [0.93, 0.93, 0.95], 0.6, 1.2); } }
   return { src: stack, working };

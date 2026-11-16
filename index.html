@@ -18569,7 +18569,7 @@ function emit(p, v, life, s0, s1, a0, c, buoy = 0.6, drag = 1.0, curl = 0) {
   FX.vel[i * 3] = v.x; FX.vel[i * 3 + 1] = v.y; FX.vel[i * 3 + 2] = v.z;
   FX.age[i] = 0; FX.life[i] = life; FX.s0[i] = s0; FX.s1[i] = s1; FX.a0[i] = a0;
   FX.base[i * 3] = c[0]; FX.base[i * 3 + 1] = c[1]; FX.base[i * 3 + 2] = c[2]; FX.buoy[i] = buoy; FX.drag[i] = drag;
-  FX.curl[i] = curl; FX.ph[i] = Math.random() * 100;
+  FX.curl[i] = curl; FX.ph[i] = Math.random() * 0.8;   // neighbours share the flow, so a plume twists as one rather than scattering
   return i;
 }
 /* Steam engine exhaust. One exhaust beat: a hard core of dark smoke shot up out of the stack and a ring of
@@ -18582,9 +18582,12 @@ function smkBeat(at, tv, up, inten, gv, scale = 1) {
   for (let j = 0; j < n; j++) {
     const core = j === 0, sp = core ? 0.6 : 1.8 + hard;
     const g = clamp(gv * (core ? 0.82 : 0.9 + Math.random() * 0.28), 0.08, 1);   // light and dark puffs through the plume
-    _smkP.set(at.x + (Math.random() - 0.5) * 0.4, at.y + Math.random() * 0.3, at.z + (Math.random() - 0.5) * 0.4);
-    _smkV.set(tv.x + (Math.random() - 0.5) * sp, up * (core ? 1.1 : 0.75 + Math.random() * 0.35), tv.z + (Math.random() - 0.5) * sp);
-    emit(_smkP, _smkV, 9 + Math.random() * 6 + hard * 5, core ? 1.3 : 1.7, (core ? 11 : 15) + hard * 13 + Math.random() * 5,
+    // spread along the jet, faster and slower, so a beat fills a stretch of the column and runs into the next one
+    // instead of leaving the stack as one ball in a string of beads
+    const f = core ? 0 : j / n, vk = core ? 1.1 : 0.45 + 0.6 * Math.random();
+    _smkP.set(at.x + (Math.random() - 0.5) * 0.4 - tv.x * f * 0.12, at.y + f * up * 0.12, at.z + (Math.random() - 0.5) * 0.4 - tv.z * f * 0.12);
+    _smkV.set(tv.x + (Math.random() - 0.5) * sp, up * vk, tv.z + (Math.random() - 0.5) * sp);
+    emit(_smkP, _smkV, 9 + Math.random() * 6 + hard * 5, core ? 1.8 : 2.4, (core ? 11 : 15) + hard * 13 + Math.random() * 5,
       (core ? 0.85 : 0.62) + 0.2 * hard, [g, g * 0.985, g * 0.96], 0.95 + 0.3 * hard, 1.0, 0.9 + Math.random() * 0.5);
   }
 }
@@ -18593,7 +18596,7 @@ function smkBeat(at, tv, up, inten, gv, scale = 1) {
 function smkDrift(at, tv, a, g, lift) {
   _smkV.set(tv.x + (Math.random() - 0.5) * 0.5, lift, tv.z + (Math.random() - 0.5) * 0.5);
   const gg = clamp(g * (0.88 + Math.random() * 0.26), 0.1, 1);
-  emit(at, _smkV, 10 + Math.random() * 5, 0.9, 8 + Math.random() * 4, a, [gg, gg * 0.98, gg * 0.95], 0.85, 0.8, 1.4 + Math.random() * 0.4);
+  emit(at, _smkV, 10 + Math.random() * 5, 1.6, 11 + Math.random() * 5, a, [gg, gg * 0.98, gg * 0.95], 0.85, 0.8, 1.4 + Math.random() * 0.4);
 }
 function updateFX(dt, cam) {
   const w = ENV.wind, L = FX.light, T = (FX.t += dt);
@@ -18609,15 +18612,15 @@ function updateFX(dt, cam) {
     if (cu > 0) {
       // swirling air: a slowly changing rotational flow (the curl of a few sines) that is gentle at the stack and
       // grows as the plume loses its push, so the smoke rolls, twists and curls instead of rising in a cone
-      const ph = FX.ph[i], A = cu * (0.4 + 3.2 * t) * dt, x = px * 0.11, y = py * 0.13, z = pz * 0.11, s = T * 0.35 + ph;
+      const ph = FX.ph[i], A = cu * (0.3 + 1.5 * t) * dt, x = px * 0.11, y = py * 0.13, z = pz * 0.11, s = T * 0.35 + ph;
       const a1 = Math.sin(y + s) + Math.cos(z * 1.7 - s * 0.6), b1 = Math.sin(z + s * 0.8) + Math.cos(x * 1.9 + s * 0.5), c1 = Math.sin(x * 1.3 - s * 0.7) + Math.cos(y * 1.6 + s);
       px += (Math.cos(y * 1.6 + s) - b1 * 0.5) * A * 1.4;
       py += (Math.sin(x * 1.3 + s * 0.9) - c1 * 0.3) * A * 0.7;
       pz += (Math.cos(x * 1.9 - s) - a1 * 0.5) * A * 1.4;
-      FX.wisp[i] = smooth(0.12, 0.75, t * Math.min(1.4, cu));
+      FX.wisp[i] = 0.72 * smooth(0.15, 0.8, t * Math.min(1.4, cu));   // the body never quite clears: wisps on a soft haze
     }
     FX.pos[j] = px; FX.pos[j + 1] = py; FX.pos[j + 2] = pz;
-    const grow = 1 - (1 - t) * (1 - t);
+    const grow = cu > 0 ? 1 - Math.pow(1 - t, 3.5) : 1 - (1 - t) * (1 - t);   // smoke swells fast as it leaves the stack, then slowly
     FX.size[i] = lerp(FX.s0[i], FX.s1[i], grow);
     // full strength almost as it leaves the stack, holding thick for the first part of its climb, then thinning away
     const fade = cu > 0 ? (1 - smooth(0.3, 1, t)) * (1 - 0.3 * t) : (1 - t) * (1 - t);
@@ -28496,7 +28499,8 @@ function steamFX(dt, T, tv) {
     if (a > 0.02 && Math.random() < 0.4 + 0.6 * smkQuality()) smkDrift(stack, tv, Math.min(0.5, a), lerp(0.66, 0.38, clamp(S.fire - 0.3, 0, 1)), 2.5 + S.blower * 6);
     if (S.injector && Math.random() < 0.6) emit(T.worldOf(L.injPos), new THREE.Vector3(tv.x, -0.4, tv.z), 0.9, 0.3, 1.5, 0.35, [0.95, 0.95, 0.97], 0.3, 1.5);
   }
-  if (S.safety) for (let j = 0; j < 2; j++) emit(T.worldOf(L.safetyPos), new THREE.Vector3(tv.x + (Math.random() - 0.5), 16 + Math.random() * 6, tv.z), 2.2, 0.5, 5, 0.7, [0.97, 0.97, 0.99], 0.3, 1.4);
+  // a popping safety valve: a hard white jet that bursts into a billow a few metres up and is gone, not a pencil line into the sky
+  if (S.safety) for (let j = 0; j < 2; j++) emit(T.worldOf(L.safetyPos), new THREE.Vector3(tv.x + (Math.random() - 0.5) * 2, 9 + Math.random() * 4, tv.z + (Math.random() - 0.5) * 2), 1.8 + Math.random() * 0.8, 0.6, 7 + Math.random() * 3, 0.75, [0.97, 0.97, 0.99], 0.3, 1.4, 0.5);
   if (S.whistle > 0.05 && Math.random() < 0.8) emit(T.worldOf(L.whistlePos), new THREE.Vector3(tv.x * 0.8, 6 + S.whistle * 6, tv.z * 0.8), 1.6, 0.35, 3.2, 0.55 * S.whistle, [0.97, 0.97, 0.99], 0.4, 1.4);
   if (S.pumping && S.P > 50) { pumpT += dt; if (pumpT > 0.52) { pumpT = 0; GAME.pumpPh = (GAME.pumpPh || 0) + 1; sndPump(GAME.pumpPh); if (GAME.pumpPh % 2) emit(T.worldOf(L.pumpPos), new THREE.Vector3(tv.x, 2.5, tv.z), 1.2, 0.3, 1.6, 0.35, [0.93, 0.93, 0.95], 0.6, 1.2); } }
   return { src: stack, working };
