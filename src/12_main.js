@@ -910,7 +910,7 @@ function steamFX(dt, T, tv) {
         // beats that fell between this frame and the last leave the stack where it was then, so at speed the plume is
         // one unbroken stream out of the stack; the faster the engine runs, the flatter the rushing air lays it back
         const at = _fxStk.copy(stack).addScaledVector(tv, -dt * i / steps), up = (7 + 13 * intensity + Math.random() * 3) / (1 + Math.abs(S.v) / 14);
-        for (let j = 0; j < 3; j++) emit(at, new THREE.Vector3(tv.x + (Math.random() - 0.5) * 1.5, up, tv.z + (Math.random() - 0.5) * 1.5), 4 + Math.random() * 3 + intensity * 2, 1.5, 7 + intensity * 7, 0.55 + 0.25 * intensity, [gv, gv * 0.98, gv * 0.95], 0.9, 1.1);
+        smkBeat(at, tv, up, intensity, gv, L.art ? 0.8 : 1);   // 10_sky_fx.js: a dark core and rolling billows that curl apart as they climb
         if (S.priming) emit(stack, new THREE.Vector3(tv.x, 9, tv.z), 2.5, 0.8, 5, 0.6, [0.95, 0.96, 0.98], 0.2, 1.2);
         if (S.cocks) for (const cp of L.cockPos) { const p = T.worldOf(cp); const side = new THREE.Vector3(0, 0, Math.sign(cp.z) * (4 + Math.random() * 3)).applyQuaternion(_cq.setFromRotationMatrix(_cm.extractRotation(L.root.matrixWorld))); emit(p, new THREE.Vector3(tv.x + side.x + T.lead.fwd.x * 3, -0.6, tv.z + side.z + T.lead.fwd.z * 3), 1.1 + Math.random() * 0.4, 0.4, 3.2, 0.7, [0.95, 0.95, 0.97], 0.4, 1.6); }
       } else if (k % 2 === 0 && n > 0.15) sndClank(n);
@@ -921,11 +921,13 @@ function steamFX(dt, T, tv) {
   idleT += dt;
   if (idleT > 0.09) {
     idleT = 0;
-    const a = 0.18 * (S.fire + S.blower * 0.8) * (working ? 0.4 : 1);
-    if (a > 0.02) emit(stack, new THREE.Vector3(tv.x, 2.5 + S.blower * 6, tv.z), 5 + Math.random() * 2, 1.0, 5.5, a, [0.55, 0.53, 0.5], 0.7, 0.9);
+    // between beats, or standing with the throttle shut, the blower's draft lifts a lazy column that twists away in wisps
+    const a = 0.3 * (S.fire + S.blower * 0.8) * (working ? 0.35 : 1);
+    if (a > 0.02 && Math.random() < 0.4 + 0.6 * smkQuality()) smkDrift(stack, tv, Math.min(0.5, a), lerp(0.66, 0.38, clamp(S.fire - 0.3, 0, 1)), 2.5 + S.blower * 6);
     if (S.injector && Math.random() < 0.6) emit(T.worldOf(L.injPos), new THREE.Vector3(tv.x, -0.4, tv.z), 0.9, 0.3, 1.5, 0.35, [0.95, 0.95, 0.97], 0.3, 1.5);
   }
-  if (S.safety) for (let j = 0; j < 2; j++) emit(T.worldOf(L.safetyPos), new THREE.Vector3(tv.x + (Math.random() - 0.5), 16 + Math.random() * 6, tv.z), 2.2, 0.5, 5, 0.7, [0.97, 0.97, 0.99], 0.3, 1.4);
+  // a popping safety valve: a hard white jet that bursts into a billow a few metres up and is gone, not a pencil line into the sky
+  if (S.safety) for (let j = 0; j < 2; j++) emit(T.worldOf(L.safetyPos), new THREE.Vector3(tv.x + (Math.random() - 0.5) * 2, 9 + Math.random() * 4, tv.z + (Math.random() - 0.5) * 2), 1.8 + Math.random() * 0.8, 0.6, 7 + Math.random() * 3, 0.75, [0.97, 0.97, 0.99], 0.3, 1.4, 0.5);
   if (S.whistle > 0.05 && Math.random() < 0.8) emit(T.worldOf(L.whistlePos), new THREE.Vector3(tv.x * 0.8, 6 + S.whistle * 6, tv.z * 0.8), 1.6, 0.35, 3.2, 0.55 * S.whistle, [0.97, 0.97, 0.99], 0.4, 1.4);
   if (S.pumping && S.P > 50) { pumpT += dt; if (pumpT > 0.52) { pumpT = 0; GAME.pumpPh = (GAME.pumpPh || 0) + 1; sndPump(GAME.pumpPh); if (GAME.pumpPh % 2) emit(T.worldOf(L.pumpPos), new THREE.Vector3(tv.x, 2.5, tv.z), 1.2, 0.3, 1.6, 0.35, [0.93, 0.93, 0.95], 0.6, 1.2); } }
   return { src: stack, working };

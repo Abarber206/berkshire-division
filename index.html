@@ -18434,40 +18434,57 @@ function makeEnvCube(top, hor, sun, sunC, gray, ground) {
 
 /* ----------------------- particles ----------------------- */
 const FX = { light: new THREE.Color(1, 1, 1) };
-/* Smoke and steam: one pool of point sprites. Each puff is a billow from a small atlas of four, turned to
-   its own angle and slowly spinning, and lit like a volume: a rounded body with the atlas's bumps on it,
-   bright on the sun side, shaded underneath and away from the sun, and glowing at its thin edges when the
-   sun is behind it. Puffs fade out as they reach the camera so they never smear across a cab window. */
+/* Smoke and steam: one pool of point sprites. Each puff is drawn from an atlas of eight cells: four round
+   billows (the thick rolling smoke right out of the stack) and four wisps (thin curling tendrils, the smoke
+   pulled apart as it rises). A puff starts as a billow and, as it ages, turns into a wisp while a slow
+   swirling flow twists it, so a plume is a dense column at the stack that breaks into curls and threads as it
+   climbs and drifts. Each puff is lit like a volume: a rounded body with the atlas's bumps on it, bright on
+   the sun side, shaded underneath and away from the sun, marbled light and dark through its thickness, and
+   glowing at its thin edges when the sun is behind it. Puffs fade out as they reach the camera so they never
+   smear across a cab window. */
 function smokeAtlas() {
-  const C = 128, S = C * 2, data = new Uint8Array(S * S * 4), r = rng(77);
-  const den = new Float32Array(C * C);
-  for (let cell = 0; cell < 4; cell++) {
+  const C = 128, SX = C * 4, SY = C * 2, data = new Uint8Array(SX * SY * 4), r = rng(77);
+  const den = new Float32Array(C * C), tone = new Float32Array(C * C);
+  const fbm = (x, y, o) => { let n = 0, amp = 0.5, f = 1; for (let k = 0; k < o; k++) { n += amp * vnoise2(x * f, y * f); amp *= 0.5; f *= 2.03; } return n; };
+  for (let cell = 0; cell < 8; cell++) {
     den.fill(0);
+    const wisp = cell >= 4, ox = r() * 50, oy = r() * 50, tx = r() * 50, ty = r() * 50;
     const blobs = [];
-    for (let i = 0; i < 13; i++) { const a = r() * TAU, d = Math.sqrt(r()) * 0.46; blobs.push([Math.cos(a) * d, Math.sin(a) * d, 0.2 + r() * 0.22, 0.55 + r() * 0.45]); }
-    const ox = r() * 50, oy = r() * 50;
+    for (let i = 0; i < (wisp ? 0 : 15); i++) { const a = r() * TAU, d = Math.sqrt(r()) * 0.46; blobs.push([Math.cos(a) * d, Math.sin(a) * d, 0.18 + r() * 0.24, 0.55 + r() * 0.45]); }
     for (let y = 0; y < C; y++) for (let x = 0; x < C; x++) {
-      const u = (x + 0.5) / C * 2 - 1, v = (y + 0.5) / C * 2 - 1;
-      let d = 0; for (const b of blobs) { const dx = u - b[0], dy = v - b[1]; d += b[3] * Math.exp(-(dx * dx + dy * dy) / (b[2] * b[2])); }
-      // fine wisps: a few octaves of value noise eat into the body
-      let n = 0, amp = 0.5, f = 3; for (let o = 0; o < 4; o++) { n += amp * vnoise2(u * f + ox, v * f + oy); amp *= 0.5; f *= 2.1; }
-      const edge = smooth(1.0, 0.72, Math.hypot(u, v));
-      den[y * C + x] = Math.max(0, Math.min(1, (d * 0.75) * (0.55 + 0.9 * n) - 0.08)) * edge;
+      const u = (x + 0.5) / C * 2 - 1, v = (y + 0.5) / C * 2 - 1, R = Math.hypot(u, v);
+      let dd;
+      if (!wisp) {
+        // a billow: overlapping lumps with fine wisps eaten into the body
+        let d = 0; for (const b of blobs) { const dx = u - b[0], dy = v - b[1]; d += b[3] * Math.exp(-(dx * dx + dy * dy) / (b[2] * b[2])); }
+        const n = fbm(u * 3 + ox, v * 3 + oy, 4);
+        dd = Math.max(0, Math.min(1, (d * 0.5) * (0.25 + 1.25 * n) - 0.08)) * smooth(1.0, 0.7, R);
+      } else {
+        // a wisp: the ridges of a twice-warped noise, so the smoke comes out as thin, curling, branching threads
+        const wx = u * 1.6 + 1.3 * fbm(u * 1.4 + ox, v * 1.4 + oy, 3), wy = v * 1.6 + 1.3 * fbm(u * 1.4 + oy + 7, v * 1.4 + ox + 3, 3);
+        const w2x = wx + 0.9 * fbm(wx * 2 + tx, wy * 2 + ty, 3), w2y = wy + 0.9 * fbm(wx * 2 + ty + 5, wy * 2 + tx + 9, 3);
+        const ridge = 1 - Math.abs(2 * fbm(w2x + ox, w2y + oy, 4) - 1);
+        const threads = Math.pow(ridge, 14) * 1.7 + Math.pow(ridge, 4) * 0.1;   // bright filaments in a faint haze
+        dd = Math.min(1, Math.min(1, threads) * smooth(1.0, 0.45, R) * (0.75 + 0.5 * fbm(u * 2 + tx, v * 2 + ty, 2)));
+      }
+      den[y * C + x] = dd;
+      tone[y * C + x] = fbm(u * 2.2 + tx, v * 2.2 + ty, 3);   // light and dark marbling through the smoke
     }
-    const cx = (cell % 2) * C, cy = (cell >> 1) * C;
+    const cx = (cell % 4) * C, cy = (cell >> 2) * C;
     for (let y = 0; y < C; y++) for (let x = 0; x < C; x++) {
       const at = (xx, yy) => den[Math.min(C - 1, Math.max(0, yy)) * C + Math.min(C - 1, Math.max(0, xx))];
       const gx = at(x + 1, y) - at(x - 1, y), gy = at(x, y + 1) - at(x, y - 1);
       const k = 5, nl = Math.hypot(gx * k, gy * k, 1);
-      const o = ((cy + y) * S + cx + x) * 4;
+      const o = ((cy + y) * SX + cx + x) * 4;
       data[o] = Math.round((-gx * k / nl * 0.5 + 0.5) * 255);
       data[o + 1] = Math.round((gy * k / nl * 0.5 + 0.5) * 255);   // texture rows run down, the sprite's y runs up
-      data[o + 2] = 255;
+      data[o + 2] = Math.round(clamp(tone[y * C + x] * 1.6 - 0.3, 0, 1) * 255);
       data[o + 3] = Math.round(den[y * C + x] * 255);
     }
   }
-  const t = new THREE.DataTexture(data, S, S, THREE.RGBAFormat);
+  const t = new THREE.DataTexture(data, SX, SY, THREE.RGBAFormat);
   t.minFilter = THREE.LinearMipmapLinearFilter; t.magFilter = THREE.LinearFilter; t.generateMipmaps = true; t.needsUpdate = true;
+  t.userData = { data, SX, SY, C };
   return t;
 }
 /* smooth 2D value noise for the atlas */
@@ -18476,27 +18493,35 @@ function vnoise2(x, y) {
   const i = Math.floor(x), j = Math.floor(y), fx = x - i, fy = y - j, ux = fx * fx * (3 - 2 * fx), uy = fy * fy * (3 - 2 * fy);
   return lerp(lerp(h(i, j), h(i + 1, j), ux), lerp(h(i, j + 1), h(i + 1, j + 1), ux), uy);
 }
+/* how much smoke this machine draws: the pool is set by the device, the puffs per beat by the graphics setting */
+const SMK_Q = { low: 0.45, medium: 0.7, high: 1, ultra: 1.25 };
+function smkPool() { return (typeof GFX !== 'undefined' && GFX.lite) ? 3000 : 7000; }
+function smkQuality() {
+  const k = typeof POST !== 'undefined' && POST.key, q = SMK_Q[k] || 1;
+  return (typeof GFX !== 'undefined' && GFX.lite) ? Math.min(q, 0.7) : q;
+}
 function buildFX(scene) {
-  const N = 2400;
+  const N = smkPool();
   const g = new THREE.BufferGeometry();
-  const pos = new Float32Array(N * 3), size = new Float32Array(N), alpha = new Float32Array(N), col = new Float32Array(N * 3), seed = new Float32Array(N);
+  const pos = new Float32Array(N * 3), size = new Float32Array(N), alpha = new Float32Array(N), col = new Float32Array(N * 3), seed = new Float32Array(N), wisp = new Float32Array(N);
   for (let i = 0; i < N; i++) seed[i] = Math.random();
   g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('aSize', new THREE.BufferAttribute(size, 1)); g.setAttribute('aAlpha', new THREE.BufferAttribute(alpha, 1)); g.setAttribute('aColor', new THREE.BufferAttribute(col, 3));
-  g.setAttribute('aSeed', new THREE.BufferAttribute(seed, 1));
+  g.setAttribute('aSeed', new THREE.BufferAttribute(seed, 1)); g.setAttribute('aWisp', new THREE.BufferAttribute(wisp, 1));
+  for (const k of ['position', 'aSize', 'aAlpha', 'aColor', 'aWisp']) g.attributes[k].setUsage(THREE.DynamicDrawUsage);
   const tex = smokeAtlas();
   const gl = renderer.getContext(), ptMax = gl.getParameter(gl.ALIASED_POINT_SIZE_RANGE)[1] || 256;
   const mat = new THREE.ShaderMaterial({
-    uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { uTex: { value: tex }, uScale: { value: 800 }, uMax: { value: Math.min(900, ptMax) }, uSunV: { value: new THREE.Vector3(0, 1, 0) }, uSunK: { value: 1 }, uSunC: { value: new THREE.Color(1, 0.95, 0.85) }, uTime: { value: 0 } }]),
+    uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { uTex: { value: tex }, uScale: { value: 800 }, uMax: { value: Math.min(1024, ptMax) }, uSunV: { value: new THREE.Vector3(0, 1, 0) }, uSunK: { value: 1 }, uSunC: { value: new THREE.Color(1, 0.95, 0.85) }, uTime: { value: 0 } }]),
     vertexShader: `#include <common>
       #include <fog_pars_vertex>
       #include <logdepthbuf_pars_vertex>
-      attribute float aSize; attribute float aAlpha; attribute vec3 aColor; attribute float aSeed;
-      uniform float uScale; uniform float uMax; varying float vA; varying vec3 vC; varying float vSeed;
-      void main(){ vC = aColor; vSeed = aSeed; vec4 mvPosition = modelViewMatrix * vec4(position,1.0);
+      attribute float aSize; attribute float aAlpha; attribute vec3 aColor; attribute float aSeed; attribute float aWisp;
+      uniform float uScale; uniform float uMax; varying float vA; varying vec3 vC; varying float vSeed; varying float vW;
+      void main(){ vC = aColor; vSeed = aSeed; vW = aWisp; vec4 mvPosition = modelViewMatrix * vec4(position,1.0);
         float px = aSize * uScale / max(0.2, -mvPosition.z);
         // fade out as a puff reaches the camera, and as it outgrows the largest sprite the GPU will draw
         vA = aAlpha * smoothstep(0.6, 3.5, -mvPosition.z) * (1.0 - smoothstep(uMax * 0.8, uMax * 1.6, px));
-        gl_PointSize = min(uMax, px); gl_Position = projectionMatrix * mvPosition;
+        gl_PointSize = vA > 0.002 ? min(uMax, px) : 0.0; gl_Position = projectionMatrix * mvPosition;
         #include <logdepthbuf_vertex>
         #include <fog_vertex>
       }`,
@@ -18504,26 +18529,29 @@ function buildFX(scene) {
       #include <fog_pars_fragment>
       #include <logdepthbuf_pars_fragment>
       uniform sampler2D uTex; uniform vec3 uSunV; uniform float uSunK; uniform vec3 uSunC; uniform float uTime;
-      varying float vA; varying vec3 vC; varying float vSeed;
+      varying float vA; varying vec3 vC; varying float vSeed; varying float vW;
       void main(){
         #include <logdepthbuf_fragment>
         vec2 q = gl_PointCoord * 2.0 - 1.0; q.y = -q.y;
-        float ang = vSeed * 6.2832 + uTime * (vSeed - 0.5) * 0.5, cs = cos(ang), sn = sin(ang);
+        float ang = vSeed * 6.2832 + uTime * (vSeed - 0.5) * (0.5 + vW * 0.6), cs = cos(ang), sn = sin(ang);
         vec2 rq = vec2(cs * q.x - sn * q.y, sn * q.x + cs * q.y);
         if (max(abs(rq.x), abs(rq.y)) > 0.97) discard;
         float cell = floor(vSeed * 4.0);
-        vec2 uv = (vec2(rq.x, -rq.y) * 0.5 + 0.5) * 0.5 + vec2(mod(cell, 2.0), floor(cell / 2.0)) * 0.5;
-        vec4 t = texture2D(uTex, uv);
+        vec2 cuv = (vec2(rq.x, -rq.y) * 0.5 + 0.5) * vec2(0.25, 0.5);
+        vec4 tb = texture2D(uTex, cuv + vec2(cell * 0.25, 0.0));
+        vec4 tw = vW > 0.01 ? texture2D(uTex, cuv + vec2(mod(cell + 1.0, 4.0) * 0.25, 0.5)) : tb;
+        // a billow thins into its wisp: the threads stay while the body between them clears
+        vec4 t = mix(tb, tw, vW); t.a = mix(tb.a, max(tw.a, tb.a * tw.a * 1.6), vW);
         float a = t.a * vA; if (a < 0.004) discard;
         // the billow's bumps, turned back to the screen, on a rounded body
         vec2 nt = t.rg * 2.0 - 1.0; nt = vec2(cs * nt.x + sn * nt.y, -sn * nt.x + cs * nt.y);
         vec3 n = normalize(vec3(q * 0.75 + nt * 0.9, sqrt(max(0.0, 1.0 - dot(q, q))) + 0.25));
         float lit = dot(n, uSunV) * 0.5 + 0.5;
-        float shade = mix(0.68, 1.15, lit * lit) * mix(1.0, 0.88, t.a);    // thick middles a touch darker
-        vec3 c = vC * mix(1.0, shade, uSunK) * mix(vec3(1.0), uSunC, uSunK * lit * 0.35);
-        // the sun behind the smoke lights up its thin edges
+        float shade = mix(0.62, 1.18, lit * lit) * mix(1.0, 0.82, t.a);    // thick middles darker
+        vec3 c = vC * mix(0.78, 1.14, t.b) * mix(1.0, shade, uSunK) * mix(vec3(1.0), uSunC, uSunK * lit * 0.35);
+        // the sun behind the smoke lights up its thin edges and threads
         float back = pow(max(0.0, -uSunV.z), 3.0) * (1.0 - t.a) * uSunK;
-        c += vC * uSunC * back * 0.9;
+        c += vC * uSunC * back * (0.9 + 0.5 * vW);
         gl_FragColor = vec4(c, a);
         #include <fog_fragment>
       }`,
@@ -18531,31 +18559,79 @@ function buildFX(scene) {
   });
   const pts = new THREE.Points(g, mat); pts.frustumCulled = false; pts.renderOrder = 5;
   scene.add(pts);
-  Object.assign(FX, { N, g, pos, size, alpha, col, mat, pts, vel: new Float32Array(N * 3), age: new Float32Array(N).fill(1e9), life: new Float32Array(N), s0: new Float32Array(N), s1: new Float32Array(N), a0: new Float32Array(N), base: new Float32Array(N * 3), buoy: new Float32Array(N), drag: new Float32Array(N), next: 0 });
+  Object.assign(FX, { N, g, pos, size, alpha, col, wisp, mat, pts, vel: new Float32Array(N * 3), age: new Float32Array(N).fill(1e9), life: new Float32Array(N), s0: new Float32Array(N), s1: new Float32Array(N), a0: new Float32Array(N), base: new Float32Array(N * 3), buoy: new Float32Array(N), drag: new Float32Array(N), curl: new Float32Array(N), ph: new Float32Array(N), next: 0, t: 0 });
 }
-function emit(p, v, life, s0, s1, a0, c, buoy = 0.6, drag = 1.0) {
+/* one puff. curl: how hard the swirling air twists it and how soon it pulls apart into wisps (0 keeps it a
+   round billow all its life: diesel exhaust, steam from a cock or a valve) */
+function emit(p, v, life, s0, s1, a0, c, buoy = 0.6, drag = 1.0, curl = 0) {
   const i = FX.next; FX.next = (FX.next + 1) % FX.N;
   FX.pos[i * 3] = p.x; FX.pos[i * 3 + 1] = p.y; FX.pos[i * 3 + 2] = p.z;
   FX.vel[i * 3] = v.x; FX.vel[i * 3 + 1] = v.y; FX.vel[i * 3 + 2] = v.z;
   FX.age[i] = 0; FX.life[i] = life; FX.s0[i] = s0; FX.s1[i] = s1; FX.a0[i] = a0;
   FX.base[i * 3] = c[0]; FX.base[i * 3 + 1] = c[1]; FX.base[i * 3 + 2] = c[2]; FX.buoy[i] = buoy; FX.drag[i] = drag;
+  FX.curl[i] = curl; FX.ph[i] = Math.random() * 0.8;   // neighbours share the flow, so a plume twists as one rather than scattering
+  return i;
+}
+/* Steam engine exhaust. One exhaust beat: a hard core of dark smoke shot up out of the stack and a ring of
+   bigger, lighter billows rolling off it. inten 0..1.3 is how hard the engine is working, gv the grey of
+   the smoke (dark when the fire is being forced), up the exhaust's speed out of the stack. */
+const _smkV = new THREE.Vector3(), _smkP = new THREE.Vector3();
+function smkBeat(at, tv, up, inten, gv, scale = 1) {
+  const q = smkQuality() * scale, n = Math.max(2, Math.round((3 + 3 * Math.min(1, inten)) * q));
+  const hard = Math.min(1, inten);
+  for (let j = 0; j < n; j++) {
+    const core = j === 0, sp = core ? 0.6 : 1.8 + hard;
+    const g = clamp(gv * (core ? 0.82 : 0.9 + Math.random() * 0.28), 0.08, 1);   // light and dark puffs through the plume
+    // spread along the jet, faster and slower, so a beat fills a stretch of the column and runs into the next one
+    // instead of leaving the stack as one ball in a string of beads
+    const f = core ? 0 : j / n, vk = core ? 1.1 : 0.45 + 0.6 * Math.random();
+    _smkP.set(at.x + (Math.random() - 0.5) * 0.4 - tv.x * f * 0.12, at.y + f * up * 0.12, at.z + (Math.random() - 0.5) * 0.4 - tv.z * f * 0.12);
+    _smkV.set(tv.x + (Math.random() - 0.5) * sp, up * vk, tv.z + (Math.random() - 0.5) * sp);
+    emit(_smkP, _smkV, 9 + Math.random() * 6 + hard * 5, core ? 1.8 : 2.4, (core ? 11 : 15) + hard * 13 + Math.random() * 5,
+      (core ? 0.85 : 0.62) + 0.2 * hard, [g, g * 0.985, g * 0.96], 0.95 + 0.3 * hard, 1.0, 0.9 + Math.random() * 0.5);
+  }
+}
+/* An engine standing or drifting with the throttle shut: the blower draws a lazy column of thin grey smoke
+   that rises, twists and curls away in threads. a 0..1 how much, g its grey. */
+function smkDrift(at, tv, a, g, lift) {
+  _smkV.set(tv.x + (Math.random() - 0.5) * 0.5, lift, tv.z + (Math.random() - 0.5) * 0.5);
+  const gg = clamp(g * (0.88 + Math.random() * 0.26), 0.1, 1);
+  emit(at, _smkV, 10 + Math.random() * 5, 1.6, 11 + Math.random() * 5, a, [gg, gg * 0.98, gg * 0.95], 0.85, 0.8, 1.4 + Math.random() * 0.4);
 }
 function updateFX(dt, cam) {
-  const w = ENV.wind, L = FX.light;
+  const w = ENV.wind, L = FX.light, T = (FX.t += dt);
   for (let i = 0; i < FX.N; i++) {
     const age = FX.age[i];
-    if (age > FX.life[i]) { if (FX.alpha[i] !== 0) { FX.alpha[i] = 0; } continue; }
+    if (age > FX.life[i]) { if (FX.alpha[i] !== 0) { FX.alpha[i] = 0; FX.size[i] = 0; FX.wisp[i] = 0; } continue; }
     const t = age / FX.life[i];
     const k = 1 - Math.exp(-dt * FX.drag[i]);
     const j = i * 3;
     FX.vel[j] += (w.x - FX.vel[j]) * k; FX.vel[j + 1] += (FX.buoy[i] * (1 - t) - FX.vel[j + 1] * 0.6) * dt; FX.vel[j + 2] += (w.z - FX.vel[j + 2]) * k;
-    FX.pos[j] += FX.vel[j] * dt; FX.pos[j + 1] += FX.vel[j + 1] * dt; FX.pos[j + 2] += FX.vel[j + 2] * dt;
-    FX.size[i] = lerp(FX.s0[i], FX.s1[i], 1 - (1 - t) * (1 - t));
-    FX.alpha[i] = FX.a0[i] * (1 - t) * (1 - t) * Math.min(1, age * 25);   // full strength almost as it leaves the stack, not a car length up
-    FX.col[j] = FX.base[j] * L.r; FX.col[j + 1] = FX.base[j + 1] * L.g; FX.col[j + 2] = FX.base[j + 2] * L.b;
+    let px = FX.pos[j] + FX.vel[j] * dt, py = FX.pos[j + 1] + FX.vel[j + 1] * dt, pz = FX.pos[j + 2] + FX.vel[j + 2] * dt;
+    const cu = FX.curl[i];
+    if (cu > 0) {
+      // swirling air: a slowly changing rotational flow (the curl of a few sines) that is gentle at the stack and
+      // grows as the plume loses its push, so the smoke rolls, twists and curls instead of rising in a cone
+      const ph = FX.ph[i], A = cu * (0.3 + 1.5 * t) * dt, x = px * 0.11, y = py * 0.13, z = pz * 0.11, s = T * 0.35 + ph;
+      const a1 = Math.sin(y + s) + Math.cos(z * 1.7 - s * 0.6), b1 = Math.sin(z + s * 0.8) + Math.cos(x * 1.9 + s * 0.5), c1 = Math.sin(x * 1.3 - s * 0.7) + Math.cos(y * 1.6 + s);
+      px += (Math.cos(y * 1.6 + s) - b1 * 0.5) * A * 1.4;
+      py += (Math.sin(x * 1.3 + s * 0.9) - c1 * 0.3) * A * 0.7;
+      pz += (Math.cos(x * 1.9 - s) - a1 * 0.5) * A * 1.4;
+      FX.wisp[i] = 0.72 * smooth(0.15, 0.8, t * Math.min(1.4, cu));   // the body never quite clears: wisps on a soft haze
+    }
+    FX.pos[j] = px; FX.pos[j + 1] = py; FX.pos[j + 2] = pz;
+    const grow = cu > 0 ? 1 - Math.pow(1 - t, 3.5) : 1 - (1 - t) * (1 - t);   // smoke swells fast as it leaves the stack, then slowly
+    FX.size[i] = lerp(FX.s0[i], FX.s1[i], grow);
+    // full strength almost as it leaves the stack, holding thick for the first part of its climb, then thinning away
+    const fade = cu > 0 ? (1 - smooth(0.3, 1, t)) * (1 - 0.3 * t) : (1 - t) * (1 - t);
+    FX.alpha[i] = FX.a0[i] * fade * Math.min(1, age * 25);
+    // smoke spreads and lightens as it mixes with the air
+    const lift = cu > 0 ? 0.45 * t : 0, gl = 0.78;
+    FX.col[j] = lerp(FX.base[j], gl, lift) * L.r; FX.col[j + 1] = lerp(FX.base[j + 1], gl, lift) * L.g; FX.col[j + 2] = lerp(FX.base[j + 2], gl * 0.99, lift) * L.b;
     FX.age[i] = age + dt;
   }
-  FX.g.attributes.position.needsUpdate = true; FX.g.attributes.aSize.needsUpdate = true; FX.g.attributes.aAlpha.needsUpdate = true; FX.g.attributes.aColor.needsUpdate = true;
+  const A = FX.g.attributes;
+  A.position.needsUpdate = true; A.aSize.needsUpdate = true; A.aAlpha.needsUpdate = true; A.aColor.needsUpdate = true; A.aWisp.needsUpdate = true;
   const U = FX.mat.uniforms;
   U.uScale.value = innerHeight * ppPx() * 0.5 / Math.tan(cam.fov * Math.PI / 360);
   // the key light in view space, how strong it is through the weather, and its colour
@@ -22733,12 +22809,12 @@ class RemoteTrain {
           if (inten > 0.05) for (let i = 0; i < steps; i++) {
             if (this.bus && d < 900) sndChuff(q - i, n, inten * (0.6 + 0.4 * Math.min(1, n * 1.2)), this.bus.g, false);
             const stack = T.worldOf(L.stackPos, this.wp);
-            for (let j = 0; j < 2; j++) emit(stack, _mpA.set(this.tv.x + (Math.random() - 0.5) * 1.5, 7 + 13 * inten + Math.random() * 3, this.tv.z + (Math.random() - 0.5) * 1.5), 4 + Math.random() * 3 + inten * 2, 1.1, 7 + inten * 7, 0.55 + 0.25 * inten, [0.7, 0.69, 0.67], 0.9, 1.1);
+            smkBeat(stack, this.tv, (7 + 13 * inten + Math.random() * 3) / (1 + Math.abs(this.v) / 14), inten, lerp(0.7, 0.4, Math.min(1, inten)), 0.7);
           }
           this.chuffQ = q;
         }
         this.idleT += dt;
-        if (this.idleT > 0.14) { this.idleT = 0; if (st.ex < 0.05) emit(T.worldOf(L.stackPos, this.wp), _mpA.set(this.tv.x, 2.8, this.tv.z), 5 + Math.random() * 2, 1.0, 5.5, 0.12, [0.55, 0.53, 0.5], 0.7, 0.9); }
+        if (this.idleT > 0.14) { this.idleT = 0; if (st.ex < 0.05) smkDrift(T.worldOf(L.stackPos, this.wp), this.tv, 0.22, 0.6, 2.8); }
       }
     }
     // sound
@@ -28407,7 +28483,7 @@ function steamFX(dt, T, tv) {
         // beats that fell between this frame and the last leave the stack where it was then, so at speed the plume is
         // one unbroken stream out of the stack; the faster the engine runs, the flatter the rushing air lays it back
         const at = _fxStk.copy(stack).addScaledVector(tv, -dt * i / steps), up = (7 + 13 * intensity + Math.random() * 3) / (1 + Math.abs(S.v) / 14);
-        for (let j = 0; j < 3; j++) emit(at, new THREE.Vector3(tv.x + (Math.random() - 0.5) * 1.5, up, tv.z + (Math.random() - 0.5) * 1.5), 4 + Math.random() * 3 + intensity * 2, 1.5, 7 + intensity * 7, 0.55 + 0.25 * intensity, [gv, gv * 0.98, gv * 0.95], 0.9, 1.1);
+        smkBeat(at, tv, up, intensity, gv, L.art ? 0.8 : 1);   // 10_sky_fx.js: a dark core and rolling billows that curl apart as they climb
         if (S.priming) emit(stack, new THREE.Vector3(tv.x, 9, tv.z), 2.5, 0.8, 5, 0.6, [0.95, 0.96, 0.98], 0.2, 1.2);
         if (S.cocks) for (const cp of L.cockPos) { const p = T.worldOf(cp); const side = new THREE.Vector3(0, 0, Math.sign(cp.z) * (4 + Math.random() * 3)).applyQuaternion(_cq.setFromRotationMatrix(_cm.extractRotation(L.root.matrixWorld))); emit(p, new THREE.Vector3(tv.x + side.x + T.lead.fwd.x * 3, -0.6, tv.z + side.z + T.lead.fwd.z * 3), 1.1 + Math.random() * 0.4, 0.4, 3.2, 0.7, [0.95, 0.95, 0.97], 0.4, 1.6); }
       } else if (k % 2 === 0 && n > 0.15) sndClank(n);
@@ -28418,11 +28494,13 @@ function steamFX(dt, T, tv) {
   idleT += dt;
   if (idleT > 0.09) {
     idleT = 0;
-    const a = 0.18 * (S.fire + S.blower * 0.8) * (working ? 0.4 : 1);
-    if (a > 0.02) emit(stack, new THREE.Vector3(tv.x, 2.5 + S.blower * 6, tv.z), 5 + Math.random() * 2, 1.0, 5.5, a, [0.55, 0.53, 0.5], 0.7, 0.9);
+    // between beats, or standing with the throttle shut, the blower's draft lifts a lazy column that twists away in wisps
+    const a = 0.3 * (S.fire + S.blower * 0.8) * (working ? 0.35 : 1);
+    if (a > 0.02 && Math.random() < 0.4 + 0.6 * smkQuality()) smkDrift(stack, tv, Math.min(0.5, a), lerp(0.66, 0.38, clamp(S.fire - 0.3, 0, 1)), 2.5 + S.blower * 6);
     if (S.injector && Math.random() < 0.6) emit(T.worldOf(L.injPos), new THREE.Vector3(tv.x, -0.4, tv.z), 0.9, 0.3, 1.5, 0.35, [0.95, 0.95, 0.97], 0.3, 1.5);
   }
-  if (S.safety) for (let j = 0; j < 2; j++) emit(T.worldOf(L.safetyPos), new THREE.Vector3(tv.x + (Math.random() - 0.5), 16 + Math.random() * 6, tv.z), 2.2, 0.5, 5, 0.7, [0.97, 0.97, 0.99], 0.3, 1.4);
+  // a popping safety valve: a hard white jet that bursts into a billow a few metres up and is gone, not a pencil line into the sky
+  if (S.safety) for (let j = 0; j < 2; j++) emit(T.worldOf(L.safetyPos), new THREE.Vector3(tv.x + (Math.random() - 0.5) * 2, 9 + Math.random() * 4, tv.z + (Math.random() - 0.5) * 2), 1.8 + Math.random() * 0.8, 0.6, 7 + Math.random() * 3, 0.75, [0.97, 0.97, 0.99], 0.3, 1.4, 0.5);
   if (S.whistle > 0.05 && Math.random() < 0.8) emit(T.worldOf(L.whistlePos), new THREE.Vector3(tv.x * 0.8, 6 + S.whistle * 6, tv.z * 0.8), 1.6, 0.35, 3.2, 0.55 * S.whistle, [0.97, 0.97, 0.99], 0.4, 1.4);
   if (S.pumping && S.P > 50) { pumpT += dt; if (pumpT > 0.52) { pumpT = 0; GAME.pumpPh = (GAME.pumpPh || 0) + 1; sndPump(GAME.pumpPh); if (GAME.pumpPh % 2) emit(T.worldOf(L.pumpPos), new THREE.Vector3(tv.x, 2.5, tv.z), 1.2, 0.3, 1.6, 0.35, [0.93, 0.93, 0.95], 0.6, 1.2); } }
   return { src: stack, working };

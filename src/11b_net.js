@@ -348,12 +348,12 @@ class RemoteTrain {
           if (inten > 0.05) for (let i = 0; i < steps; i++) {
             if (this.bus && d < 900) sndChuff(q - i, n, inten * (0.6 + 0.4 * Math.min(1, n * 1.2)), this.bus.g, false);
             const stack = T.worldOf(L.stackPos, this.wp);
-            for (let j = 0; j < 2; j++) emit(stack, _mpA.set(this.tv.x + (Math.random() - 0.5) * 1.5, 7 + 13 * inten + Math.random() * 3, this.tv.z + (Math.random() - 0.5) * 1.5), 4 + Math.random() * 3 + inten * 2, 1.1, 7 + inten * 7, 0.55 + 0.25 * inten, [0.7, 0.69, 0.67], 0.9, 1.1);
+            smkBeat(stack, this.tv, (7 + 13 * inten + Math.random() * 3) / (1 + Math.abs(this.v) / 14), inten, lerp(0.7, 0.4, Math.min(1, inten)), 0.7);
           }
           this.chuffQ = q;
         }
         this.idleT += dt;
-        if (this.idleT > 0.14) { this.idleT = 0; if (st.ex < 0.05) emit(T.worldOf(L.stackPos, this.wp), _mpA.set(this.tv.x, 2.8, this.tv.z), 5 + Math.random() * 2, 1.0, 5.5, 0.12, [0.55, 0.53, 0.5], 0.7, 0.9); }
+        if (this.idleT > 0.14) { this.idleT = 0; if (st.ex < 0.05) smkDrift(T.worldOf(L.stackPos, this.wp), this.tv, 0.22, 0.6, 2.8); }
       }
     }
     // sound
