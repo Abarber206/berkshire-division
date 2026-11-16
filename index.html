@@ -16687,6 +16687,9 @@ const SLK = {
   C: 1.2e5,       // damping while the gear is working (N s/m)
   UNLOAD: 0.35,   // a friction draft gear gives back about a third of what went in
   BREAK: 2.2e6,   // a knuckle gives at about 500,000 lbf of pull
+  LV: 1.0,        // a flange climbs the rail past about this much side force for the weight on the wheel (Nadal)
+  LV_BUFF: 0.9,   // a car shoved from behind yaws in its trucks and climbs a little sooner
+  CLIMB: 1.2,     // and it has to keep climbing for about this far along the rail before it is off
   CLANK: 0.12,    // slack closing faster than this (m/s) is heard
   HZ: 240,        // substeps a second
   on: true,
@@ -16701,7 +16704,7 @@ function slkState(T) {
   let s = T.slk;
   if (!s || s.V !== V || s.n !== n) {
     s = T.slk = { V, n, x: new Float64Array(n), u: new Float64Array(n), acc: new Float64Array(n), F: new Float64Array(n), M: new Float64Array(n),
-      t: new Float64Array(Math.max(0, n - 1)), d: new Float64Array(Math.max(0, n - 1)), g: new Float64Array(Math.max(0, n - 1)), maxT: 0, minT: 0, accL: 0 };
+      t: new Float64Array(Math.max(0, n - 1)), climb: new Float64Array(n), d: new Float64Array(Math.max(0, n - 1)), g: new Float64Array(Math.max(0, n - 1)), maxT: 0, minT: 0, accL: 0 };
     for (let j = 0; j < n - 1; j++) s.g[j] = slkGap(V[j], V[j + 1]);
   }
   return s;
@@ -16751,6 +16754,7 @@ function slackStep(dt, T, a) {
   // the jolt the engine took this step: the cab lurches the other way (10b_slide.js)
   if (T === GAME.train && typeof SLIDE !== 'undefined') SLIDE.surgeV -= clamp((u[T.li] || 0) - uL0, -0.5, 0.5) * 0.35;
   if (clank.length) slkClank(T, clank);
+  if (T === GAME.train && !S.derailed && slkCurves(T, s, dt)) return;
   // too much pull for a knuckle: it breaks and the train comes apart there
   if (T === GAME.train && s.maxT > SLK.BREAK) {
     for (let j = 0; j < n - 1; j++) if (t[j] > SLK.BREAK && CARS.canCut(T, j + 1)) { slkPart(T, j + 1); break; }
@@ -16777,6 +16781,46 @@ function slkPart(T, j) {
   for (const v of T.vehicles) { v.brake.BP = 0; v.brake.emerg = true; }
   S.brakeH = Math.max(S.brakeH, 0.95);
   if (typeof GAME.event === 'function') GAME.event('knuckle');
+}
+
+/* In-train forces on curves. On a curve each coupler pulls a little across the car as well as along it, by the
+   angle between neighbouring cars (about the car's length times the curvature). Pulling, that side force is toward
+   the inside of the curve: a light car with a lot of heavy train behind it is dragged up over the inside rail
+   (stringlining). Shoving, it is toward the outside, and a car crushed between heavy ones jackknifes out.
+   The side force on the leading wheel against the weight on it is the L/V ratio; past the climb limit for long
+   enough, the flange rides up and the car comes off there. Returns true when it derailed the train. */
+const _slkI = new THREE.Vector3(), _slkR = new THREE.Vector3();
+function slkCurves(T, s, dt) {
+  const V = T.vehicles, n = s.n, t = s.t, sp = Math.abs(S.v);
+  if (sp < 0.5) { s.climb.fill(0); return false; }
+  for (let i = 0; i < n; i++) {
+    const v = V[i], p0 = v.fp && v.fp[0], p1 = v.fp && v.fp[1];
+    if (!p0 || !p0.tp || !p0.tp.e || !p0.tp.e.curv) continue;
+    const k = Math.abs(p0.tp.e.curv(p0.tp.s)) * 0.5 + (p1 && p1.tp && p1.tp.e && p1.tp.e.curv ? Math.abs(p1.tp.e.curv(p1.tp.s)) * 0.5 : Math.abs(p0.tp.e.curv(p0.tp.s)) * 0.5);
+    if (k < 1 / 1200) { s.climb[i] = Math.max(0, s.climb[i] - sp * dt * 2); continue; }
+    // the harder-worked end: its coupler's side force lands mostly on the truck under it (levered out by the
+    // overhang, about a quarter more) and mostly on that truck's leading axle, against an eighth of the car's weight
+    const tf = i > 0 ? t[i - 1] : 0, tr = i < n - 1 ? t[i] : 0, pull = Math.abs(tf) > Math.abs(tr) ? tf : tr;
+    const side = pull * (v.len || 15) * k / 2 * 1.25 * 0.75, lv = Math.abs(side) / (s.M[i] * 9.81 / 8), lim = pull > 0 ? SLK.LV : SLK.LV_BUFF;
+    if (lv > lim) s.climb[i] += sp * dt * lv / lim;
+    else s.climb[i] = Math.max(0, s.climb[i] - sp * dt * 2);
+    if (s.climb[i] < SLK.CLIMB) continue;
+    // off it comes: toward the inside of the curve when pulled, the outside when shoved
+    let wside = Math.random() < 0.5 ? -1 : 1;
+    if (p1 && p0.F && p1.F && p0.F.f && p1.F.f && v.root && v.root.matrix) {
+      _slkI.subVectors(p0.F.f, p1.F.f).multiplyScalar(Math.sign(_slkR.subVectors(p0.F.p, p1.F.p).dot(p0.F.f)) || 1);   // the track turns this way
+      const e = v.root.matrix.elements, dz = _slkI.x * e[8] + _slkI.y * e[9] + _slkI.z * e[10];
+      if (Math.abs(dz) > 1e-6) wside = Math.sign(dz) * (pull > 0 ? 1 : -1);
+    }
+    const tons = Math.round(Math.abs(pull) / 4.4482 / 1000) * 1000, what = v.kind === 'loco' || v.kind === 'loco2' ? 'the engine' : v.kind === 'tender' ? 'the tender' : `car ${i + 1}`;
+    s.climb.fill(0);
+    if (typeof GAME.derail === 'function') GAME.derail(pull > 0
+      ? `Stringlined on the curve: about ${tons ? tons.toLocaleString() : 'a lot of'} lbf of pull dragged ${what} up over the inside rail. Ease into the throttle on curves, and keep light cars away from the head end of a heavy train.`
+      : `Jackknifed on the curve: the slack ran in hard and shoved ${what} off the outside rail. Brake gently with a long train, and stretch it before you shut off.`,
+      'Derailed', { a: v.a0 + (v.len || 15) / 2, side: wside, k: clamp((lv - lim) / lim + 0.25, 0.15, 0.7) });
+    return true;
+  }
+  return false;
 }
 
 /* ============================================================================
