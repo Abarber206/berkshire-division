@@ -37,13 +37,26 @@ test('coaches match the engine: each steam road and each real livery has its own
   assert.equal(w.COACH_PAINT.road !== undefined, true);
 });
 
-test('the observation car roof marker lamp sits on the roof as one piece with the car', { skip }, () => {
+test('the observation car top marker lamp is set into the end of the roof, one piece with the car', { skip }, () => {
   const w = world(), m = w.coachModel(w.LOCO_SPEC['1225'], 3059, true);
   const u = m.root.userData;
-  assert.ok(u.roofLamp && u.markerSets && u.markerSets.roof.length === 1 && u.markerSets.side.length === 2);
+  assert.ok(u.roofLamp && u.sideLamps && u.markerSets && u.markerSets.roof.length === 1 && u.markerSets.side.length === 2);
   const P = modelPieces(m.root), C = components(P);
   assert.equal(C.length, 1, C.slice(1).map(describe).join('\n'));
   // the lens faces the rear and stands above the roof
   const lens = u.markerSets.roof[0];
-  assert.ok(lens.y > 4.3 && lens.x < -10, `lens at ${lens.x.toFixed(2)}, ${lens.y.toFixed(2)}`);
+  assert.ok(lens.y > 3.9 && lens.y < 4.3 && lens.x < -11.5, `lens at ${lens.x.toFixed(2)}, ${lens.y.toFixed(2)}`);
+});
+
+test('freight cars come from a 1950s mix of roads, steady for a given car number', { skip }, () => {
+  const w = world(), count = (type, home) => { const c = {}; for (let n = 10000; n < 30000; n++) { const o = w.carOwner(type, n, home); c[o] = (c[o] || 0) + 1; } return c; };
+  const box = count('box', 'NKP'), hop = count('hopper', 'NKP'), tank = count('tank', 'NKP');
+  assert.ok(Object.keys(box).length >= 10, 'boxcars from many roads: ' + Object.keys(box));
+  assert.ok(box.NKP > 2500 && box.NKP < 8000, `home road share of boxcars: ${box.NKP}`);
+  assert.ok(hop['C&O'] + hop['N&W'] > hop.NYC * 4, 'coal hoppers mostly from the Pocahontas roads');
+  assert.deepEqual(Object.keys(tank).sort(), ['GATX', 'SHPX', 'UTLX'], 'tank cars belong to the leasing lines');
+  assert.equal(w.carOwner('caboose', 12345, 'PM'), 'PM', 'the caboose is always the home road');
+  assert.equal(w.carOwner('box', 12345, 'NKP'), w.carOwner('box', 12345, 'NKP'));
+  // every road in the mix can letter a boxcar
+  for (const type in w.FREIGHT_MIX) for (const [k] of w.FREIGHT_MIX[type]) if (k !== '@' && type !== 'tank') assert.ok(w.freightRoad(k), k);
 });

@@ -308,7 +308,7 @@ function roadCoachPaint() {
 function setObsLamps(st) {
   for (const c of IX.consists()) for (const v of c.vehicles) {
     const u = v.model && v.model.root && v.model.root.userData; if (!u || !u.markerSets) continue;
-    u.roofLamp.visible = st === 'roof'; u.markers = v.markers = u.markerSets[st === 'roof' ? 'roof' : 'side'];
+    u.roofLamp.visible = st === 'roof'; if (u.sideLamps) u.sideLamps.visible = st !== 'roof'; u.markers = v.markers = u.markerSets[st === 'roof' ? 'roof' : 'side'];
     if (v.lamps) { for (const o of [...v.lamps.meshes, ...v.lamps.glows]) { if (o.parent) o.parent.remove(o); if (o.geometry) o.geometry.dispose(); } v.lamps.mat.dispose(); v.lamps = null; }
   }
 }
@@ -378,7 +378,7 @@ function buildMenu() {
   const coachSw = k => coachSwatch(k, GAME.settings.coachColor);
   const coachOpts = {}; for (const k in COACH_PAINT) coachOpts[k] = { name: COACH_PAINT[k].name, sub: COACH_PAINT[k].sub, swatch: coachSw(k) };
   segButtons('optCoach', coachOpts, 'coach', k => { applyCoachPaint(k, GAME.settings.coachColor); refreshMenuGroups(); saveSettings(); });
-  segButtons('optObsLamp', { side: { name: 'Canopy corners', sub: 'A pair of markers' }, roof: { name: 'On the roof', sub: 'One red lamp up top' } }, 'obsLamp', k => { setObsLamps(k); saveSettings(); });
+  segButtons('optObsLamp', { side: { name: 'Canopy corners', sub: 'A pair of markers' }, roof: { name: 'One on top', sub: 'A single red lamp, no lanterns' } }, 'obsLamp', k => { setObsLamps(k); saveSettings(); });
   $('cCoach').value = hexCss(GAME.settings.coachColor);
   $('cCoach').addEventListener('input', () => {
     GAME.settings.coachColor = parseInt($('cCoach').value.slice(1), 16);

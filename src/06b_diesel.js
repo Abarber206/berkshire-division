@@ -27,7 +27,7 @@ const LIVERIES = {
     bands: [[1.98, 2.04, 0xeeeeea], [2.04, 2.46, 0x989da0], [2.46, 2.52, 0xeeeeea]] },
   bo: { name: 'Baltimore & Ohio', sub: 'Blue & grey · B&O', road: 'BALTIMORE & OHIO', init: 'B&O', num: 1827, body: 0x1d3a6c, roof: 0x1a3360, accent: 0xe8b52e, letter: 0xe8b52e, rail: 0xe8b52e, nose: 'plain', herald: 'bo', font: 'serif', real: true,
     bands: [[1.10, 2.48, 0xa4a9ac], [2.48, 2.56, 0xe8b52e]] },
-  co: { name: 'Chesapeake & Ohio', sub: 'Enchantment blue · C&O', road: 'C&O', roadPx: 112, init: 'C&O', num: 1869, body: 0x1f4c88, roof: 0x1b4277, accent: 0xf4c41c, letter: 0xf4c41c, rail: 0xf4c41c, nose: 'plain', herald: 'co', font: 'sans', real: true },
+  co: { name: 'Chesapeake & Ohio', sub: 'Enchantment blue · C&O', road: 'C&O', roadPx: 112, coachRoad: 'CHESAPEAKE AND OHIO', init: 'C&O', num: 1869, body: 0x1f4c88, roof: 0x1b4277, accent: 0xf4c41c, letter: 0xf4c41c, rail: 0xf4c41c, nose: 'plain', herald: 'co', font: 'sans', real: true },
   nw: { name: 'Norfolk & Western', sub: 'Black & gold · N&W', road: 'NORFOLK AND WESTERN', init: 'N&W', num: 8103, body: 0x131415, roof: 0x171819, accent: 0x131415, letter: 0xd8b25a, rail: 0xd8b25a, safety: 0xd8b25a, nose: 'plain', herald: 'nw', font: 'serif', real: true },
   pm: { name: 'Pere Marquette', sub: 'Blue, grey & yellow · PM', road: 'PERE MARQUETTE', init: 'PM', num: 1900, body: 0x24467a, roof: 0x1f3d6b, accent: 0xefc33a, letter: 0xefc33a, rail: 0xefc33a, nose: 'plain', herald: 'pm', font: 'serif', real: true,
     bands: [[1.96, 2.03, 0xefc33a], [2.03, 2.44, 0xa9adaf], [2.44, 2.51, 0xefc33a]] },
@@ -44,72 +44,12 @@ const liveryMixOrder = base => LIVERY_ORDER.filter(k => k !== base && !!LIVERIES
 /* the sides' band decal spans these heights; its texture is one column of the bands */
 const LSIDE = { y0: 1.10, y1: 4.75 };
 
-/* letters set round a circle: centred on the top (bottom = false) or the bottom, reading left to right */
-function ringText(g, s, cx, cy, r, px, bottom, spread = 0.66) {
-  const step = px * spread / r, n = s.length;
-  g.textAlign = 'center'; g.textBaseline = 'middle';
-  for (let i = 0; i < n; i++) {
-    const off = (i - (n - 1) / 2) * step, a = bottom ? Math.PI / 2 - off : -Math.PI / 2 + off;
-    g.save(); g.translate(cx + r * Math.cos(a), cy + r * Math.sin(a)); g.rotate(bottom ? a - Math.PI / 2 : a + Math.PI / 2); g.fillText(s[i], 0, 0); g.restore();
-  }
-}
 function liveryTextures(L, num) {
   const B = hexCss(L.body), A = hexCss(L.accent), T = hexCss(L.letter), S = hexCss(L.safety !== undefined ? L.safety : L.accent);
   const font = (w, px) => (L.font === 'serif' ? `700 ${px}px Georgia, "Times New Roman", serif` : `800 ${px}px "Arial Narrow", "Helvetica Neue", Arial, sans-serif`);
   const road = canvasTex(1024, 128, (g, w, h) => { g.font = font(w, L.roadPx || (L.road.length > 18 ? 66 : 76)); g.fillStyle = T; g.textAlign = 'center'; g.textBaseline = 'middle'; if (g.letterSpacing !== undefined) g.letterSpacing = (L.roadPx ? 14 : 5) + 'px'; g.fillText(L.road, w / 2, h / 2 + 4); });
   const number = canvasTex(256, 128, (g, w, h) => { g.font = font(w, 96); g.fillStyle = T; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(String(num), w / 2, h / 2 + 4); });
-  const herald = canvasTex(256, 256, (g, w, h) => {
-    g.strokeStyle = T; g.fillStyle = T; g.lineJoin = 'round';
-    const fnt = px => (L.font === 'serif' ? `700 ${px}px Georgia, serif` : `800 ${px}px "Arial Narrow", Arial, sans-serif`);
-    const txt = (s, y, px, x = 128) => { g.font = fnt(px); g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(s, x, y); };
-    const px = L.init.length > 3 ? 58 : 78;
-    if (L.herald === 'ring') { g.lineWidth = 14; g.beginPath(); g.arc(128, 128, 110, 0, TAU); g.stroke(); g.lineWidth = 5; g.beginPath(); g.arc(128, 128, 90, 0, TAU); g.stroke(); txt(L.init, 132, px); }
-    else if (L.herald === 'diamond') { g.lineWidth = 12; g.beginPath(); g.moveTo(128, 12); g.lineTo(244, 128); g.lineTo(128, 244); g.lineTo(12, 128); g.closePath(); g.stroke(); txt(L.init, 132, px * 0.85); }
-    else if (L.herald === 'shield') { g.lineWidth = 12; g.beginPath(); g.moveTo(28, 26); g.lineTo(228, 26); g.lineTo(228, 120); g.quadraticCurveTo(220, 205, 128, 238); g.quadraticCurveTo(36, 205, 28, 120); g.closePath(); g.stroke(); txt(L.init, 118, px * 0.9); }
-    else if (L.herald === 'oval') { g.lineWidth = 12; g.beginPath(); g.ellipse(128, 128, 118, 74, 0, 0, TAU); g.stroke(); txt(L.init, 132, px * 0.9); }
-    else if (L.herald === 'sheaf') {
-      g.lineWidth = 10; g.beginPath(); g.arc(128, 128, 112, 0, TAU); g.stroke();
-      g.lineWidth = 5; for (const a of [-0.35, 0, 0.35]) { g.save(); g.translate(128, 196); g.rotate(a); g.beginPath(); g.moveTo(0, 0); g.lineTo(0, -120); g.stroke(); for (let k = 0; k < 6; k++) { g.beginPath(); g.ellipse(-9, -64 - k * 10, 6, 11, -0.5, 0, TAU); g.fill(); g.beginPath(); g.ellipse(9, -64 - k * 10, 6, 11, 0.5, 0, TAU); g.fill(); } g.restore(); }
-      txt(L.init, 214, 34);
-    }
-    // the real roads' heralds
-    else if (L.herald === 'nkp') {        // the box: NICKEL PLATE over ROAD, ruled between
-      g.lineWidth = 9; g.strokeRect(10, 66, 236, 124); g.lineWidth = 4; g.strokeRect(20, 76, 216, 104);
-      g.fillRect(34, 127, 188, 4); txt('NICKEL PLATE', 104, 34); txt('ROAD', 157, 40);
-    }
-    else if (L.herald === 'prr') {        // the keystone, Tuscan red with a gold edge and the PRR monogram
-      const ks = () => { g.beginPath(); g.moveTo(40, 22); g.lineTo(216, 22); g.lineTo(236, 62); g.lineTo(206, 150); g.lineTo(166, 236); g.lineTo(90, 236); g.lineTo(50, 150); g.lineTo(20, 62); g.closePath(); };
-      ks(); g.fillStyle = '#8c2a1f'; g.fill(); g.lineWidth = 10; g.stroke();
-      g.fillStyle = T; txt('PRR', 128, 76);
-    }
-    else if (L.herald === 'nyc') {        // the oval: NEW YORK over a band carrying CENTRAL, SYSTEM under it
-      g.lineWidth = 9; g.beginPath(); g.ellipse(128, 128, 120, 86, 0, 0, TAU); g.stroke();
-      g.fillRect(8, 104, 240, 48); g.fillStyle = B; txt('CENTRAL', 130, 40); g.fillStyle = T;
-      txt('NEW YORK', 77, 30); txt('SYSTEM', 180, 26);
-    }
-    else if (L.herald === 'bo') {         // the Capitol dome inside the BALTIMORE & OHIO ring
-      g.lineWidth = 8; g.beginPath(); g.arc(128, 128, 118, 0, TAU); g.stroke(); g.lineWidth = 4; g.beginPath(); g.arc(128, 128, 82, 0, TAU); g.stroke();
-      g.font = fnt(22); ringText(g, 'BALTIMORE', 128, 128, 100, 22, false, 0.8); ringText(g, 'OHIO', 128, 128, 100, 22, true, 0.8);
-      g.beginPath(); g.moveTo(84, 168); g.lineTo(172, 168); g.lineTo(172, 156); g.lineTo(84, 156); g.closePath(); g.fill();          // the base
-      g.fillRect(98, 128, 60, 28); for (let x = 101; x < 156; x += 9) { g.fillStyle = B; g.fillRect(x, 133, 4, 20); g.fillStyle = T; }   // the drum's columns
-      g.beginPath(); g.arc(128, 128, 30, Math.PI, 0); g.fill(); g.fillRect(124, 84, 8, 16); g.beginPath(); g.arc(128, 82, 5, 0, TAU); g.fill();   // dome, lantern
-      txt('&', 202, 22, 30); txt('&', 202, 22, 226);
-    }
-    else if (L.herald === 'co') {         // FOR PROGRESS: C&O in a ring
-      g.lineWidth = 10; g.beginPath(); g.arc(128, 128, 116, 0, TAU); g.stroke(); g.lineWidth = 4; g.beginPath(); g.arc(128, 128, 96, 0, TAU); g.stroke();
-      txt('C&O', 118, 66); g.fillRect(56, 156, 144, 4); txt('FOR PROGRESS', 180, 20);
-    }
-    else if (L.herald === 'nw') {         // the round herald: NORFOLK and WESTERN round a bar carrying N&W
-      g.lineWidth = 9; g.beginPath(); g.arc(128, 128, 118, 0, TAU); g.stroke();
-      g.font = fnt(26); ringText(g, 'NORFOLK', 128, 128, 94, 26, false, 0.78); ringText(g, 'WESTERN', 128, 128, 94, 26, true, 0.78);
-      g.fillRect(10, 102, 236, 52); g.fillStyle = B; txt('N&W', 130, 46); g.fillStyle = T;
-    }
-    else if (L.herald === 'pm') {         // PERE MARQUETTE round a PM monogram
-      g.lineWidth = 9; g.beginPath(); g.arc(128, 128, 118, 0, TAU); g.stroke(); g.lineWidth = 4; g.beginPath(); g.arc(128, 128, 78, 0, TAU); g.stroke();
-      g.font = fnt(26); ringText(g, 'PERE', 128, 128, 98, 26, false, 0.85); ringText(g, 'MARQUETTE', 128, 128, 98, 26, true, 0.8);
-      txt('PM', 132, 70);
-    }
-  });
+  const herald = canvasTex(256, 256, g => drawHerald(g, L.herald, T, B, L.font, L.init));
   // nose: the side bands carried round (v = 0 at the deck, 1 at the nose top), then the scheme's own nose design
   const nose = canvasTex(256, 128, (g, w, h) => {
     g.fillStyle = B; g.fillRect(0, 0, w, h);

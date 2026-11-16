@@ -151,7 +151,7 @@ IND.pay = function (v, d) {
   IND.cash += amt; IND.cars++; IND.career.cash += amt; IND.career.cars++; IND.save();
   toast(`+$${amt} · ${IND.mark(v)} ${d.id === 'yard' ? 'delivered to' : 'spotted at'} ${d.name}`, 'good', 3200, 'indpay');
 };
-IND.mark = v => `${(v.made && v.made.rs) || ROAD_SHORT} ${(v.made && v.made.num) || ''}`.trim();
+IND.mark = v => { const m = v.made || {}, home = m.rs || ROAD_SHORT; return `${m.type && m.num ? carOwner(m.type, m.num, home) : home} ${m.num || ''}`.trim(); };
 IND.note = function (msg) { IND.log.unshift({ t: S.time, msg }); IND.log.length = Math.min(IND.log.length, 8); CARS.gen++; };
 
 /* ---------------- making up the railroad ---------------- */

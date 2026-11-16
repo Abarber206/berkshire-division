@@ -331,9 +331,11 @@ class Train extends Consist {
     if (!v.markers || v.lamps) return;
     const mat = new THREE.MeshBasicMaterial({ color: 0x2a0806 });
     v.lamps = { mat, lit: -1, glows: [], meshes: [] };
+    const u = v.model && v.model.root && v.model.root.userData, big = u && u.markerSets && v.markers === u.markerSets.roof;   // the observation car's one big top lamp
+    const lr = big ? u.markerR.roof : 0.075;
     for (const p of v.markers) {
-      const m = new THREE.Mesh(new THREE.CircleGeometry(0.075, 14), mat); m.position.copy(p); m.rotation.y = -Math.PI / 2; v.root.add(m); v.lamps.meshes.push(m);
-      if (typeof markerGlow === 'function') { const g = markerGlow(0.8); g.position.copy(p).x -= 0.05; v.root.add(g); v.lamps.glows.push(g); }
+      const m = new THREE.Mesh(new THREE.CircleGeometry(lr, 18), mat); m.position.copy(p); m.rotation.y = -Math.PI / 2; v.root.add(m); v.lamps.meshes.push(m);
+      if (typeof markerGlow === 'function') { const g = markerGlow(big ? 1.15 : 0.8); g.position.copy(p).x -= 0.05; v.root.add(g); v.lamps.glows.push(g); }
     }
   }
   update(dt, theta = 0, rev = 0) {
