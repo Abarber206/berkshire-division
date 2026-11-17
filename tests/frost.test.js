@@ -85,17 +85,17 @@ test('no rails on the lake, and a skating train follows the path its engine made
   const E = NET.edges.find(e => e.ice && e.ice.length), [a, b] = E.ice[0];
   assert.ok(E.trim[0].some(r => r[0] <= a + 0.01 && r[1] >= b - 0.01) && E.trim[1].some(r => r[0] <= a + 0.01 && r[1] >= b - 0.01), 'both rails stop at the shore');
   assert.ok(E.noTie.some(r => r[0] <= a + 0.01 && r[1] >= b - 0.01), 'and so do the ties');
-  // the skating path: a steady swing to the right of the line, read back through the edge's pose
-  const sk = W.skate;
-  sk.iceSkateEdge(); const K = sk.ICE.sk;
-  for (let j = 0; j < K.D.length; j++) K.D[j] = j * 0.05;
-  K.live = true;
+  // a skated path swinging off at 45 degrees: trucks along it stay their proper distance apart (no stretching)
+  const sk = W.skate; sk.iceSkateEdge(); const K = sk.ICE.sk, Z = 6000;
   const F = { p: new W.THREE.Vector3(), f: new W.THREE.Vector3(), u: new W.THREE.Vector3(), r: new W.THREE.Vector3() };
-  const s = a + 400; E.pose(s, F); const p1 = F.p.clone(), f1 = F.f.clone();
-  K.live = false; E.pose(s, F); const p0 = F.p.clone(), r0 = F.r.clone(), f0 = F.f.clone();
-  assert.ok(Math.abs(p1.clone().sub(p0).dot(r0) - 20) < 0.05, `offset ${p1.clone().sub(p0).dot(r0).toFixed(2)} m to the right`);
-  const turned = Math.atan2(f1.dot(r0), f1.dot(f0));
-  assert.ok(Math.abs(turned - Math.atan(0.05)) < 0.002, `heading turned ${(turned * 180 / Math.PI).toFixed(2)} degrees`);
-  E.pose(a - 5, F); assert.ok(F.p.distanceTo(p0) > 1, 'off the ice the track is untouched');
-  K.D.fill(0);
+  const s0 = a + 50; E.pose(s0, F);
+  K.o = s0; K.lo = 0; K.hi = 0; K.openLo = false; K.openHi = true; K.live = true;
+  K.PX[Z] = F.p.x; K.PN[Z] = -F.p.z; K.PH[Z] = Math.atan2(-F.f.z, F.f.x);
+  for (let q = 1; q <= 600; q++) { const H = K.PH[Z] + Math.min(q, 300) / 300 * Math.PI / 4; K.PX[Z + q] = K.PX[Z + q - 1] + Math.cos(H); K.PN[Z + q] = K.PN[Z + q - 1] + Math.sin(H); K.PH[Z + q] = H; K.hi = q; }
+  const at = s => { E.pose(s, F); return F.p.clone(); };
+  for (const s of [s0 + 100, s0 + 350, s0 + 590, s0 + 700]) assert.ok(Math.abs(at(s).distanceTo(at(s + 15)) - 15) < 0.05, `15 m of path at ${(s - s0).toFixed(0)} m is ${at(s).distanceTo(at(s + 15)).toFixed(2)} m`);
+  E.pose(s0 + 500, F); assert.ok(Math.abs(Math.atan2(-F.f.z, F.f.x) - K.PH[Z + 500]) < 1e-6, 'and she points along it');
+  K.live = false; const r0 = at(s0 - 20); K.live = true;
+  assert.ok(at(s0 - 20).distanceTo(r0) < 1e-6, 'behind where she left the rails, the rails');
+  K.live = false;
 });

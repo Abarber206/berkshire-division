@@ -22405,53 +22405,69 @@ function iceStep(dt, T) {
    train brake steadies her, the engine brake alone lets the cars shove and swing her harder. Come up to the
    rails on the far shore close enough and square enough and she drops back on; miss, and she ploughs into
    the bank. */
-ICE.sk = { on: false, live: false, E: null, a: 0, b: 0, D: null, w0: 0, w1: 0, d: 0, psi: 0, w: 0, v: 0, cap: 0, steer: 0, kickT: 1, jackT: 0, hud: null };
-const _isk = new THREE.Vector3();
+ICE.sk = { on: false, live: false, E: null, a: 0, b: 0, PX: null, PN: null, PH: null, o: 0, lo: 0, hi: 0, openLo: false, openHi: false,
+  H: 0, w: 0, v: 0, cap: 0, steer: 0, kickT: 1, jackT: 0, hud: null };
+const SK_N = 12000, SK_Z = 6000;   // path samples, one a metre, and the index of the start
 function iceSkating() { return !!(ICE.on && ICE.sk.on); }
 function iceSkateEdge() {   // the main line's edge across the lake
   const k = ICE.sk; if (k.E) return k.E;
   for (const e of NET.edges) if (e.ice && e.ice.length) {
     const r = e.ice[0]; k.E = e; k.a = r[0]; k.b = r[1];
-    k.D = new Float32Array(Math.ceil(r[1] - r[0]) + 2);
+    k.PX = new Float64Array(SK_N); k.PN = new Float64Array(SK_N); k.PH = new Float64Array(SK_N);
     e.sk = iceSkatePose; break;
   }
   return k.E;
 }
-function iceSkateD(s) { const k = ICE.sk, f = s - k.a; if (!k.D || !(f > 0) || f >= k.D.length - 1) return 0; const i = f | 0; return k.D[i] + (k.D[i + 1] - k.D[i]) * (f - i); }
-function iceSkateSlope(s) {
-  const k = ICE.sk, D = k.D; if (!D) return 0; const n = D.length, f = s - k.a; if (!(f > 0) || f >= n - 1) return 0;
-  const i = f | 0, sl = j => (D[Math.min(n - 1, j + 1)] - D[Math.max(0, j - 1)]) / ((Math.min(n - 1, j + 1) - Math.max(0, j - 1)) || 1);
-  return sl(i) + (sl(i + 1) - sl(i)) * (f - i);
+/* The path is kept by its own length: s on the edge is the distance along the path (sample σ = s - o), so the
+   trucks stay their proper distance apart however far she swings off the surveyed line. Past either written end
+   it runs straight on (or, where that end is rails, the rails take over). */
+function iceSkateAt(s, out) {
+  const k = ICE.sk; let f = s - k.o;
+  if (f < k.lo && !k.openLo) return false;
+  if (f > k.hi && !k.openHi) return false;
+  let j, t, X, N, H;
+  if (f <= k.lo) { j = k.lo + SK_Z; H = k.PH[j]; X = k.PX[j] + Math.cos(H) * (f - k.lo); N = k.PN[j] + Math.sin(H) * (f - k.lo); }
+  else if (f >= k.hi) { j = k.hi + SK_Z; H = k.PH[j]; X = k.PX[j] + Math.cos(H) * (f - k.hi); N = k.PN[j] + Math.sin(H) * (f - k.hi); }
+  else { const i = Math.floor(f); t = f - i; j = i + SK_Z; X = lerp(k.PX[j], k.PX[j + 1], t); N = lerp(k.PN[j], k.PN[j + 1], t); H = k.PH[j] + Math.atan2(Math.sin(k.PH[j + 1] - k.PH[j]), Math.cos(k.PH[j + 1] - k.PH[j])) * t; }
+  out.X = X; out.N = N; out.H = H; return true;
 }
-/* Edge.pose hook: shift the frame onto the skated path and turn it to the path's heading */
+const _skq = { X: 0, N: 0, H: 0 };
+/* Edge.pose hook: put the frame on the skated path, level on the ice */
 function iceSkatePose(s, out) {
-  const k = ICE.sk; if (!k.live || s <= k.a || s >= k.b + 1) return;
-  const d = iceSkateD(s), sl = iceSkateSlope(s); if (d === 0 && sl === 0) return;
-  out.p.addScaledVector(out.r, d);
-  const c = 1 / Math.sqrt(1 + sl * sl), sn = sl * c;
-  _isk.copy(out.f); out.f.multiplyScalar(c).addScaledVector(out.r, sn); out.r.multiplyScalar(c).addScaledVector(_isk, -sn);
+  const k = ICE.sk; if (!k.live || !iceSkateAt(s, _skq)) return;
+  const c = Math.cos(_skq.H), sn = Math.sin(_skq.H);
+  out.p.set(_skq.X, FROST.iceY + ICE_RAIL, -_skq.N); out.f.set(c, 0, -sn); out.r.set(sn, 0, c); out.u.set(0, 1, 0);
 }
 function iceSkateEnd() {
-  const k = ICE.sk; k.on = false; k.live = false; k.cap = 0; k.steer = 0; k.jackT = 0; k.v = 0; if (k.D) k.D.fill(0);
+  const k = ICE.sk; k.on = false; k.live = false; k.cap = 0; k.steer = 0; k.jackT = 0; k.v = 0;
   if (k.hud) k.hud.hidden = true;
 }
-function iceSkateReset() { if (ICE.sk.D) iceSkateEnd(); }
+function iceSkateReset() { if (ICE.sk.PX) iceSkateEnd(); }
 /* the end of the train that is going first, as a track position */
 function iceSkateLead(T) { return (ICE.sk.v || S.v) >= 0 ? T.endTP('front') : T.endTP('rear'); }
+/* slide every tracked point of the train (and the path's origin with it) along the edge by d: nothing moves in
+   the world, the numbers just make room on the edge */
+function iceSkateShift(T, d) {
+  const k = ICE.sk; for (const p of T.pts) if (p.tp.e === k.E) p.tp.s += d; k.o += d;
+}
 
 function iceSkate(dt, T) {
   const k = ICE.sk, E = iceSkateEdge(); if (!E || !(dt > 0)) return;
-  const tp = iceSkateLead(T), onE = tp.e === E, ls = tp.s;
+  let tp = iceSkateLead(T); const onE = tp.e === E;
   if (!k.on) {
-    if (!onE || ls <= k.a || ls >= k.b) return;
-    // off the end of the rails
-    k.on = true; k.live = true; k.D.fill(0); k.w0 = k.w1 = ls; k.d = 0; k.psi = 0; k.w = (Math.random() - 0.5) * 0.03; k.v = S.v; k.cap = 0; k.jackT = 0;
-    tp.pose(FR); iceStar(FR.p.x, -FR.p.z, 0.8);
+    if (!onE || tp.s <= k.a || tp.s >= k.b) return;
+    // off the end of the rails: the path starts where she leaves them, heading the way the rails ran
+    const u0 = S.v * tp.o, j = SK_Z;
+    E.pose(tp.s, FR); k.o = tp.s; k.lo = k.hi = 0;
+    k.PX[j] = FR.p.x; k.PN[j] = -FR.p.z; k.PH[j] = Math.atan2(-FR.f.z, FR.f.x);
+    k.openLo = u0 < 0; k.openHi = u0 >= 0;   // the end she came from is rails
+    k.on = true; k.live = true; k.w = (Math.random() - 0.5) * 0.03; k.v = S.v; k.cap = 0; k.jackT = 0;
+    iceStar(FR.p.x, -FR.p.z, 0.8);
     if (AU.on) sndClunk(1, 0);
     toast('Off the end of the rails and out on the ice! Steer with the sanders (A / D) and the throttle, and line her up with the lanterns on the far shore.', 'warn', 7000, 'skate');
   }
   // speed: she rolls on her wheels with nothing to hold her to a line; power pushes a little, the brakes drag a little
-  const v0 = k.v, sg = Math.sign(v0) || Math.sign(S.reverser) || 1;
+  const v0 = k.v;
   let bcAll = 0, nb = 0; for (const x of T.vehicles) if (x.brake) { bcAll += x.brake.BC; nb++; }
   const fAll = clamp(nb ? bcAll / nb / 64 : 0, 0, 1), fLoco = clamp(T.lead.brake ? T.lead.brake.BC / 64 : 0, 0, 1);
   const thr = S.derailed ? 0 : S.throttle * (Math.abs(S.reverser) > 0.05 ? 1 : 0), dirT = Math.sign(S.reverser) || 0;
@@ -22461,8 +22477,16 @@ function iceSkate(dt, T) {
   k.v = nv; S.v = nv; S.vw = nv + thr * dirT * 6;   // the drivers spin on the ice under power
   const v = Math.abs(nv), u = nv * tp.o;              // u: speed along the edge
   if (!onE) { iceSkateCheckEnd(T); return; }
-  // writing new path (out past where the engine has been) or following the path she already made
-  const ahead = u > 0 ? ls > k.w1 : ls < k.w0;
+  // keep the whole train on the edge: once every point is out on the path, move the numbers back from the edge's end
+  if (!k.cap) {
+    let mn = Infinity, mx = -Infinity, all = true;
+    for (const p of T.pts) { if (p.tp.e !== E) { all = false; break; } mn = Math.min(mn, p.tp.s); mx = Math.max(mx, p.tp.s); }
+    if (all && (mx > E.len - 80 || mn < 80)) {
+      const d = mx > E.len - 80 ? Math.max(-(mn - 20), -1500) : Math.min(E.len - 20 - mx, 1500);
+      iceSkateShift(T, d); k.openLo = k.openHi = true; tp = iceSkateLead(T);
+    }
+  }
+  const f = tp.s - k.o, ahead = u > 0 ? f > k.hi : f < k.lo;
   if (ahead && !k.cap) {
     // swing: sand on one side with power on, shoving cars with only the engine braked, the ice's own ripples
     const steer = k.steer * (0.02 + 0.07 * thr) * Math.min(1, v / 6);
@@ -22470,17 +22494,11 @@ function iceSkate(dt, T) {
     const damp = 0.45 + 1.0 * thr + 1.6 * fAll;
     k.kickT -= dt; if (k.kickT <= 0) { k.kickT = 0.8 + 2.2 * Math.random(); k.w += (Math.random() - 0.5) * 0.035 * Math.min(1, v / 15); }
     k.w += (steer + shove - damp * k.w) * dt; k.w = clamp(k.w, -0.3, 0.3);
-    k.psi += -k.w * dt + E.curv(ls) * u * dt;
-    k.psi = clamp(k.psi, -1.2, 1.2);
-    // lay the path down from the last written point to here
-    // (from the engine's own offset: the samples just ahead of her are not written yet)
-    const from = u > 0 ? k.w1 : k.w0, d0 = k.d, t = Math.tan(k.psi);
-    const j0 = Math.ceil(Math.min(from, ls) - k.a), j1 = Math.floor(Math.max(from, ls) - k.a);
-    for (let j = Math.max(0, j0); j <= Math.min(k.D.length - 1, j1); j++) k.D[j] = d0 + t * (k.a + j - from);
-    // and a few metres on ahead along the same heading, so the pilot and front truck never read unwritten path
-    for (let q = 1; q <= 4; q++) { const j = Math.round(ls - k.a) + q * Math.sign(u); if (j >= 0 && j < k.D.length) k.D[j] = d0 + t * (k.a + j - from); }
-    if (u > 0) k.w1 = ls; else k.w0 = ls;
-    k.d = d0 + t * (ls - from);
+    // lay the path down to here, a metre at a time, turning as she turns (w: anticlockwise)
+    const end = u > 0 ? k.hi : k.lo, H0 = k.PH[end + SK_Z], H1 = H0 + k.w * dt;
+    if (u > 0) { const n = Math.floor(f) - k.hi; for (let q = 1; q <= n && k.hi + SK_Z + 1 < SK_N; q++) { const j = k.hi + SK_Z, H = lerp(H0, H1, q / n); k.PX[j + 1] = k.PX[j] + Math.cos(H); k.PN[j + 1] = k.PN[j] + Math.sin(H); k.PH[j + 1] = H; k.hi++; } }
+    else { const n = k.lo - Math.ceil(f); for (let q = 1; q <= n && k.lo + SK_Z - 1 >= 0; q++) { const j = k.lo + SK_Z, H = lerp(H0, H1, q / n); k.PX[j - 1] = k.PX[j] - Math.cos(H); k.PN[j - 1] = k.PN[j] - Math.sin(H); k.PH[j - 1] = H; k.lo--; } }
+    k.PH[(u > 0 ? k.hi : k.lo) + SK_Z] = H1;
     // swung too hard: she slides out sideways and the train jackknifes across the ice
     const lat = v * Math.abs(k.w);
     k.jackT = lat > ICE.JACK ? k.jackT + dt : Math.max(0, k.jackT - dt);
@@ -22490,35 +22508,43 @@ function iceSkate(dt, T) {
       GAME.derail(`Jackknifed out on the ice at ${Math.round(v / MPH)} mph: swung too hard, the engine slid out and the train folded up behind her.`, 'Jackknifed', { a: x.a0 + x.len / 2, side: Math.sign(k.w) || 1, k: 1 });
       return;
     }
-  } else if (!ahead) { k.psi = iceSkateSlope(ls); k.w *= Math.max(0, 1 - dt * 2); k.d = iceSkateD(ls); }
-  const d = k.d;
-  // up against the shore away from the rails: she runs up the bank
+  } else if (!ahead) k.w *= Math.max(0, 1 - dt * 2);
+  const A = iceSkateAim(T);
   tp.pose(FR);
-  const sh = frShore(FR.p.x, -FR.p.z), target = u > 0 ? k.b : k.a, toGo = (target - ls) * Math.sign(u || 1);
-  if (!k.cap && v > 0.2 && toGo < Math.max(1.2, v * dt * 2)) {
-    if (Math.abs(d) < ICE.CAP_D && Math.abs(k.psi) < ICE.CAP_A) {
-      // dropped back on: ease the last stretch of path onto the rails so the cars behind follow her on
+  const sh = frShore(FR.p.x, -FR.p.z);
+  if (!k.cap && v > 0.2 && A.dist < Math.max(1.2, v * dt * 2)) {
+    if (Math.abs(A.off) < ICE.CAP_D && Math.abs(A.ang) < ICE.CAP_A) {
+      // dropped back on: put her at the end of the rails, and ease the last of the path onto their line
       k.cap = 1;
-      for (let j = 0; j < k.D.length; j++) { const s = k.a + j, q = (target - s) * Math.sign(u); if (q >= 0 && q < 45) k.D[j] *= smooth(0, 45, q); }
+      const fw = u > 0, tgt = fw ? k.b : k.a, sg = fw ? 1 : -1;
+      iceSkateShift(T, tgt - tp.s);
+      const [Xt, Nt] = E.xz(tgt), h = E.heading(tgt), fe = tgt - k.o;
+      if (fw) { k.hi = Math.floor(fe); k.openHi = false; } else { k.lo = Math.ceil(fe); k.openLo = false; }
+      for (let q = 0; q <= 45; q++) {
+        const j = (fw ? k.hi - q : k.lo + q) + SK_Z; if (j < 0 || j >= SK_N) break;
+        const w = 1 - smooth(0, 45, q), back = (Math.abs(fe - (j - SK_Z))) * sg;
+        k.PX[j] = lerp(k.PX[j], Xt - Math.cos(h) * back, w); k.PN[j] = lerp(k.PN[j], Nt - Math.sin(h) * back, w);
+        k.PH[j] = k.PH[j] + Math.atan2(Math.sin(h - k.PH[j]), Math.cos(h - k.PH[j])) * w;
+      }
       if (AU.on) { sndClunk(1, 0); sndClunk(1, 0.12); }
-      toast(`Back on the rails! Missed by only ${(Math.abs(d) * 100).toFixed(0)} cm.`, 'good', 5000, 'skate');
+      toast(`Back on the rails! Missed by only ${(Math.abs(A.off) * 100).toFixed(0)} cm.`, 'good', 5000, 'skate');
       iceStar(FR.p.x, -FR.p.z, 0.6);
     } else {
-      GAME.derail(`Missed the rails on the far shore by ${Math.abs(d).toFixed(1)} m${Math.abs(k.psi) >= ICE.CAP_A ? `, coming in ${(Math.abs(k.psi) * 180 / Math.PI).toFixed(0)}° off square` : ''}. She ploughed into the bank at ${Math.round(v / MPH)} mph.`, 'Missed the rails', { a: k.v >= 0 ? 0 : T.length, side: Math.sign(d) || 1, k: 1 });
+      GAME.derail(`Missed the rails on the far shore by ${Math.abs(A.off).toFixed(1)} m${Math.abs(A.ang) >= ICE.CAP_A ? `, coming in ${(Math.abs(A.ang) * 180 / Math.PI).toFixed(0)}° off square` : ''}. She ploughed into the bank at ${Math.round(v / MPH)} mph.`, 'Missed the rails', { a: k.v >= 0 ? 0 : T.length, side: Math.sign(A.off) || 1, k: 1 });
       return;
     }
-  } else if (!k.cap && v > 1 && sh > -1.5 && toGo > 40) {
-    GAME.derail(`Ran out of ice: she skated ${Math.abs(d).toFixed(0)} m off the line and up onto the shore at ${Math.round(v / MPH)} mph.`, 'Ran aground', { a: k.v >= 0 ? 0 : T.length, side: Math.sign(d) || 1, k: 1 });
+  } else if (!k.cap && v > 1 && sh > -1.5 && A.dist > 40 && Math.abs(tp.s - k.o) > 60) {
+    GAME.derail(`Ran out of ice: she skated ${Math.abs(A.off).toFixed(0)} m off the line of the rails and up onto the shore at ${Math.round(v / MPH)} mph.`, 'Ran aground', { a: k.v >= 0 ? 0 : T.length, side: Math.sign(A.off) || 1, k: 1 });
     return;
   }
   iceSkateSpray(dt, T, v);
-  iceSkateHud(iceSkateAim(T));
+  iceSkateHud(A);
   iceSkateCheckEnd(T);
 }
 /* the train is all off the ice again: the path is finished with */
 function iceSkateCheckEnd(T) {
   const k = ICE.sk;
-  for (const x of T.vehicles) if (x.tp) for (const q of x.tp) { const t = q.tp; if (t && t.e === k.E && t.s > k.a - 1 && t.s < k.b + 1) return; }
+  for (const p of T.pts) { const t = p.tp; if (t.e === k.E && iceSkateAt(t.s, _skq)) return; }
   iceSkateEnd();
 }
 /* snow and frost kicked up by the wheels, a white plume when she is swinging */
@@ -22544,9 +22570,7 @@ function iceSkateSpray(dt, T, v) {
 function iceSkateAim(T) {
   const k = ICE.sk, E = k.E, tp = iceSkateLead(T), u = k.v * tp.o, fw = u >= 0, sEnd = fw ? k.b : k.a;
   const [Xt, Nt] = E.xz(sEnd), h = E.heading(sEnd) + (fw ? 0 : Math.PI);
-  // where the engine is and which way she points, from her own offset and heading off the surveyed line
-  const [Xl, Nl] = E.xz(tp.s), hl = E.heading(tp.s), X = Xl + Math.sin(hl) * k.d, N = Nl - Math.cos(hl) * k.d;
-  const th = hl - Math.atan(Math.tan(k.psi)) + (fw ? 0 : Math.PI);
+  tp.pose(FR); const X = FR.p.x, N = -FR.p.z, th = Math.atan2(-FR.f.z, FR.f.x) + (tp.o > 0 === fw ? 0 : Math.PI);
   const dx = X - Xt, dn = N - Nt;
   return { off: dx * Math.sin(h) - dn * Math.cos(h), ang: Math.atan2(Math.sin(th - h), Math.cos(th - h)), dist: -(dx * Math.cos(h) + dn * Math.sin(h)) };
 }
