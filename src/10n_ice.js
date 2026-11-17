@@ -241,10 +241,12 @@ function iceSkate(dt, T) {
   const f = tp.s - k.o, ahead = u > 0 ? f > k.hi : f < k.lo;
   if (ahead && !k.cap) {
     // swing: sand on one side with power on, shoving cars with only the engine braked, the ice's own ripples
-    const steer = k.steer * (0.02 + 0.07 * thr) * Math.min(1, v / 6);
+    // the sanders turn her by side force, not by a fixed rate: at speed the same sand swings her slower,
+    // so steering alone never pulls past the jackknife limit (shoving with the engine brake still can)
+    const steer = k.steer * (0.02 + 0.07 * thr) * Math.min(1, v / 6) * Math.min(1, 15 / Math.max(v, 1));
     const shove = Math.max(0, fLoco - fAll) * (2.2 * k.w + 0.06 * (Math.sign(k.w) || 1)) * Math.min(1, v / 10);
     const damp = 0.45 + 1.0 * thr + 1.6 * fAll;
-    k.kickT -= dt; if (k.kickT <= 0) { k.kickT = 0.8 + 2.2 * Math.random(); k.w += (Math.random() - 0.5) * 0.035 * Math.min(1, v / 15); }
+    k.kickT -= dt; if (k.kickT <= 0) { k.kickT = 0.8 + 2.2 * Math.random(); k.w += (Math.random() - 0.5) * 0.035 * Math.min(1, v / 15) * Math.min(1, 20 / Math.max(v, 1)); }
     k.w += (steer + shove - damp * k.w) * dt; k.w = clamp(k.w, -0.3, 0.3);
     // lay the path down to here, a metre at a time, turning as she turns (w: anticlockwise)
     const end = u > 0 ? k.hi : k.lo, H0 = k.PH[end + SK_Z], H1 = H0 + k.w * dt;
