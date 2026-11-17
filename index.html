@@ -9335,6 +9335,10 @@ function freightModel(type, num, r) {
 const CH = { L: 24.7, hw: 1.52, yT: 1.30, sill: [1.05, 1.47], belt: 2.13, win: [2.2, 3.0], lint: 3.1, eave: 3.43, xb: 11.0, xv: 11.76 };
 /* the coach's window pairs (centres) and each window opening [x0, x1], shared with the seating inside (06g_person.js) */
 const coachPairs = () => { const a = []; for (let i = 0; i < 13; i++) a.push(-9.5 + i * 1.58); return a; };
+/* the saloon's ceiling in section, from the eave (y 0 at CH.eave): the lower deck curving up from the wall lining (hi)
+   through ctl to the clerestory wall at rD (height hD), up the clerestory to hC, and its arch (control height cr).
+   The roof (coachModel) is a shell outside it, and the saloon (06g_person.js) lines it. */
+function coachCeilingProfile() { const hi = CH.hw - 0.085; return { hi, ctl: hi * 0.85, rD: 0.8, hD: 0.29, hC: 0.53, cr: 0.95 }; }
 function coachOpens() { const o = []; for (const x of coachPairs()) for (const d of [-0.33, 0.33]) o.push([x + d - 0.28, x + d + 0.28]); return o; }
 function coachModel(spec, num, observation, trim = '') {
   carMaterials();
@@ -9415,7 +9419,18 @@ function coachModel(spec, num, observation, trim = '') {
   const rL0 = observation ? -(L / 2 - 0.1) : -(CH.xv + 0.06), rL1 = CH.xv + 0.06;
   // the observation end is rounded in plan, the roof sweeping round the platform's corners (radius RR)
   const RR = observation ? 0.8 : 0, rW = d => rE - RR + Math.sqrt(Math.max(0, RR * RR - (RR - d) * (RR - d)));
-  gb.add('roof', new THREE.ExtrudeGeometry(deck, { depth: rL1 - rL0 - RR, bevelEnabled: false, curveSegments: 10 }).rotateY(Math.PI / 2).translate(rL0 + RR, yE, 0));
+  // The roof is a shell, open underneath: the saloon's own ceiling (06g_person.js coachInterior) curves up inside it, so
+  // nothing may close the roof off flat at the eaves (a flat underside there hid the lit ceiling and its lamps).
+  // Each side of the lower deck runs from the eave in over the saloon ceiling's shoulder to the clerestory wall.
+  // (its inner face kept 2.5 cm outside the saloon's ceiling, so the two never fight over the same pixels)
+  const c0 = coachCeilingProfile(), o = 0.025, cin = { hi: c0.hi + o, ctl: c0.ctl + o, rD: c0.rD + o, hD: c0.hD + o, hC: c0.hC + o, cr: c0.cr + o };
+  for (const s of [-1, 1]) {
+    const sh = new THREE.Shape(); sh.moveTo(s * rE, 0); sh.quadraticCurveTo(s * hw * 0.9, 0.3, s * rD, hD); sh.lineTo(s * cin.rD, hD);
+    sh.lineTo(s * cin.rD, cin.hD); sh.quadraticCurveTo(s * cin.ctl, 0.2 + o, s * (cin.hi + 0.005), 0); sh.closePath();
+    gb.add('roof', new THREE.ExtrudeGeometry(sh, { depth: rL1 - rL0 - RR, bevelEnabled: false, curveSegments: 10 }).rotateY(Math.PI / 2).translate(rL0 + RR, yE, 0));
+  }
+  // over the vestibules and past the bulkheads the shell is closed underneath by a flat panel at the eaves
+  for (const [a, b] of observation ? [[CH.xb, rL1], [rL0 + RR, -CH.xb]] : [[CH.xb, rL1], [rL0, -CH.xb]]) gb.box('roof', b - a, 0.012, 2 * rE - 0.02, (a + b) / 2, yE - 0.002, 0);
   if (observation) {
     const prof = deck.getPoints(10).map(p => [p.x, p.y]); if (prof.length > 1 && Math.hypot(prof[0][0] - prof[prof.length - 1][0], prof[0][1] - prof[prof.length - 1][1]) < 1e-6) prof.pop();
     const n = prof.length, N = 12, pos = [], ring = d => prof.map(([z, y]) => [rL0 + d, yE + y, z * rW(d) / rE]);
@@ -9433,7 +9448,11 @@ function coachModel(spec, num, observation, trim = '') {
     gb.add('roof', g);
   }
   const clr = []; clr.push([-rD, hD - 0.02], [rD, hD - 0.02], [rD, hC]); for (let i = 1; i < 12; i++) { const t = i / 12, z = lerp(rD, -rD, t); clr.push([z, (1 - t) * (1 - t) * hC + 2 * (1 - t) * t * cr + t * t * hC]); } clr.push([-rD, hC]);
-  const cs = new THREE.Shape(); cs.moveTo(...clr[0]); for (const p of clr.slice(1)) cs.lineTo(...p); cs.closePath();
+  // the clerestory: its side walls and arched top as a shell over the saloon's clerestory ceiling
+  const cs = new THREE.Shape(); cs.moveTo(rD, hD - 0.02); for (const p of clr.slice(2)) cs.lineTo(...p);   // up one wall, over the arch, down the other
+  cs.lineTo(-rD, hD - 0.02); cs.lineTo(-cin.rD, hD - 0.02); cs.lineTo(-cin.rD, cin.hC);
+  for (let i = 1; i < 12; i++) { const t = i / 12, z = lerp(-cin.rD, cin.rD, t); cs.lineTo(z, (1 - t) * (1 - t) * cin.hC + 2 * (1 - t) * t * cin.cr + t * t * cin.hC); }
+  cs.lineTo(cin.rD, cin.hC); cs.lineTo(cin.rD, hD - 0.02); cs.closePath();
   const xc0 = rL0 + (observation ? 0.6 : 0.62), xc1 = rL1 - 0.62;
   gb.add('roof', new THREE.ExtrudeGeometry(cs, { depth: xc1 - xc0, bevelEnabled: false }).rotateY(Math.PI / 2).translate(xc0, yE, 0));
   for (const [xa, xb] of [[xc1, rL1 - 0.02], [xc0, rL0 + 0.02]]) {      // the hoods: the clerestory section lofted down to the deck
@@ -13657,26 +13676,114 @@ function fallStep(B, dt) {
 }
 
 /* ======== inside a heavyweight coach ========
-   Mahogany below the windows and between them, a cream ceiling following the lower deck and the clerestory,
-   a red carpet, 13 rows of green plush walkover seats two and two with the aisle between (52 seats, one row to
-   each pair of windows), brass parcel racks over the windows, ceiling lamps, and a bulkhead with a door at each
-   end into the vestibule. Built in the coach's own frame (06_models.js CH), and only for coaches near you. */
+   Mahogany panelling below the windows with raised panels and a heater duct along the floor, piers between the
+   windows, a cream frieze, and a cream ceiling following the lower deck and the clerestory, ribbed at every window
+   pair, with the frosted deck sash along the clerestory. A patterned carpet with a runner down the aisle. 13 rows
+   of green plush walkover seats two and two with the aisle between (52 seats, one row to each pair of windows):
+   cast end standards, a cushion and a channel-tufted back for each passenger with a head roll and a small linen
+   cover, padded armrests and a brass grab handle at the aisle. Cased windows with roller shades, brass parcel racks
+   with a few bags on them, glass bowl lamps down the clerestory that really light the car (saloonLight below), and
+   a bulkhead at each end with a doorway into the lit vestibule, a mirror and a water cooler.
+   Built in the coach's own frame (06_models.js CH). Every coach carries one (coachModel). */
 const COACH_IN = { hi: CH.hw - 0.085, aisle: 0.34, seatH: 0.43, seatW: 1.02, rowFwd: 1 };
 COACH_IN.yF = CH.yT + 0.03;
+/* the lamps: one bowl over every other window pair down the clerestory, and one in each vestibule's ceiling */
+const SAL = (() => {
+  const yL = CH.eave + 0.5, L = coachPairs().filter((x, i) => i % 2 === 0).map(x => new THREE.Vector3(x + 0.04, yL, 0));
+  const xv = (CH.xb + CH.xv) / 2;
+  L.push(new THREE.Vector3(xv, CH.eave - 0.12, 0), new THREE.Vector3(-xv, CH.eave - 0.12, 0));
+  return { yL, L, n: L.length, I: { value: 1 }, C: { value: new THREE.Color(0xffd7a3).convertSRGBToLinear() }, amb: { value: 0.1 }, glow: { value: 0 } };
+})();
+/* Lit from the coach's own lamps, worked out per pixel in the coach's frame (the saloon's geometry is in it, so
+   position is coach-local): each lamp lights what faces it, falling off with distance, a little less low down where
+   the seats shade the floor, plus a warm bounce off the cream ceiling. No wrap round edges, so the outside of the
+   car (facing away from every lamp) is never lit from in here. */
+function saloonLight(m) {
+  m.onBeforeCompile = sh => {
+    sh.uniforms.salL = { value: SAL.L }; sh.uniforms.salI = SAL.I; sh.uniforms.salC = SAL.C; sh.uniforms.salAmb = SAL.amb;
+    sh.vertexShader = 'varying vec3 vSalP;\nvarying vec3 vSalN;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n vSalP = position; vSalN = objectNormal;');
+    sh.fragmentShader = `#define SAL_N ${SAL.n}\nvarying vec3 vSalP;\nvarying vec3 vSalN;\nuniform vec3 salL[ SAL_N ];\nuniform float salI;\nuniform vec3 salC;\nuniform float salAmb;\n` +
+      sh.fragmentShader.replace('#include <lights_fragment_end>', `#include <lights_fragment_end>
+  {
+    vec3 sn = normalize( vSalN );
+    #ifdef FLIP_SIDED
+      sn = - sn;
+    #endif
+    #ifdef DOUBLE_SIDED
+      sn *= gl_FrontFacing ? 1.0 : - 1.0;
+    #endif
+    float sal = 0.0;
+    for ( int i = 0; i < SAL_N; i ++ ) {
+      vec3 lv = salL[ i ] - vSalP; float d2 = dot( lv, lv );
+      sal += max( dot( sn, lv ) * inversesqrt( d2 ), 0.0 ) / ( 0.35 + d2 * 0.5 );
+    }
+    float low = smoothstep( ${(COACH_IN.yF + 0.05).toFixed(3)}, ${(COACH_IN.yF + 1.0).toFixed(3)}, vSalP.y );
+    float up = 0.5 + 0.5 * max( sn.y, 0.0 ) + 0.35 * max( - sn.y, 0.0 );
+    vec3 salLit = salC * salI * ( sal * mix( 0.55, 1.0, low ) + salAmb * up * mix( 0.6, 1.0, low ) );
+    reflectedLight.indirectDiffuse += salLit * material.diffuseColor;
+    reflectedLight.indirectSpecular += salLit * material.specularColor * 0.3;
+  }`);
+  };
+  m.customProgramCacheKey = () => 'saloon';
+  return m;
+}
+/* fine repeating textures, drawn once: wood grain, plush pile, the carpet and runner, the heater grille */
+function ciTex(name, w, h, draw, rx, ry) {
+  const t = canvasTex(w, h, draw, { repeat: true }); t.repeat.set(rx, ry); return t;
+}
 function coachInMaterials() {
   if (RMAT.ciWood) return;
-  const lit = (c, r = 0.7, m = 0, extra = {}) => { const x = new THREE.MeshStandardMaterial({ color: c, roughness: r, metalness: m, emissive: c, emissiveIntensity: 0.1, ...extra }); (RMAT.ciLit || (RMAT.ciLit = [])).push(x); return x; };
-  RMAT.ciWood = lit(0x5c3220, 0.45);
-  RMAT.ciCeil = lit(0xe2d8bd, 0.8, 0, { side: THREE.BackSide });
-  RMAT.ciCream = lit(0xe2d8bd, 0.8);
-  RMAT.ciCarpet = lit(0x5e1d1d, 0.95);
-  RMAT.ciPlush = lit(0x2e4a36, 0.95);
-  RMAT.ciCover = lit(0xefeadc, 0.9);
-  RMAT.ciFrame = lit(0x2a2522, 0.5, 0.3);
-  RMAT.ciBrass = lit(0xbf9a4a, 0.35, 0.8);
-  RMAT.ciLamp = new THREE.MeshStandardMaterial({ color: 0xfff3d6, emissive: 0xffe2a8, emissiveIntensity: 0.6, roughness: 0.4 });
+  const lit = (c, r = 0.7, m = 0, extra = {}) => { const x = saloonLight(new THREE.MeshStandardMaterial({ color: c, roughness: r, metalness: m, ...extra })); x.userData.noSnow = true; (RMAT.ciLit || (RMAT.ciLit = [])).push(x); return x; };
+  const r = rng(7710);
+  const grain = ciTex('grain', 256, 256, (g, w, h) => {
+    g.fillStyle = '#b07a52'; g.fillRect(0, 0, w, h);
+    for (let i = 0; i < 90; i++) { const y = r() * h, a = 0.05 + r() * 0.12, dk = r() < 0.6; g.strokeStyle = dk ? `rgba(60,25,10,${a})` : `rgba(230,170,120,${a})`; g.lineWidth = 0.6 + r() * 2.2; g.beginPath(); g.moveTo(0, y); for (let x = 0; x <= w; x += 16) g.lineTo(x, y + Math.sin(x * 0.03 + i) * 2.5 + (r() - 0.5)); g.stroke(); }
+  }, 1, 1);
+  const pile = ciTex('pile', 128, 128, (g, w, h) => {
+    g.fillStyle = '#ffffff'; g.fillRect(0, 0, w, h);
+    for (let i = 0; i < 2600; i++) { const v = 200 + r() * 55 | 0; g.fillStyle = `rgb(${v},${v},${v})`; g.fillRect(r() * w, r() * h, 1.5, 1.5); }
+  }, 6, 6);
+  const carpet = ciTex('carpet', 128, 128, (g, w, h) => {
+    g.fillStyle = '#ffffff'; g.fillRect(0, 0, w, h);
+    g.strokeStyle = 'rgba(70,40,20,0.35)'; g.lineWidth = 3;
+    for (const [x, y] of [[32, 32], [96, 96]]) { g.beginPath(); g.moveTo(x, y - 18); g.lineTo(x + 18, y); g.lineTo(x, y + 18); g.lineTo(x - 18, y); g.closePath(); g.stroke(); g.fillStyle = 'rgba(200,150,80,0.45)'; g.beginPath(); g.arc(x, y, 4, 0, TAU); g.fill(); }
+    for (let i = 0; i < 1400; i++) { const v = 205 + r() * 50 | 0; g.fillStyle = `rgba(${v},${v},${v},0.6)`; g.fillRect(r() * w, r() * h, 1, 1); }
+  }, 60, 8);
+  const runner = ciTex('runner', 64, 128, (g, w, h) => {
+    g.fillStyle = '#ffffff'; g.fillRect(0, 0, w, h);
+    g.fillStyle = 'rgba(200,160,90,0.8)'; g.fillRect(0, 6, w, 5); g.fillRect(0, h - 11, w, 5);
+    g.fillStyle = 'rgba(40,20,10,0.35)'; for (let x = 0; x < w; x += 16) { g.beginPath(); g.moveTo(x, 40); g.lineTo(x + 8, 64); g.lineTo(x, 88); g.lineTo(x - 8, 64); g.closePath(); g.fill(); }
+  }, 30, 1);
+  const grille = ciTex('grille', 64, 32, (g, w, h) => {
+    g.fillStyle = '#ffffff'; g.fillRect(0, 0, w, h); g.fillStyle = '#202020'; for (let x = 2; x < w; x += 6) g.fillRect(x, 6, 3, h - 12);
+  }, 80, 1);
+  RMAT.ciWood = lit(0x6a3a22, 0.42, 0, { map: grain });
+  RMAT.ciWoodDk = lit(0x3e2114, 0.38, 0, { map: grain });
+  RMAT.ciCeil = lit(0xeee3c6, 0.85, 0, { side: THREE.BackSide });
+  RMAT.ciCream = lit(0xe6dbbd, 0.8);
+  RMAT.ciRib = lit(0xc8b88e, 0.5, 0.35);
+  RMAT.ciCarpet = lit(0x6a2020, 0.97, 0, { map: carpet });
+  RMAT.ciRunner = lit(0x4a1414, 0.97, 0, { map: runner });
+  RMAT.ciPlush = lit(0x2f5a3c, 0.93, 0, { map: pile });
+  RMAT.ciPlushDk = lit(0x1f3d29, 0.95, 0, { map: pile });
+  RMAT.ciCover = lit(0xd9cfb4, 0.95);
+  RMAT.ciLeather = lit(0x3b2416, 0.5);
+  RMAT.ciFrame = lit(0x2c2724, 0.45, 0.5);
+  RMAT.ciBrass = lit(0xc9a252, 0.3, 0.85);
+  RMAT.ciHeat = lit(0x8a8378, 0.6, 0.4, { map: grille });
+  RMAT.ciShade = lit(0xcdb88c, 0.9, 0, { side: THREE.DoubleSide, emissive: 0xffc88a, emissiveIntensity: 0 });
+  RMAT.ciMirror = lit(0xaab4b8, 0.08, 0.6);
+  RMAT.ciCase = lit(0x5a3a22, 0.55);
+  RMAT.ciCase2 = lit(0x8a6a44, 0.6);
+  RMAT.ciCase3 = lit(0x24324a, 0.6);
+  RMAT.ciDeck = lit(0xc9b98e, 0.5, 0, { emissive: 0xfff0d0, emissiveIntensity: 0.3 });
+  RMAT.ciPane = lit(0x1c252b, 0.12, 0.4);
+  // the lamps' frosted bowls and the bulbs glowing through them
+  RMAT.ciLamp = new THREE.MeshStandardMaterial({ color: 0xfff3dc, emissive: 0xffd9a0, emissiveIntensity: 1.6, roughness: 0.4 });
+  RMAT.ciLamp.userData.noSnow = true;
   // the glass of a coach you can see into: clear, a little tinted, still catching the light
   RMAT.ciGlass = new THREE.MeshStandardMaterial({ color: 0x9fb2b8, roughness: 0.08, metalness: 0.2, transparent: true, opacity: 0.2, depthWrite: false });
+  for (const k of ['ciLamp', 'ciGlass']) RMAT[k].userData.noShadow = true;
 }
 /* the seats in a coach: centre of each place on its cushion, in the coach's frame (all face +X) */
 function coachSeats() {
@@ -13684,25 +13791,90 @@ function coachSeats() {
   for (const x of coachPairs()) for (const z of [-z1, -z0, z0, z1]) out.push({ x: x + 0.04, z, h: COACH_IN.seatH });
   return out;
 }
+/* the side of a seat's cast end standard, in x (forward) and y (up from the floor) */
+function seatStandardGeo(sh) {
+  const s = new THREE.Shape(), t = sh - 0.13, a = sh + 0.19;
+  s.moveTo(-0.26, 0); s.lineTo(0.25, 0); s.lineTo(0.25, 0.03); s.quadraticCurveTo(0.08, 0.05, 0.055, 0.16); s.lineTo(0.055, t);
+  s.lineTo(0.2, t); s.quadraticCurveTo(0.235, t + 0.03, 0.225, a); s.lineTo(0.165, a); s.lineTo(0.165, t + 0.06); s.lineTo(-0.12, t + 0.06);
+  s.lineTo(-0.15, a); s.lineTo(-0.205, a); s.lineTo(-0.18, t); s.lineTo(-0.055, t); s.lineTo(-0.055, 0.16); s.quadraticCurveTo(-0.08, 0.05, -0.26, 0.03); s.closePath();
+  const g = new THREE.ExtrudeGeometry(s, { depth: 0.035, bevelEnabled: false, curveSegments: 4 }); g.translate(0, 0, -0.0175);
+  return g;
+}
+/* a walkover seat for two at (xs, zc) facing +x, the aisle on side -s (toward z = 0) */
+function walkoverSeat(b, xs, zc, s, yF) {
+  const sw = COACH_IN.seatW, sh = COACH_IN.seatH, ze = sw / 2 - 0.025, half = (sw - 0.08) / 2;
+  const std = seatStandardGeo(sh);
+  for (const e of [-1, 1]) {
+    const z = zc + e * ze;
+    b.add('ciFrame', std.clone(), M(xs, yF, z));
+    b.add('ciLeather', cushionGeo(0.44, 0.05, 0.075, 0.022), M(xs + 0.01, yF + sh + 0.19 + 0.022, z));       // padded armrest
+  }
+  b.box('ciFrame', 0.05, 0.05, 2 * ze, xs + 0.18, yF + sh - 0.13 + 0.025, zc);                                    // front rail
+  b.box('ciFrame', 0.05, 0.05, 2 * ze, xs - 0.13, yF + sh - 0.13 + 0.025, zc);                                    // back rail
+  b.box('ciFrame', 0.04, 0.04, 2 * ze, xs + 0.03, yF + 0.11, zc);                                                 // stretcher between the legs
+  // the cushions, one each, with a rolled front edge
+  for (const e of [-1, 1]) {
+    const z = zc + e * (half / 2 + 0.004);
+    b.add('ciPlush', cushionGeo(0.5, 0.13, half, 0.05), M(xs + 0.02, yF + sh - 0.065, z));
+    b.add('ciPlushDk', new THREE.CylinderGeometry(0.035, 0.035, half - 0.06, 10).rotateX(Math.PI / 2), M(xs + 0.245, yF + sh - 0.05, z));
+  }
+  // the backs: leaning 11 degrees on their walkover arms, channel tufted, a head roll and a linen cover on each
+  const lean = 0.2, P = (lx, ly) => [xs - 0.2 + lx * Math.cos(lean) - ly * Math.sin(lean), yF + sh - 0.05 + lx * Math.sin(lean) + ly * Math.cos(lean)];
+  const B = (k, geo, lx, ly, z) => { const [x, y] = P(lx, ly); b.add(k, geo, M(x, y, z, 0, 0, lean)); };
+  for (const e of [-1, 1]) {
+    const z = zc + e * (half / 2 + 0.004);
+    B('ciPlush', cushionGeo(0.13, 0.6, half, 0.05), 0, 0.3, z);
+    for (const d of [-0.13, -0.045, 0.045, 0.13]) B('ciPlushDk', new THREE.BoxGeometry(0.012, 0.46, 0.012), 0.064, 0.29, z + d);   // channels
+    B('ciPlush', cushionGeo(0.17, 0.14, half - 0.01, 0.06), 0.015, 0.62, z);                                                    // head roll
+    B('ciCover', cushionGeo(0.012, 0.17, half - 0.12, 0.005), 0.104, 0.61, z);                                                  // its cover, in front
+    B('ciCover', cushionGeo(0.07, 0.012, half - 0.12, 0.005), 0.07, 0.695, z);                                                  // and folded over the top
+  }
+  // walkover arms from the standards up to the backs
+  for (const e of [-1, 1]) { const z = zc + e * (ze - 0.035), [x1, y1] = P(-0.02, 0.32); b.add('ciFrame', barGeo(0.016, [xs - 0.16, yF + sh - 0.1, z], [x1, y1, z], 6)); }
+  // a brass grab handle on the aisle corner of the back
+  { const za = zc - s * (sw / 2 - 0.07), [x0, y0] = P(-0.07, 0.62), [x1, y1] = P(-0.07, 0.48), [xm, ym] = P(-0.14, 0.55);
+    b.tube('ciBrass', [[x0, y0, za], [xm, ym, za], [x1, y1, za]], 0.011, 8, 6); }
+}
 function coachInterior(observation) {
   coachInMaterials();
   const b = new GeoBin(), yF = COACH_IN.yF, yT = CH.yT, hi = COACH_IN.hi, xb = CH.xb, [w0, w1] = CH.win, yE = CH.eave, th = 0.03;
   const zw = hi + th / 2;   // the lining's middle; its inside face is at hi
-  // floor
+  // floor: carpet wall to wall, the runner down the aisle
   b.box('ciCarpet', 2 * xb - 0.02, yF - yT, 2 * hi, 0, (yF + yT) / 2, 0);
-  // walls: panelled below the sills, piers between the windows, a frieze over them; sills and window frames
-  const opens = coachOpens(), x0 = -xb + 0.01, x1 = xb - 0.01;
+  b.box('ciRunner', 2 * xb - 0.3, 0.006, 2 * COACH_IN.aisle - 0.02, 0, yF + 0.003, 0);
+  // walls: panelled below the sills, piers between the windows, a frieze over them; sills, casings and sashes
+  const opens = coachOpens(), x0 = -xb + 0.01, x1 = xb - 0.01, pairs = coachPairs();
+  const shade = [0.06, 0.32, 0.06, 0.18, 0.5, 0.06, 0.25, 0.06, 0.06, 0.4, 0.12, 0.06, 0.3];
   for (const s of [-1, 1]) {
     b.box('ciWood', x1 - x0, w0 - yF, th, 0, (w0 + yF) / 2, s * zw);
     b.box('ciCream', x1 - x0, yE - w1, th, 0, (yE + w1) / 2, s * zw);
     let x = x0;
     for (const [a, c] of opens) { b.box('ciWood', a - x, w1 - w0, th, (a + x) / 2, (w0 + w1) / 2, s * zw); x = c; }
     b.box('ciWood', x1 - x, w1 - w0, th, (x1 + x) / 2, (w0 + w1) / 2, s * zw);
-    for (const [a, c] of opens) {
-      b.box('ciWood', c - a + 0.04, 0.035, 0.07, (a + c) / 2, w0 + 0.0175, s * (hi - 0.035 + th));         // sill
-      b.box('ciWood', c - a + 0.04, 0.03, 0.035, (a + c) / 2, w1 - 0.015, s * (hi - 0.0175 + th));          // head
+    opens.forEach(([a, c], i) => {
+      const xm = (a + c) / 2, zi = s * (hi - 0.01);
+      b.box('ciWoodDk', c - a + 0.08, 0.035, 0.08, xm, w0 + 0.0175, s * (hi - 0.04 + th));                    // sill
+      b.box('ciWoodDk', c - a + 0.08, 0.05, 0.03, xm, w1 + 0.01, zi);                                          // head casing
+      for (const e of [-1, 1]) b.box('ciWoodDk', 0.045, w1 - w0 + 0.03, 0.03, xm + e * ((c - a) / 2 + 0.0175), (w0 + w1) / 2, zi);   // side casings
+      b.box('ciWoodDk', c - a, 0.03, 0.025, xm, w0 + (w1 - w0) * 0.62, s * (hi + 0.0));                       // meeting rail of the sash
+      for (const e of [-1, 1]) b.box('ciBrass', 0.03, 0.025, 0.02, xm + e * 0.15, w0 + (w1 - w0) * 0.62 - 0.02, s * (hi - 0.02));   // sash lifts
+      // the roller shade: its roll under the head, drawn down a little way on some windows, with a pull ring
+      const roll = w1 - 0.04, Ls = shade[(i * 7 + (s > 0 ? 3 : 0)) % shade.length];
+      b.add('ciWoodDk', new THREE.CylinderGeometry(0.022, 0.022, c - a + 0.02, 10).rotateZ(Math.PI / 2), M(xm, roll, s * (hi - 0.03)));
+      b.box('ciShade', c - a - 0.01, Ls, 0.004, xm, roll - Ls / 2, s * (hi - 0.045));
+      b.box('ciWoodDk', c - a - 0.02, 0.018, 0.014, xm, roll - Ls, s * (hi - 0.045));
+      b.add('ciBrass', new THREE.TorusGeometry(0.018, 0.004, 5, 12), M(xm, roll - Ls - 0.026, s * (hi - 0.045)));
+    });
+    // raised panels below each window pair, and a heater duct with its grille along the floor
+    for (const xp of pairs) {
+      const pw = 1.08, y0 = yF + 0.22, y1 = w0 - 0.1, zp = s * (hi - 0.01);
+      for (const y of [y0, y1]) b.box('ciWoodDk', pw, 0.035, 0.022, xp, y, zp);
+      for (const e of [-1, 1]) b.box('ciWoodDk', 0.035, y1 - y0 + 0.035, 0.022, xp + e * pw / 2, (y0 + y1) / 2, zp);
     }
-    b.box('ciWood', x1 - x0, 0.1, 0.02, 0, yF + 0.05, s * (hi - 0.01));                                       // skirting
+    b.box('ciHeat', x1 - x0 - 0.02, 0.15, 0.05, 0, yF + 0.075, s * (hi - 0.025));
+    b.box('ciWoodDk', x1 - x0, 0.03, 0.07, 0, yF + 0.165, s * (hi - 0.035));                                       // its cap
+    // coat hooks on the piers between the pairs
+    for (let i = 0; i < pairs.length - 1; i++) { const xh = (pairs[i] + pairs[i + 1]) / 2; b.add('ciBrass', barGeo(0.008, [xh, w1 - 0.1, s * (hi + 0.0)], [xh, w1 - 0.16, s * (hi - 0.06)], 5)); b.add('ciBrass', new THREE.SphereGeometry(0.014, 8, 6), M(xh, w1 - 0.16, s * (hi - 0.06))); }
     // parcel rack: brass rails on brackets over the windows
     for (const z of [hi - 0.08, hi - 0.2, hi - 0.32]) b.add('ciBrass', barGeo(0.009, [x0 + 0.4, yE - 0.12, s * z], [x1 - 0.4, yE - 0.12, s * z], 6));
     b.add('ciBrass', barGeo(0.012, [x0 + 0.4, yE - 0.06, s * (hi - 0.36)], [x1 - 0.4, yE - 0.06, s * (hi - 0.36)], 6));
@@ -13711,54 +13883,128 @@ function coachInterior(observation) {
       b.add('ciBrass', barGeo(0.01, [x, yE - 0.06, s * (hi - 0.36)], [x, yE - 0.12, s * (hi - 0.36)], 5));
       b.add('ciBrass', barGeo(0.01, [x, yE - 0.3, s * (hi + 0.005)], [x, yE - 0.12, s * (hi - 0.2)], 5));
     }
-  }
-  // the ceiling: the lower deck curving up from the wall tops to the clerestory, and its arched top (seen from below)
-  {
-    const rD = 0.8, hD = 0.29, hC = 0.53, cr = 0.95, sh = new THREE.Shape();
-    sh.moveTo(-hi - 0.005, -0.004); sh.quadraticCurveTo(-hi * 0.85, 0.2, -rD, hD); sh.lineTo(-rD, hC);
-    sh.quadraticCurveTo(0, cr, rD, hC); sh.lineTo(rD, hD); sh.quadraticCurveTo(hi * 0.85, 0.2, hi + 0.005, -0.004); sh.closePath();
-    const xe0 = observation ? -xb + 0.01 : -xb + 0.01, len = (xb - 0.01) - xe0;
-    b.add('ciCeil', new THREE.ExtrudeGeometry(sh, { depth: len, bevelEnabled: false, curveSegments: 12 }).rotateY(Math.PI / 2).translate(xe0, yE, 0));
-    // lamps down the clerestory, and the clerestory's deck lights as a band of cream glass
-    for (let x = -9.0; x <= 9.01; x += 3.0) { b.add('ciLamp', new THREE.SphereGeometry(0.11, 14, 8, 0, TAU, Math.PI / 2, Math.PI / 2).translate(x, yE + 0.66, 0)); b.add('ciBrass', new THREE.CylinderGeometry(0.03, 0.03, 0.12, 8).translate(x, yE + 0.71, 0)); }
-  }
-  // bulkheads: a door at each end into the vestibule (the observation car's lounge end is the car's own wall)
-  const dw = 0.42, dh = 2.0;
-  for (const e of observation ? [1] : [1, -1]) {
-    const x = e * (xb - 0.025);
-    for (const s of [-1, 1]) b.box('ciWood', 0.05, yE - yF, hi - dw, x, (yE + yF) / 2, s * (hi + dw) / 2);
-    b.box('ciWood', 0.05, yE - yF - dh, 2 * dw, x, (yE + yF + dh) / 2, 0);
-    b.box('ciBrass', 0.06, 0.04, 2 * dw + 0.08, x, yF + dh + 0.02, 0);
-  }
-  // seats: a walkover seat for two each side of the aisle at every window pair, plush cushion and back, white
-  // covers on the headrests, a cast frame on a pedestal, armrests at the aisle and against the wall
-  const sw = COACH_IN.seatW, sh = COACH_IN.seatH, za = COACH_IN.aisle;
-  for (const x of coachPairs()) for (const s of [-1, 1]) {
-    const zc = s * (za + sw / 2), xs = x + 0.04;
-    b.box('ciFrame', 0.12, sh - 0.12, 0.12, xs, yF + (sh - 0.12) / 2, zc);                                      // pedestal
-    b.box('ciFrame', 0.44, 0.03, 0.34, xs, yF + 0.015, zc);                                                      // its foot
-    b.box('ciFrame', 0.5, 0.06, sw - 0.04, xs, yF + sh - 0.12 + 0.03, zc);                                       // seat frame
-    b.box('ciPlush', 0.52, 0.12, sw - 0.06, xs + 0.01, yF + sh - 0.06 + 0.0, zc);                                // cushion (top at seatH)
-    const back = new THREE.BoxGeometry(0.12, 0.66, sw - 0.06); back.translate(0, 0.33, 0); back.rotateZ(0.2);    // back, leaning 11 degrees
-    b.add('ciPlush', back, M(xs - 0.21, yF + sh - 0.05, zc));
-    const cover = new THREE.BoxGeometry(0.02, 0.2, sw - 0.2); cover.translate(0.07, 0.56, 0); cover.rotateZ(0.2);
-    b.add('ciCover', cover, M(xs - 0.21, yF + sh - 0.05, zc));
-    for (const z of [zc - s * (sw / 2 - 0.03), zc + s * (sw / 2 - 0.03)]) {
-      b.box('ciFrame', 0.42, 0.05, 0.07, xs - 0.02, yF + sh + 0.2, z);                                           // armrest
-      b.box('ciFrame', 0.06, 0.2, 0.05, xs + 0.12, yF + sh + 0.1, z);                                            // and its post
+    // a few bags up on the rack
+    const bags = s > 0 ? [[-7.2, 0.55, 0.16, 'ciCase'], [-2.9, 0.42, 0.2, 'ciCase2'], [3.4, 0.6, 0.15, 'ciCase3'], [7.9, 0.38, 0.22, 'ciCase']] : [[-5.6, 0.5, 0.17, 'ciCase2'], [0.6, 0.62, 0.15, 'ciCase'], [5.1, 0.4, 0.2, 'ciCase3']];
+    for (const [xc, Lb, hb, k] of bags) {
+      b.add(k, cushionGeo(Lb, hb, 0.3, 0.025), M(xc, yE - 0.111 + hb / 2, s * (hi - 0.22)));
+      b.add('ciBrass', barGeo(0.007, [xc - 0.07, yE - 0.111 + hb, s * (hi - 0.37)], [xc + 0.07, yE - 0.111 + hb, s * (hi - 0.37)], 5));
     }
   }
+  // the ceiling: the lower deck curving up from the wall tops to the clerestory, and its arched top (seen from below)
+  const cp = coachCeilingProfile();
+  {
+    const sh = new THREE.Shape();
+    sh.moveTo(-hi - 0.005, -0.004); sh.quadraticCurveTo(-cp.ctl, 0.2, -cp.rD, cp.hD); sh.lineTo(-cp.rD, cp.hC);
+    sh.quadraticCurveTo(0, cp.cr, cp.rD, cp.hC); sh.lineTo(cp.rD, cp.hD); sh.quadraticCurveTo(cp.ctl, 0.2, hi + 0.005, -0.004); sh.closePath();
+    const xe0 = -xb + 0.01, len = (xb - 0.01) - xe0;
+    b.add('ciCeil', new THREE.ExtrudeGeometry(sh, { depth: len, bevelEnabled: false, curveSegments: 12 }).rotateY(Math.PI / 2).translate(xe0, yE, 0));
+    // ribs across it between the window pairs, just proud of the ceiling
+    const prof = [];
+    for (let i = 0; i <= 8; i++) { const t = i / 8, q = 1 - t; prof.push([-(q * q * (hi + 0.005) + 2 * q * t * cp.ctl + t * t * cp.rD), q * q * -0.004 + 2 * q * t * 0.2 + t * t * cp.hD]); }
+    prof.push([-cp.rD, cp.hC]);
+    for (let i = 1; i < 12; i++) { const t = i / 12, q = 1 - t; prof.push([lerp(-cp.rD, cp.rD, t), q * q * cp.hC + 2 * q * t * cp.cr + t * t * cp.hC]); }
+    for (const p of prof.slice(0, 10).reverse()) prof.push([-p[0], p[1]]);
+    const inset = prof.map(([z, y]) => [z * 0.985, y - 0.012 * (1 - Math.abs(z) / (hi + 0.1))]);
+    for (let i = 0; i < pairs.length - 1; i++) { const xr = (pairs[i] + pairs[i + 1]) / 2; b.tube('ciRib', inset.map(([z, y]) => [xr, yE + y, z]), 0.014, 40, 4); }
+    // the deck sash: frosted panes down both clerestory walls, in their muntins
+    for (const s of [-1, 1]) {
+      const zd = s * (cp.rD - 0.006), y0 = yE + cp.hD + 0.03, y1 = yE + cp.hC - 0.03;
+      for (let x = -xb + 0.6; x < xb - 0.5; x += 0.86) {
+        b.box('ciDeck', 0.7, y1 - y0, 0.006, x + 0.35, (y0 + y1) / 2, zd);
+        b.box('ciWoodDk', 0.04, y1 - y0 + 0.04, 0.02, x - 0.04, (y0 + y1) / 2, s * (cp.rD - 0.01));
+      }
+      b.box('ciWoodDk', 2 * xb - 0.4, 0.03, 0.02, 0, y0 - 0.015, s * (cp.rD - 0.01));
+      b.box('ciWoodDk', 2 * xb - 0.4, 0.03, 0.02, 0, y1 + 0.015, s * (cp.rD - 0.01));
+    }
+    // the lamps: a brass ceiling rose, a short stem, a gallery and a frosted glass bowl with the bulb glowing in it
+    const top = yE + 0.25 * cp.hC + 0.5 * cp.cr + 0.25 * cp.hC;
+    const bowl = new THREE.LatheGeometry([[0.001, -0.2], [0.07, -0.19], [0.13, -0.15], [0.16, -0.09], [0.15, -0.03], [0.1, 0]].map(([r, y]) => new THREE.Vector2(r, y)), 18);
+    for (let i = 0; i < SAL.n - 2; i++) {
+      const x = SAL.L[i].x, yb = SAL.yL + 0.1;
+      b.add('ciBrass', new THREE.CylinderGeometry(0.085, 0.06, 0.03, 18), M(x, top - 0.012, 0));
+      b.add('ciBrass', barGeo(0.012, [x, top - 0.02, 0], [x, yb - 0.01, 0], 8));
+      b.add('ciBrass', new THREE.TorusGeometry(0.1, 0.012, 6, 18).rotateX(Math.PI / 2), M(x, yb, 0));
+      b.add('ciBrass', new THREE.CylinderGeometry(0.03, 0.1, 0.04, 18), M(x, yb + 0.015, 0));
+      b.add('ciLamp', bowl.clone(), M(x, yb, 0));
+    }
+  }
+  // bulkheads: a doorway at each end into the vestibule (the observation car's lounge end is the car's own wall),
+  // cased, with a mirror one side and a water cooler the other
+  const dw = 0.42, dh = 2.0;
+  for (const e of observation ? [1] : [1, -1]) {
+    const x = e * (xb - 0.025), xf = e * (xb - 0.05);
+    for (const s of [-1, 1]) b.box('ciWood', 0.05, yE - yF, hi - dw, x, (yE + yF) / 2, s * (hi + dw) / 2);
+    b.box('ciWood', 0.05, yE - yF - dh, 2 * dw, x, (yE + yF + dh) / 2, 0);
+    for (const s of [-1, 1]) b.box('ciWoodDk', 0.03, dh + 0.06, 0.07, xf - e * 0.01, yF + dh / 2 + 0.03, s * (dw + 0.035));   // casing
+    b.box('ciWoodDk', 0.03, 0.07, 2 * dw + 0.14, xf - e * 0.01, yF + dh + 0.035, 0);
+    b.box('ciBrass', 0.02, 0.18, 2 * dw, x, yF + 0.09, 0);                                                     // kick plate on the sill
+    // the mirror, on the side where e and s agree, in a moulded frame
+    const sm = e, zm = sm * (dw + 0.08 + (hi - dw - 0.16) / 2), wm = hi - dw - 0.24;
+    b.box('ciWoodDk', 0.03, 1.0, wm + 0.08, xf - e * 0.01, yF + 1.55, zm);
+    b.box('ciMirror', 0.01, 0.92, wm, xf - e * 0.03, yF + 1.55, zm);
+    // the water cooler on the other side: a cabinet, the tank, the tap and a cup dispenser
+    const zc = -sm * (dw + 0.08 + 0.2), xc = xf - e * 0.13;
+    b.box('ciWoodDk', 0.24, 0.95, 0.36, xc, yF + 0.475, zc);
+    b.box('ciBrass', 0.25, 0.03, 0.37, xc, yF + 0.965, zc);
+    b.add('ciMirror', new THREE.CylinderGeometry(0.12, 0.12, 0.42, 16), M(xc + e * 0.01, yF + 0.98 + 0.21, zc));
+    b.add('ciBrass', new THREE.CylinderGeometry(0.12, 0.1, 0.05, 16), M(xc + e * 0.01, yF + 1.425, zc));
+    b.add('ciBrass', barGeo(0.012, [xc - e * 0.12, yF + 1.12, zc], [xc - e * 0.17, yF + 1.08, zc], 6));
+    b.add('ciMirror', new THREE.CylinderGeometry(0.035, 0.035, 0.3, 10), M(xf - e * 0.03, yF + 1.32, zc - sm * 0.26));
+    // the vestibule beyond: a ceiling with its lamp, the end wall lined round the end door, a tread plate floor
+    const xa = e * xb, xz = e * (CH.xv - 0.035), xm = (xa + xz) / 2, lv = Math.abs(xz - xa);
+    b.box('ciCream', lv, 0.012, 2 * (CH.hw - 0.07), xm, yE - 0.016, 0);
+    b.add('ciLamp', new THREE.SphereGeometry(0.075, 14, 6, 0, TAU, Math.PI / 2, Math.PI / 2), M(SAL.L[SAL.n - (e > 0 ? 2 : 1)].x, yE - 0.022, 0));
+    b.add('ciBrass', new THREE.TorusGeometry(0.075, 0.01, 6, 16).rotateX(Math.PI / 2), M(SAL.L[SAL.n - (e > 0 ? 2 : 1)].x, yE - 0.024, 0));
+    for (const s of [-1, 1]) b.box('ciWood', 0.012, yE - yT - 0.02, CH.hw - 0.07 - 0.43, xz - e * 0.006, (yE - 0.02 + yT) / 2, s * (0.43 + (CH.hw - 0.07 - 0.43) / 2));
+    b.box('ciWood', 0.012, yE - 3.1 - 0.02, 0.86, xz - e * 0.006, (yE - 0.02 + 3.1) / 2, 0);
+    // the end door's inside face: panelled, with a window and a brass handle and kick plate
+    const xd = xz - e * 0.018, yd0 = yT + 0.01, yd1 = 3.08;
+    b.box('ciWood', 0.012, 2.15 - yd0, 0.8, xd, (2.15 + yd0) / 2, 0);
+    b.box('ciWood', 0.012, yd1 - 2.85, 0.8, xd, (yd1 + 2.85) / 2, 0);
+    for (const s of [-1, 1]) b.box('ciWood', 0.012, 0.7, 0.16, xd, 2.5, s * 0.32);
+    b.box('ciPane', 0.006, 0.7, 0.48, xd + e * 0.004, 2.5, 0);
+    b.box('ciBrass', 0.014, 0.2, 0.76, xd - e * 0.006, yd0 + 0.12, 0);
+    b.add('ciBrass', barGeo(0.012, [xd - e * 0.01, 1.95, 0.3], [xd - e * 0.07, 1.95, 0.3], 6));
+    b.box('ciFrame', lv, 0.01, 2 * (CH.hw - 0.42), xm, yT + 0.005, 0);
+  }
+  // seats: a walkover seat for two each side of the aisle at every window pair
+  const sw = COACH_IN.seatW, za = COACH_IN.aisle;
+  for (const x of pairs) for (const s of [-1, 1]) walkoverSeat(b, x + 0.04, s * (za + sw / 2), s, yF);
   const grp = b.build(RMAT, { cast: false });
   grp.name = 'coachInterior';
   grp.traverse(o => { if (o.isMesh) o.receiveShadow = true; });
   return grp;
 }
-/* the interior surfaces glow a little by day and more at night, as the coach's own lamps would light them */
+/* the coach lamps are always on; they matter most after dark. Drawn shades glow from behind. */
 function coachInLight(dark) {
   if (!RMAT.ciLit) return;
-  const d = smooth(0.2, 0.6, dark || 0);
-  for (const m of RMAT.ciLit) m.emissiveIntensity = lerp(0.1, 0.38, d);
-  RMAT.ciLamp.emissiveIntensity = lerp(0.5, 1.4, d);
+  const d = smooth(0.15, 0.6, dark || 0);
+  SAL.I.value = lerp(0.35, 0.85, d);
+  SAL.amb.value = lerp(0.12, 0.16, d);
+  RMAT.ciShade.emissiveIntensity = lerp(0.0, 0.18, d);
+  RMAT.ciDeck.emissiveIntensity = lerp(0.6, 0.04, d);
+  RMAT.ciLamp.emissiveIntensity = lerp(0.9, 2.2, d);
+}
+/* the lamps of the coach the camera is in, as two of the railroad's lamps (10c_lamps.js), so they light you and
+   anyone else in the aisle as well as the saloon's own surfaces */
+const _salM = new THREE.Matrix4(), _salI = new THREE.Matrix4(), _salV = new THREE.Vector3(), _salPool = [];
+function saloonLamps(list, cam, cars, dark) {
+  if (!cam) return;
+  let best = null, bl = null;
+  for (const v of cars) {
+    const root = v.model && v.model.root; if (!root || !root.userData.saloon || !root.visible) continue;
+    if (v.pos && v.pos.distanceToSquared(cam) > 16 * 16) continue;
+    root.updateMatrixWorld();
+    _salI.copy(root.matrixWorld).invert(); _salV.copy(cam).applyMatrix4(_salI);
+    if (Math.abs(_salV.x) < CH.xv && Math.abs(_salV.z) < CH.hw && _salV.y > CH.yT && _salV.y < CH.eave + 1.2) { best = root; bl = _salV.clone(); break; }
+  }
+  if (!best) return;
+  const near = SAL.L.slice(0, SAL.n - 2).map(p => [Math.abs(p.x - bl.x), p]).sort((a, b) => a[0] - b[0]).slice(0, 2);
+  const lv = lerp(0.35, 1.0, smooth(0.15, 0.6, dark || 0));
+  near.forEach(([, p], i) => {
+    const l = _salPool[i] || (_salPool[i] = { kind: 'saloon', p: new THREE.Vector3(), dyn: true, lv: 0 });
+    l.p.copy(p).applyMatrix4(best.matrixWorld); l.lv = lv; list.push(l);
+  });
 }
 
 /* ============================================================================
@@ -22580,6 +22826,7 @@ ${DECL}
    switches it on, give or take a little for each lamp; warm: seconds to come up to full (a metal halide
    floodlight takes a while). */
 const LAMP_KINDS = {
+  saloon: { col: 0xffd2a0, I: 1.1, r: 4.5, k: 0.6, down: -1 },   // a coach's ceiling lamps over you (06g_person.js saloonLamps)
   plat: { col: 0xffbf78, I: 2.6, r: 12, k: 0.08, down: -1, glow: [1.0, 0.72, 0.42], gs: 1.5, on: 0.22 },
   street: { col: 0xffb466, I: 3.4, r: 24, k: 0.03, down: 0.35, glow: [1.0, 0.68, 0.36], gs: 1.7, on: 0.26 },
   flood: { col: 0xe4ecff, I: 4.5, r: 60, k: 0.008, down: 0.3, glow: [0.85, 0.9, 1.0], gs: 2.6, on: 0.3, warm: 40 },
@@ -22926,6 +23173,7 @@ function fredModel() {
 function railLamps() {
   LAMPS.tmp.length = 0;
   if (typeof IX === 'undefined' || !IX.consists) return;
+  if (typeof saloonLamps === 'function' && typeof camera !== 'undefined') saloonLamps(LAMPS.tmp, camera.position, IX.consists().flatMap(c => c.vehicles.filter(v => v.kind === 'coach')), SKY.dark);
   const dk = SKY.dark || 0, day = lerp(0.3, 1, smooth(0.1, 0.5, dk)), t = S.time || 0, glowK = smooth(0.1, 0.5, dk);
   for (const c of IX.consists()) {
     const vs = c.vehicles, n = vs.length; if (!n) continue;

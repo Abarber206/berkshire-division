@@ -73,6 +73,7 @@ ${DECL}
    switches it on, give or take a little for each lamp; warm: seconds to come up to full (a metal halide
    floodlight takes a while). */
 const LAMP_KINDS = {
+  saloon: { col: 0xffd2a0, I: 1.1, r: 4.5, k: 0.6, down: -1 },   // a coach's ceiling lamps over you (06g_person.js saloonLamps)
   plat: { col: 0xffbf78, I: 2.6, r: 12, k: 0.08, down: -1, glow: [1.0, 0.72, 0.42], gs: 1.5, on: 0.22 },
   street: { col: 0xffb466, I: 3.4, r: 24, k: 0.03, down: 0.35, glow: [1.0, 0.68, 0.36], gs: 1.7, on: 0.26 },
   flood: { col: 0xe4ecff, I: 4.5, r: 60, k: 0.008, down: 0.3, glow: [0.85, 0.9, 1.0], gs: 2.6, on: 0.3, warm: 40 },
@@ -419,6 +420,7 @@ function fredModel() {
 function railLamps() {
   LAMPS.tmp.length = 0;
   if (typeof IX === 'undefined' || !IX.consists) return;
+  if (typeof saloonLamps === 'function' && typeof camera !== 'undefined') saloonLamps(LAMPS.tmp, camera.position, IX.consists().flatMap(c => c.vehicles.filter(v => v.kind === 'coach')), SKY.dark);
   const dk = SKY.dark || 0, day = lerp(0.3, 1, smooth(0.1, 0.5, dk)), t = S.time || 0, glowK = smooth(0.1, 0.5, dk);
   for (const c of IX.consists()) {
     const vs = c.vehicles, n = vs.length; if (!n) continue;
