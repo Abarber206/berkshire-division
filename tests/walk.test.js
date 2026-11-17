@@ -64,7 +64,7 @@ test('the coach\'s insides are one piece with the coach and stay inside its body
     const b = new THREE.Box3(); for (const p of IP) b.union(p.box);
     assert.ok(b.min.y >= CH.yT - 0.001, `interior below the floor: ${b.min.y.toFixed(3)}`);
     assert.ok(b.max.z <= CH.hw - 0.035 && b.min.z >= -(CH.hw - 0.035), `interior out through the sides: ${b.min.z.toFixed(3)}..${b.max.z.toFixed(3)}`);
-    assert.ok(b.max.x <= CH.xb + 0.01 && b.min.x >= -CH.xb - 0.01, `interior past the bulkheads: ${b.min.x.toFixed(2)}..${b.max.x.toFixed(2)}`);
+    assert.ok(b.max.x <= CH.xv + 0.01 && b.min.x >= -CH.xv - 0.01, `interior past the vestibule end walls: ${b.min.x.toFixed(2)}..${b.max.x.toFixed(2)}`);
     assert.ok(b.max.y <= CH.eave + 0.8, `interior up through the roof: ${b.max.y.toFixed(3)}`);
     // the interior hangs together on its own, and sits on the car's floor
     const C = components(IP);

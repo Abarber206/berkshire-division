@@ -1956,10 +1956,11 @@ function coachModel(spec, num, observation, trim = '') {
   // The roof is a shell, open underneath: the saloon's own ceiling (06g_person.js coachInterior) curves up inside it, so
   // nothing may close the roof off flat at the eaves (a flat underside there hid the lit ceiling and its lamps).
   // Each side of the lower deck runs from the eave in over the saloon ceiling's shoulder to the clerestory wall.
-  const cin = coachCeilingProfile();
+  // (its inner face kept 2.5 cm outside the saloon's ceiling, so the two never fight over the same pixels)
+  const c0 = coachCeilingProfile(), o = 0.025, cin = { hi: c0.hi + o, ctl: c0.ctl + o, rD: c0.rD + o, hD: c0.hD + o, hC: c0.hC + o, cr: c0.cr + o };
   for (const s of [-1, 1]) {
     const sh = new THREE.Shape(); sh.moveTo(s * rE, 0); sh.quadraticCurveTo(s * hw * 0.9, 0.3, s * rD, hD); sh.lineTo(s * cin.rD, hD);
-    sh.lineTo(s * cin.rD, cin.hD); sh.quadraticCurveTo(s * cin.ctl, 0.2, s * (cin.hi + 0.005), 0); sh.closePath();
+    sh.lineTo(s * cin.rD, cin.hD); sh.quadraticCurveTo(s * cin.ctl, 0.2 + o, s * (cin.hi + 0.005), 0); sh.closePath();
     gb.add('roof', new THREE.ExtrudeGeometry(sh, { depth: rL1 - rL0 - RR, bevelEnabled: false, curveSegments: 10 }).rotateY(Math.PI / 2).translate(rL0 + RR, yE, 0));
   }
   // over the vestibules and past the bulkheads the shell is closed underneath by a flat panel at the eaves
