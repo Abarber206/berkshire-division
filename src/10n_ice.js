@@ -19,7 +19,7 @@ const ICE = {
   on: false, t: 0,
   MU: 0.075, TRIP: 0.1,           // wreck bodies on the ice: steel sliding on ice, and a little more for a car going sideways
   CAP_D: 1.1, CAP_A: 0.055,       // m and rad: how close to the far rails a skating train must come to drop back on
-  JACK: 2.2,                      // m/s2 of side force: a skating train swung harder than this slides out and jackknifes
+  JACK: 3.0,                      // m/s2 of side force: a skating train swung harder than this slides out and jackknifes
   LV_K: 0.5,                      // in-train side force a car on the ice can stand, against one on ballast
   crackIn: 3, warnT: 0,
   segN: 0, seg: 0, dirty: false,
@@ -245,7 +245,7 @@ function iceSkate(dt, T) {
     // swing: sand on one side with power on, shoving cars with only the engine braked, the ice's own ripples
     // the sanders turn her by side force, not by a fixed rate: at speed the same sand swings her slower,
     // so steering alone never pulls past the jackknife limit (shoving with the engine brake still can)
-    const steer = k.steer * (0.02 + 0.07 * thr) * Math.min(1, v / 6) * Math.min(1, 15 / Math.max(v, 1));
+    const steer = k.steer * (0.04 + 0.12 * thr) * Math.min(1, v / 6) * Math.min(1, 30 / Math.max(v, 1));
     const shove = Math.max(0, fLoco - fAll) * (2.2 * k.w + 0.06 * (Math.sign(k.w) || 1)) * Math.min(1, v / 10);
     const damp = 0.45 + 1.0 * thr + 1.6 * fAll;
     k.kickT -= dt; if (k.kickT <= 0) { k.kickT = 0.8 + 2.2 * Math.random(); k.w += (Math.random() - 0.5) * 0.035 * Math.min(1, v / 15) * Math.min(1, 20 / Math.max(v, 1)); }
