@@ -410,7 +410,8 @@ function iceRerailFar() {
 const MIR = { rt: null, cam: null, mat: new THREE.Matrix4(), on: false, plane: new THREE.Plane(), clip: new THREE.Vector4(), q: new THREE.Vector4(),
   U: { uMirror: { value: null }, uMirrorM: { value: new THREE.Matrix4() }, uMirrorOn: { value: 0 } } };
 function iceMirror(cam) {
-  const mobile = /iPhone|iPad|Android/i.test(navigator.userAgent) || (typeof GFX !== 'undefined' && GFX.lite);
+  // on with the High or Ultra graphics setting, phone or PC (Auto picks High on a PC, Medium on a phone)
+  const mobile = !(typeof POST !== 'undefined' && (POST.key === 'high' || POST.key === 'ultra'));
   const near = FROST.box && cam.position.y - FROST.iceY < 600 && typeof frShore === 'function' && frShore(cam.position.x, -cam.position.z) < 900;
   MIR.U.uMirrorOn.value = 0;
   if (mobile || !near || !FROST.iceMesh || typeof renderer === 'undefined') return;
