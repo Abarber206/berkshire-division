@@ -60,7 +60,8 @@ function buildIceFX(scene) {
       uniform float uTime; uniform vec3 uCol; varying float vT; varying float vU; varying float vD;
       void main(){
         #include <logdepthbuf_fragment>
-        float a = smoothstep(vT, vT + 0.05, uTime);
+        // a crack runs out, glints, and frosts back over within a minute
+        float a = smoothstep(vT, vT + 0.05, uTime) * (1.0 - smoothstep(vT + 20.0, vT + 55.0, uTime));
         if (a <= 0.0) discard;
         // a bright fracture plane down the middle catching the light, a frosted halo either side
         float u = abs(vU), core = 1.0 - smoothstep(0.12, 0.45, u), halo = (1.0 - u) * 0.4;
@@ -126,9 +127,9 @@ function iceStep(dt, T) {
   const lt = T.lead.leadPt && T.lead.leadPt.tp, onLead = iceTP(lt), n = iceCount(T), v = Math.abs(S.v);
   if (!n) { if (ICE.sk.on) iceSkateEnd(); return; }
   // a heavy train out on the ice: cracks shoot off across the lake from under it, more the faster and heavier it is
-  ICE.crackIn -= dt * (0.25 + v / 10) * Math.min(1, n / 6);
+  ICE.crackIn -= dt * Math.max(0, v - 9) / 20 * Math.min(1, n / 6);   // only a fast, heavy train sets the ice cracking
   if (ICE.crackIn <= 0) {
-    ICE.crackIn = 2 + 5 * Math.random();
+    ICE.crackIn = 6 + 10 * Math.random();
     const on = T.vehicles.filter(x => x.tp && iceTP(x.tp[0]) && x.pos), x = on[(Math.random() * on.length) | 0];
     if (x) {
       x.tp[0].tp.pose(FR);
@@ -156,6 +157,7 @@ function iceStep(dt, T) {
    the bank. */
 ICE.sk = { on: false, live: false, E: null, a: 0, b: 0, PX: null, PN: null, PH: null, o: 0, lo: 0, hi: 0, openLo: false, openHi: false,
   H: 0, w: 0, v: 0, cap: 0, steer: 0, kickT: 1, jackT: 0, hud: null };
+const _isk = new THREE.Vector3(), _isz = new THREE.Vector2();
 const SK_N = 12000, SK_Z = 6000;   // path samples, one a metre, and the index of the start
 function iceSkating() { return !!(ICE.on && ICE.sk.on); }
 function iceSkateEdge() {   // the main line's edge across the lake
@@ -384,6 +386,7 @@ function iceFrame(dt, cam, T) {
   if (ICE.dirty) { const at = ICE.cracks.geometry.attributes; at.position.needsUpdate = at.aT.needsUpdate = at.aU.needsUpdate = true; ICE.dirty = false; ICE.cracks.visible = true; }
   if (T) iceBrakeSparks(dt, T, cam);
   if (ICE.sk.hud && !ICE.sk.hud.hidden && (S.derailed || !ICE.sk.on)) ICE.sk.hud.hidden = true;
+  iceMirror(cam);
   // the windows frost over in the cold; a cab with the fire going keeps the middle of the glass clear
   ICE.frost.value = 0.8;
 }
@@ -398,4 +401,44 @@ function iceRerailFar() {
   T.place(new TrackPos(loc.edge, loc.s, 1));
   S.v = 0; S.vw = 0; MP.dirty = true;
   toast('Re-railed on the far shore. The climb back to Hollow Pine is ahead.', 'good', 4000);
+}
+
+/* ---------------- the ice as a mirror ----------------
+   Clear black ice reflects: the train, its lamps, the moonlit hills. Each frame (on a PC, near the lake) the
+   scene is drawn once more at half size from the camera mirrored in the ice, clipped at the ice by an oblique
+   near plane, and the ice shader (05e_frost.js) looks it up where the ice is bare. */
+const MIR = { rt: null, cam: null, mat: new THREE.Matrix4(), on: false, plane: new THREE.Plane(), clip: new THREE.Vector4(), q: new THREE.Vector4(),
+  U: { uMirror: { value: null }, uMirrorM: { value: new THREE.Matrix4() }, uMirrorOn: { value: 0 } } };
+function iceMirror(cam) {
+  // on with the High or Ultra graphics setting, phone or PC (Auto picks High on a PC, Medium on a phone)
+  const mobile = !(typeof POST !== 'undefined' && (POST.key === 'high' || POST.key === 'ultra'));
+  const near = FROST.box && cam.position.y - FROST.iceY < 600 && typeof frShore === 'function' && frShore(cam.position.x, -cam.position.z) < 900;
+  MIR.U.uMirrorOn.value = 0;
+  if (mobile || !near || !FROST.iceMesh || typeof renderer === 'undefined') return;
+  const r = renderer, sz = r.getDrawingBufferSize(_isz), w = Math.max(2, sz.x >> 1), h = Math.max(2, sz.y >> 1);
+  if (!MIR.rt) { MIR.rt = new THREE.WebGLRenderTarget(w, h, { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter }); MIR.cam = new THREE.PerspectiveCamera(); MIR.U.uMirror.value = MIR.rt.texture; }
+  if (MIR.rt.width !== w || MIR.rt.height !== h) MIR.rt.setSize(w, h);
+  const y0 = FROST.iceY, V = MIR.cam;
+  cam.updateMatrixWorld();
+  // the camera mirrored in the ice: position, the point it looks at and its up all reflected in the plane
+  const p = cam.position, d = _ica.set(0, 0, -1).applyQuaternion(cam.quaternion), up = _icb.set(0, 1, 0).applyQuaternion(cam.quaternion);
+  V.position.set(p.x, 2 * y0 - p.y, p.z);
+  V.up.set(up.x, -up.y, up.z);
+  V.lookAt(p.x + d.x, 2 * y0 - (p.y + d.y), p.z + d.z);
+  V.fov = cam.fov; V.aspect = cam.aspect; V.near = cam.near; V.far = Math.min(cam.far, 6000);
+  V.updateMatrixWorld(); V.updateProjectionMatrix();
+  // oblique near plane on the ice, so nothing under it (the lake bed) gets in the way
+  MIR.plane.setFromNormalAndCoplanarPoint(_ica.set(0, 1, 0), _icb.set(0, y0, 0)).applyMatrix4(V.matrixWorldInverse);
+  const c = MIR.clip.set(MIR.plane.normal.x, MIR.plane.normal.y, MIR.plane.normal.z, MIR.plane.constant), P = V.projectionMatrix.elements, q = MIR.q;
+  q.set((Math.sign(c.x) + P[8]) / P[0], (Math.sign(c.y) + P[9]) / P[5], -1, (1 + P[10]) / P[14]);
+  c.multiplyScalar(2 / c.dot(q));
+  P[2] = c.x; P[6] = c.y; P[10] = c.z + 1 - 0.003; P[14] = c.w;
+  V.projectionMatrixInverse.copy(V.projectionMatrix).invert();
+  MIR.U.uMirrorM.value.set(0.5, 0, 0, 0.5, 0, 0.5, 0, 0.5, 0, 0, 0.5, 0.5, 0, 0, 0, 1).multiply(V.projectionMatrix).multiply(V.matrixWorldInverse);
+  // draw it: no shadow update, no ice, no cracks
+  const sh = r.shadowMap.autoUpdate, rt0 = r.getRenderTarget();
+  r.shadowMap.autoUpdate = false; FROST.iceMesh.visible = false; const cv = ICE.cracks ? ICE.cracks.visible : false; if (ICE.cracks) ICE.cracks.visible = false;
+  r.setRenderTarget(MIR.rt); r.clear(); r.render(scene, V);
+  r.setRenderTarget(rt0); r.shadowMap.autoUpdate = sh; FROST.iceMesh.visible = true; if (ICE.cracks) ICE.cracks.visible = cv;
+  MIR.U.uMirrorOn.value = 1;
 }

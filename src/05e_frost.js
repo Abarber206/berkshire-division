@@ -35,12 +35,21 @@ function frIceMaterial() {
   m.extensions = { derivatives: true };
   m.onBeforeCompile = sh => {
     sh.uniforms.uDetail = { value: TEX.detail };
+    sh.uniforms.uMirror = MIR.U.uMirror; sh.uniforms.uMirrorM = MIR.U.uMirrorM; sh.uniforms.uMirrorOn = MIR.U.uMirrorOn;
     sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute float aShore; varying float vShore; varying vec3 vIW;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvShore = aShore; vIW = (modelMatrix * vec4(transformed, 1.0)).xyz;');
-    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform sampler2D uDetail; varying float vShore; varying vec3 vIW; float vIceSnow;')
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform sampler2D uDetail; uniform sampler2D uMirror; uniform mat4 uMirrorM; uniform float uMirrorOn; varying float vShore; varying vec3 vIW; float vIceSnow;')
       .replace('#include <color_fragment>', '#include <color_fragment>\n' + ICE_GLSL)
       // clear ice is glassy (the moon and sky in it); snow is matte
-      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\n roughnessFactor = mix(0.06, 0.92, vIceSnow);');
+      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\n roughnessFactor = mix(0.06, 0.92, vIceSnow);')
+      // the mirror image in the bare ice: stronger looking across it than down into it, rippled a touch by the surface
+      .replace('#include <dithering_fragment>', `#include <dithering_fragment>
+        if (uMirrorOn > 0.5) {
+          vec4 mp = uMirrorM * vec4(vIW + vec3(sin(vIW.z * 0.9) * 0.05, 0.0, sin(vIW.x * 0.7) * 0.05), 1.0);
+          vec3 mc = texture2DProj(uMirror, mp).rgb;
+          float fr = 0.25 + 0.6 * pow(1.0 - clamp(abs(dot(normalize(cameraPosition - vIW), vec3(0.0, 1.0, 0.0))), 0.0, 1.0), 3.0);
+          gl_FragColor.rgb = mix(gl_FragColor.rgb, gl_FragColor.rgb * 0.35 + mc, fr * (1.0 - vIceSnow) * (0.5 + 0.5 * vShore));
+        }`);
   };
   m.customProgramCacheKey = () => 'frIce';
   return m;
