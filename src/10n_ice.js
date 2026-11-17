@@ -214,9 +214,11 @@ function iceSkate(dt, T) {
     k.PX[j] = FR.p.x; k.PN[j] = -FR.p.z; k.PH[j] = Math.atan2(-FR.f.z, FR.f.x);
     k.openLo = u0 < 0; k.openHi = u0 >= 0;   // the end she came from is rails
     k.on = true; k.live = true; k.w = (Math.random() - 0.5) * 0.03; k.v = S.v; k.cap = 0; k.jackT = 0;
-    iceStar(FR.p.x, -FR.p.z, 0.8);
-    if (AU.on) sndClunk(1, 0);
-    toast('Off the end of the rails and out on the ice! Steer with the sanders (A / D) and the throttle, and line her up with the lanterns on the far shore.', 'warn', 7000, 'skate');
+    // creeping off the rail end, the skate can start and stop over and over: only bang and crack the ice once,
+    // and only when she drops off with some speed
+    const fresh = !(ICE.t - (k.t0 || -99) < 4); k.t0 = ICE.t;
+    if (fresh && Math.abs(S.v) > 3) { iceStar(FR.p.x, -FR.p.z, 0.8); if (AU.on) sndClunk(1, 0); }
+    if (fresh) toast('Off the end of the rails and out on the ice! Steer with the sanders (A / D) and the throttle, and line her up with the lanterns on the far shore.', 'warn', 7000, 'skate');
   }
   // speed: she rolls on her wheels with nothing to hold her to a line; power pushes a little, the brakes drag a little
   const v0 = k.v;
