@@ -192,6 +192,7 @@ function iceSkatePose(s, out) {
 function iceSkateEnd() {
   const k = ICE.sk; k.on = false; k.live = false; k.cap = 0; k.steer = 0; k.jackT = 0; k.v = 0;
   if (k.hud) k.hud.hidden = true;
+  iceSkatePads(false);
 }
 function iceSkateReset() { if (ICE.sk.PX) iceSkateEnd(); }
 /* the end of the train that is going first, as a track position */
@@ -284,7 +285,7 @@ function iceSkate(dt, T) {
       GAME.derail(`Missed the rails on the far shore by ${Math.abs(A.off).toFixed(1)} m${Math.abs(A.ang) >= ICE.CAP_A ? `, coming in ${(Math.abs(A.ang) * 180 / Math.PI).toFixed(0)}° off square` : ''}. She ploughed into the bank at ${Math.round(v / MPH)} mph.`, 'Missed the rails', { a: k.v >= 0 ? 0 : T.length, side: Math.sign(A.off) || 1, k: 1 });
       return;
     }
-  } else if (!k.cap && v > 1 && sh > -1.5 && A.dist > 40 && Math.abs(tp.s - k.o) > 60) {
+  } else if (!k.cap && v > 1 && A.dist > 40 && Math.abs(tp.s - k.o) > 60 && (sh > -1.5 || groundAt(FR.p.x + FR.f.x * Math.sign(u || 1) * 3, -(FR.p.z + FR.f.z * Math.sign(u || 1) * 3)) > FROST.iceY + 0.5)) {
     GAME.derail(`Ran out of ice: she skated ${Math.abs(A.off).toFixed(0)} m off the line of the rails and up onto the shore at ${Math.round(v / MPH)} mph.`, 'Ran aground', { a: k.v >= 0 ? 0 : T.length, side: Math.sign(A.off) || 1, k: 1 });
     return;
   }
@@ -329,11 +330,12 @@ function iceSkateHud(A) {
   const k = ICE.sk;
   if (!k.hud) { k.hud = document.createElement('div'); k.hud.id = 'skateHud'; k.hud.style.cssText = 'position:fixed;left:50%;top:64px;transform:translateX(-50%);padding:8px 14px;border-radius:8px;background:rgba(10,14,22,.72);color:#f2e6c8;font:600 14px/1.35 system-ui,sans-serif;text-align:center;pointer-events:none;z-index:30;white-space:nowrap'; document.body.appendChild(k.hud); }
   k.hud.hidden = false;
+  iceSkatePads(true);
   if (k.cap) { k.hud.textContent = 'Back on the rails'; return; }
   const deg = A.ang * 180 / Math.PI, good = Math.abs(A.off) < ICE.CAP_D && Math.abs(A.ang) < ICE.CAP_A;
   const side = Math.abs(A.off) < 0.05 ? 'dead in line' : `${Math.abs(A.off).toFixed(1)} m ${A.off > 0 ? 'right' : 'left'} of their line`;
   const head = Math.abs(deg) < 0.2 ? 'square' : `turned ${Math.abs(deg).toFixed(1)}° ${deg > 0 ? 'left' : 'right'}`;
-  k.hud.innerHTML = `Far rails ${Math.max(0, A.dist).toFixed(0)} m · <span style="color:${good ? '#9fe08a' : '#ffb070'}">${side}, ${head}</span><br><span style="opacity:.7;font-weight:500;font-size:12px">A / D sand left / right · throttle swings her harder · train brake steadies her</span>`;
+  k.hud.innerHTML = `Far rails ${Math.max(0, A.dist).toFixed(0)} m · <span style="color:${good ? '#9fe08a' : '#ffb070'}">${side}, ${head}</span><br><span style="opacity:.7;font-weight:500;font-size:12px">A / D (or the buttons) sand left / right · throttle swings her harder · train brake steadies her</span>`;
 }
 
 
@@ -385,7 +387,7 @@ function iceFrame(dt, cam, T) {
   const d = SKY.dark || 0; ICE.U.uCol.value.setRGB(lerp(0.95, 0.42, d), lerp(0.97, 0.5, d), lerp(1.0, 0.62, d));
   if (ICE.dirty) { const at = ICE.cracks.geometry.attributes; at.position.needsUpdate = at.aT.needsUpdate = at.aU.needsUpdate = true; ICE.dirty = false; ICE.cracks.visible = true; }
   if (T) iceBrakeSparks(dt, T, cam);
-  if (ICE.sk.hud && !ICE.sk.hud.hidden && (S.derailed || !ICE.sk.on)) ICE.sk.hud.hidden = true;
+  if (ICE.sk.hud && !ICE.sk.hud.hidden && (S.derailed || !ICE.sk.on)) { ICE.sk.hud.hidden = true; iceSkatePads(false); }
   iceMirror(cam);
   // the windows frost over in the cold; a cab with the fire going keeps the middle of the glass clear
   ICE.frost.value = 0.8;
@@ -441,4 +443,27 @@ function iceMirror(cam) {
   r.setRenderTarget(MIR.rt); r.clear(); r.render(scene, V);
   r.setRenderTarget(rt0); r.shadowMap.autoUpdate = sh; FROST.iceMesh.visible = true; if (ICE.cracks) ICE.cracks.visible = cv;
   MIR.U.uMirrorOn.value = 1;
+}
+
+/* touch steering while skating: two big buttons, hold one to sand that side (the same as holding A or D) */
+function iceSkatePads(on) {
+  const k = ICE.sk;
+  if (!k.pads) {
+    if (!on) return;
+    const box = k.pads = document.createElement('div');
+    box.id = 'skatePads';
+    box.style.cssText = 'position:fixed;left:0;right:0;bottom:34%;display:flex;justify-content:space-between;padding:0 max(16px,env(safe-area-inset-left));pointer-events:none;z-index:31';
+    for (const [dir, label] of [[1, '◀ Sand left'], [-1, 'Sand right ▶']]) {
+      const b = document.createElement('button');
+      b.textContent = label;
+      b.style.cssText = 'pointer-events:auto;touch-action:none;user-select:none;-webkit-user-select:none;min-width:120px;height:84px;padding:0 18px;border-radius:14px;border:2px solid rgba(242,230,200,.5);background:rgba(10,14,22,.62);color:#f2e6c8;font:700 17px system-ui,sans-serif';
+      const down = e => { e.preventDefault(); k.steer = dir; b.style.background = 'rgba(200,150,60,.75)'; };
+      const up = e => { if (k.steer === dir) k.steer = 0; b.style.background = 'rgba(10,14,22,.62)'; };
+      b.addEventListener('pointerdown', down); b.addEventListener('pointerup', up); b.addEventListener('pointercancel', up); b.addEventListener('pointerleave', up);
+      box.appendChild(b);
+    }
+    document.body.appendChild(box);
+  }
+  k.pads.hidden = !on;
+  if (!on) k.steer = 0;
 }

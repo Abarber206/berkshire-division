@@ -361,6 +361,12 @@ class WreckSim {
         // a car skidding sideways digs its edge in (into dirt most of all) and trips: friction grows with how sideways it goes
         // a loose truck sliding into the shoulder rides up its slope instead of ploughing into it
         const n = _wb.set(0, 1, 0); if (b.truck && this.slope) n.addScaledVector(b.bed.r, 0.66 * this.slope).normalize();
+        // round the frozen lake the hills are solid: off the roadbed, the ground pushes back along its own slope, so a car
+        // sliding into a bank or a cliff is stopped by it instead of being lifted up and over
+        if (WORLD.frost && !this.onBed) {
+          const gx = groundAt(P.x + 0.5, -P.z) - groundAt(P.x - 0.5, -P.z), gz = groundAt(P.x, -(P.z + 0.5)) - groundAt(P.x, -(P.z - 0.5));
+          if (gx * gx + gz * gz > 0.01) n.set(-gx, 1, -gz).normalize();
+        }
         const c = this.contact(b, null, null, P, n, pen * n.y, WK.MU, WK.E_G); c.bed = this.onBed;
         const vh = Math.hypot(c.v0.x, c.v0.z);
         // steel on ice: it slides, and a car going sideways skates rather than digging in (ties lying on the ice, a little more)
