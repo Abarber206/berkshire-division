@@ -126,3 +126,28 @@ function nearestOn(p) {
   for (const e of W.NET.edges) for (let i = 0; i < e.n; i++) { const g = Math.hypot(e.X[i] - p.x, e.N[i] + p.z); if (g < d) { d = g; best = { x: e.X[i], z: -e.N[i] }; } }
   return best;
 }
+
+test('the newer cinematic shots keep the camera above ground and out of the engine', () => {
+  W.CAM.vs = 20;
+  const cam = new THREE.PerspectiveCamera(50, 16 / 9, 0.1, 5000);
+  let runs = 0;
+  for (const [e, s] of spots.slice(0, 12)) {
+    const T = W.fakeTrain(e, s); W.GAME.train = T;   // the camera keeps out of the watched train, as in the game
+    for (const name of ['nose', 'crane', 'orbit', 'overhead', 'trailing']) {
+      const st = W.SHOTS[name].pick(T); if (!st) continue;
+      Object.assign(st, { name, t: 0 });
+      for (let k = 0; k < 120; k++) {
+        const fov = W.SHOTS[name].run(st, cam, T, 1 / 30); st.t += 1 / 30;
+        if (fov === false) break;
+        const p = cam.position;
+        assert.ok(Number.isFinite(p.x + p.y + p.z) && fov > 1 && fov < 90, `${name} bad camera at ${e.id}/${s}`);
+        assert.ok(p.y > W.groundAt(p.x, -p.z), `${name} camera underground at ${e.id}/${s}`);
+        const L = T.lead, dx = p.x - L.pos.x, dz = p.z - L.pos.z, along = dx * L.fwd.x + dz * L.fwd.z, lat = Math.abs(dx * L.fwd.z - dz * L.fwd.x);
+        assert.ok(!(Math.abs(along) < L.len / 2 && lat < 1.9 && p.y - L.pos.y < 5), `${name} camera inside the engine at ${e.id}/${s}`);
+        runs++;
+      }
+    }
+  }
+  W.GAME.train = null;
+  assert.ok(runs > 1000, `only ${runs} frames ran`);
+});
