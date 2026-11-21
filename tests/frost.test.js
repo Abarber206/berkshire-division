@@ -108,7 +108,7 @@ test('no rails on the lake, and a skating train follows the path its engine made
    end at normal speed, steering about, with the real skate code moving its trucks, and check it holds together:
    neighbours' trucks keep their spacing, the slide starts once and stays on, and cars not yet off the rails stay
    on them. */
-test('a train rolling onto the ice stays coupled, and the cars behind stay on the rails', { skip: SKIP }, () => {
+test('a train rolling onto the ice stays coupled, the cars behind stay on the rails, and it eases back onto the far rails without a jump', { skip: SKIP }, () => {
   const W = frost(), { NET, THREE, TrackPos, S } = W, sk = W.skate, K = sk.ICE.sk;
   const E = sk.iceSkateEdge(), [a] = E.ice[0];
   // seven 20 m cars, trucks 14 m apart (3 m overhang), the engine's front end 10 m short of the rail end
@@ -128,9 +128,9 @@ test('a train rolling onto the ice stays coupled, and the cars behind stay on th
   Object.assign(S, { v: 20, throttle: 0, reverser: 0, derailed: false });
   K.on = false; K.live = false;
   const gap0 = pos(pts[1].tp).distanceTo(pos(pts[2].tp));
-  let onIce = 0, went = 0;
+  let onIce = 0, went = 0, caught = false, back = false, last = pts.map(p => pos(p.tp));
   const dt = 1 / 30;
-  for (let i = 0; i < 30 * 40 && !S.derailed; i++) {
+  for (let i = 0; i < 30 * 200 && !S.derailed && !back; i++) {
     // weave about with the sanders, swinging out and back toward the line of the far rails
     if (K.on) { const A = sk.iceSkateAim(T), want = Math.atan2(A.off, Math.max(A.dist * 0.5, 80)) + 0.06 * Math.sin(i * dt * 0.8), e = want - A.ang - K.w * 3; K.steer = e > 0.003 ? 1 : e < -0.003 ? -1 : 0; }
     const d = S.v * dt, lead = pts[0].tp, left = lead.advance(d, { commit: true }), act = d - left;
@@ -138,16 +138,22 @@ test('a train rolling onto the ice stays coupled, and the cars behind stay on th
     went += act;
     sk.iceSkate(dt, T);
     if (K.on) onIce++;
+    if (K.cap) caught = true;
+    if (caught && !K.on) back = true;
+    // every truck moves just as far as the train did: nothing is picked up and put down somewhere else
+    pts.forEach((p, q) => { const P = pos(p.tp), m = P.distanceTo(last[q]); assert.ok(Math.abs(m - act) < 0.05, `truck ${q} jumped ${(m - act).toFixed(2)} m at ${(i * dt).toFixed(1)} s${K.cap ? ' (back on the rails)' : ''}`); last[q] = P; });
     // once her front end is past the rail end she is skating, every frame, not starting over each one
-    if (pts[0].s0 + 3 + went > a + 0.5) assert.ok(K.on, `the slide was off again at ${(i * dt).toFixed(1)} s, ${(pts[0].s0 + 3 + went - a).toFixed(1)} m past the rail end`);
+    if (!caught && pts[0].s0 + 3 + went > a + 0.5) assert.ok(K.on, `the slide was off again at ${(i * dt).toFixed(1)} s, ${(pts[0].s0 + 3 + went - a).toFixed(1)} m past the rail end`);
     for (let j = 0; j + 1 < n; j++) {
       const g = pos(pts[2 * j + 1].tp).distanceTo(pos(pts[2 * j + 2].tp));
       assert.ok(Math.abs(g - gap0) < 0.15, `cars ${j} and ${j + 1} pulled ${(g - gap0).toFixed(2)} m apart at ${(i * dt).toFixed(1)} s`);
     }
     // a truck still short of the rail end is on the rails, wherever the skate has moved its numbers to
-    for (const p of pts) { const sr = p.s0 + went; if (sr < a - 1) assert.ok(pos(p.tp).distanceTo(railPos(new TrackPos(E, sr, 1))) < 0.02, `a truck ${(a - sr).toFixed(0)} m behind the rail end left the rails by ${pos(p.tp).distanceTo(railPos(new TrackPos(E, sr, 1))).toFixed(2)} m at ${(i * dt).toFixed(1)} s`); }
+    if (!caught) for (const p of pts) { const sr = p.s0 + went; if (sr < a - 1) assert.ok(pos(p.tp).distanceTo(railPos(new TrackPos(E, sr, 1))) < 0.02, `a truck ${(a - sr).toFixed(0)} m behind the rail end left the rails by ${pos(p.tp).distanceTo(railPos(new TrackPos(E, sr, 1))).toFixed(2)} m at ${(i * dt).toFixed(1)} s`); }
   }
   assert.ok(!S.derailed, `derailed: ${S.derailed}`);
   assert.ok(onIce > 30 * 20, 'and she skated a good way across');
+  assert.ok(caught && back, 'and got back on the far rails');
+  for (const p of pts) assert.ok(pos(p.tp).distanceTo(railPos(p.tp)) < 0.02, 'every truck on the far rails');
   K.on = false; K.live = false; K.steer = 0;
 });
