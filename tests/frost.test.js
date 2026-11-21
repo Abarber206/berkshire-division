@@ -22,7 +22,11 @@ function frost() {
   vm.runInContext(fs.readFileSync(THREE_JS, 'utf8'), ctx, { filename: 'three.min.js' });
   const code = FILES.map(f => fs.readFileSync(path.join(SRC, f), 'utf8')).join('\n') + `
     WORLD.roadsX = []; WORLD.roadN = 1e7; buildFrostRoute(); frPrepare(); buildLattice(); prepareSwitchData();
-    ({ ROUTE, ROUTES, ROUTE_KEY, NET, FROST, WORLD, MILE, ICE_RAIL, groundH, latticeAt, naturalH, frInPoly, THREE, skate: { ICE, iceSkateEdge } })`;
+    var S = { v: 0, vw: 0, throttle: 0, reverser: 0, derailed: false }, GAME = { derail(why) { S.derailed = why; } }, AU = { on: false };
+    var toast = () => {}, sndClunk = () => {}, camera = { position: new THREE.Vector3() };
+    iceStar = () => {}; iceSkateHud = () => {}; iceSkatePads = () => {};
+    ({ ROUTE, ROUTES, ROUTE_KEY, NET, FROST, WORLD, MILE, ICE_RAIL, groundH, latticeAt, naturalH, frInPoly, THREE, TrackPos, S,
+       skate: { ICE, iceSkateEdge, iceSkate, iceSkateAim } })`;
   return (W = vm.runInContext(code, ctx, { filename: 'frost.js' }));
 }
 const y = (m, s) => { const l = m.locate(s); return l.edge.elev(l.s); };
@@ -98,4 +102,52 @@ test('no rails on the lake, and a skating train follows the path its engine made
   K.live = false; const r0 = at(s0 - 20); K.live = true;
   assert.ok(at(s0 - 20).distanceTo(r0) < 1e-6, 'behind where she left the rails, the rails');
   K.live = false;
+});
+
+/* Austin, 2026-11-21: "the train still falls apart once you go onto the ice". Drive a seven-car train off the rail
+   end at normal speed, steering about, with the real skate code moving its trucks, and check it holds together:
+   neighbours' trucks keep their spacing, the slide starts once and stays on, and cars not yet off the rails stay
+   on them. */
+test('a train rolling onto the ice stays coupled, and the cars behind stay on the rails', { skip: SKIP }, () => {
+  const W = frost(), { NET, THREE, TrackPos, S } = W, sk = W.skate, K = sk.ICE.sk;
+  const E = sk.iceSkateEdge(), [a] = E.ice[0];
+  // seven 20 m cars, trucks 14 m apart (3 m overhang), the engine's front end 10 m short of the rail end
+  const pts = [], vehicles = [], n = 7, L = 20 * n;
+  for (let j = 0; j < n; j++) {
+    const v = { brake: { BC: 0 }, len: 20 };
+    for (const off of [3, 17]) { const tp = new TrackPos(E, a - 13 - (j * 20 + off - 3), 1); const P = { tp, a: j * 20 + off, F: null, s0: tp.s }; pts.push(P); }
+    vehicles.push(v);
+  }
+  // the edge has to carry the whole train behind the rail end for this to test anything
+  assert.ok(pts[pts.length - 1].tp.s > 0, 'train fits on the ice edge');
+  const T = { pts, vehicles, lead: vehicles[0], length: L,
+    endTP(end) { if (end === 'front') { const p = pts[0], t = p.tp.clone(); t.advance(p.a, null); return t; } const p = pts[pts.length - 1], t = p.tp.clone(); t.advance(-(L - p.a), null); return t; } };
+  const F = { p: new THREE.Vector3(), f: new THREE.Vector3(), u: new THREE.Vector3(), r: new THREE.Vector3() };
+  const pos = tp => { tp.pose(F); return F.p.clone(); };
+  const railPos = tp => { const l = K.live; K.live = false; tp.pose(F); K.live = l; return F.p.clone(); };
+  Object.assign(S, { v: 20, throttle: 0, reverser: 0, derailed: false });
+  K.on = false; K.live = false;
+  const gap0 = pos(pts[1].tp).distanceTo(pos(pts[2].tp));
+  let onIce = 0, went = 0;
+  const dt = 1 / 30;
+  for (let i = 0; i < 30 * 40 && !S.derailed; i++) {
+    // weave about with the sanders, swinging out and back toward the line of the far rails
+    if (K.on) { const A = sk.iceSkateAim(T), want = Math.atan2(A.off, Math.max(A.dist * 0.5, 80)) + 0.06 * Math.sin(i * dt * 0.8), e = want - A.ang - K.w * 3; K.steer = e > 0.003 ? 1 : e < -0.003 ? -1 : 0; }
+    const d = S.v * dt, lead = pts[0].tp, left = lead.advance(d, { commit: true }), act = d - left;
+    for (let q = 1; q < pts.length; q++) pts[q].tp.advance(act, { commit: true });
+    went += act;
+    sk.iceSkate(dt, T);
+    if (K.on) onIce++;
+    // once her front end is past the rail end she is skating, every frame, not starting over each one
+    if (pts[0].s0 + 3 + went > a + 0.5) assert.ok(K.on, `the slide was off again at ${(i * dt).toFixed(1)} s, ${(pts[0].s0 + 3 + went - a).toFixed(1)} m past the rail end`);
+    for (let j = 0; j + 1 < n; j++) {
+      const g = pos(pts[2 * j + 1].tp).distanceTo(pos(pts[2 * j + 2].tp));
+      assert.ok(Math.abs(g - gap0) < 0.15, `cars ${j} and ${j + 1} pulled ${(g - gap0).toFixed(2)} m apart at ${(i * dt).toFixed(1)} s`);
+    }
+    // a truck still short of the rail end is on the rails, wherever the skate has moved its numbers to
+    for (const p of pts) { const sr = p.s0 + went; if (sr < a - 1) assert.ok(pos(p.tp).distanceTo(railPos(new TrackPos(E, sr, 1))) < 0.02, `a truck ${(a - sr).toFixed(0)} m behind the rail end left the rails by ${pos(p.tp).distanceTo(railPos(new TrackPos(E, sr, 1))).toFixed(2)} m at ${(i * dt).toFixed(1)} s`); }
+  }
+  assert.ok(!S.derailed, `derailed: ${S.derailed}`);
+  assert.ok(onIce > 30 * 20, 'and she skated a good way across');
+  K.on = false; K.live = false; K.steer = 0;
 });
