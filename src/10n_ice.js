@@ -450,10 +450,13 @@ function iceMirror(cam) {
 }
 
 /* touch steering while skating: two big buttons, hold one to sand that side (the same as holding A or D) */
+const SK_TOUCH = typeof matchMedia === 'function' ? matchMedia('(pointer: coarse)') : { matches: false };
 function iceSkatePads(on) {
   const k = ICE.sk;
+  // touch screens only: on a PC with a mouse the A / D keys steer, so the buttons stay out of the view
+  const show = on && SK_TOUCH.matches;
   if (!k.pads) {
-    if (!on) return;
+    if (!show) return;
     const box = k.pads = document.createElement('div');
     box.id = 'skatePads';
     box.style.cssText = 'position:fixed;left:0;right:0;bottom:34%;display:flex;justify-content:space-between;padding:0 max(16px,env(safe-area-inset-left));pointer-events:none;z-index:31';
@@ -468,6 +471,6 @@ function iceSkatePads(on) {
     }
     document.body.appendChild(box);
   }
-  k.pads.hidden = !on;
+  k.pads.hidden = !show;
   if (!on) k.steer = 0;
 }
