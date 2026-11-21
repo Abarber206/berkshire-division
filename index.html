@@ -22456,7 +22456,7 @@ function iceSkatePose(s, out) {
   out.p.set(_skq.X, FROST.iceY + ICE_RAIL, -_skq.N); out.f.set(c, 0, -sn); out.r.set(sn, 0, c); out.u.set(0, 1, 0);
 }
 function iceSkateEnd() {
-  const k = ICE.sk; k.on = false; k.live = false; k.cap = 0; k.steer = 0; k.jackT = 0; k.v = 0;
+  const k = ICE.sk; k.on = false; k.live = false; k.cap = 0; k.fun = null; k.steer = 0; k.jackT = 0; k.v = 0;
   if (k.hud) k.hud.hidden = true;
   iceSkatePads(false);
 }
@@ -22479,7 +22479,7 @@ function iceSkate(dt, T) {
     E.pose(tp.s, FR); k.o = tp.s; k.lo = k.hi = 0;
     k.PX[j] = FR.p.x; k.PN[j] = -FR.p.z; k.PH[j] = Math.atan2(-FR.f.z, FR.f.x);
     k.openLo = u0 < 0; k.openHi = u0 >= 0;   // the end she came from is rails
-    k.on = true; k.live = true; k.w = (Math.random() - 0.5) * 0.03; k.v = S.v; k.cap = 0; k.jackT = 0;
+    k.on = true; k.live = true; k.w = (Math.random() - 0.5) * 0.03; k.v = S.v; k.cap = 0; k.jackT = 0; k.fun = null;
     // creeping off the rail end, the skate can start and stop over and over: only bang and crack the ice once,
     // and only when she drops off with some speed
     const fresh = !(ICE.t - (k.t0 || -99) < 4); k.t0 = ICE.t;
@@ -22537,34 +22537,60 @@ function iceSkate(dt, T) {
   const A = iceSkateAim(T);
   tp.pose(FR);
   const sh = frShore(FR.p.x, -FR.p.z);
-  if (!k.cap && v > 0.2 && A.dist < Math.max(1.2, v * dt * 2)) {
-    if (Math.abs(A.off) < ICE.CAP_D && Math.abs(A.ang) < ICE.CAP_A) {
-      // dropped back on: put her at the end of the rails, and ease the last of the path onto their line
-      k.cap = 1;
-      const fw = u > 0, tgt = fw ? k.b : k.a, sg = fw ? 1 : -1;
-      iceSkateShift(T, tgt - tp.s);
-      const [Xt, Nt] = E.xz(tgt), h = E.heading(tgt), fe = tgt - k.o;
-      if (fw) { k.hi = Math.floor(fe); k.openHi = false; } else { k.lo = Math.ceil(fe); k.openLo = false; }
-      for (let q = 0; q <= 45; q++) {
-        const j = (fw ? k.hi - q : k.lo + q) + SK_Z; if (j < 0 || j >= SK_N) break;
-        const w = 1 - smooth(0, 45, q), back = (Math.abs(fe - (j - SK_Z))) * sg;
-        k.PX[j] = lerp(k.PX[j], Xt - Math.cos(h) * back, w); k.PN[j] = lerp(k.PN[j], Nt - Math.sin(h) * back, w);
-        k.PH[j] = k.PH[j] + Math.atan2(Math.sin(h - k.PH[j]), Math.cos(h - k.PH[j])) * w;
-      }
-      if (AU.on) { sndClunk(1, 0); sndClunk(1, 0.12); }
-      toast(`Back on the rails! Missed by only ${(Math.abs(A.off) * 100).toFixed(0)} cm.`, 'good', 5000, 'skate');
-      iceStar(FR.p.x, -FR.p.z, 0.6);
-    } else {
-      GAME.derail(`Missed the rails on the far shore by ${Math.abs(A.off).toFixed(1)} m${Math.abs(A.ang) >= ICE.CAP_A ? `, coming in ${(Math.abs(A.ang) * 180 / Math.PI).toFixed(0)}° off square` : ''}. She ploughed into the bank at ${Math.round(v / MPH)} mph.`, 'Missed the rails', { a: k.v >= 0 ? 0 : T.length, side: Math.sign(A.off) || 1, k: 1 });
-      return;
-    }
-  } else if (!k.cap && v > 1 && A.dist > 40 && Math.abs(tp.s - k.o) > 60 && (sh > -1.5 || groundAt(FR.p.x + FR.f.x * Math.sign(u || 1) * 3, -(FR.p.z + FR.f.z * Math.sign(u || 1) * 3)) > FROST.iceY + 0.5)) {
+  const fw = u > 0, sg = fw ? 1 : -1, tgt = fw ? k.b : k.a;
+  if (!k.cap && !k.fun && v > 0.2 && A.dist > 2 && A.dist < Math.max(30, v * 1.6) && Math.abs(A.off) < ICE.CAP_D && Math.abs(A.ang) < ICE.CAP_A) {
+    // lined up and nearly there: her flanges find the rails' line and the wheels are led onto it. Lay the rest of
+    // her path ahead of her now, a smooth curve from where she is onto the rails at the shore, so nothing jumps.
+    iceSkateFunnel(E, tgt, sg); if (k.fun) k.fun.off = A.off;
+  }
+  if (!k.cap && k.fun && sg * (tp.s - k.o - k.fun.fe) >= 0) {
+    // reached the rail end along that curve: she is on the rails. Only the numbers move, nothing in the world does.
+    k.cap = 1;
+    const fe = k.fun.fe;
+    iceSkateShift(T, tgt - (k.o + fe));
+    if (fw) { k.hi = Math.floor(fe); k.openHi = false; } else { k.lo = Math.ceil(fe); k.openLo = false; }
+    if (AU.on) { sndClunk(1, 0); sndClunk(1, 0.12); }
+    toast(`Back on the rails! Missed by only ${(Math.abs(k.fun.off) * 100).toFixed(0)} cm.`, 'good', 5000, 'skate');
+    iceStar(FR.p.x, -FR.p.z, 0.6);
+    k.fun = null;
+  } else if (!k.cap && !k.fun && v > 0.2 && A.dist < Math.max(1.2, v * dt * 2)) {
+    GAME.derail(`Missed the rails on the far shore by ${Math.abs(A.off).toFixed(1)} m${Math.abs(A.ang) >= ICE.CAP_A ? `, coming in ${(Math.abs(A.ang) * 180 / Math.PI).toFixed(0)}° off square` : ''}. She ploughed into the bank at ${Math.round(v / MPH)} mph.`, 'Missed the rails', { a: k.v >= 0 ? 0 : T.length, side: Math.sign(A.off) || 1, k: 1 });
+    return;
+  } else if (!k.cap && !k.fun && v > 1 && A.dist > 40 && Math.abs(tp.s - k.o) > 60 && (sh > -1.5 || groundAt(FR.p.x + FR.f.x * Math.sign(u || 1) * 3, -(FR.p.z + FR.f.z * Math.sign(u || 1) * 3)) > FROST.iceY + 0.5)) {
     GAME.derail(`Ran out of ice: she skated ${Math.abs(A.off).toFixed(0)} m off the line of the rails and up onto the shore at ${Math.round(v / MPH)} mph.`, 'Ran aground', { a: k.v >= 0 ? 0 : T.length, side: Math.sign(A.off) || 1, k: 1 });
     return;
   }
   iceSkateSpray(dt, T, v);
   iceSkateHud(A);
   iceSkateCheckEnd(T);
+}
+/* the lead-in onto the far rails: from the end of the path laid so far (where her front is), a cubic curve that
+   leaves along her heading and arrives along the rails at their end, written out a metre at a time, then a few
+   metres more straight on along the rails. k.fun.fe is the path position of the rail end. */
+function iceSkateFunnel(E, tgt, sg) {
+  const k = ICE.sk, e0 = sg > 0 ? k.hi : k.lo, j0 = e0 + SK_Z;
+  const X0 = k.PX[j0], N0 = k.PN[j0], t0x = sg * Math.cos(k.PH[j0]), t0n = sg * Math.sin(k.PH[j0]);
+  const [Xe, Ne] = E.xz(tgt), he = E.heading(tgt), tex = sg * Math.cos(he), ten = sg * Math.sin(he);
+  const D = Math.hypot(Xe - X0, Ne - N0);
+  if (!(D > 1) || j0 + sg * (D + 12) < 0 || j0 + sg * (D + 12) >= SK_N) return;
+  const at = t => { const t2 = t * t, t3 = t2 * t, a = 2 * t3 - 3 * t2 + 1, b = t3 - 2 * t2 + t, c = -2 * t3 + 3 * t2, d = t3 - t2;
+    return [a * X0 + b * D * t0x + c * Xe + d * D * tex, a * N0 + b * D * t0n + c * Ne + d * D * ten]; };
+  // walk the curve finely, dropping a sample every metre of arc
+  let [px, pn] = at(0), arc = 0, q = 1;
+  const M = Math.ceil(D * 8);
+  for (let i = 1; i <= M; i++) {
+    const [x, n] = at(i / M), ds = Math.hypot(x - px, n - pn);
+    while (arc + ds >= q) {
+      const w = (q - arc) / ds, X = lerp(px, x, w), N = lerp(pn, n, w), j = j0 + sg * q, jp = j - sg;
+      k.PX[j] = X; k.PN[j] = N; k.PH[j] = Math.atan2(sg * (N - k.PN[jp]), sg * (X - k.PX[jp])); q++;
+    }
+    arc += ds; px = x; pn = n;
+  }
+  const L = arc;
+  // straight on along the rails past their end, so the path and the rails agree wherever the switch-over lands
+  for (; q <= Math.floor(L) + 8; q++) { const j = j0 + sg * q, r = q - L; k.PX[j] = Xe + tex * r; k.PN[j] = Ne + ten * r; k.PH[j] = he; }
+  if (sg > 0) k.hi = e0 + q - 1; else k.lo = e0 - (q - 1);
+  k.fun = { fe: e0 + sg * L, off: 0 };
 }
 /* the train is all off the ice again: the path is finished with */
 function iceSkateCheckEnd(T) {
