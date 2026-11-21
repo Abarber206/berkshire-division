@@ -327,6 +327,100 @@ const SHOTS = {
       return st.t < 11 ? fitFov(48, cam) : false;
     },
   },
+  nose: {
+    label: 'Head-on', moving: true, w: v => Math.abs(v) > 3 ? 2 : 0,
+    pick(train) {
+      return { side: Math.random() < 0.5 ? -1 : 1, d0: 7 + Math.random() * 3, h: 0.8 + Math.random() * 0.6 };
+    },
+    run(st, cam, train, dt) {
+      // a camera rigged out in front of the pilot, low down, looking back into the headlight
+      const L = train.lead, pos = L.pos, dir = Math.sign(CAM.vs) || 1, f = _cc.copy(L.fwd).multiplyScalar(dir);
+      const rx = f.z, rz = -f.x, rl = Math.hypot(rx, rz) || 1, d = L.len / 2 + st.d0 + st.t * 0.25;
+      const want = _cb.copy(pos).addScaledVector(f, d); want.x += rx / rl * st.side * 1.6; want.z += rz / rl * st.side * 1.6; want.y = pos.y + st.h;
+      cam.position.copy(want);
+      const moved = camSolid(cam.position, 0.5);
+      const look = _ca.copy(pos).addScaledVector(f, L.len / 2 - 4); look.y += 2.3;
+      cam.lookAt(look);
+      return moved < 0.6 && st.t < 9 && Math.abs(CAM.vs) > 1 ? fitFov(50, cam) : false;
+    },
+  },
+  crane: {
+    label: 'Crane', moving: false, w: v => Math.abs(v) > 3 ? 2 : 0,
+    pick(train) {
+      for (let i = 0; i < 8; i++) {
+        const F = camAhead(train, 140 + Math.random() * 140, _cF), side = Math.random() < 0.5 ? -1 : 1;
+        const p = F.p.clone().addScaledVector(F.r, side * (10 + Math.random() * 8));
+        p.y = Math.max(groundAt(p.x, -p.z) + 1.4, F.p.y + 0.6);
+        if (!camSpotFree(p, 6) || !camSees(p, _ca.copy(F.p).setY(F.p.y + 2.5))) continue;
+        return { p, y0: p.y, rise: 18 + Math.random() * 12, passT: -1 };
+      }
+      return null;
+    },
+    run(st, cam, train, dt) {
+      // a jib at the lineside: down at the ballast as she comes, swinging up high as she goes by
+      const pos = train.lead.pos, fwd = train.lead.fwd;
+      const ahead = _cb.subVectors(st.p, pos).dot(fwd) * (Math.sign(CAM.vs) || 1);
+      if (ahead < -10 && st.passT < 0) st.passT = st.t;
+      const e = st.passT < 0 ? 0.15 * ease(Math.min(1, st.t / 6)) : 0.15 + 0.85 * ease(Math.min(1, (st.t - st.passT) / 6));
+      cam.position.copy(st.p); cam.position.y = st.y0 + st.rise * e;
+      const look = _ca.copy(pos).addScaledVector(fwd, 3); look.y += 2.2;
+      cam.lookAt(look);
+      const d = cam.position.distanceTo(look);
+      if (st.passT >= 0 && st.t - st.passT > 7) return false;
+      return d < 700 && st.t < 45 ? fitFov(clamp(2 * Math.atan(16 / d) * 180 / Math.PI, 12, 56), cam) : false;
+    },
+  },
+  orbit: {
+    label: 'Close orbit', moving: true, w: v => 2,
+    pick(train) {
+      return { th: Math.random() * TAU, w: (Math.random() < 0.5 ? -1 : 1) * (0.18 + Math.random() * 0.08), R: 15 + Math.random() * 5, H: 2 + Math.random() * 2.5, c: null };
+    },
+    run(st, cam, train, dt) {
+      // circling the engine at walking distance, close enough to see the rods turn
+      const pos = train.lead.pos;
+      if (!st.c) st.c = pos.clone(); else st.c.lerp(pos, camK(6, dt));
+      st.th += st.w * dt;
+      const want = _cb.set(st.c.x + Math.sin(st.th) * st.R, 0, st.c.z + Math.cos(st.th) * st.R);
+      want.y = Math.max(st.c.y + st.H, groundAt(want.x, -want.z) + 1.2);
+      const from = _cd.copy(st.c).setY(st.c.y + 2.5), dir = _cc.subVectors(want, from), d = dir.length(); dir.multiplyScalar(1 / d);
+      cam.position.copy(from).addScaledVector(dir, camClear(from, dir, d, 6));
+      camSolid(cam.position, 1.2);
+      cam.lookAt(_cd.copy(st.c).setY(st.c.y + 2));
+      return st.t < 15 ? fitFov(46, cam) : false;
+    },
+  },
+  overhead: {
+    label: 'Overhead', moving: true, w: v => 1.5,
+    pick(train) { return { H0: 80 + Math.random() * 20, H1: 45 + Math.random() * 10, c: null }; },
+    run(st, cam, train, dt) {
+      // straight down from high over the train, sinking slowly toward it
+      const L = train.lead, dir = Math.sign(CAM.vs) || 1, f = _cc.copy(L.fwd).multiplyScalar(dir);
+      const c = _ca.copy(L.pos).addScaledVector(f, clamp(Math.abs(CAM.vs) * 0.6, 0, 20));
+      if (!st.c) st.c = c.clone(); else st.c.lerp(c, camK(3, dt));
+      const H = lerp(st.H0, st.H1, ease(st.t / 13));
+      cam.position.copy(st.c).addScaledVector(f, -6); cam.position.y = Math.max(st.c.y + H, groundAt(cam.position.x, -cam.position.z) + 15);
+      cam.lookAt(_cd.copy(st.c).addScaledVector(f, 4));
+      return st.t < 13 ? fitFov(42, cam) : false;
+    },
+  },
+  trailing: {
+    label: 'Trailing', moving: true, w: v => Math.abs(v) > 2 ? 2 : 0,
+    pick(train) { return { side: Math.random() < 0.5 ? -1 : 1, back: 12 + Math.random() * 8, h: 5 + Math.random() * 4, c: null }; },
+    run(st, cam, train, dt) {
+      // following on behind the last car, looking up the whole length of the train to the smoke at the head
+      const V = train.vehicles, dir = Math.sign(CAM.vs) || 1, L = train.lead;
+      const tail = dir > 0 ? V[V.length - 1] : V[0];
+      if (!tail || !tail.pos) return false;
+      const f = _cc.copy(tail.fwd || L.fwd).multiplyScalar(dir), rx = f.z, rz = -f.x, rl = Math.hypot(rx, rz) || 1;
+      const want = _cb.copy(tail.pos).addScaledVector(f, -(tail.len / 2 + st.back)); want.x += rx / rl * st.side * 3.5; want.z += rz / rl * st.side * 3.5;
+      want.y = Math.max(tail.pos.y + st.h, groundAt(want.x, -want.z) + 2);
+      if (!st.c) st.c = want.clone(); else st.c.lerp(want, camK(4, dt));
+      cam.position.copy(st.c); camSolid(cam.position, 1.5);
+      const look = _ca.copy(L.pos); look.y += 3;
+      cam.lookAt(look);
+      return st.t < 12 ? fitFov(clamp(2 * Math.atan(20 / Math.max(20, cam.position.distanceTo(look))) * 180 / Math.PI, 18, 50), cam) : false;
+    },
+  },
 };
 /* nothing but the train's own track within gap of p */
 function camOtherClear(p, own, gap) {
