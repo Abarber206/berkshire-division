@@ -232,11 +232,14 @@ function iceSkate(dt, T) {
   const v = Math.abs(nv), u = nv * tp.o;              // u: speed along the edge
   if (!onE) { iceSkateCheckEnd(T); return; }
   // keep the whole train on the edge: once every point is out on the path, move the numbers back from the edge's end
-  if (!k.cap) {
+  // Only once every truck is out on the skated path: a car still on the rails behind the shore must stay on
+  // them, and after a shift its numbers would point at the wrong stretch of track. And only toward the end she
+  // is running at, so a train rolling forward is never moved because its tail is near the start of the edge.
+  if (!k.cap && u !== 0) {
     let mn = Infinity, mx = -Infinity, all = true;
-    for (const p of T.pts) { if (p.tp.e !== E) { all = false; break; } mn = Math.min(mn, p.tp.s); mx = Math.max(mx, p.tp.s); }
-    if (all && (mx > E.len - 80 || mn < 80)) {
-      const d = mx > E.len - 80 ? Math.max(-(mn - 20), -1500) : Math.min(E.len - 20 - mx, 1500);
+    for (const p of T.pts) { const f = p.tp.s - k.o; if (p.tp.e !== E || f < k.lo - 0.5 || f > k.hi + 0.5) { all = false; break; } mn = Math.min(mn, p.tp.s); mx = Math.max(mx, p.tp.s); }
+    if (all && (u > 0 ? mx > E.len - 80 : mn < 80)) {
+      const d = u > 0 ? Math.max(-(mn - 20), -1500) : Math.min(E.len - 20 - mx, 1500);
       iceSkateShift(T, d); k.openLo = k.openHi = true; tp = iceSkateLead(T);
     }
   }
@@ -300,6 +303,9 @@ function iceSkate(dt, T) {
 /* the train is all off the ice again: the path is finished with */
 function iceSkateCheckEnd(T) {
   const k = ICE.sk;
+  // the end of the train that went off the rails first counts too: just off the rail end, her front truck is
+  // still a few metres back on them, and ending here would start the skate over again every frame
+  const L = iceSkateLead(T); if (L.e === k.E && !k.cap && iceSkateAt(L.s, _skq)) return;
   for (const p of T.pts) { const t = p.tp; if (t.e === k.E && iceSkateAt(t.s, _skq)) return; }
   iceSkateEnd();
 }
