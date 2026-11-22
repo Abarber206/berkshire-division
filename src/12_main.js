@@ -154,10 +154,25 @@ function makeTrain() {
   if (WORLD.custom) { placeOnLayout(t); return; }
   let line = ROUTE.startLine, sFront = line.len - 175, o = 1;
   GAME.spawnName = ROUTE.spawnName || (WORLD.mtn ? 'Riverton 2, Riverton Yard' : 'Yard 2, Bellevue');
-  const job = JOB.wanted(), sp = job && JOB.spawn(job);
+  const job = JOB.wanted();
+  let sp = job && !job.assist && JOB.spawn(job), tpAt = null;
+  GAME.jobBlocked = '';
   if (MP.on) {
-    // in a room the switches belong to everyone, so leave them alone and find an empty track
-    const slot = MP.spawnSlot(t);
+    // in a room a job's train is made up where the job says if nobody's train or cars are there (11p_mpjobs.js);
+    // a pusher comes up just behind the train it is to push
+    if (job && job.assist) {
+      tpAt = MPJ.assistAt(t);
+      if (tpAt) GAME.spawnName = `the foot of the hill, behind ${MPJ.assistTarget().st.nm}'s caboose`;
+      else GAME.jobBlocked = 'The mine run you were to push is not at the foot of the hill any more.';
+    } else if (sp) {
+      const loc0 = sp.line.locate(sp.s), tp0 = new TrackPos(loc0.edge, loc0.s, sp.o);
+      const who = MPJ.blocking(tp0, t.length + 30);
+      if (!who) { tpAt = tp0; GAME.spawnName = sp.name; MPJ.line(sp.lined); }
+      else if (job.train !== 'light') GAME.jobBlocked = `${who} is standing where ${job.name} is made up, on ${sp.name}. Try again when it is clear.`;
+      sp = null;   // a light engine can set off on its job from anywhere
+    }
+    // the switches belong to everyone, so leave them alone and find an empty track
+    const slot = !tpAt && MP.spawnSlot(t);
     if (slot) { line = slot.line; sFront = slot.s; GAME.spawnName = slot.name; }
     MP.spawned = true; MP.needSpawn = false; MP.dirty = true;
   } else {
@@ -170,8 +185,9 @@ function makeTrain() {
     else if (keep) { const slot = MP.spawnSlot(t); if (slot) { line = slot.line; sFront = slot.s; GAME.spawnName = slot.name; } }
   }
   const loc = line.locate(sFront);
-  t.place(new TrackPos(loc.edge, loc.s, o));
-  if (sp && sp.cabAt) JOB.alignCab(t, sp.cabAt);
+  t.place(tpAt || new TrackPos(loc.edge, loc.s, o));
+  const cabAt = job && !job.assist && JOB_SPAWNS[job.spawn] && JOB_SPAWNS[job.spawn].cabAt;
+  if (cabAt && (sp || tpAt)) JOB.alignCab(t, cabAt);
   finishTrain(t);
 }
 /* custom layout: the start marker, slid forward until the whole train is on the rails */
@@ -534,9 +550,13 @@ GAME.start = function () {
   audioInit(); buildWhistleIfReady();
   // a change made in the menu happens where the train stands; only a new job, a room to join or no room makes up a new train
   if (!GAME.running || (GAME.needNewTrain() && !(GAME.swapLive() && !GAME.needNewTrain()))) {
-    const job = JOB.wanted();
+    let job = JOB.wanted();
     if (JOB.run) JOB.end();
+    // a job someone else in the room is on, or whose cars have been moved, cannot be started
+    const why = job && JOB.ready(job);
+    if (why) { toast(why, 'warn', 6000, 'jobNot'); GAME.settings.job = ''; jobMenu(); job = null; }
     makeTrain();
+    if (job && GAME.jobBlocked) { toast(GAME.jobBlocked + ' Free running for now.', 'warn', 6500, 'jobNot'); GAME.settings.job = ''; jobMenu(); job = null; }
     if (job) JOB.begin(job);
     else if (TUT.want) TUT.begin();
     else if (GAME.running) toast(`New train made up on ${WORLD.custom || WORLD.mtn || FLEET.parked().length ? GAME.spawnName : 'Yard 2'}.`, 'good');
@@ -864,7 +884,7 @@ function renderStep(dt, T) {
   AI.render(dt);
   MP.frame(dt);
   WALK.frame(dt);
-  if (GAME.running && !S.paused && !S.derailed && !PLACE.on) MP.contact(T);
+  if (GAME.running && !S.paused && !S.derailed && !PLACE.on) MP.contact(T); else S.pushF = 0;
   // headlight & glows, brightening through dusk
   const night = SKY.dark, darkH = Math.max(night, smooth(0.3, 0.7, SKY.boreK || 0));   // in a tunnel the headlight works as it does at night
   // LED on the electrics, sealed beams on the diesels, a warm incandescent lamp on steam (10k_trainlight.js)

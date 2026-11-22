@@ -112,6 +112,15 @@ const JOBS = [
       { type: 'pass', at: 'Owl Creek', by: hm(22, 50) },
       { type: 'track', to: 'Hollow Pine Siding', by: hm(23, 5), text: 'Put the train away in the Hollow Pine siding, clear of the switches', hint: 'Round the far side of the lake and back over the plateau. Throw Hollow Pine West for the siding, pull in and stop with the whole train at least 125 ft from both switches.' },
     ] },
+
+  /* ---------- a room on Laurel Mountain: push another player's mine run ---------- */
+  { id: 'assist', route: 'laurel', mp: true, assist: true, pay: 2500, name: 'Pusher on the mine run', kind: 'freight', level: 'Medium', look: 'morning', train: 'light', spawn: 'assist', start: hm(6, 10),
+    brief: 'Someone in the room has fourteen loads of coal to lift over Laurel Mountain. Your engine is made up just behind their caboose. Buff up gently, then shove with everything you have all the way to Summit and drop back. Your engine pushes their train for real: the harder you work, the faster they climb.',
+    steps: [
+      { type: 'buff', text: 'Buff up gently behind the caboose', hint: 'Ease ahead onto the caboose at a walking pace. A hard hit costs you points and shakes their crew.' },
+      { type: 'shove', text: 'Shove the train up to Summit', hint: 'Open up when they do and keep the couplers bunched: drop off the back and they lose your help on the grade.' },
+      { type: 'drop', text: 'Stop at Summit and drop back', hint: 'When they stop at Summit, stop too and ease back off the caboose.' },
+    ] },
 ];
 
 const JOB = { run: null, best: {}, hz: 0 };
@@ -126,8 +135,8 @@ JOB.load = function () { try { JOB.best = JSON.parse(localStorage.getItem('bd_jo
 JOB.save = function () { try { localStorage.setItem('bd_jobs', JSON.stringify(JOB.best)); } catch (e) {} };
 /* jobs are written for the built-in railroad, single player */
 JOB.route = () => typeof PLAY_LAYOUT !== 'undefined' && PLAY_LAYOUT ? '' : typeof ROUTE_KEY !== 'undefined' ? ROUTE_KEY : 'ohio';
-JOB.list = () => JOBS.filter(j => (j.route || 'ohio') === JOB.route());
-JOB.available = () => !MP.on && !PLAY_LAYOUT && JOB.list().length > 0 && !LOCO_SPEC[GAME.settings.loco].set;
+JOB.list = () => JOBS.filter(j => (j.route || 'ohio') === JOB.route() && (!j.mp || (typeof MP !== 'undefined' && MP.on)));
+JOB.available = () => !PLAY_LAYOUT && JOB.list().length > 0 && !LOCO_SPEC[GAME.settings.loco].set;
 JOB.def = id => JOB.list().find(j => j.id === id) || null;
 /* a station, or a named place on the main (JOB_MARKS), as a point in the world */
 JOB.where = function (name) {
@@ -180,7 +189,9 @@ JOB.begin = function (def) {
       R.cars.push(v);
     }
   }
-  if (def.helper) JOB.makeHelper(def);
+  MPJ.begin(R);
+  // someone in the room may already be on the way to push: then no pusher of our own
+  if (def.helper && !(MP.on && MPJ.takenBy('assist', MP.id))) JOB.makeHelper(def);
   carPanelState.key = '';
   JOB.ui();
 };
@@ -253,6 +264,7 @@ JOB.note = function (what, d = {}) {
 JOB.fail = function (title, body) {
   const R = JOB.run; if (!R || R.over) return false;
   R.over = true; R.failed = { title, body }; R.end = JOB.clock();
+  MPJ.over(R);
   setTimeout(() => JOB.results(), 900);
   JOB.ui();
   return true;
@@ -307,6 +319,7 @@ JOB.steps = function (R, T, now) {
   const st = R.steps[R.i]; if (!st) return;
   const done = () => { st.state = 'done'; st.t = now; R.i++; carPanelState.key = ''; if (R.i >= R.steps.length) JOB.finish(); else JOB.ui(); };
   const lateBy = due => now - due;
+  if (MPJ.step(R, T, st, now, done)) return;
   if (st.type === 'depart' || st.type === 'stop') {
     const sn = stationNamed(st.at), cab = cabPos(T), d = cab.distanceTo(sn.p);
     const along = _v1.subVectors(cab, sn.p).dot(T.lead.fwd);
@@ -397,7 +410,10 @@ JOB.steps = function (R, T, now) {
   }
   if (st.type === 'helper') {
     // couple the pusher on; run on up the hill without it and the step is missed
-    if (hasHelper(T)) { st.doneT = now; const nx = R.steps[R.i + 1]; toast(`Pusher on. ${nx.type === 'pass' ? 'Pass ' + nx.at + ' by ' + fmtClock(nx.by) : nx.text}: give it everything.`, 'good', 5200, 'jobhelp'); done(); return; }
+    // our own pusher coupled on, or another player's engine buffed up against the caboose (11p_mpjobs.js)
+    const room = !hasHelper(T) && MPJ.behind(T);
+    if (room && R.lastStop > 0.5 && !st.roomAt) { st.roomAt = now; toast(`${room.st.nm} is buffed up behind your caboose. Open up together and climb.`, 'good', 5200, 'jobhelp'); }
+    if (hasHelper(T) || (room && st.roomAt)) { st.doneT = now; const nx = R.steps[R.i + 1]; toast(`Pusher on. ${nx.type === 'pass' ? 'Pass ' + nx.at + ' by ' + fmtClock(nx.by) : nx.text}: give it everything.`, 'good', 5200, 'jobhelp'); done(); return; }
     const m = st.miss && JOB.where(st.miss);
     if (m && flatDist(T.lead.pos, m) < 40) { JOB.dock('rules', 10, 'Left the pusher behind', ''); done(); st.state = 'missed'; }
     return;
@@ -481,6 +497,7 @@ JOB.finish = function () {
   if (!prev || sc > prev.score) JOB.best[R.def.id] = { score: sc, stars: starsFor(sc), at: Date.now() };
   JOB.save();
   R.paid = CAREER.payJob(R.def, sc);
+  MPJ.over(R);
   toast(`${R.def.name} complete: ${sc} points${R.paid ? `, $${R.paid.toLocaleString()} earned` : ''}.`, 'good', 4000, 'jobdone');
   setTimeout(() => JOB.results(), 1600);
   JOB.ui();
@@ -499,7 +516,7 @@ JOB.task = function () {
     return { text: st.state === 'ranby' ? `Back up to the ${st.at} platform` : `Stop at ${st.at}`, sub: c.s, kind: st.state === 'ranby' ? 'bad' : c.k };
   }
   if (st.type === 'pass') { const c = cd(st.by, 'by'); return { text: `Pass ${st.at}`, sub: c.s, kind: c.k }; }
-  const c = cd(stepDue(R, st), 'by');
+  const due = stepDue(R, st), c = due ? cd(due, 'by') : { s: '', k: '' };
   if (st.type === 'pickup') return { text: st.text, sub: (st.got ? `${st.got} of ${R.cars.length} coupled · ` : '') + c.s, kind: c.k };
   if (st.type === 'bills' && !st.why) return { text: st.text, sub: (st.got ? `${st.got} of ${st.n} spotted · ` : '') + c.s, kind: c.k };
   return { text: st.text, sub: st.why ? st.why : c.s, kind: st.why ? 'warn' : c.k };
@@ -569,7 +586,7 @@ JOB.results = function () {
   $('jdBest').textContent = fail ? '' : (R.prevBest == null ? 'First run of this job.' : total > R.prevBest ? `New best: up from ${R.prevBest}.` : `Best so far: ${R.prevBest}.`) + (R.paid ? ` Paid $${R.paid.toLocaleString()}.` : '');
   $('jdCats').innerHTML = fail ? '' : cats.map(c => `<div class="jc"><span>${c.name}</span><i><em style="width:${(c.got / c.max * 100).toFixed(1)}%"></em></i><b>${c.got}<small>/${c.max}</small></b></div>`).join('');
   $('jdSheet').innerHTML = JOB.sheet(R, R.end, false);
-  $('jdDrive').textContent = !fail ? 'Keep driving' : /plug/i.test(fail.title) ? 'Relight and drive on' : 'Re-rail and drive on';
+  $('jdDrive').textContent = !fail || !S.derailed ? 'Keep driving' : /plug/i.test(fail.title) ? 'Relight and drive on' : 'Re-rail and drive on';
   $('jobDone').hidden = false; $('bigMsg').hidden = true;
 };
 JOB.closeUI = function () { const d = $('jobDone'); if (d) d.hidden = true; const p = $('jobPanel'); if (p) p.hidden = true; };
@@ -580,7 +597,7 @@ JOB.again = function () {
 };
 JOB.drive = function () {
   const R = JOB.run; JOB.closeUI();
-  const failed = R && R.failed;
+  const failed = R && R.failed && (S.derailed || /plug/i.test(R.failed.title));
   JOB.toFree();
   if (failed) GAME.rerail(); else toast('Free running: the railroad is yours.', 'good', 3000);
 };
@@ -592,13 +609,18 @@ function jobMenu() {
   const ok = JOB.available();
   $('grpJob').hidden = false;
   host.innerHTML = '';
-  if (!ok) { $('jobBrief').innerHTML = `<p class="help">${MP.on ? 'Jobs are single player for now. Leave the room to take one.' : LOCO_SPEC[GAME.settings.loco].set ? 'Jobs are written for engines that pick up and set out cars. Pick a steam or diesel engine to take one.' : 'Jobs are written for the built-in railroads. Pick one under Railroad to take one.'}</p>`; refreshJobGroups(); return; }
+  if (!ok) { $('jobBrief').innerHTML = `<p class="help">${LOCO_SPEC[GAME.settings.loco].set ? 'Jobs are written for engines that pick up and set out cars. Pick a steam or diesel engine to take one.' : 'Jobs are written for the built-in railroads. Pick one under Railroad to take one.'}</p>`; refreshJobGroups(); return; }
   const opts = [['', 'Free run', 'No clock, no score', null]];
-  for (const j of JOB.list()) { const b = JOB.best[j.id]; opts.push([j.id, j.name, `${{ switch: 'Switching', passenger: 'Passenger', freight: 'Freight' }[j.kind]} · ${j.level}`, b]); }
+  // in a room, a job someone else is working shows whose it is (11p_mpjobs.js)
+  for (const j of JOB.list()) {
+    const b = JOB.best[j.id], who = MP.on && (j.assist ? null : MPJ.takenBy(j.id)), shut = MP.on && j.assist && !MPJ.assistTarget();
+    opts.push([j.id, MPJ.title(j), who ? `Taken by ${who.st.nm}` : shut ? 'Opens when someone takes the mine run' : `${{ switch: 'Switching', passenger: 'Passenger', freight: 'Freight' }[j.kind]} · ${j.level}`, b, !!(who || shut)]);
+  }
   const cur = JOB.def(GAME.settings.job) ? GAME.settings.job : '';
-  for (const [id, name, sub, best] of opts) {
+  for (const [id, name, sub, best, taken] of opts) {
     const b = document.createElement('button'); b.type = 'button'; b.id = 'optJob_' + (id || 'free');
     b.setAttribute('aria-pressed', String(id === cur));
+    if (taken) b.classList.add('taken');
     b.innerHTML = `<span></span><small></small>${best ? `<em class="best" aria-label="Best ${best.score} points">${stars(best.stars)} ${best.score}</em>` : ''}`;
     b.firstChild.textContent = name; b.children[1].textContent = sub;
     b.addEventListener('click', () => { GAME.settings.job = id; [...host.children].forEach(c => c.setAttribute('aria-pressed', String(c === b))); jobBrief(); refreshJobGroups(); startLabel(); saveSettings(); });
@@ -613,7 +635,8 @@ function jobBrief() {
   const R = { def: j, steps: j.steps.map(s => ({ ...s })) };
   const trains = { light: 'Light engine', passenger: '8 coaches', timefreight: '18 cars, caboose', mtncoal: '14 loads + pusher', lakemail: '4 cars', lakefreight: '11 cars, caboose' };
   const b = JOB.best[j.id], last = j.steps[j.steps.length - 1];
-  el.innerHTML = `<p class="jb">${j.brief}</p><div class="jm"><span><b>${fmtClock(j.start, true)}</b>On duty</span><span><b>${fmtClock(j.due || last.arr || last.by, true)}</b>${j.due ? 'Work done by' : last.type === 'stop' ? 'Due ' + last.at : 'In the clear by'}</span><span><b>${trains[j.train]}</b>Your train</span><span><b>${b ? stars(b.stars) + ' ' + b.score : '—'}</b>Best</span><span><b>$${(j.pay || 0).toLocaleString()}</b>Pays at 100 points</span><span><b>$${CAREER.earned().toLocaleString()}</b>Earned so far</span></div>` + JOB.sheet(R, 0, false);
+  const why = JOB.ready(j);
+  el.innerHTML = (why ? `<p class="help jwhy">${why}</p>` : '') + `<p class="jb">${j.brief}</p><div class="jm"><span><b>${fmtClock(j.start, true)}</b>On duty</span>${j.due || last.arr || last.by ? `<span><b>${fmtClock(j.due || last.arr || last.by, true)}</b>${j.due ? 'Work done by' : last.type === 'stop' ? 'Due ' + last.at : 'In the clear by'}</span>` : '<span><b>Summit</b>With their train</span>'}<span><b>${trains[j.train]}</b>Your train</span><span><b>${b ? stars(b.stars) + ' ' + b.score : '—'}</b>Best</span><span><b>$${(j.pay || 0).toLocaleString()}</b>Pays at 100 points</span><span><b>$${CAREER.earned().toLocaleString()}</b>Earned so far</span></div>` + JOB.sheet(R, 0, false);
 }
 /* a job picks the train and the time of day itself */
 function refreshJobGroups() {

@@ -576,6 +576,10 @@ details.keys kbd{color:var(--brass)}
 .jd.none{color:var(--clear)}
 .seg.jobs{grid-template-columns:repeat(auto-fit,minmax(124px,1fr))}
 .seg.jobs .best{font-style:normal;font-family:var(--f-num);font-size:10.5px;color:var(--brass);margin-top:2px;letter-spacing:.5px}
+.seg.jobs button.taken{opacity:.55}
+.seg.jobs button.taken small{color:var(--approach)}
+#jobBrief .jwhy{margin:0;color:var(--approach)}
+.mpN em{display:block;font-style:normal;font-size:11px;color:var(--brass)}
 .seg button.locked{opacity:.55}
 .seg button em.lock{display:block;font-style:normal;font-family:var(--f-num);font-size:10.5px;color:var(--brass);margin-top:3px;letter-spacing:.3px}
 #jobBrief{display:flex;flex-direction:column;gap:8px;margin-top:2px}
@@ -19123,7 +19127,11 @@ function physicsStep(dt, train) {
   S.limit = Math.min(limit, JOB.vmax()); S.grade = gradeLead;
   S.slide = !!V[li].slide; S.slideN = slid;
   const Meff = M * 1.04;
-  const Fdrive = Frail + Fgrade;
+  // another player's engine shoving ours in a room (11p_mpjobs.js): their effort, at whichever end they are against
+  const Fpush = S.pushF || 0;
+  const Fdrive = Frail + Fgrade + Fpush;
+  // what our own engine has left over to shove something with, for the room (positive: forward)
+  S.Fnet = Math.abs(S.v) < 0.03 ? Math.sign(Frail + Fgrade) * Math.max(0, Math.abs(Frail + Fgrade) - Fres - Fbrake) : Frail + Fgrade - Math.sign(S.v) * (Fres + Fbrake);
   let a;
   if (Math.abs(S.v) < 0.03) {
     const hold = Fres + Fbrake;
@@ -19140,6 +19148,7 @@ function physicsStep(dt, train) {
     // the engines (and helpers) pull; the cars behind only follow
     for (let i = 0; i < V.length; i++) { const v = V[i]; if ((v.kind === 'loco' || v.kind === 'loco2') && Mpow > 0) sk.F[i] += Frail * sk.M[i] / Mpow; }
     if (!Mpow) for (let i = 0; i < V.length; i++) sk.F[i] += Frail * sk.M[i] / M;
+    if (Fpush) sk.F[Fpush > 0 ? V.length - 1 : 0] += Fpush;
     slackStep(dt, train, a);
   }
   if (S.slide) S.vw = 0; else if (!S.slip) S.vw = S.v;
@@ -25819,6 +25828,10 @@ function mpClean(r) {
   // (and which of their trains: 0 or missing, the one they drive; else the number of one of their other trains)
   o.hx = Array.isArray(r.hx) && r.hx.length >= 5 && r.hx.length <= 8 && typeof r.hx[0] === 'string' ? [r.hx[0].slice(0, 16), Math.round(n(r.hx[1], 0, 1e9)), n(r.hx[2], 0, 200), n(r.hx[3], -1e5, 1e5), n(r.hx[4], -1e5, 1e5), Math.round(n(r.hx[5], 0, 1e6)), r.hx.length > 6 ? n(r.hx[6], -80, 80) : null, r.hx[7] < 0 ? -1 : 1] : null;
   o.ch = Array.isArray(r.ch) && r.ch.length === 2 ? [Math.round(n(r.ch[0], 0, 1e9)), mpText(r.ch[1], 80)] : null;
+  // their job, the session's pay, and the train of ours they are pushing (11p_mpjobs.js)
+  o.jb = !o.other ? MPJ.clean(r.jb) : null;
+  o.je = MPJ.cleanTally(r.je);
+  o.ps = !o.other ? MPJ.cleanPush(r.ps) : null;
   return o;
 }
 function mpSegDist(p, a, b) {
@@ -26083,7 +26096,7 @@ MP.leave = function (quiet) {
   MP.bye();
   for (const l of MP.links) l.close();
   if (MP.room) MP.room.close();
-  MPC.leave();
+  MPC.leave(); MPJ.leave(); MP.push = null;
   MP.links = []; MP.room = null; MP.on = false; MP.code = ''; MP.needSpawn = false; MP.spawned = false;
   for (const id of [...MP.peers.keys()]) MP.drop(id, null);
   MP.unwatch(); $('mpPanel').hidden = true;
@@ -26128,7 +26141,8 @@ MP.ui = function () {
   $('btnPlayers').hidden = !MP.on;
   $('mpCount').textContent = n;
   $('mpPanelCode').textContent = MP.code;
-  if (MP.jobOn !== MP.on) { MP.jobOn = MP.on; jobMenu(); }
+  if (MP.jobOn !== MP.on) { MP.jobOn = MP.on; MPJ.sig = ''; jobMenu(); }
+  MPJ.tick();
 };
 MP.say = function (msg, warn) { const s = $('mpStatus'); s.textContent = msg; if (warn) s.style.color = 'var(--approach)'; setTimeout(() => { s.style.color = ''; MP.ui(); }, 3500); };
 MP.talk = function (text) {
@@ -26159,7 +26173,9 @@ MP.receive = function (raw) {
     toast(performance.now() - MP.joinedAt < 3000 ? `${st.nm} is in the room.` : `${st.nm} joined the room.`, 'good', 3200);
     MP.ui();
   } else if (st.q <= p.q) return;
+  const prev = p.q >= 0 ? p.st : undefined;
   p.q = st.q; p.st = st; p.at = performance.now();
+  MPJ.receive(p, prev, st);
   // round trip from their echo of our send time, less the time they held it before replying
   p.ts = st.ts; p.rx = p.at;
   if (st.ak) { const rtt = p.at - st.ak[0] - st.ak[1]; if (rtt > 0 && rtt < 5000) p.rtt = p.rtt ? p.rtt * 0.85 + rtt * 0.15 : rtt; }
@@ -26268,6 +26284,9 @@ MP.state = function () {
   if (MP.lt) st.lt = MP.lt;
   if (MP.hit) st.hx = MP.hit;
   if (MP.chat) st.ch = MP.chat;
+  { const jb = MPJ.out(); if (jb) st.jb = jb; }
+  if (MPJ.earn || MPJ.n) st.je = [MPJ.earn, MPJ.n];
+  if (MP.push) st.ps = MP.push;
   return st;
 };
 MP.send = function () {
@@ -26385,7 +26404,7 @@ MP.post = function (dt) {
      until the two are clear, instead of the pair locking together. */
 const MP_END = 10, MP_TOUCH = 1.25, MP_SIDESWIPE = 2.2;
 MP.contact = function (T) {
-  if (!MP.on || !MP.spawned || !T) return;
+  if (!MP.on || !MP.spawned || !T) { S.pushF = 0; return; }
   const front = _mpA, rear = _mpB; mpEnds(T, front, rear);
   const fwd = T.lead.fwd, now = performance.now();
   for (const { p, h, rt } of MP.trains()) {
@@ -26437,6 +26456,8 @@ MP.contact = function (T) {
     }
     if (!any) { touch[0] = touch[1] = null; if (h.ghost && !MP.overlaps(T, rt)) h.ghost = false; }
   }
+  // shoving someone's train, or being shoved: the pusher's effort crosses over (11p_mpjobs.js)
+  MPJ.pushOut(T); MPJ.pushIn(T);
 };
 /* n or more of our tracked points within a car width of their train: the two are inside each other */
 MP.overlaps = function (T, rt, n = 1) {
@@ -26520,7 +26541,8 @@ MP.tags = function () {
     if (d > 4500 || _mpD.z > 1 || _mpD.z < -1 || Math.abs(_mpD.x) > 1.1 || Math.abs(_mpD.y) > 1.1) { el.style.display = 'none'; continue; }
     el.style.display = '';
     el.style.transform = `translate(${Math.round((_mpD.x * 0.5 + 0.5) * W)}px,${Math.round((-_mpD.y * 0.5 + 0.5) * H)}px) translate(-50%,-100%)`;
-    const nm = p.st.nm + (p.st.pz ? ' (in menu)' : ''), ds = fmtMi(d);
+    const jd = mpjLive(p.st.jb) && mpjDef(p.st.jb[0]);
+    const nm = p.st.nm + (p.st.pz ? ' (in menu)' : ''), ds = fmtMi(d) + (jd ? ' · ' + (jd.assist ? 'Pusher' : jd.name) : '');
     if (el.children[1].textContent !== nm) el.children[1].textContent = nm;
     if (el.children[2].textContent !== ds) el.children[2].textContent = ds;
   }
@@ -26529,24 +26551,28 @@ MP.panel = function () {
   const box = $('mpList'); if (!box) return;
   const T = GAME.train, me = T && MP.spawned ? T.lead.pos : null;
   box.textContent = '';
-  const row = (color, name, sub, right, peerId) => {
+  // the job each player is on, and what the session has paid them (11p_mpjobs.js)
+  const work = (jb, je) => { const j = jb ? MPJ.status({ jb }) : '', t = je && (je[0] || je[1]) ? `$${je[0].toLocaleString()} from ${je[1]} job${je[1] === 1 ? '' : 's'} this session` : ''; return [j, t].filter(Boolean).join(' · '); };
+  const row = (color, name, sub, right, peerId, job) => {
     const r = document.createElement('div'); r.className = 'mpP';
     const dot = document.createElement('i'); dot.style.background = color; r.appendChild(dot);
     const mid = document.createElement('div'); mid.className = 'mpN';
     const b = document.createElement('b'); b.textContent = name; mid.appendChild(b);
-    const s = document.createElement('span'); s.textContent = sub; mid.appendChild(s); r.appendChild(mid);
+    const s = document.createElement('span'); s.textContent = sub; mid.appendChild(s);
+    if (job) { const em = document.createElement('em'); em.textContent = job; mid.appendChild(em); }
+    r.appendChild(mid);
     const rr = document.createElement('span'); rr.className = 'mpS'; rr.textContent = right; r.appendChild(rr);
     if (peerId) { const w = document.createElement('button'); w.className = 'btn'; w.textContent = 'Watch'; w.disabled = !(MP.peers.get(peerId).rt); w.addEventListener('click', () => MP.watch(peerId)); r.appendChild(w); }
     box.appendChild(r);
   };
-  row(MP.color, MP.name + ' (you)', MP.last ? mpLocoLabel(MP.last) : 'In the menu', MP.spawned ? Math.round(Math.abs(S.v) / MPH) + ' mph' : '');
+  row(MP.color, MP.name + ' (you)', MP.last ? mpLocoLabel(MP.last) : 'In the menu', MP.spawned ? Math.round(Math.abs(S.v) / MPH) + ' mph' : '', null, work(MPJ.out(), [MPJ.earn, MPJ.n]));
   for (const p of MP.peers.values()) {
     const st = p.st;
     let right = st.e >= 0 ? Math.round(Math.abs(st.v) / MPH) + ' mph' : '';
     if (st.dr) right = 'Derailed'; else if (st.pz && st.e >= 0) right = 'In the menu';
     if (me && p.rt && p.rt.placed) right += ' · ' + fmtMi(me.distanceTo(p.rt.train.lead.pos));
     const more = p.trains ? [...p.trains.values()].filter(h => h.rt && h.rt !== p.rt).length : 0;
-    row(p.color, st.nm, mpLocoLabel(st) + (more ? ` · +${more} train${more > 1 ? 's' : ''}` : '') + (p.rtt ? ` · ${Math.round(p.rtt / 2)} ms` : ''), right, p.id);
+    row(p.color, st.nm, mpLocoLabel(st) + (more ? ` · +${more} train${more > 1 ? 's' : ''}` : '') + (p.rtt ? ` · ${Math.round(p.rtt / 2)} ms` : ''), right, p.id, work(st.jb, st.je));
   }
 };
 MP.drawMap = function (g, tx, ty, opt) {
@@ -26787,6 +26813,15 @@ const JOBS = [
       { type: 'pass', at: 'Owl Creek', by: hm(22, 50) },
       { type: 'track', to: 'Hollow Pine Siding', by: hm(23, 5), text: 'Put the train away in the Hollow Pine siding, clear of the switches', hint: 'Round the far side of the lake and back over the plateau. Throw Hollow Pine West for the siding, pull in and stop with the whole train at least 125 ft from both switches.' },
     ] },
+
+  /* ---------- a room on Laurel Mountain: push another player's mine run ---------- */
+  { id: 'assist', route: 'laurel', mp: true, assist: true, pay: 2500, name: 'Pusher on the mine run', kind: 'freight', level: 'Medium', look: 'morning', train: 'light', spawn: 'assist', start: hm(6, 10),
+    brief: 'Someone in the room has fourteen loads of coal to lift over Laurel Mountain. Your engine is made up just behind their caboose. Buff up gently, then shove with everything you have all the way to Summit and drop back. Your engine pushes their train for real: the harder you work, the faster they climb.',
+    steps: [
+      { type: 'buff', text: 'Buff up gently behind the caboose', hint: 'Ease ahead onto the caboose at a walking pace. A hard hit costs you points and shakes their crew.' },
+      { type: 'shove', text: 'Shove the train up to Summit', hint: 'Open up when they do and keep the couplers bunched: drop off the back and they lose your help on the grade.' },
+      { type: 'drop', text: 'Stop at Summit and drop back', hint: 'When they stop at Summit, stop too and ease back off the caboose.' },
+    ] },
 ];
 
 const JOB = { run: null, best: {}, hz: 0 };
@@ -26801,8 +26836,8 @@ JOB.load = function () { try { JOB.best = JSON.parse(localStorage.getItem('bd_jo
 JOB.save = function () { try { localStorage.setItem('bd_jobs', JSON.stringify(JOB.best)); } catch (e) {} };
 /* jobs are written for the built-in railroad, single player */
 JOB.route = () => typeof PLAY_LAYOUT !== 'undefined' && PLAY_LAYOUT ? '' : typeof ROUTE_KEY !== 'undefined' ? ROUTE_KEY : 'ohio';
-JOB.list = () => JOBS.filter(j => (j.route || 'ohio') === JOB.route());
-JOB.available = () => !MP.on && !PLAY_LAYOUT && JOB.list().length > 0 && !LOCO_SPEC[GAME.settings.loco].set;
+JOB.list = () => JOBS.filter(j => (j.route || 'ohio') === JOB.route() && (!j.mp || (typeof MP !== 'undefined' && MP.on)));
+JOB.available = () => !PLAY_LAYOUT && JOB.list().length > 0 && !LOCO_SPEC[GAME.settings.loco].set;
 JOB.def = id => JOB.list().find(j => j.id === id) || null;
 /* a station, or a named place on the main (JOB_MARKS), as a point in the world */
 JOB.where = function (name) {
@@ -26855,7 +26890,9 @@ JOB.begin = function (def) {
       R.cars.push(v);
     }
   }
-  if (def.helper) JOB.makeHelper(def);
+  MPJ.begin(R);
+  // someone in the room may already be on the way to push: then no pusher of our own
+  if (def.helper && !(MP.on && MPJ.takenBy('assist', MP.id))) JOB.makeHelper(def);
   carPanelState.key = '';
   JOB.ui();
 };
@@ -26928,6 +26965,7 @@ JOB.note = function (what, d = {}) {
 JOB.fail = function (title, body) {
   const R = JOB.run; if (!R || R.over) return false;
   R.over = true; R.failed = { title, body }; R.end = JOB.clock();
+  MPJ.over(R);
   setTimeout(() => JOB.results(), 900);
   JOB.ui();
   return true;
@@ -26982,6 +27020,7 @@ JOB.steps = function (R, T, now) {
   const st = R.steps[R.i]; if (!st) return;
   const done = () => { st.state = 'done'; st.t = now; R.i++; carPanelState.key = ''; if (R.i >= R.steps.length) JOB.finish(); else JOB.ui(); };
   const lateBy = due => now - due;
+  if (MPJ.step(R, T, st, now, done)) return;
   if (st.type === 'depart' || st.type === 'stop') {
     const sn = stationNamed(st.at), cab = cabPos(T), d = cab.distanceTo(sn.p);
     const along = _v1.subVectors(cab, sn.p).dot(T.lead.fwd);
@@ -27072,7 +27111,10 @@ JOB.steps = function (R, T, now) {
   }
   if (st.type === 'helper') {
     // couple the pusher on; run on up the hill without it and the step is missed
-    if (hasHelper(T)) { st.doneT = now; const nx = R.steps[R.i + 1]; toast(`Pusher on. ${nx.type === 'pass' ? 'Pass ' + nx.at + ' by ' + fmtClock(nx.by) : nx.text}: give it everything.`, 'good', 5200, 'jobhelp'); done(); return; }
+    // our own pusher coupled on, or another player's engine buffed up against the caboose (11p_mpjobs.js)
+    const room = !hasHelper(T) && MPJ.behind(T);
+    if (room && R.lastStop > 0.5 && !st.roomAt) { st.roomAt = now; toast(`${room.st.nm} is buffed up behind your caboose. Open up together and climb.`, 'good', 5200, 'jobhelp'); }
+    if (hasHelper(T) || (room && st.roomAt)) { st.doneT = now; const nx = R.steps[R.i + 1]; toast(`Pusher on. ${nx.type === 'pass' ? 'Pass ' + nx.at + ' by ' + fmtClock(nx.by) : nx.text}: give it everything.`, 'good', 5200, 'jobhelp'); done(); return; }
     const m = st.miss && JOB.where(st.miss);
     if (m && flatDist(T.lead.pos, m) < 40) { JOB.dock('rules', 10, 'Left the pusher behind', ''); done(); st.state = 'missed'; }
     return;
@@ -27156,6 +27198,7 @@ JOB.finish = function () {
   if (!prev || sc > prev.score) JOB.best[R.def.id] = { score: sc, stars: starsFor(sc), at: Date.now() };
   JOB.save();
   R.paid = CAREER.payJob(R.def, sc);
+  MPJ.over(R);
   toast(`${R.def.name} complete: ${sc} points${R.paid ? `, $${R.paid.toLocaleString()} earned` : ''}.`, 'good', 4000, 'jobdone');
   setTimeout(() => JOB.results(), 1600);
   JOB.ui();
@@ -27174,7 +27217,7 @@ JOB.task = function () {
     return { text: st.state === 'ranby' ? `Back up to the ${st.at} platform` : `Stop at ${st.at}`, sub: c.s, kind: st.state === 'ranby' ? 'bad' : c.k };
   }
   if (st.type === 'pass') { const c = cd(st.by, 'by'); return { text: `Pass ${st.at}`, sub: c.s, kind: c.k }; }
-  const c = cd(stepDue(R, st), 'by');
+  const due = stepDue(R, st), c = due ? cd(due, 'by') : { s: '', k: '' };
   if (st.type === 'pickup') return { text: st.text, sub: (st.got ? `${st.got} of ${R.cars.length} coupled · ` : '') + c.s, kind: c.k };
   if (st.type === 'bills' && !st.why) return { text: st.text, sub: (st.got ? `${st.got} of ${st.n} spotted · ` : '') + c.s, kind: c.k };
   return { text: st.text, sub: st.why ? st.why : c.s, kind: st.why ? 'warn' : c.k };
@@ -27244,7 +27287,7 @@ JOB.results = function () {
   $('jdBest').textContent = fail ? '' : (R.prevBest == null ? 'First run of this job.' : total > R.prevBest ? `New best: up from ${R.prevBest}.` : `Best so far: ${R.prevBest}.`) + (R.paid ? ` Paid $${R.paid.toLocaleString()}.` : '');
   $('jdCats').innerHTML = fail ? '' : cats.map(c => `<div class="jc"><span>${c.name}</span><i><em style="width:${(c.got / c.max * 100).toFixed(1)}%"></em></i><b>${c.got}<small>/${c.max}</small></b></div>`).join('');
   $('jdSheet').innerHTML = JOB.sheet(R, R.end, false);
-  $('jdDrive').textContent = !fail ? 'Keep driving' : /plug/i.test(fail.title) ? 'Relight and drive on' : 'Re-rail and drive on';
+  $('jdDrive').textContent = !fail || !S.derailed ? 'Keep driving' : /plug/i.test(fail.title) ? 'Relight and drive on' : 'Re-rail and drive on';
   $('jobDone').hidden = false; $('bigMsg').hidden = true;
 };
 JOB.closeUI = function () { const d = $('jobDone'); if (d) d.hidden = true; const p = $('jobPanel'); if (p) p.hidden = true; };
@@ -27255,7 +27298,7 @@ JOB.again = function () {
 };
 JOB.drive = function () {
   const R = JOB.run; JOB.closeUI();
-  const failed = R && R.failed;
+  const failed = R && R.failed && (S.derailed || /plug/i.test(R.failed.title));
   JOB.toFree();
   if (failed) GAME.rerail(); else toast('Free running: the railroad is yours.', 'good', 3000);
 };
@@ -27267,13 +27310,18 @@ function jobMenu() {
   const ok = JOB.available();
   $('grpJob').hidden = false;
   host.innerHTML = '';
-  if (!ok) { $('jobBrief').innerHTML = `<p class="help">${MP.on ? 'Jobs are single player for now. Leave the room to take one.' : LOCO_SPEC[GAME.settings.loco].set ? 'Jobs are written for engines that pick up and set out cars. Pick a steam or diesel engine to take one.' : 'Jobs are written for the built-in railroads. Pick one under Railroad to take one.'}</p>`; refreshJobGroups(); return; }
+  if (!ok) { $('jobBrief').innerHTML = `<p class="help">${LOCO_SPEC[GAME.settings.loco].set ? 'Jobs are written for engines that pick up and set out cars. Pick a steam or diesel engine to take one.' : 'Jobs are written for the built-in railroads. Pick one under Railroad to take one.'}</p>`; refreshJobGroups(); return; }
   const opts = [['', 'Free run', 'No clock, no score', null]];
-  for (const j of JOB.list()) { const b = JOB.best[j.id]; opts.push([j.id, j.name, `${{ switch: 'Switching', passenger: 'Passenger', freight: 'Freight' }[j.kind]} · ${j.level}`, b]); }
+  // in a room, a job someone else is working shows whose it is (11p_mpjobs.js)
+  for (const j of JOB.list()) {
+    const b = JOB.best[j.id], who = MP.on && (j.assist ? null : MPJ.takenBy(j.id)), shut = MP.on && j.assist && !MPJ.assistTarget();
+    opts.push([j.id, MPJ.title(j), who ? `Taken by ${who.st.nm}` : shut ? 'Opens when someone takes the mine run' : `${{ switch: 'Switching', passenger: 'Passenger', freight: 'Freight' }[j.kind]} · ${j.level}`, b, !!(who || shut)]);
+  }
   const cur = JOB.def(GAME.settings.job) ? GAME.settings.job : '';
-  for (const [id, name, sub, best] of opts) {
+  for (const [id, name, sub, best, taken] of opts) {
     const b = document.createElement('button'); b.type = 'button'; b.id = 'optJob_' + (id || 'free');
     b.setAttribute('aria-pressed', String(id === cur));
+    if (taken) b.classList.add('taken');
     b.innerHTML = `<span></span><small></small>${best ? `<em class="best" aria-label="Best ${best.score} points">${stars(best.stars)} ${best.score}</em>` : ''}`;
     b.firstChild.textContent = name; b.children[1].textContent = sub;
     b.addEventListener('click', () => { GAME.settings.job = id; [...host.children].forEach(c => c.setAttribute('aria-pressed', String(c === b))); jobBrief(); refreshJobGroups(); startLabel(); saveSettings(); });
@@ -27288,7 +27336,8 @@ function jobBrief() {
   const R = { def: j, steps: j.steps.map(s => ({ ...s })) };
   const trains = { light: 'Light engine', passenger: '8 coaches', timefreight: '18 cars, caboose', mtncoal: '14 loads + pusher', lakemail: '4 cars', lakefreight: '11 cars, caboose' };
   const b = JOB.best[j.id], last = j.steps[j.steps.length - 1];
-  el.innerHTML = `<p class="jb">${j.brief}</p><div class="jm"><span><b>${fmtClock(j.start, true)}</b>On duty</span><span><b>${fmtClock(j.due || last.arr || last.by, true)}</b>${j.due ? 'Work done by' : last.type === 'stop' ? 'Due ' + last.at : 'In the clear by'}</span><span><b>${trains[j.train]}</b>Your train</span><span><b>${b ? stars(b.stars) + ' ' + b.score : '—'}</b>Best</span><span><b>$${(j.pay || 0).toLocaleString()}</b>Pays at 100 points</span><span><b>$${CAREER.earned().toLocaleString()}</b>Earned so far</span></div>` + JOB.sheet(R, 0, false);
+  const why = JOB.ready(j);
+  el.innerHTML = (why ? `<p class="help jwhy">${why}</p>` : '') + `<p class="jb">${j.brief}</p><div class="jm"><span><b>${fmtClock(j.start, true)}</b>On duty</span>${j.due || last.arr || last.by ? `<span><b>${fmtClock(j.due || last.arr || last.by, true)}</b>${j.due ? 'Work done by' : last.type === 'stop' ? 'Due ' + last.at : 'In the clear by'}</span>` : '<span><b>Summit</b>With their train</span>'}<span><b>${trains[j.train]}</b>Your train</span><span><b>${b ? stars(b.stars) + ' ' + b.score : '—'}</b>Best</span><span><b>$${(j.pay || 0).toLocaleString()}</b>Pays at 100 points</span><span><b>$${CAREER.earned().toLocaleString()}</b>Earned so far</span></div>` + JOB.sheet(R, 0, false);
 }
 /* a job picks the train and the time of day itself */
 function refreshJobGroups() {
@@ -27338,6 +27387,284 @@ JOB.drawMap = function (g, tx, ty, opt) {
   g.fillStyle = '#ffb347';
   for (const v of R.cars) { if (!v.pos) continue; g.beginPath(); g.arc(tx(v.pos.x), ty(-v.pos.z), 2.4 * opt.w, 0, TAU); g.fill(); }
   g.restore();
+};
+
+/* ============================================================================
+   Jobs in a multiplayer room. Each player works their own job; a job is taken
+   by one player at a time. Everyone in the room sees who is on which job, how
+   far they have got and what it scored, and a running tally of the session's
+   pay. On Laurel Mountain a second player can bring their engine up behind the
+   mine run and push it for real: the pusher's tractive effort goes over the
+   relay to the train in front (S.pushF in 08_physics.js).
+   ========================================================================== */
+const MPJ = { sig: '', earn: 0, n: 0 };
+const MPJ_PUSH_MAX = 900e3;     // N: about two big engines' worth, in case of a bad number
+const MPJ_PUSH_NEAR = 3;        // m between couplers that still counts as pushing (updates come a few times a second)
+const MPJ_PUSH_FRESH = 1200;    // ms a pusher's report holds good
+const _mpjA = new THREE.Vector3(), _mpjB = new THREE.Vector3();
+
+/* what we tell the room about our job: [id, step, score, over (1 done, 2 failed), claimed at, clock s, lead, paid] */
+MPJ.out = function () {
+  const R = JOB.run; if (!R) return null;
+  return [R.def.id, R.i, JOB.total(R).total, R.over ? (R.failed ? 2 : 1) : 0, R.claim || 0, Math.round(JOB.clock()), R.lead || '', R.paid || 0];
+};
+/* another player's job report, checked */
+MPJ.clean = function (r) {
+  if (!Array.isArray(r) || r.length !== 8 || typeof r[0] !== 'string' || !/^[a-z0-9]{1,16}$/.test(r[0])) return null;
+  const n = (x, lo, hi) => (typeof x === 'number' && isFinite(x)) ? Math.round(clamp(x, lo, hi)) : lo;
+  return [r[0], n(r[1], 0, 50), n(r[2], 0, 100), n(r[3], 0, 2), n(r[4], 0, 1e13), n(r[5], 0, 2e5), typeof r[6] === 'string' && /^[a-z0-9]{6,16}$/.test(r[6]) ? r[6] : '', n(r[7], 0, 1e6)];
+};
+/* a pusher's report: [whose train, which of their trains, newtons] */
+MPJ.cleanPush = function (r) {
+  if (!Array.isArray(r) || r.length !== 3 || typeof r[0] !== 'string' || !/^[a-z0-9]{6,16}$/.test(r[0])) return null;
+  const f = typeof r[1] === 'number' && isFinite(r[1]) ? Math.round(clamp(r[1], 0, 1e6)) : 0;
+  const N = typeof r[2] === 'number' && isFinite(r[2]) ? clamp(r[2], 0, MPJ_PUSH_MAX) : 0;
+  return N > 0 ? [r[0], f, N] : null;
+};
+/* the session's pay and jobs done: [dollars, jobs] */
+MPJ.cleanTally = function (r) {
+  if (!Array.isArray(r) || r.length !== 2) return null;
+  const n = (x, hi) => (typeof x === 'number' && isFinite(x)) ? Math.round(clamp(x, 0, hi)) : 0;
+  return [n(r[0], 1e8), n(r[1], 1e4)];
+};
+
+const mpjDef = id => JOBS.find(j => j.id === id) || null;
+const mpjLive = jb => jb && jb[3] === 0;
+/* the player in the room working job id (and, for a pusher, for the same train); null if nobody */
+MPJ.takenBy = function (id, lead) {
+  if (!MP.on) return null;
+  for (const p of MP.peers.values()) { const jb = p.st.jb; if (mpjLive(jb) && jb[0] === id && (!lead || jb[6] === lead)) return p; }
+  return null;
+};
+/* the player whose mine run is waiting at the foot of the hill for a pusher, and not already getting one */
+MPJ.assistTarget = function () {
+  if (!MP.on) return null;
+  for (const p of MP.peers.values()) {
+    const jb = p.st.jb; if (!mpjLive(jb) || jb[0] !== 'pusher' || jb[1] !== 0) continue;
+    if (!p.rt || !p.rt.placed || p.st.dr) continue;
+    if (MPJ.takenBy('assist', p.id)) continue;
+    return p;
+  }
+  return null;
+};
+/* why a job cannot be started here and now ('' when it can) */
+MPJ.ready = function (def) {
+  if (!MP.on) return '';
+  if (def.assist) { const p = MPJ.assistTarget(); return p ? '' : 'Nobody in the room has a mine run waiting for a pusher. When someone takes the mine run, this job opens.'; }
+  const p = MPJ.takenBy(def.id);
+  if (p) return `${p.st.nm} is working this job. Pick another, or wait until they are done.`;
+  return '';
+};
+/* the cars a job picks up still stand where it expects them, and a way freight's still carry their waybills */
+JOB.ready = function (def) {
+  const why = MPJ.ready(def); if (why) return why;
+  for (const st of def.steps) if (st.type === 'pickup') {
+    const cuts = CARS.cuts.filter(c => c.home === st.from && !c.parkS);
+    if (!cuts.length || cuts.some(c => c.pts.some(p => !p.tp.e.line || p.tp.e.line.name !== st.from)))
+      return `The cars for this job are not on ${st.from} any more: someone has moved them.`;
+    if (def.steps.some(s => s.type === 'bills') && !cuts.some(c => c.vehicles.some(v => v.wb)))
+      return 'The cars on Yard 3 have lost their waybills in this room. Run the way freight in single player.';
+  }
+  return '';
+};
+/* the job's name on the board: a pusher job names whose train it pushes */
+MPJ.title = function (def) {
+  if (!def.assist) return def.name;
+  const p = MPJ.assistTarget();
+  return p ? `Push ${p.st.nm}'s mine run` : def.name;
+};
+/* a short line for where someone has got to on a job */
+MPJ.stepText = function (def, i) {
+  const st = def && def.steps[i]; if (!st) return '';
+  if (st.type === 'depart') return `Depart ${st.at}`;
+  if (st.type === 'stop') return `Stop at ${st.at}`;
+  if (st.type === 'pass') return `Pass ${st.at}`;
+  return st.text || '';
+};
+MPJ.status = function (st) {
+  const jb = st.jb, d = jb && mpjDef(jb[0]); if (!d) return '';
+  const nm = d.assist ? 'Pusher' : d.name;
+  if (jb[3] === 1) return `${nm}: done, ${jb[2]} points`;
+  if (jb[3] === 2) return `${nm}: over`;
+  return `${nm} · ${MPJ.stepText(d, jb[1])} · ${jb[2]} pts`;
+};
+
+/* starting a job in a room */
+MPJ.begin = function (R) {
+  R.claim = Date.now();
+  if (!MP.on) return;
+  if (R.def.assist) {
+    const p = MPJ.assistTarget();
+    if (p) { R.lead = p.id; R.leadName = p.st.nm; R.def = Object.assign({}, R.def, { start: p.st.jb[5], name: `Pusher for ${p.st.nm}` }); }
+  }
+  MP.addLog(MP.name, MP.color, `took ${R.def.assist ? 'the pusher job' : R.def.name}`);
+  MP.dirty = true;
+};
+/* a job of ours finished or came to grief: the session's tally, and a line in the room's log */
+MPJ.over = function (R) {
+  if (!MP.on) return;
+  if (!R.failed) { MPJ.earn += R.paid || 0; MPJ.n++; }
+  MP.addLog(MP.name, MP.color, R.failed ? `${R.def.name}: ${R.failed.title.toLowerCase()}` : `finished ${R.def.name}: ${JOB.total(R).total} points${R.paid ? `, $${R.paid.toLocaleString()}` : ''}`);
+  MP.dirty = true;
+};
+
+/* someone's report came in: say what changed, and sort out two players on one job */
+MPJ.receive = function (p, prev, st) {
+  const a = prev && prev.jb, b = st.jb;
+  if (b && (!a || a[0] !== b[0] || a[4] !== b[4])) {
+    const d = mpjDef(b[0]);
+    if (d && b[3] === 0 && a !== undefined) {
+      const what = d.assist ? (b[6] === MP.id ? 'is coming to push your train' : 'is pushing the mine run') : `took ${d.name}`;
+      MP.addLog(st.nm, p.color, what);
+      if (b[6] === MP.id) toast(`${st.nm} is bringing an engine up behind your caboose to push.`, 'good', 5200, 'mpjAssist');
+    }
+  } else if (a && b && a[0] === b[0] && a[3] === 0 && b[3] !== 0) {
+    const d = mpjDef(b[0]), nm = d ? (d.assist ? 'the pusher job' : d.name) : 'their job';
+    const line = b[3] === 1 ? `finished ${nm}: ${b[2]} points${b[7] ? `, $${b[7].toLocaleString()}` : ''}` : `${nm} is over`;
+    MP.addLog(st.nm, p.color, line);
+    toast(`${st.nm} ${line}.`, b[3] === 1 ? 'good' : 'warn', 4200, 'mpjDone' + p.id);
+  }
+  const R = JOB.run;
+  if (!R || R.over || !mpjLive(b)) return;
+  // the same job twice: whoever took it first keeps it
+  if (b[0] === R.def.id && (!R.def.assist || b[6] === R.lead)) {
+    if (b[4] < R.claim || (b[4] === R.claim && p.id < MP.id)) {
+      toast(`${st.nm} took ${R.def.assist ? 'that pusher job' : R.def.name} first. You are free running.`, 'warn', 5200, 'mpjClash');
+      JOB.toFree();
+      return;
+    }
+  }
+  // someone is coming to push our mine run: our own pusher goes back to the shed
+  if (b[0] === 'assist' && b[6] === MP.id && R.def.helper && R.steps[R.i] && R.steps[R.i].type === 'helper' && !R.roomPusher) {
+    R.roomPusher = p.id;
+    const H = CARS.cuts.find(c => c.parkS && c.pusher);
+    if (H) {
+      if (H.crew && typeof IX !== 'undefined') { IX.release(H.crew.ix); H.crew = null; }
+      CARS.cuts = CARS.cuts.filter(c => c !== H); H.disposeDeep();
+      CARS.gen++; if (typeof IX !== 'undefined') IX.idx = null;
+      if (typeof FLEET !== 'undefined' && FLEET.ui) FLEET.ui(true);
+      if (typeof MAP !== 'undefined' && MAP.visible) MAP.draw();
+    }
+  }
+};
+/* the job board needs drawing again when someone takes or finishes a job */
+MPJ.tick = function () {
+  let s = '';
+  if (MP.on) for (const p of MP.peers.values()) { const jb = p.st.jb; if (jb) s += p.id + jb[0] + jb[1] + jb[3] + jb[6] + '|'; }
+  if (s !== MPJ.sig) { MPJ.sig = s; if (!$('menu').hidden) jobMenu(); }
+};
+MPJ.leave = function () { MPJ.sig = ''; S.pushF = 0; if (JOB.run && JOB.run.def.assist && !JOB.run.over) { JOB.toFree(); toast('Out of the room, the pusher job is over. Free running.', 'warn', 4000); } };
+
+/* ---------------- pushing someone else's train ---------------- */
+/* nearest end of a remote train to point q, metres */
+function mpjEndDist(rt, q) { return rt.polyN ? Math.min(q.distanceTo(rt.poly[0]), q.distanceTo(rt.poly[rt.polyN - 1])) : Infinity; }
+/* Our engine against the end of another player's train and working to shove it: tell them how hard. What is
+   left of our own effort after our train's grade, rolling resistance and brakes (S.Fnet) goes into theirs. */
+MPJ.pushOut = function (T) {
+  MP.push = null;
+  if (!T || S.derailed || !(S.Fnet > 0 || S.Fnet < 0)) return;
+  mpEnds(T, _mpjA, _mpjB);
+  let best = null;
+  for (const { p, h, rt } of MP.trains()) {
+    if (!rt.placed || !rt.polyN || p.st.dr) continue;
+    for (const [end, sg] of [[_mpjA, 1], [_mpjB, -1]]) {
+      const N = sg * S.Fnet;
+      if (N <= 0 || mpjEndDist(rt, end) > MPJ_PUSH_NEAR) continue;
+      if (!best || N > best[2]) best = [p.id, h.f || 0, Math.round(Math.min(N, MPJ_PUSH_MAX))];
+    }
+  }
+  MP.push = best;
+};
+/* another player pushing ours: their effort, applied at whichever of our ends they are against */
+MPJ.pushIn = function (T) {
+  let F = 0, from = 0;
+  const now = performance.now();
+  if (T && MP.on) {
+    mpEnds(T, _mpjA, _mpjB);
+    for (const p of MP.peers.values()) {
+      const ps = p.st.ps;
+      if (!ps || ps[0] !== MP.id || ps[1] !== (T.fid || 0) || now - p.at > MPJ_PUSH_FRESH || !p.trains) continue;
+      for (const h of p.trains.values()) {
+        if (!h.rt || !h.rt.placed) continue;
+        const dF = mpjEndDist(h.rt, _mpjA), dR = mpjEndDist(h.rt, _mpjB);
+        if (Math.min(dF, dR) > MPJ_PUSH_NEAR + 1) continue;
+        const sg = dR < dF ? 1 : -1;   // against our rear: shoved ahead; against our front: shoved back
+        F += sg * ps[2]; from = p.id;
+        break;
+      }
+    }
+  }
+  S.pushF = clamp(F, -MPJ_PUSH_MAX, MPJ_PUSH_MAX); S.pushBy = from;
+};
+/* the room player whose engine stands against our rear coupler, pushing or ready to (null if none) */
+MPJ.behind = function (T) {
+  if (!MP.on || !T) return null;
+  if (S.pushF > 0 && S.pushBy) return MP.peers.get(S.pushBy) || null;
+  for (const { p, h } of MP.trains()) if (h.touch && h.touch[1] && h.touch[1].kind === 'end') return p;
+  return null;
+};
+
+/* ---------------- the pusher's own job ---------------- */
+/* steps for the player doing the pushing: buff up, shove to Summit, drop back. Returns true if st was one. */
+MPJ.step = function (R, T, st, now, done) {
+  if (st.type !== 'buff' && st.type !== 'shove' && st.type !== 'drop') return false;
+  const lead = MP.peers.get(R.lead), lj = lead && lead.st.jb;
+  if (!lead) { JOB.fail('Left on your own', `${R.leadName || 'The other engineer'} has left the room.`); return true; }
+  if (!lj || lj[0] !== 'pusher' || lj[4] === 0) { JOB.fail('The mine run was called off', `${lead.st.nm} has given up the job.`); return true; }
+  if (lj[3] === 2) { JOB.fail('The mine run came to grief', `${lead.st.nm}'s train is off the rails.`); return true; }
+  const h = lead.trains && lead.trains.get(lead.st.f);
+  const touching = !!(h && h.touch && h.touch.some(t => t && t.kind === 'end')) || (MP.push && MP.push[0] === lead.id);
+  const leadMoving = Math.abs(lead.st.v || 0) > 0.45, cut = mpjDef('pusher').steps.findIndex(s => s.type === 'cutoff');
+  if (st.type === 'buff') {
+    st.why = touching ? '' : h && h.rt && h.rt.placed ? `${fmtMi(cabPos(T).distanceTo(h.rt.train.pts[h.rt.train.pts.length - 1].F.p))} to the caboose` : '';
+    if (touching && R.lastStop > 0.5) { toast(`Buffed up behind ${lead.st.nm}'s caboose. Open up when they do, and keep shoving to Summit.`, 'good', 5200, 'mpjBuff'); st.doneT = now; done(); }
+    return true;
+  }
+  if (st.type === 'shove') {
+    const ep = R.ep;
+    if (leadMoving) { ep.climb = (ep.climb || 0) + 0.1; if (touching) ep.pushed = (ep.pushed || 0) + 0.1; }
+    st.why = touching ? '' : leadMoving ? `Catch up: you have dropped off ${lead.st.nm}'s train` : '';
+    if (lj[1] >= cut || lj[3] === 1) {
+      const frac = ep.climb > 30 ? (ep.pushed || 0) / ep.climb : 1;
+      if (frac < 0.8) JOB.dock('time', Math.min(40, Math.round((0.8 - frac) * 60)), 'Dropped off the train', `pushed for ${Math.round(frac * 100)} per cent of the climb`);
+      toast(`Summit. Stop, and drop back clear of ${lead.st.nm}'s caboose.`, 'good', 5200, 'mpjTop');
+      st.doneT = now; done();
+    }
+    return true;
+  }
+  // drop back: stopped, off their caboose
+  st.why = touching ? 'Ease back off the caboose' : R.lastStop < 1.5 ? 'Bring your engine to a stand' : '';
+  if (!touching && R.lastStop >= 1.5) { st.doneT = now; done(); }
+  return true;
+};
+
+/* ---------------- making up a job's train in a room ---------------- */
+/* what is standing on the len metres of track behind front ('' when clear); skip: a player whose trains don't count */
+MPJ.blocking = function (front, len, skip) {
+  const rts = MP.trains().filter(x => x.p.id !== skip && x.rt.placed && x.rt.polyN);
+  const tp = front.clone(), F = newFrame();
+  for (let d = 0; d <= len; d += 2) {
+    if (d) tp.advance(-2, null);
+    tp.pose(F);
+    for (const { p, rt } of rts) for (let i = 0; i < rt.polyN - 1; i++) if (mpSegDist(F.p, rt.poly[i], rt.poly[i + 1]) < 1.6) return `${p.st.nm}'s train`;
+    for (const c of CARS.cuts) for (let i = 0; i < c.pts.length - 1; i++) if (mpSegDist(F.p, c.pts[i].F.p, c.pts[i + 1].F.p) < 1.6) return 'A cut of cars';
+  }
+  return '';
+};
+/* line the switches a job's train needs out of where it is made up, unless someone's train is over them */
+MPJ.line = function (names) {
+  for (const n of names || []) {
+    const sw = NET.switches.find(s => s.name === n);
+    if (!sw || sw.state === 1 || MP.occupant(sw) || CARS.occupied(sw)) continue;
+    sw.state = 1; MP.noteThrow(sw);
+  }
+};
+/* a pusher's engine: the same way round as the mine run, 20 m short of its caboose */
+MPJ.assistAt = function (t) {
+  const p = MPJ.assistTarget(); if (!p) return null;
+  const T = p.rt.train, tp = T.pts[0].tp.clone();
+  if (tp.advance(-(T.length + 20), null) !== 0) return null;
+  return MPJ.blocking(tp, t.length + 4, p.id) ? null : tp;   // their own pusher goes when they hear we are coming
 };
 
 /* ============================================================================
@@ -32224,10 +32551,25 @@ function makeTrain() {
   if (WORLD.custom) { placeOnLayout(t); return; }
   let line = ROUTE.startLine, sFront = line.len - 175, o = 1;
   GAME.spawnName = ROUTE.spawnName || (WORLD.mtn ? 'Riverton 2, Riverton Yard' : 'Yard 2, Bellevue');
-  const job = JOB.wanted(), sp = job && JOB.spawn(job);
+  const job = JOB.wanted();
+  let sp = job && !job.assist && JOB.spawn(job), tpAt = null;
+  GAME.jobBlocked = '';
   if (MP.on) {
-    // in a room the switches belong to everyone, so leave them alone and find an empty track
-    const slot = MP.spawnSlot(t);
+    // in a room a job's train is made up where the job says if nobody's train or cars are there (11p_mpjobs.js);
+    // a pusher comes up just behind the train it is to push
+    if (job && job.assist) {
+      tpAt = MPJ.assistAt(t);
+      if (tpAt) GAME.spawnName = `the foot of the hill, behind ${MPJ.assistTarget().st.nm}'s caboose`;
+      else GAME.jobBlocked = 'The mine run you were to push is not at the foot of the hill any more.';
+    } else if (sp) {
+      const loc0 = sp.line.locate(sp.s), tp0 = new TrackPos(loc0.edge, loc0.s, sp.o);
+      const who = MPJ.blocking(tp0, t.length + 30);
+      if (!who) { tpAt = tp0; GAME.spawnName = sp.name; MPJ.line(sp.lined); }
+      else if (job.train !== 'light') GAME.jobBlocked = `${who} is standing where ${job.name} is made up, on ${sp.name}. Try again when it is clear.`;
+      sp = null;   // a light engine can set off on its job from anywhere
+    }
+    // the switches belong to everyone, so leave them alone and find an empty track
+    const slot = !tpAt && MP.spawnSlot(t);
     if (slot) { line = slot.line; sFront = slot.s; GAME.spawnName = slot.name; }
     MP.spawned = true; MP.needSpawn = false; MP.dirty = true;
   } else {
@@ -32240,8 +32582,9 @@ function makeTrain() {
     else if (keep) { const slot = MP.spawnSlot(t); if (slot) { line = slot.line; sFront = slot.s; GAME.spawnName = slot.name; } }
   }
   const loc = line.locate(sFront);
-  t.place(new TrackPos(loc.edge, loc.s, o));
-  if (sp && sp.cabAt) JOB.alignCab(t, sp.cabAt);
+  t.place(tpAt || new TrackPos(loc.edge, loc.s, o));
+  const cabAt = job && !job.assist && JOB_SPAWNS[job.spawn] && JOB_SPAWNS[job.spawn].cabAt;
+  if (cabAt && (sp || tpAt)) JOB.alignCab(t, cabAt);
   finishTrain(t);
 }
 /* custom layout: the start marker, slid forward until the whole train is on the rails */
@@ -32604,9 +32947,13 @@ GAME.start = function () {
   audioInit(); buildWhistleIfReady();
   // a change made in the menu happens where the train stands; only a new job, a room to join or no room makes up a new train
   if (!GAME.running || (GAME.needNewTrain() && !(GAME.swapLive() && !GAME.needNewTrain()))) {
-    const job = JOB.wanted();
+    let job = JOB.wanted();
     if (JOB.run) JOB.end();
+    // a job someone else in the room is on, or whose cars have been moved, cannot be started
+    const why = job && JOB.ready(job);
+    if (why) { toast(why, 'warn', 6000, 'jobNot'); GAME.settings.job = ''; jobMenu(); job = null; }
     makeTrain();
+    if (job && GAME.jobBlocked) { toast(GAME.jobBlocked + ' Free running for now.', 'warn', 6500, 'jobNot'); GAME.settings.job = ''; jobMenu(); job = null; }
     if (job) JOB.begin(job);
     else if (TUT.want) TUT.begin();
     else if (GAME.running) toast(`New train made up on ${WORLD.custom || WORLD.mtn || FLEET.parked().length ? GAME.spawnName : 'Yard 2'}.`, 'good');
@@ -32934,7 +33281,7 @@ function renderStep(dt, T) {
   AI.render(dt);
   MP.frame(dt);
   WALK.frame(dt);
-  if (GAME.running && !S.paused && !S.derailed && !PLACE.on) MP.contact(T);
+  if (GAME.running && !S.paused && !S.derailed && !PLACE.on) MP.contact(T); else S.pushF = 0;
   // headlight & glows, brightening through dusk
   const night = SKY.dark, darkH = Math.max(night, smooth(0.3, 0.7, SKY.boreK || 0));   // in a tunnel the headlight works as it does at night
   // LED on the electrics, sealed beams on the diesels, a warm incandescent lamp on steam (10k_trainlight.js)

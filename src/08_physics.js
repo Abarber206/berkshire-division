@@ -245,7 +245,11 @@ function physicsStep(dt, train) {
   S.limit = Math.min(limit, JOB.vmax()); S.grade = gradeLead;
   S.slide = !!V[li].slide; S.slideN = slid;
   const Meff = M * 1.04;
-  const Fdrive = Frail + Fgrade;
+  // another player's engine shoving ours in a room (11p_mpjobs.js): their effort, at whichever end they are against
+  const Fpush = S.pushF || 0;
+  const Fdrive = Frail + Fgrade + Fpush;
+  // what our own engine has left over to shove something with, for the room (positive: forward)
+  S.Fnet = Math.abs(S.v) < 0.03 ? Math.sign(Frail + Fgrade) * Math.max(0, Math.abs(Frail + Fgrade) - Fres - Fbrake) : Frail + Fgrade - Math.sign(S.v) * (Fres + Fbrake);
   let a;
   if (Math.abs(S.v) < 0.03) {
     const hold = Fres + Fbrake;
@@ -262,6 +266,7 @@ function physicsStep(dt, train) {
     // the engines (and helpers) pull; the cars behind only follow
     for (let i = 0; i < V.length; i++) { const v = V[i]; if ((v.kind === 'loco' || v.kind === 'loco2') && Mpow > 0) sk.F[i] += Frail * sk.M[i] / Mpow; }
     if (!Mpow) for (let i = 0; i < V.length; i++) sk.F[i] += Frail * sk.M[i] / M;
+    if (Fpush) sk.F[Fpush > 0 ? V.length - 1 : 0] += Fpush;
     slackStep(dt, train, a);
   }
   if (S.slide) S.vw = 0; else if (!S.slip) S.vw = S.v;
