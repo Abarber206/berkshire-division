@@ -9,7 +9,7 @@
    steam engine, and parts that move, shine or run hot (rods, tires, brass, the smokebox).
    In winter the hardwoods and bushes stand bare and snow lies on the pines (04c_foliage.js).
    ========================================================================== */
-const SNOWC = { U: { value: 0 }, done: new WeakSet(), dry: new WeakSet(), twins: new WeakMap() };
+const SNOWC = { U: { value: 0 }, done: new WeakSet(), dry: new WeakSet(), twins: new WeakMap(), own: new WeakSet() };
 // bins never coated: moving, polished or hot parts, glass and lamps, and the holiday trim's own snow
 const SNOW_SKIP = new Set(['graphite', 'rod', 'tire', 'dWall', 'brass', 'copper', 'bronze', 'bellGrey', 'gold', 'fan', 'snow', 'snowDust', 'garland', 'berry', 'ribbon',
   'glow', 'lens', 'lensOff', 'hlLens', 'headOff', 'screen', 'hsLamp', 'hsTail', 'hsTailOff', 'hsGlass', 'hsWin', 'glass', 'glassT', 'win', 'coachWin', 'holWin', 'hit']);
@@ -19,13 +19,19 @@ function snowOk(m) {
   if (!m || !(m.isMeshStandardMaterial || m.isMeshLambertMaterial || m.isMeshPhongMaterial)) return false;
   if (m.transparent || m.visible === false || m.userData.noSnow) return false;
   if (m.emissive && m.emissive.r + m.emissive.g + m.emissive.b > 0) return false;   // windows and lamps that light up
-  return !Object.prototype.hasOwnProperty.call(m, 'onBeforeCompile');
+  return SNOWC.own.has(m) || !Object.prototype.hasOwnProperty.call(m, 'onBeforeCompile');
 }
 /* the material for bin k of a GeoBin being built (01_util.js calls this): rolling stock only, which every
    engine and car builds with the RMAT set */
 function snowMat(mats, k, opt = {}) {
   const m = mats[k];
   if (!m || typeof RMAT === 'undefined' || !RMAT.black || mats.black !== RMAT.black) return m;
+  const r = snowPick(m, k, opt);
+  // and the weathering, drawn in the same pass (06l_grime.js)
+  if (typeof grmApply === 'function') grmApply(r, k, opt.cast === false);
+  return r;
+}
+function snowPick(m, k, opt) {
   const ours = SNOWC.done.has(m);
   if (!ours && !snowOk(m)) return m;
   if (opt.cast === false || k.startsWith('jacket')) return snowDry(m);   // inside, or on the warm boiler
@@ -45,9 +51,15 @@ function snowDry(m) {
 }
 function snowCoat(m) {
   SNOWC.done.add(m);
-  const std = !!m.isMeshStandardMaterial;
-  m.onBeforeCompile = sh => snowShader(sh, std);
-  m.customProgramCacheKey = () => 'snowcoat';
+  rsInstall(m);
+}
+/* the shader of a rolling-stock paint: its weathering (06l_grime.js) and/or the snow coat, in one pass */
+function rsInstall(m) {
+  const snow = SNOWC.done.has(m), grm = typeof GRM !== 'undefined' && GRM.mats.has(m), std = !!m.isMeshStandardMaterial;
+  SNOWC.own.add(m);
+  // snow goes in first: each lands right after the metalness chunk, so the grime runs before it and the coat lies on top
+  m.onBeforeCompile = sh => { if (snow) snowShader(sh, std); if (grm) grmShader(sh, m); };
+  m.customProgramCacheKey = () => (snow ? 'snowcoat' : 'rs') + (grm ? '|grime' : '');
   m.needsUpdate = true;
 }
 const SNOW_GLSL = {

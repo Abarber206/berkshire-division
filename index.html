@@ -1021,6 +1021,7 @@ h1{text-shadow:0 2px 0 #000,0 10px 40px rgba(0,0,0,.6)}
       </section>
       <section class="mpane" data-pane="gfx" role="tabpanel">
         <div class="fgroup"><span class="lbl">Graphics quality</span><div class="seg" id="optGfx"></div></div>
+        <div class="fgroup"><span class="lbl">Weathering</span><div class="seg" id="optGrime"></div></div>
         <p class="help" id="gfxNote">Bloom makes lamps, headlights and the sky glow; sun shafts break through trees and smoke. The picture sharpens or softens a little on its own to keep the frame rate smooth.</p>
       </section>
       <section class="mpane" data-pane="sound" role="tabpanel">
@@ -1187,6 +1188,9 @@ function wear(m, soot = 0, seed) {
   if (soot && !m.map) m.map = wearSoot(seed, soot);
   m.needsUpdate = true; return m;
 }
+/* weathering drawn in the paint's shader (06l_grime.js): grmTag names the profile a material takes */
+const GRM = { K: { value: 1 }, mats: new WeakMap(), no: new WeakSet(), tag: new WeakMap() };
+function grmTag(m, prof) { if (m) GRM.tag.set(m, prof); return m; }
 /* Canvas texture helper */
 function canvasTex(w, h, draw, opts = {}) {
   const c = document.createElement('canvas'); c.width = w; c.height = h;
@@ -7757,6 +7761,49 @@ BOIL.top = a => a >= BOIL.fb[0] ? CABDIM.FB.cy + CABDIM.FB.r : BOIL.bY(a) + BOIL
 /* half width of the barrel (or firebox) at height y, a */
 BOIL.half = (a, y) => { if (a >= BOIL.fb[0]) return CABDIM.fbHalf(y); const r = BOIL.bR(a), d = y - BOIL.bY(a); return Math.sqrt(Math.max(0, r * r - d * d)); };
 
+/* A steam dome or sand dome, shared by every steam engine: a rounded-oblong plan (superellipse, exponent np;
+   2 is an ellipse, higher is squarer) and a rounded section (exponent nv) so the crown is broad and the shoulders
+   roll over smoothly instead of standing up like a box. Base at y = 0, centred on x = z = 0, L long, w wide, h high;
+   the skirt runs 0.34 below the base into the boiler with exactly the same plan, so no lip shows where they meet.
+   half(dx, y): the half width at dx along and y above the base, for fittings that sit on it. */
+function domeShape(L, w, h, np = 2.8, nv = 2.6) {
+  const se = ang => { const c = Math.abs(Math.cos(ang)), sn = Math.abs(Math.sin(ang)); return Math.pow(Math.pow(c, np) + Math.pow(sn, np), -1 / np); };
+  const g = new THREE.SphereGeometry(1, 48, 20, 0, TAU, 0, Math.PI / 2), p = g.attributes.position;
+  for (let i = 0; i < p.count; i++) {
+    const x = p.getX(i), z = p.getZ(i), y = p.getY(i), r = Math.hypot(x, z), ang = Math.atan2(z, x), phi = Math.atan2(y, r);
+    const X = Math.pow(Math.cos(phi), 2 / nv), Y = Math.pow(Math.sin(phi), 2 / nv), k = se(ang) * X;
+    p.setXYZ(i, Math.cos(ang) * k * L / 2, Y * h, Math.sin(ang) * k * w / 2);
+  }
+  g.computeVertexNormals();
+  const sk = new THREE.CylinderGeometry(1, 1, 0.34, 48, 1, true), q = sk.attributes.position;
+  for (let i = 0; i < q.count; i++) { const x = q.getX(i), z = q.getZ(i), ang = Math.atan2(z, x), k = se(ang); q.setXYZ(i, Math.cos(ang) * k * L / 2, q.getY(i) - 0.17 + 0.001, Math.sin(ang) * k * w / 2); }
+  sk.computeVertexNormals();
+  const half = (dx, y) => { const v = Math.min(1, Math.max(0, y / h)), X = Math.pow(1 - Math.pow(v, nv), 1 / nv), u = Math.min(1, Math.abs(dx) / (L / 2 * X || 1e-6)); return w / 2 * X * Math.pow(1 - Math.pow(u, np), 1 / np); };
+  return { geos: [g, sk], half };
+}
+/* A smokebox door's profile ([axial, radius] from the rim to the centre) with its corners rolled over and a
+   rounded crown instead of a point: the given points are kept as the shape, each corner is eased with a curve
+   and the last run to the centre becomes a smooth dish whose middle is flat, kept inside the old outline. */
+function smokeDoorPts(pts, ease = 0.4) {
+  const out = [pts[0]];
+  for (let i = 1; i < pts.length - 2; i++) {
+    const a = pts[i - 1], b = pts[i], c = pts[i + 1], A = [lerp(b[0], a[0], ease), lerp(b[1], a[1], ease)], C = [lerp(b[0], c[0], ease * (i === pts.length - 3 ? 0.5 : 1)), lerp(b[1], c[1], ease * (i === pts.length - 3 ? 0.5 : 1))];
+    for (let j = 0; j <= 4; j++) { const t = j / 4, u = 1 - t; out.push([u * u * A[0] + 2 * u * t * b[0] + t * t * C[0], u * u * A[1] + 2 * u * t * b[1] + t * t * C[1]]); }
+  }
+  const b = pts[pts.length - 2], c = pts[pts.length - 1], d = c[0] - b[0];
+  out.push(b);
+  // the dish rises two thirds of the old run to the point, so it never stands proud of the old cone (the bells swing close)
+  for (let j = 1; j <= 10; j++) { const u = 1 - j / 10, g = 1.5 * u * u - 0.5 * u * u * u; out.push([b[0] + d * (2 / 3) * (1 - g), b[1] * u]); }
+  return out;
+}
+/* the rolled front ring of a smokebox: R barrel radius, standing out t past it, len deep, edges rounded (f) */
+function smokeRingPts(R, t = 0.025, len = 0.09, f = 0.018) {
+  const out = [[0, R - 0.02]], R1 = R + t;
+  for (let j = 0; j <= 5; j++) { const a = Math.PI / 2 * j / 5; out.push([f - f * Math.cos(a), R1 - f + f * Math.sin(a)]); }
+  for (let j = 0; j <= 5; j++) { const a = Math.PI / 2 * j / 5; out.push([len - f + f * Math.sin(a), R1 - f + f * Math.cos(a)]); }
+  out.push([len + 0.006, R - 0.02]);
+  return out;
+}
 /* Spoked driving wheel centre (NKP) with a crescent counterweight, in wheel-local coordinates like driverWheel */
 function spokedCentre(R, main, parts) {
   const rimIn = R - 0.13, hubR = 0.27, n = 18;
@@ -7882,9 +7929,9 @@ function buildBerkshire(key, trim = '') {
   const barrel = (a0, a1, r, y) => gb.add('jacket', new THREE.CylinderGeometry(r, r, a1 - a0, 48, 1, true).rotateZ(Math.PI / 2).translate(ax((a0 + a1) / 2), y, 0));
   // smokebox (graphite on the as-delivered finish) with its front ring, dished door, hinges and dogs
   gb.add('graphite', new THREE.CylinderGeometry(BOIL.sb[2], BOIL.sb[2], BOIL.sb[1] - BOIL.sb[0], 48).rotateZ(Math.PI / 2).translate(ax((BOIL.sb[0] + BOIL.sb[1]) / 2), yB, 0));
-  gb.add('graphite', new THREE.CylinderGeometry(BOIL.sb[2] + 0.025, BOIL.sb[2] + 0.025, 0.09, 48).rotateZ(Math.PI / 2).translate(ax(BOIL.sb[0] + 0.045), yB, 0));
   const door = { r: 0.86, a: BOIL.sb[0] - 0.16 };                                          // the door bulges 0.16 m out of the front plate
-  gb.add('graphite', lathe([[0, door.r + 0.04], [0.04, door.r + 0.04], [0.07, door.r], [0.13, 0.58], [0.16, 0.0]], BOIL.sb[0] - 0.005));
+  gb.add('graphite', lathe(smokeDoorPts([[0, door.r + 0.04], [0.04, door.r + 0.04], [0.07, door.r], [0.13, 0.58], [0.16, 0.0]]), BOIL.sb[0] - 0.005));
+  gb.add('graphite', lathe(smokeRingPts(BOIL.sb[2]), BOIL.sb[0] + 0.09));   // the front ring, its edges rolled over
   for (const dy of [0.38, -0.38]) gb.box('dark', 0.05, 0.07, 0.42, ax(BOIL.sb[0] - 0.07), yB + dy, -0.6);   // hinge straps
   for (let i = 0; i < 16; i++) { const t = (i + 0.5) / 16 * TAU; gb.add('dark', new THREE.BoxGeometry(0.07, 0.13, 0.07), M(ax(BOIL.sb[0] - 0.03), yB + 0.95 * Math.cos(t), 0.95 * Math.sin(t), t, 0, 0)); }   // door dogs round the ring
   gb.box('dark', 0.06, 0.08, 0.5, ax(door.a + 0.02), yB, 0);                                // door handle bar
@@ -7926,21 +7973,14 @@ function buildBerkshire(key, trim = '') {
     bar('dark', 0.05, [ax(fa + 0.1), fy - 0.15, -0.68], [ax(fa + 0.4), sbTop - 0.2, -0.95]);
   }
   // domes: seated on the barrel (their skirts go into it, so no gap shows on the curved top)
-  const dome = (a0, a1, w, top, k) => {
-    const L = a1 - a0, base = BOIL.top((a0 + a1) / 2) - 0.32, h = top - base, g = new THREE.SphereGeometry(1, 32, 16, 0, TAU, 0, Math.PI / 2);
-    const p = g.attributes.position;
-    for (let i = 0; i < p.count; i++) {   // superellipse plan, flat crown
-      const x = p.getX(i), z = p.getZ(i), y = p.getY(i), r = Math.hypot(x, z), ang = Math.atan2(z, x), c = Math.cos(ang), sn = Math.sin(ang);
-      const se = Math.pow(Math.pow(Math.abs(c), 4) + Math.pow(Math.abs(sn), 4), -0.25);
-      const yy = Math.pow(y, 0.55);
-      p.setXYZ(i, c * se * r * L / 2, yy * h, sn * se * r * w / 2);
-    }
-    g.computeVertexNormals(); g.translate(ax((a0 + a1) / 2), base, 0); gb.add(k || 'jacket', g);
-    gb.add(k || 'jacket', new THREE.CylinderGeometry(1, 1, 0.34, 32, 1, true).scale(L / 2 * 1.0, 1, w / 2).translate(ax((a0 + a1) / 2), base - 0.17 + 0.001, 0));
+  const dome = (a0, a1, w, top, k, np) => {
+    const L = a1 - a0, base = BOIL.top((a0 + a1) / 2) - 0.32, d = domeShape(L, w, top - base, np);
+    for (const g of d.geos) gb.add(k || 'jacket', g.translate(ax((a0 + a1) / 2), base, 0));
+    return (a, y) => d.half(a - (a0 + a1) / 2, y - base);
   };
-  dome(6.00, 7.08, 1.02, 4.70);                                                              // steam dome
-  dome(7.57, 10.33, 0.92, 4.68);                                                             // long sand dome
-  for (const s of [-1, 1]) for (let i = 0; i < 4; i++) { const a = 8.0 + i * 0.62; gb.box('dark', 0.2, 0.14, 0.08, ax(a), BOIL.top(a) - 0.1, s * 0.44); }   // sand valves on the dome skirt
+  dome(6.00, 7.08, 1.02, 4.70, null, 2.4);                                                   // steam dome
+  const sandHalf = dome(7.57, 10.33, 0.92, 4.68, null, 3.0);                                 // long sand dome
+  for (const s of [-1, 1]) for (let i = 0; i < 4; i++) { const a = 8.0 + i * 0.62, y = BOIL.top(a) - 0.1; gb.box('dark', 0.2, 0.14, 0.08, ax(a), y, s * (sandHalf(a, y) - 0.01)); }   // sand valves on the dome skirt
   // safety valves, whistle, turret and turbo-generators on the firebox top / rear course
   const fbTop = FB.cy + FB.r;
   for (const z of [-0.24, 0, 0.24]) { gb.cyl('brass', 0.075, 0.095, 0.3, 14, ax(12.15), fbTop + 0.12, z); gb.cyl('brass', 0.11, 0.11, 0.05, 14, ax(12.15), fbTop + 0.29, z); }
@@ -9955,7 +9995,11 @@ function liveryMaterials(L, num) {
   });
 }
 /* road wear on a livery: a mottled sheen on the paint, exhaust soot on the roof, brake dust on the pilot */
-function wearSkin(k) { for (const n of ['lBody', 'lAccent', 'lRail', 'lNose', 'lPilot', 'lLouver']) wear(k[n]); wear(k.lRoof, 0.6, 31); return k; }
+function wearSkin(k) {
+  for (const n of ['lBody', 'lAccent', 'lRail', 'lNose', 'lPilot', 'lLouver']) { wear(k[n]); grmTag(k[n], 'diesel'); }
+  wear(k.lRoof, 0.6, 31); grmTag(k.lRoof, 'dieselRoof'); grmTag(k.lSide, 'diesel');
+  return k;
+}
 function applyLivery(model, L, num) {
   const M = model.skin, t = liveryTextures(L, num);
   const set = (m, hex) => { m.color.set(hex).convertSRGBToLinear(); m.userData.lin = true; };
@@ -12269,7 +12313,7 @@ function hsGangway(gb, sect, a0, a1, ref, k = 0.975, door = 0) {
 function hsSkin(key, uvL, uvH, w, h, draw, opts = {}) {
   if (RMAT[key]) return RMAT[key];
   const tex = canvasTex(w, h, (g, W, H) => draw(g, a => a / uvL * W, y => H - y / uvH * H, W, H));
-  return (RMAT[key] = new THREE.MeshStandardMaterial({ map: tex, metalness: opts.metal ?? 0.25, roughness: opts.rough ?? 0.32, side: THREE.DoubleSide }));
+  return (RMAT[key] = grmTag(new THREE.MeshStandardMaterial({ map: tex, metalness: opts.metal ?? 0.25, roughness: opts.rough ?? 0.32, side: THREE.DoubleSide }), 'hs'));
 }
 const E5C = { green: '#0f6b4c', white: '#eef0ec', pink: '#e8558f', silver: '#a9adb1' };
 
@@ -14175,10 +14219,10 @@ function buildBigBoy(key, trim = '') {
   /* ---- boiler ---- */
   const sbTop = yB + BBOIL.sb[2];
   gb.add('graphite', new THREE.CylinderGeometry(BBOIL.sb[2], BBOIL.sb[2], BBOIL.sb[1] - BBOIL.sb[0], 48).rotateZ(Math.PI / 2).translate(ax((BBOIL.sb[0] + BBOIL.sb[1]) / 2), yB, 0));
-  gb.add('graphite', new THREE.CylinderGeometry(BBOIL.sb[2] + 0.025, BBOIL.sb[2] + 0.025, 0.09, 48).rotateZ(Math.PI / 2).translate(ax(BBOIL.sb[0] + 0.045), yB, 0));
   const lathe = (pts, a0) => { const g = new THREE.LatheGeometry(pts.map(p => new THREE.Vector2(p[1], p[0])), 48); g.rotateZ(-Math.PI / 2); g.translate(ax(a0), yB, 0); return g; };
   const door = { r: 0.95, a: BBOIL.sb[0] - 0.17 };
-  gb.add('graphite', lathe([[0, door.r + 0.05], [0.04, door.r + 0.05], [0.07, door.r], [0.14, 0.62], [0.17, 0.0]], BBOIL.sb[0] - 0.005));
+  gb.add('graphite', lathe(smokeDoorPts([[0, door.r + 0.05], [0.04, door.r + 0.05], [0.07, door.r], [0.14, 0.62], [0.17, 0.0]]), BBOIL.sb[0] - 0.005));
+  gb.add('graphite', lathe(smokeRingPts(BBOIL.sb[2]), BBOIL.sb[0] + 0.09));   // the front ring, its edges rolled over
   for (let i = 0; i < 18; i++) { const t = (i + 0.5) / 18 * TAU; gb.add('dark', new THREE.BoxGeometry(0.07, 0.13, 0.07), M(ax(BBOIL.sb[0] - 0.03), yB + 1.05 * Math.cos(t), 1.05 * Math.sin(t), t, 0, 0)); }
   gb.box('dark', 0.06, 0.08, 0.5, ax(door.a + 0.02), yB - 0.3, 0);                   // door handle
   gb.add('jacket', new THREE.CylinderGeometry(BBOIL.c1[2], BBOIL.c1[2], BBOIL.c1[1] - BBOIL.c1[0] + 0.02, 48, 1, true).rotateZ(Math.PI / 2).translate(ax((BBOIL.c1[0] + BBOIL.c1[1]) / 2 - 0.01), yB, 0));
@@ -14210,20 +14254,14 @@ function buildBigBoy(key, trim = '') {
     gb.add('black', new THREE.TorusGeometry(1, 0.06, 10, 40).scale(stk.L / 2, stk.w / 2, 1).rotateX(Math.PI / 2).translate(ax(stk.a), stk.top - 0.06, 0));
     gb.add('blackMatte', new THREE.CircleGeometry(1, 32).scale(stk.L / 2 - 0.02, stk.w / 2 - 0.02, 1).rotateX(-Math.PI / 2).translate(ax(stk.a), stk.top - 0.12, 0));
   }
-  const dome = (a0, a1, w, top, k) => {
-    const L = a1 - a0, base = BBOIL.top((a0 + a1) / 2) - 0.32, h = top - base, g = new THREE.SphereGeometry(1, 32, 16, 0, TAU, 0, Math.PI / 2);
-    const p = g.attributes.position;
-    for (let i = 0; i < p.count; i++) {
-      const x = p.getX(i), z = p.getZ(i), y = p.getY(i), r = Math.hypot(x, z), ang = Math.atan2(z, x), c = Math.cos(ang), sn = Math.sin(ang);
-      const se = Math.pow(Math.pow(Math.abs(c), 4) + Math.pow(Math.abs(sn), 4), -0.25);
-      p.setXYZ(i, c * se * r * L / 2, Math.pow(y, 0.55) * h, sn * se * r * w / 2);
-    }
-    g.computeVertexNormals(); g.translate(ax((a0 + a1) / 2), base, 0); gb.add(k || 'jacket', g);
-    gb.add(k || 'jacket', new THREE.CylinderGeometry(1, 1, 0.34, 32, 1, true).scale(L / 2, 1, w / 2).translate(ax((a0 + a1) / 2), base - 0.17 + 0.001, 0));
+  const dome = (a0, a1, w, top, k, np) => {
+    const L = a1 - a0, base = BBOIL.top((a0 + a1) / 2) - 0.32, d = domeShape(L, w, top - base, np);
+    for (const g of d.geos) gb.add(k || 'jacket', g.translate(ax((a0 + a1) / 2), base, 0));
+    return (a, y) => d.half(a - (a0 + a1) / 2, y - base);
   };
-  dome(7.4, 10.4, 0.98, 4.86);                                                     // the long sand dome
-  dome(12.2, 13.5, 1.08, 4.90);                                                    // steam dome
-  for (const s of [-1, 1]) for (let i = 0; i < 4; i++) { const a = 7.9 + i * 0.66; gb.box('dark', 0.2, 0.14, 0.08, ax(a), BBOIL.top(a) - 0.12, s * 0.46); }
+  const sandHalf = dome(7.4, 10.4, 0.98, 4.86, null, 3.0);                         // the long sand dome
+  dome(12.2, 13.5, 1.08, 4.90, null, 2.4);                                         // steam dome
+  for (const s of [-1, 1]) for (let i = 0; i < 4; i++) { const a = 7.9 + i * 0.66, y = BBOIL.top(a) - 0.12; gb.box('dark', 0.2, 0.14, 0.08, ax(a), y, s * (sandHalf(a, y) - 0.01)); }
   const fbTop = FB.cy + FB.r;
   for (const z of [-0.26, 0, 0.26]) { gb.cyl('brass', 0.08, 0.1, 0.16, 14, ax(17.1), fbTop + 0.05, z); gb.cyl('brass', 0.115, 0.115, 0.05, 14, ax(17.1), fbTop + 0.14, z); }
   gb.box('black', 0.5, 0.12, 0.76, ax(17.1), fbTop - 0.02, 0);
@@ -14831,10 +14869,10 @@ function buildMallet(key, trim = '') {
   /* ---- boiler ---- */
   const sbTop = yB + O.sb[2];
   gb.add('graphite', new THREE.CylinderGeometry(O.sb[2], O.sb[2], O.sb[1] - O.sb[0], 48).rotateZ(Math.PI / 2).translate(ax((O.sb[0] + O.sb[1]) / 2), yB, 0));
-  gb.add('graphite', new THREE.CylinderGeometry(O.sb[2] + 0.025, O.sb[2] + 0.025, 0.09, 48).rotateZ(Math.PI / 2).translate(ax(O.sb[0] + 0.045), yB, 0));
   const lathe = (pts, a0) => { const g = new THREE.LatheGeometry(pts.map(p => new THREE.Vector2(p[1], p[0])), 48); g.rotateZ(-Math.PI / 2); g.translate(ax(a0), yB, 0); return g; };
   const door = { r: 0.86 };
-  gb.add('graphite', lathe([[0, door.r + 0.05], [0.04, door.r + 0.05], [0.07, door.r], [0.13, 0.56], [0.15, 0.0]], O.sb[0] - 0.005));
+  gb.add('graphite', lathe(smokeDoorPts([[0, door.r + 0.05], [0.04, door.r + 0.05], [0.07, door.r], [0.13, 0.56], [0.15, 0.0]]), O.sb[0] - 0.005));
+  gb.add('graphite', lathe(smokeRingPts(O.sb[2]), O.sb[0] + 0.09));   // the front ring, its edges rolled over
   for (let i = 0; i < 16; i++) { const t = (i + 0.5) / 16 * TAU; gb.add('dark', new THREE.BoxGeometry(0.07, 0.12, 0.07), M(ax(O.sb[0] - 0.03), yB + 0.95 * Math.cos(t), 0.95 * Math.sin(t), t, 0, 0)); }
   gb.add('jacket', new THREE.CylinderGeometry(O.c1[2], O.c1[2], O.c1[1] - O.c1[0] + 0.02, 48, 1, true).rotateZ(Math.PI / 2).translate(ax((O.c1[0] + O.c1[1]) / 2 - 0.01), yB, 0));
   gb.add('black', new THREE.CircleGeometry(O.c1[2], 48).rotateY(Math.PI / 2).translate(ax(O.c1[0] - 0.01), yB, 0));
@@ -14865,16 +14903,9 @@ function buildMallet(key, trim = '') {
   gb.cyl('black', stk.r - 0.02, stk.r + 0.02, stk.top - sbTop, 32, ax(stk.a), (stk.top + sbTop) / 2, 0);
   gb.add('black', new THREE.TorusGeometry(stk.r - 0.02, 0.045, 10, 32).rotateX(Math.PI / 2).translate(ax(stk.a), stk.top - 0.04, 0));
   gb.add('blackMatte', new THREE.CircleGeometry(stk.r - 0.04, 28).rotateX(-Math.PI / 2).translate(ax(stk.a), stk.top - 0.1, 0));
-  const dome = (a0, a1, w, top, k) => {
-    const L = a1 - a0, base = O.top((a0 + a1) / 2) - 0.32, h = top - base, g = new THREE.SphereGeometry(1, 32, 16, 0, TAU, 0, Math.PI / 2);
-    const p = g.attributes.position;
-    for (let i = 0; i < p.count; i++) {
-      const x = p.getX(i), z = p.getZ(i), y = p.getY(i), r = Math.hypot(x, z), ang = Math.atan2(z, x), c = Math.cos(ang), sn = Math.sin(ang);
-      const se = Math.pow(Math.pow(Math.abs(c), 3) + Math.pow(Math.abs(sn), 3), -1 / 3);
-      p.setXYZ(i, c * se * r * L / 2, Math.pow(y, 0.55) * h, sn * se * r * w / 2);
-    }
-    g.computeVertexNormals(); g.translate(ax((a0 + a1) / 2), base, 0); gb.add(k || 'jacket', g);
-    gb.add(k || 'jacket', new THREE.CylinderGeometry(1, 1, 0.34, 32, 1, true).scale(L / 2, 1, w / 2).translate(ax((a0 + a1) / 2), base - 0.17 + 0.001, 0));
+  const dome = (a0, a1, w, top, k, np = 2.6) => {
+    const L = a1 - a0, base = O.top((a0 + a1) / 2) - 0.32, d = domeShape(L, w, top - base, np);
+    for (const g of d.geos) gb.add(k || 'jacket', g.translate(ax((a0 + a1) / 2), base, 0));
   };
   dome(5.2, 6.3, 0.95, 4.55);                                                      // front sand dome
   dome(8.9, 9.9, 1.0, 4.60);                                                       // steam dome
@@ -16185,6 +16216,163 @@ function turbineFX(dt, T, tv) {
   }
   // heard from the turbine unit, where the noise is
   return { src: T.unitWorld(B, B.enginePos), working: S.load > 0.05 };
+}
+
+/* ============================================================================
+   Weathering on every engine and car, drawn in the paint's own shader.
+   Working railroad equipment is never clean: road dirt and brake dust thrown up by the wheels coats the
+   bottom of everything, rain runs grime and rust down the sides in long streaks, ash, cinders and exhaust
+   soot settle on whatever faces the sky, freight cars rust in blotches and along their seams, paint chips
+   off where it gets knocked, running gear and diesel trucks wear a dark film of oil, and a smokebox goes
+   ashy grey with heat. All of it is placed by the model's own coordinates (y is height above the rail,
+   x runs along the car), so it sits where it would on the real thing, rides along with the train and can
+   never float or gap. The paint's colour is still the colour underneath, so a repaint reaches it and
+   lettering stays readable (decals take a lighter coat so they sit in the same dirt).
+   Each material carries a profile (GRM_P): how much of each kind of wear it takes, the colour of the dirt
+   and of what settles on top. Insides of cabs get a light coat. Off / Light / Full in the Graphics tab.
+   ========================================================================== */
+const GRM_LEVELS = { off: { name: 'Clean', sub: 'Fresh from the paint shop', k: 0 }, light: { name: 'Light', sub: 'Recently washed', k: 0.55 }, full: { name: 'Weathered', sub: 'Soot, grime and rust', k: 1 } };
+/* colours in linear light (the shader works after the paints are linearized) */
+const GRM_C = {
+  road: [0.085, 0.066, 0.048],      // grey-brown road dirt and ballast dust
+  brake: [0.085, 0.055, 0.036],     // brake-shoe dust, a rusty grey-brown
+  ash: [0.088, 0.083, 0.076],       // cinders and ash on a steam engine's top
+  soot: [0.016, 0.014, 0.012],      // diesel and turbine exhaust soot
+  dust: [0.07, 0.06, 0.048],        // dust and soot on car roofs
+  carbon: [0.035, 0.034, 0.034],    // pantograph carbon on electric roofs
+};
+/* profiles: a = [road dirt, streaks, rust, top], b = [oil, chips, heat, dirt band height (m)], top/dirt colours */
+const GRM_P = {
+  steam:   { a: [0.6, 0.48, 0.05, 0.8], b: [0.3, 0.12, 0, 1.7], top: 'ash', dirt: 'road' },
+  smokebox:{ a: [0.35, 0.22, 0.06, 0.7], b: [0.1, 0.05, 0.42, 1.7], top: 'ash', dirt: 'road' },
+  gear:    { a: [0.5, 0.15, 0.1, 0.4], b: [0.55, 0.08, 0, 2.2], top: 'ash', dirt: 'road' },
+  steel:   { a: [0.45, 0.12, 0.22, 0.3], b: [0.35, 0, 0, 2.0], top: 'ash', dirt: 'brake' },
+  roof:    { a: [0.1, 0.35, 0.25, 0.5], b: [0, 0.05, 0, 1.0], top: 'dust', dirt: 'road' },
+  coach:   { a: [0.5, 0.3, 0.02, 0.45], b: [0.1, 0.06, 0, 1.8], top: 'dust', dirt: 'road' },
+  freight: { a: [0.55, 0.5, 0.5, 0.5], b: [0.12, 0.2, 0, 1.9], top: 'dust', dirt: 'road' },
+  hopper:  { a: [0.55, 0.55, 0.7, 0.55], b: [0.1, 0.22, 0, 1.9], top: 'dust', dirt: 'road' },
+  tank:    { a: [0.45, 0.5, 0.05, 0.5], b: [0.25, 0.06, 0, 1.6], top: 'dust', dirt: 'road' },
+  caboose: { a: [0.5, 0.35, 0.18, 0.4], b: [0.1, 0.12, 0, 1.9], top: 'dust', dirt: 'road' },
+  deck:    { a: [0.5, 0.1, 0.45, 0.35], b: [0.2, 0.1, 0, 2.0], top: 'dust', dirt: 'road' },
+  wood:    { a: [0.4, 0.2, 0, 0.35], b: [0, 0, 0, 1.6], top: 'dust', dirt: 'road' },
+  diesel:  { a: [0.5, 0.5, 0.05, 0.65], b: [0.12, 0.1, 0, 2.0], top: 'soot', dirt: 'road' },
+  dieselRoof: { a: [0.2, 0.35, 0.08, 0.75], b: [0, 0.05, 0, 1.0], top: 'soot', dirt: 'road' },
+  under:   { a: [0.6, 0.18, 0.06, 0.4], b: [0.5, 0.06, 0, 2.4], top: 'soot', dirt: 'road' },
+  turbine: { a: [0.55, 0.6, 0.04, 0.7], b: [0.15, 0.08, 0, 2.3], top: 'soot', dirt: 'road' },
+  hs:      { a: [0.32, 0.14, 0, 0.22], b: [0.05, 0.02, 0, 1.25], top: 'carbon', dirt: 'brake' },
+  hsUnder: { a: [0.6, 0.12, 0.08, 0.3], b: [0.3, 0.02, 0, 2.0], top: 'carbon', dirt: 'brake' },
+  decal:   { a: [0.32, 0.26, 0, 0.3], b: [0, 0, 0, 1.8], top: 'dust', dirt: 'road' },
+};
+/* which profile each shared material takes, by its RMAT name (an engine's own skin is tagged where it is made) */
+const GRM_BY = {
+  black: 'steam', blackMatte: 'steam', rbEdge: 'steam', dWall: 'gear', jacket: 'steam', holBody: 'coach',
+  graphite: 'smokebox', dark: 'gear', jacketBand: 'gear', steel: 'steel', roof: 'roof',
+  green: 'coach', greenLow: 'coach', greenSill: 'coach', holLow: 'coach', holSill: 'coach',
+  oxide: 'freight', oxide2: 'freight', oxideW: 'freight', oxide2W: 'freight', boxPanel: 'freight', red: 'caboose',
+  hopW: 'hopper', tank: 'tank', tankW: 'tank', caboose: 'caboose', cabooseW: 'caboose', deckPlate: 'deck', wood: 'wood', diaphragm: 'wood',
+  dDeck: 'deck', dUnder: 'under', dSteel: 'steel', dSafety: 'diesel', grille: 'under', mesh: 'dieselRoof', fan: 'dieselRoof',
+  upYel: 'turbine', upGray: 'turbine', upRed: 'turbine', upFrame: 'under', upLouver: 'turbine',
+  hsUnder: 'hsUnder', hsBogie: 'hsUnder', hsSteel: 'hsUnder', hsSeam: 'hs', acGrille: 'hs',
+};
+function grmLevel(k) { GRM.K.value = (GRM_LEVELS[k] || GRM_LEVELS.full).k; }
+/* the profile for bin k's material m, or null to leave it clean */
+function grmProfile(m, k, inside) {
+  let name = GRM.tag.get(m) || GRM_BY[k];
+  if (!name && m.transparent && m.alphaTest > 0) name = 'decal';   // lettering, heralds, number boards
+  const p = name && GRM_P[name]; if (!p) return null;
+  const a = p.a.slice(), b = p.b.slice();
+  if (m.transparent && name !== 'decal') { a[0] *= 0.85; a[1] *= 0.85; a[3] *= 0.85; }   // the diesel's painted bands sit on the body
+  if (inside) { a[0] *= 0.35; a[1] = 0; a[2] *= 0.3; a[3] *= 0.3; b[1] = 0; b[2] = 0; }
+  return { a, b, top: GRM_C[p.top], dirt: GRM_C[p.dirt] };
+}
+/* give material m (from bin k) its weathering; called by snowMat (10i_snow.js) for every rolling-stock bin */
+function grmApply(m, k, inside) {
+  if (!m || GRM.mats.has(m) || GRM.no.has(m)) return m;
+  const own = Object.prototype.hasOwnProperty.call(m, 'onBeforeCompile') && !(typeof SNOWC !== 'undefined' && SNOWC.own.has(m));
+  const lit = m.emissive && m.emissive.r + m.emissive.g + m.emissive.b > 0;
+  const ok = m.isMeshStandardMaterial && m.visible !== false && !own && !lit && (!m.transparent || m.alphaTest > 0);
+  const p = ok && grmProfile(m, k, inside);
+  if (!p) { GRM.no.add(m); return m; }
+  GRM.mats.set(m, { uGrA: { value: new THREE.Vector4(...p.a) }, uGrB: { value: new THREE.Vector4(...p.b) }, uGrTop: { value: new THREE.Vector3(...p.top) }, uGrDirt: { value: new THREE.Vector3(...p.dirt) } });
+  if (typeof rsInstall === 'function') rsInstall(m);
+  return m;
+}
+const GRM_GLSL = {
+  vert: `
+    vGrP = transformed; vGrN = objectNormal;`,
+  pars: `
+    uniform vec4 uGrA; uniform vec4 uGrB; uniform vec3 uGrTop; uniform vec3 uGrDirt; uniform float uGrK;
+    varying vec3 vGrP; varying vec3 vGrN;
+    float grHash( vec2 p ) { p = fract( p * vec2( 0.1031, 0.1030 ) ); p += dot( p, p.yx + 33.33 ); return fract( ( p.x + p.y ) * p.x ); }
+    float grNoise( vec2 p ) {
+      vec2 i = floor( p ), f = fract( p ); f = f * f * ( 3.0 - 2.0 * f );
+      return mix( mix( grHash( i ), grHash( i + vec2( 1.0, 0.0 ) ), f.x ), mix( grHash( i + vec2( 0.0, 1.0 ) ), grHash( i + vec2( 1.0, 1.0 ) ), f.x ), f.y );
+    }`,
+  frag: `
+    if ( uGrK > 0.001 ) {
+      vec3 gP = vGrP, gN = normalize( vGrN );
+      #ifdef DOUBLE_SIDED
+        gN *= gl_FrontFacing ? 1.0 : -1.0;
+      #endif
+      // along the surface: x on the sides, z on the ends, so the streaks run straight down both (and down the
+      // round side of a boiler or tank, where z changes with height, instead of curling into arcs)
+      float gh = abs( gN.z ) >= abs( gN.x ) ? gP.x : gP.z * 1.37 + 17.0;
+      float big = grNoise( vec2( gh * 0.33, gP.y * 0.45 ) ) * 0.65 + grNoise( vec2( gh * 1.1 + 7.0, gP.y * 1.3 ) ) * 0.35;
+      float fine = grNoise( vec2( gh * 7.0, gP.y * 7.0 ) + 3.7 );
+      // road dirt: thickest at the bottom, its top edge ragged where the spray thinned out
+      float band = uGrB.w * ( 0.88 + 0.24 * big );
+      float low = 1.0 - smoothstep( band * 0.15, band, gP.y + ( fine - 0.5 ) * 0.1 );
+      float dirt = uGrA.x * pow( low, 1.5 ) * ( 0.78 + 0.22 * big );
+      // streaks: rain carrying grime and rust down from the roof, seams and fittings; long, thin, uneven
+      float side = 1.0 - smoothstep( 0.55, 0.9, abs( gN.y ) );
+      float s1 = grNoise( vec2( gh * 8.0, gP.y * 0.32 + grNoise( vec2( gh * 0.9, 1.7 ) ) * 4.0 ) );
+      float s2 = grNoise( vec2( gh * 21.0, gP.y * 0.55 ) );
+      float streak = uGrA.y * side * smoothstep( 0.5, 0.92, s1 * 0.68 + s2 * 0.32 ) * ( 0.55 + 0.45 * big );
+      // what settles on top: ash and cinders, exhaust soot, dust
+      float up = smoothstep( 0.3, 0.9, gN.y );
+      float top = uGrA.w * up * ( 0.5 + 0.5 * grNoise( gP.xz * 1.6 + 11.0 ) ) * ( 0.75 + 0.25 * fine );
+      // rust: blotches that gather low, in the streaks and round the chips
+      float rn = grNoise( vec2( gh * 1.7, gP.y * 1.7 ) + 2.1 ) * 0.45 + grNoise( vec2( gh * 5.3, gP.y * 5.3 ) + 5.3 ) * 0.35 + fine * 0.2;
+      float rust = uGrA.z * smoothstep( 0.68 - 0.14 * low - 0.1 * streak / max( uGrA.y, 0.01 ), 0.84, rn );
+      // chipped paint: small flecks of bare steel, more of them low down where ballast flies
+      float chip = uGrB.y * smoothstep( 0.86 - 0.08 * low, 0.93 - 0.08 * low, grNoise( vec2( gh * 37.0, gP.y * 37.0 ) ) );
+      // a film of oil and grease on running gear, trucks and fuel tanks
+      float oil = uGrB.x * low * smoothstep( 0.35, 0.75, grNoise( vec2( gh * 1.9, gP.y * 2.6 ) + 1.3 ) );
+      // a smokebox's heat bloom: ashy grey patches where the paint has burnt
+      float heat = uGrB.z * smoothstep( 0.42, 0.85, big * 0.7 + fine * 0.3 );
+      dirt *= uGrK; streak *= uGrK; top *= uGrK; rust *= uGrK; chip *= uGrK; oil *= uGrK; heat *= uGrK;
+      vec3 gc = diffuseColor.rgb;
+      gc = mix( gc, vec3( 0.19, 0.17, 0.15 ), heat * 0.6 );
+      gc = mix( gc, uGrDirt * ( 0.75 + 0.5 * fine ), clamp( dirt, 0.0, 0.85 ) );
+      // a streak darkens light paint and greys dark paint: grime the colour of the road
+      gc = mix( gc, mix( gc * 0.6, uGrDirt * 1.1, 0.55 ), streak );
+      vec3 rc = mix( vec3( 0.10, 0.038, 0.016 ), vec3( 0.21, 0.075, 0.025 ), fine );   // old rust is dark brown, fresh rust brighter
+      gc = mix( gc, rc, clamp( rust, 0.0, 0.9 ) );
+      gc = mix( gc, vec3( 0.11, 0.105, 0.1 ), chip );
+      gc = mix( gc, uGrTop * ( 0.8 + 0.4 * fine ), clamp( top, 0.0, 0.9 ) );
+      gc *= 1.0 - 0.45 * oil;
+      diffuseColor.rgb = gc;
+      float grime = clamp( dirt + top + heat * 0.8 + streak * 0.4, 0.0, 1.0 );
+      #ifdef STANDARD
+        roughnessFactor = mix( roughnessFactor, 0.92, grime * 0.85 );
+        roughnessFactor = mix( roughnessFactor, 0.88, rust );
+        roughnessFactor = mix( roughnessFactor, 0.32, oil );
+        roughnessFactor = mix( roughnessFactor, 0.45, chip );
+        roughnessFactor *= 0.9 + 0.2 * big;
+        metalnessFactor = mix( metalnessFactor, 0.0, max( grime, rust ) * 0.8 );
+        metalnessFactor = mix( metalnessFactor, 0.85, chip );
+      #endif
+    }`,
+};
+function grmShader(sh, m) {
+  const U = GRM.mats.get(m); if (!U) return;
+  Object.assign(sh.uniforms, U); sh.uniforms.uGrK = GRM.K;
+  sh.vertexShader = sh.vertexShader
+    .replace('#include <common>', '#include <common>\nvarying vec3 vGrP; varying vec3 vGrN;')
+    .replace('#include <begin_vertex>', '#include <begin_vertex>' + GRM_GLSL.vert);
+  sh.fragmentShader = sh.fragmentShader
+    .replace('#include <common>', '#include <common>' + GRM_GLSL.pars)
+    .replace('#include <metalnessmap_fragment>', '#include <metalnessmap_fragment>' + GRM_GLSL.frag);
 }
 
 /* ============================================================================
@@ -22784,7 +22972,7 @@ function iceSkatePads(on) {
    steam engine, and parts that move, shine or run hot (rods, tires, brass, the smokebox).
    In winter the hardwoods and bushes stand bare and snow lies on the pines (04c_foliage.js).
    ========================================================================== */
-const SNOWC = { U: { value: 0 }, done: new WeakSet(), dry: new WeakSet(), twins: new WeakMap() };
+const SNOWC = { U: { value: 0 }, done: new WeakSet(), dry: new WeakSet(), twins: new WeakMap(), own: new WeakSet() };
 // bins never coated: moving, polished or hot parts, glass and lamps, and the holiday trim's own snow
 const SNOW_SKIP = new Set(['graphite', 'rod', 'tire', 'dWall', 'brass', 'copper', 'bronze', 'bellGrey', 'gold', 'fan', 'snow', 'snowDust', 'garland', 'berry', 'ribbon',
   'glow', 'lens', 'lensOff', 'hlLens', 'headOff', 'screen', 'hsLamp', 'hsTail', 'hsTailOff', 'hsGlass', 'hsWin', 'glass', 'glassT', 'win', 'coachWin', 'holWin', 'hit']);
@@ -22794,13 +22982,19 @@ function snowOk(m) {
   if (!m || !(m.isMeshStandardMaterial || m.isMeshLambertMaterial || m.isMeshPhongMaterial)) return false;
   if (m.transparent || m.visible === false || m.userData.noSnow) return false;
   if (m.emissive && m.emissive.r + m.emissive.g + m.emissive.b > 0) return false;   // windows and lamps that light up
-  return !Object.prototype.hasOwnProperty.call(m, 'onBeforeCompile');
+  return SNOWC.own.has(m) || !Object.prototype.hasOwnProperty.call(m, 'onBeforeCompile');
 }
 /* the material for bin k of a GeoBin being built (01_util.js calls this): rolling stock only, which every
    engine and car builds with the RMAT set */
 function snowMat(mats, k, opt = {}) {
   const m = mats[k];
   if (!m || typeof RMAT === 'undefined' || !RMAT.black || mats.black !== RMAT.black) return m;
+  const r = snowPick(m, k, opt);
+  // and the weathering, drawn in the same pass (06l_grime.js)
+  if (typeof grmApply === 'function') grmApply(r, k, opt.cast === false);
+  return r;
+}
+function snowPick(m, k, opt) {
   const ours = SNOWC.done.has(m);
   if (!ours && !snowOk(m)) return m;
   if (opt.cast === false || k.startsWith('jacket')) return snowDry(m);   // inside, or on the warm boiler
@@ -22820,9 +23014,15 @@ function snowDry(m) {
 }
 function snowCoat(m) {
   SNOWC.done.add(m);
-  const std = !!m.isMeshStandardMaterial;
-  m.onBeforeCompile = sh => snowShader(sh, std);
-  m.customProgramCacheKey = () => 'snowcoat';
+  rsInstall(m);
+}
+/* the shader of a rolling-stock paint: its weathering (06l_grime.js) and/or the snow coat, in one pass */
+function rsInstall(m) {
+  const snow = SNOWC.done.has(m), grm = typeof GRM !== 'undefined' && GRM.mats.has(m), std = !!m.isMeshStandardMaterial;
+  SNOWC.own.add(m);
+  // snow goes in first: each lands right after the metalness chunk, so the grime runs before it and the coat lies on top
+  m.onBeforeCompile = sh => { if (snow) snowShader(sh, std); if (grm) grmShader(sh, m); };
+  m.customProgramCacheKey = () => (snow ? 'snowcoat' : 'rs') + (grm ? '|grime' : '');
   m.needsUpdate = true;
 }
 const SNOW_GLSL = {
@@ -30396,7 +30596,7 @@ const LOCO_ART_SIZE = [450, 102];
    Game: boot, world loading, main loop, rules, HUD
    ========================================================================== */
 const GAME = {
-  settings: { traffic: 'on', loco: '765', consist: 'passenger', time: 'morning', gfx: 'auto', cycle: 'x30', weather: 'changing', wxV: 1, fire: 'easy', fireV: 2, units: 1, livery: 'ss', mix: false, finish: 'standard', job: '', custom: { body: 0x2c5f8a, roof: 0x24384a, accent: 0xf0f0ea, letter: 0xf0f0ea, rail: 0xf0f0ea }, number: 4401, coach: 'road', coachV: 1, obsLamp: 'side', coachColor: 0x2a3a2a, whistles: 'new' },
+  settings: { traffic: 'on', loco: '765', consist: 'passenger', time: 'morning', gfx: 'auto', cycle: 'x30', weather: 'changing', wxV: 1, fire: 'easy', fireV: 2, units: 1, livery: 'ss', mix: false, finish: 'standard', job: '', custom: { body: 0x2c5f8a, roof: 0x24384a, accent: 0xf0f0ea, letter: 0xf0f0ea, rail: 0xf0f0ea }, number: 4401, coach: 'road', coachV: 1, obsLamp: 'side', coachColor: 0x2a3a2a, whistles: 'new', grime: 'full' },
   train: null, running: false, ready: false, stats: { runThrough: 0 },
   events: {}, stopped: 0, lastStation: null, filling: null,
 };
@@ -30714,7 +30914,7 @@ function setObsLamps(st) {
     if (v.lamps) { for (const o of [...v.lamps.meshes, ...v.lamps.glows]) { if (o.parent) o.parent.remove(o); if (o.geometry) o.geometry.dispose(); } v.lamps.mat.dispose(); v.lamps = null; }
   }
 }
-const SAVE_KEYS = ['job', 'traffic', 'loco', 'consist', 'time', 'cycle', 'weather', 'wxV', 'fire', 'fireV', 'units', 'livery', 'mix', 'finish', 'custom', 'number', 'coach', 'coachV', 'obsLamp', 'coachColor', 'gfx', 'whistles'];
+const SAVE_KEYS = ['job', 'traffic', 'loco', 'consist', 'time', 'cycle', 'weather', 'wxV', 'fire', 'fireV', 'units', 'livery', 'mix', 'finish', 'custom', 'number', 'coach', 'coachV', 'obsLamp', 'coachColor', 'gfx', 'whistles', 'grime'];
 function saveSettings() { try { const o = {}; for (const k of SAVE_KEYS) o[k] = GAME.settings[k]; localStorage.setItem('bd_settings', JSON.stringify(o)); } catch (e) {} }
 function loadSettings() { try { const o = JSON.parse(localStorage.getItem('bd_settings') || 'null'); if (o) for (const k of SAVE_KEYS) if (o[k] !== undefined) GAME.settings[k] = o[k]; } catch (e) {}
   // easy steam came in as the default after 'auto' had been saved by everyone: move them up to it once
@@ -30726,6 +30926,7 @@ function loadSettings() { try { const o = JSON.parse(localStorage.getItem('bd_se
   if (GAME.settings.obsLamp !== 'roof') GAME.settings.obsLamp = 'side';
   if (GAME.settings.whistles !== 'classic') GAME.settings.whistles = 'new';
   if (!WEATHER[GAME.settings.weather]) GAME.settings.weather = 'changing';
+  if (!GRM_LEVELS[GAME.settings.grime]) GAME.settings.grime = 'full'; grmLevel(GAME.settings.grime);
   if (!['easy', 'auto', 'hand'].includes(GAME.settings.fire)) GAME.settings.fire = 'easy'; if (!LOCO_SPEC[GAME.settings.loco]) GAME.settings.loco = '765'; if (!LIVERIES[GAME.settings.livery]) GAME.settings.livery = 'ss'; if (!DN.starts[GAME.settings.time]) GAME.settings.time = 'morning'; if (!DN.rates[GAME.settings.cycle]) GAME.settings.cycle = 'x30'; if (!COACH_PAINT[GAME.settings.coach]) GAME.settings.coach = 'road'; if (!GFX_MENU[GAME.settings.gfx]) GAME.settings.gfx = 'auto'; }
 GAME.needNewTrain = function () { const t = GAME.train, g = GAME.settings, j = JOB.wanted(); return !t || MP.needSpawn || t.locoKey !== g.loco || (!t.elec && t.consistKey !== JOB.consist()) || (j ? j.id : '') !== JOB.activeId() || (t.diesel && !t.elec && t.nUnits !== (+g.units || 1)) || (!t.diesel && (t.trim || '') !== trimWanted()); };
 function buildWhistleIfReady() { if (!AU.on) return; buildWhistle(WHISTLES[whistleKeyOf(GAME.settings.loco)]); }
@@ -30790,6 +30991,7 @@ function buildMenu() {
   segButtons('optTime', DN.starts, 'time', k => { GAME.frostNight = false; if (GAME.ready) applyLook(k, null); saveSettings(); });
   segButtons('optCycle', DN.rates, 'cycle', () => { GAME.frostNight = false; saveSettings(); });
   segButtons('optGfx', GFX_MENU, 'gfx', k => { if (POST.ready) { postQuality(postResolve(k)); gfxNote(); } saveSettings(); });
+  segButtons('optGrime', GRM_LEVELS, 'grime', k => { grmLevel(k); saveSettings(); });
   segButtons('optWeather', WEATHER, 'weather', k => { if (GAME.ready) applyLook(null, k); saveSettings(); });
   segButtons('optFire', { easy: { name: 'Easy', sub: 'Fireman, and the reverser hooks up for you' }, auto: { name: 'Fireman', sub: 'Stoker & water handled, you work the reverser' }, hand: { name: 'Hand fired', sub: 'You run the boiler' } }, 'fire', k => { applyFireSetting(k); GAME.refreshKeys(); saveSettings(); });
   segButtons('optTraffic', { on: { name: 'Timetable', sub: ROUTE_KEY === 'frost' ? 'No timetable trains out on the ice' : ROUTE_KEY === 'laurel' ? 'No. 21, No. 22 and coal trains on the mountain' : 'No. 5, No. 12 and freights on the road' }, off: { name: 'Clear road', sub: 'Just you and the signals' } }, 'traffic', () => { if (GAME.ready && GAME.train) AI.setup(); saveSettings(); });

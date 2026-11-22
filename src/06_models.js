@@ -282,6 +282,49 @@ BOIL.top = a => a >= BOIL.fb[0] ? CABDIM.FB.cy + CABDIM.FB.r : BOIL.bY(a) + BOIL
 /* half width of the barrel (or firebox) at height y, a */
 BOIL.half = (a, y) => { if (a >= BOIL.fb[0]) return CABDIM.fbHalf(y); const r = BOIL.bR(a), d = y - BOIL.bY(a); return Math.sqrt(Math.max(0, r * r - d * d)); };
 
+/* A steam dome or sand dome, shared by every steam engine: a rounded-oblong plan (superellipse, exponent np;
+   2 is an ellipse, higher is squarer) and a rounded section (exponent nv) so the crown is broad and the shoulders
+   roll over smoothly instead of standing up like a box. Base at y = 0, centred on x = z = 0, L long, w wide, h high;
+   the skirt runs 0.34 below the base into the boiler with exactly the same plan, so no lip shows where they meet.
+   half(dx, y): the half width at dx along and y above the base, for fittings that sit on it. */
+function domeShape(L, w, h, np = 2.8, nv = 2.6) {
+  const se = ang => { const c = Math.abs(Math.cos(ang)), sn = Math.abs(Math.sin(ang)); return Math.pow(Math.pow(c, np) + Math.pow(sn, np), -1 / np); };
+  const g = new THREE.SphereGeometry(1, 48, 20, 0, TAU, 0, Math.PI / 2), p = g.attributes.position;
+  for (let i = 0; i < p.count; i++) {
+    const x = p.getX(i), z = p.getZ(i), y = p.getY(i), r = Math.hypot(x, z), ang = Math.atan2(z, x), phi = Math.atan2(y, r);
+    const X = Math.pow(Math.cos(phi), 2 / nv), Y = Math.pow(Math.sin(phi), 2 / nv), k = se(ang) * X;
+    p.setXYZ(i, Math.cos(ang) * k * L / 2, Y * h, Math.sin(ang) * k * w / 2);
+  }
+  g.computeVertexNormals();
+  const sk = new THREE.CylinderGeometry(1, 1, 0.34, 48, 1, true), q = sk.attributes.position;
+  for (let i = 0; i < q.count; i++) { const x = q.getX(i), z = q.getZ(i), ang = Math.atan2(z, x), k = se(ang); q.setXYZ(i, Math.cos(ang) * k * L / 2, q.getY(i) - 0.17 + 0.001, Math.sin(ang) * k * w / 2); }
+  sk.computeVertexNormals();
+  const half = (dx, y) => { const v = Math.min(1, Math.max(0, y / h)), X = Math.pow(1 - Math.pow(v, nv), 1 / nv), u = Math.min(1, Math.abs(dx) / (L / 2 * X || 1e-6)); return w / 2 * X * Math.pow(1 - Math.pow(u, np), 1 / np); };
+  return { geos: [g, sk], half };
+}
+/* A smokebox door's profile ([axial, radius] from the rim to the centre) with its corners rolled over and a
+   rounded crown instead of a point: the given points are kept as the shape, each corner is eased with a curve
+   and the last run to the centre becomes a smooth dish whose middle is flat, kept inside the old outline. */
+function smokeDoorPts(pts, ease = 0.4) {
+  const out = [pts[0]];
+  for (let i = 1; i < pts.length - 2; i++) {
+    const a = pts[i - 1], b = pts[i], c = pts[i + 1], A = [lerp(b[0], a[0], ease), lerp(b[1], a[1], ease)], C = [lerp(b[0], c[0], ease * (i === pts.length - 3 ? 0.5 : 1)), lerp(b[1], c[1], ease * (i === pts.length - 3 ? 0.5 : 1))];
+    for (let j = 0; j <= 4; j++) { const t = j / 4, u = 1 - t; out.push([u * u * A[0] + 2 * u * t * b[0] + t * t * C[0], u * u * A[1] + 2 * u * t * b[1] + t * t * C[1]]); }
+  }
+  const b = pts[pts.length - 2], c = pts[pts.length - 1], d = c[0] - b[0];
+  out.push(b);
+  // the dish rises two thirds of the old run to the point, so it never stands proud of the old cone (the bells swing close)
+  for (let j = 1; j <= 10; j++) { const u = 1 - j / 10, g = 1.5 * u * u - 0.5 * u * u * u; out.push([b[0] + d * (2 / 3) * (1 - g), b[1] * u]); }
+  return out;
+}
+/* the rolled front ring of a smokebox: R barrel radius, standing out t past it, len deep, edges rounded (f) */
+function smokeRingPts(R, t = 0.025, len = 0.09, f = 0.018) {
+  const out = [[0, R - 0.02]], R1 = R + t;
+  for (let j = 0; j <= 5; j++) { const a = Math.PI / 2 * j / 5; out.push([f - f * Math.cos(a), R1 - f + f * Math.sin(a)]); }
+  for (let j = 0; j <= 5; j++) { const a = Math.PI / 2 * j / 5; out.push([len - f + f * Math.sin(a), R1 - f + f * Math.cos(a)]); }
+  out.push([len + 0.006, R - 0.02]);
+  return out;
+}
 /* Spoked driving wheel centre (NKP) with a crescent counterweight, in wheel-local coordinates like driverWheel */
 function spokedCentre(R, main, parts) {
   const rimIn = R - 0.13, hubR = 0.27, n = 18;
@@ -407,9 +450,9 @@ function buildBerkshire(key, trim = '') {
   const barrel = (a0, a1, r, y) => gb.add('jacket', new THREE.CylinderGeometry(r, r, a1 - a0, 48, 1, true).rotateZ(Math.PI / 2).translate(ax((a0 + a1) / 2), y, 0));
   // smokebox (graphite on the as-delivered finish) with its front ring, dished door, hinges and dogs
   gb.add('graphite', new THREE.CylinderGeometry(BOIL.sb[2], BOIL.sb[2], BOIL.sb[1] - BOIL.sb[0], 48).rotateZ(Math.PI / 2).translate(ax((BOIL.sb[0] + BOIL.sb[1]) / 2), yB, 0));
-  gb.add('graphite', new THREE.CylinderGeometry(BOIL.sb[2] + 0.025, BOIL.sb[2] + 0.025, 0.09, 48).rotateZ(Math.PI / 2).translate(ax(BOIL.sb[0] + 0.045), yB, 0));
   const door = { r: 0.86, a: BOIL.sb[0] - 0.16 };                                          // the door bulges 0.16 m out of the front plate
-  gb.add('graphite', lathe([[0, door.r + 0.04], [0.04, door.r + 0.04], [0.07, door.r], [0.13, 0.58], [0.16, 0.0]], BOIL.sb[0] - 0.005));
+  gb.add('graphite', lathe(smokeDoorPts([[0, door.r + 0.04], [0.04, door.r + 0.04], [0.07, door.r], [0.13, 0.58], [0.16, 0.0]]), BOIL.sb[0] - 0.005));
+  gb.add('graphite', lathe(smokeRingPts(BOIL.sb[2]), BOIL.sb[0] + 0.09));   // the front ring, its edges rolled over
   for (const dy of [0.38, -0.38]) gb.box('dark', 0.05, 0.07, 0.42, ax(BOIL.sb[0] - 0.07), yB + dy, -0.6);   // hinge straps
   for (let i = 0; i < 16; i++) { const t = (i + 0.5) / 16 * TAU; gb.add('dark', new THREE.BoxGeometry(0.07, 0.13, 0.07), M(ax(BOIL.sb[0] - 0.03), yB + 0.95 * Math.cos(t), 0.95 * Math.sin(t), t, 0, 0)); }   // door dogs round the ring
   gb.box('dark', 0.06, 0.08, 0.5, ax(door.a + 0.02), yB, 0);                                // door handle bar
@@ -451,21 +494,14 @@ function buildBerkshire(key, trim = '') {
     bar('dark', 0.05, [ax(fa + 0.1), fy - 0.15, -0.68], [ax(fa + 0.4), sbTop - 0.2, -0.95]);
   }
   // domes: seated on the barrel (their skirts go into it, so no gap shows on the curved top)
-  const dome = (a0, a1, w, top, k) => {
-    const L = a1 - a0, base = BOIL.top((a0 + a1) / 2) - 0.32, h = top - base, g = new THREE.SphereGeometry(1, 32, 16, 0, TAU, 0, Math.PI / 2);
-    const p = g.attributes.position;
-    for (let i = 0; i < p.count; i++) {   // superellipse plan, flat crown
-      const x = p.getX(i), z = p.getZ(i), y = p.getY(i), r = Math.hypot(x, z), ang = Math.atan2(z, x), c = Math.cos(ang), sn = Math.sin(ang);
-      const se = Math.pow(Math.pow(Math.abs(c), 4) + Math.pow(Math.abs(sn), 4), -0.25);
-      const yy = Math.pow(y, 0.55);
-      p.setXYZ(i, c * se * r * L / 2, yy * h, sn * se * r * w / 2);
-    }
-    g.computeVertexNormals(); g.translate(ax((a0 + a1) / 2), base, 0); gb.add(k || 'jacket', g);
-    gb.add(k || 'jacket', new THREE.CylinderGeometry(1, 1, 0.34, 32, 1, true).scale(L / 2 * 1.0, 1, w / 2).translate(ax((a0 + a1) / 2), base - 0.17 + 0.001, 0));
+  const dome = (a0, a1, w, top, k, np) => {
+    const L = a1 - a0, base = BOIL.top((a0 + a1) / 2) - 0.32, d = domeShape(L, w, top - base, np);
+    for (const g of d.geos) gb.add(k || 'jacket', g.translate(ax((a0 + a1) / 2), base, 0));
+    return (a, y) => d.half(a - (a0 + a1) / 2, y - base);
   };
-  dome(6.00, 7.08, 1.02, 4.70);                                                              // steam dome
-  dome(7.57, 10.33, 0.92, 4.68);                                                             // long sand dome
-  for (const s of [-1, 1]) for (let i = 0; i < 4; i++) { const a = 8.0 + i * 0.62; gb.box('dark', 0.2, 0.14, 0.08, ax(a), BOIL.top(a) - 0.1, s * 0.44); }   // sand valves on the dome skirt
+  dome(6.00, 7.08, 1.02, 4.70, null, 2.4);                                                   // steam dome
+  const sandHalf = dome(7.57, 10.33, 0.92, 4.68, null, 3.0);                                 // long sand dome
+  for (const s of [-1, 1]) for (let i = 0; i < 4; i++) { const a = 8.0 + i * 0.62, y = BOIL.top(a) - 0.1; gb.box('dark', 0.2, 0.14, 0.08, ax(a), y, s * (sandHalf(a, y) - 0.01)); }   // sand valves on the dome skirt
   // safety valves, whistle, turret and turbo-generators on the firebox top / rear course
   const fbTop = FB.cy + FB.r;
   for (const z of [-0.24, 0, 0.24]) { gb.cyl('brass', 0.075, 0.095, 0.3, 14, ax(12.15), fbTop + 0.12, z); gb.cyl('brass', 0.11, 0.11, 0.05, 14, ax(12.15), fbTop + 0.29, z); }

@@ -110,7 +110,11 @@ function liveryMaterials(L, num) {
   });
 }
 /* road wear on a livery: a mottled sheen on the paint, exhaust soot on the roof, brake dust on the pilot */
-function wearSkin(k) { for (const n of ['lBody', 'lAccent', 'lRail', 'lNose', 'lPilot', 'lLouver']) wear(k[n]); wear(k.lRoof, 0.6, 31); return k; }
+function wearSkin(k) {
+  for (const n of ['lBody', 'lAccent', 'lRail', 'lNose', 'lPilot', 'lLouver']) { wear(k[n]); grmTag(k[n], 'diesel'); }
+  wear(k.lRoof, 0.6, 31); grmTag(k.lRoof, 'dieselRoof'); grmTag(k.lSide, 'diesel');
+  return k;
+}
 function applyLivery(model, L, num) {
   const M = model.skin, t = liveryTextures(L, num);
   const set = (m, hex) => { m.color.set(hex).convertSRGBToLinear(); m.userData.lin = true; };

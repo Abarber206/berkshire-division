@@ -157,10 +157,10 @@ function buildBigBoy(key, trim = '') {
   /* ---- boiler ---- */
   const sbTop = yB + BBOIL.sb[2];
   gb.add('graphite', new THREE.CylinderGeometry(BBOIL.sb[2], BBOIL.sb[2], BBOIL.sb[1] - BBOIL.sb[0], 48).rotateZ(Math.PI / 2).translate(ax((BBOIL.sb[0] + BBOIL.sb[1]) / 2), yB, 0));
-  gb.add('graphite', new THREE.CylinderGeometry(BBOIL.sb[2] + 0.025, BBOIL.sb[2] + 0.025, 0.09, 48).rotateZ(Math.PI / 2).translate(ax(BBOIL.sb[0] + 0.045), yB, 0));
   const lathe = (pts, a0) => { const g = new THREE.LatheGeometry(pts.map(p => new THREE.Vector2(p[1], p[0])), 48); g.rotateZ(-Math.PI / 2); g.translate(ax(a0), yB, 0); return g; };
   const door = { r: 0.95, a: BBOIL.sb[0] - 0.17 };
-  gb.add('graphite', lathe([[0, door.r + 0.05], [0.04, door.r + 0.05], [0.07, door.r], [0.14, 0.62], [0.17, 0.0]], BBOIL.sb[0] - 0.005));
+  gb.add('graphite', lathe(smokeDoorPts([[0, door.r + 0.05], [0.04, door.r + 0.05], [0.07, door.r], [0.14, 0.62], [0.17, 0.0]]), BBOIL.sb[0] - 0.005));
+  gb.add('graphite', lathe(smokeRingPts(BBOIL.sb[2]), BBOIL.sb[0] + 0.09));   // the front ring, its edges rolled over
   for (let i = 0; i < 18; i++) { const t = (i + 0.5) / 18 * TAU; gb.add('dark', new THREE.BoxGeometry(0.07, 0.13, 0.07), M(ax(BBOIL.sb[0] - 0.03), yB + 1.05 * Math.cos(t), 1.05 * Math.sin(t), t, 0, 0)); }
   gb.box('dark', 0.06, 0.08, 0.5, ax(door.a + 0.02), yB - 0.3, 0);                   // door handle
   gb.add('jacket', new THREE.CylinderGeometry(BBOIL.c1[2], BBOIL.c1[2], BBOIL.c1[1] - BBOIL.c1[0] + 0.02, 48, 1, true).rotateZ(Math.PI / 2).translate(ax((BBOIL.c1[0] + BBOIL.c1[1]) / 2 - 0.01), yB, 0));
@@ -192,20 +192,14 @@ function buildBigBoy(key, trim = '') {
     gb.add('black', new THREE.TorusGeometry(1, 0.06, 10, 40).scale(stk.L / 2, stk.w / 2, 1).rotateX(Math.PI / 2).translate(ax(stk.a), stk.top - 0.06, 0));
     gb.add('blackMatte', new THREE.CircleGeometry(1, 32).scale(stk.L / 2 - 0.02, stk.w / 2 - 0.02, 1).rotateX(-Math.PI / 2).translate(ax(stk.a), stk.top - 0.12, 0));
   }
-  const dome = (a0, a1, w, top, k) => {
-    const L = a1 - a0, base = BBOIL.top((a0 + a1) / 2) - 0.32, h = top - base, g = new THREE.SphereGeometry(1, 32, 16, 0, TAU, 0, Math.PI / 2);
-    const p = g.attributes.position;
-    for (let i = 0; i < p.count; i++) {
-      const x = p.getX(i), z = p.getZ(i), y = p.getY(i), r = Math.hypot(x, z), ang = Math.atan2(z, x), c = Math.cos(ang), sn = Math.sin(ang);
-      const se = Math.pow(Math.pow(Math.abs(c), 4) + Math.pow(Math.abs(sn), 4), -0.25);
-      p.setXYZ(i, c * se * r * L / 2, Math.pow(y, 0.55) * h, sn * se * r * w / 2);
-    }
-    g.computeVertexNormals(); g.translate(ax((a0 + a1) / 2), base, 0); gb.add(k || 'jacket', g);
-    gb.add(k || 'jacket', new THREE.CylinderGeometry(1, 1, 0.34, 32, 1, true).scale(L / 2, 1, w / 2).translate(ax((a0 + a1) / 2), base - 0.17 + 0.001, 0));
+  const dome = (a0, a1, w, top, k, np) => {
+    const L = a1 - a0, base = BBOIL.top((a0 + a1) / 2) - 0.32, d = domeShape(L, w, top - base, np);
+    for (const g of d.geos) gb.add(k || 'jacket', g.translate(ax((a0 + a1) / 2), base, 0));
+    return (a, y) => d.half(a - (a0 + a1) / 2, y - base);
   };
-  dome(7.4, 10.4, 0.98, 4.86);                                                     // the long sand dome
-  dome(12.2, 13.5, 1.08, 4.90);                                                    // steam dome
-  for (const s of [-1, 1]) for (let i = 0; i < 4; i++) { const a = 7.9 + i * 0.66; gb.box('dark', 0.2, 0.14, 0.08, ax(a), BBOIL.top(a) - 0.12, s * 0.46); }
+  const sandHalf = dome(7.4, 10.4, 0.98, 4.86, null, 3.0);                         // the long sand dome
+  dome(12.2, 13.5, 1.08, 4.90, null, 2.4);                                         // steam dome
+  for (const s of [-1, 1]) for (let i = 0; i < 4; i++) { const a = 7.9 + i * 0.66, y = BBOIL.top(a) - 0.12; gb.box('dark', 0.2, 0.14, 0.08, ax(a), y, s * (sandHalf(a, y) - 0.01)); }
   const fbTop = FB.cy + FB.r;
   for (const z of [-0.26, 0, 0.26]) { gb.cyl('brass', 0.08, 0.1, 0.16, 14, ax(17.1), fbTop + 0.05, z); gb.cyl('brass', 0.115, 0.115, 0.05, 14, ax(17.1), fbTop + 0.14, z); }
   gb.box('black', 0.5, 0.12, 0.76, ax(17.1), fbTop - 0.02, 0);

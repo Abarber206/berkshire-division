@@ -160,10 +160,10 @@ function buildMallet(key, trim = '') {
   /* ---- boiler ---- */
   const sbTop = yB + O.sb[2];
   gb.add('graphite', new THREE.CylinderGeometry(O.sb[2], O.sb[2], O.sb[1] - O.sb[0], 48).rotateZ(Math.PI / 2).translate(ax((O.sb[0] + O.sb[1]) / 2), yB, 0));
-  gb.add('graphite', new THREE.CylinderGeometry(O.sb[2] + 0.025, O.sb[2] + 0.025, 0.09, 48).rotateZ(Math.PI / 2).translate(ax(O.sb[0] + 0.045), yB, 0));
   const lathe = (pts, a0) => { const g = new THREE.LatheGeometry(pts.map(p => new THREE.Vector2(p[1], p[0])), 48); g.rotateZ(-Math.PI / 2); g.translate(ax(a0), yB, 0); return g; };
   const door = { r: 0.86 };
-  gb.add('graphite', lathe([[0, door.r + 0.05], [0.04, door.r + 0.05], [0.07, door.r], [0.13, 0.56], [0.15, 0.0]], O.sb[0] - 0.005));
+  gb.add('graphite', lathe(smokeDoorPts([[0, door.r + 0.05], [0.04, door.r + 0.05], [0.07, door.r], [0.13, 0.56], [0.15, 0.0]]), O.sb[0] - 0.005));
+  gb.add('graphite', lathe(smokeRingPts(O.sb[2]), O.sb[0] + 0.09));   // the front ring, its edges rolled over
   for (let i = 0; i < 16; i++) { const t = (i + 0.5) / 16 * TAU; gb.add('dark', new THREE.BoxGeometry(0.07, 0.12, 0.07), M(ax(O.sb[0] - 0.03), yB + 0.95 * Math.cos(t), 0.95 * Math.sin(t), t, 0, 0)); }
   gb.add('jacket', new THREE.CylinderGeometry(O.c1[2], O.c1[2], O.c1[1] - O.c1[0] + 0.02, 48, 1, true).rotateZ(Math.PI / 2).translate(ax((O.c1[0] + O.c1[1]) / 2 - 0.01), yB, 0));
   gb.add('black', new THREE.CircleGeometry(O.c1[2], 48).rotateY(Math.PI / 2).translate(ax(O.c1[0] - 0.01), yB, 0));
@@ -194,16 +194,9 @@ function buildMallet(key, trim = '') {
   gb.cyl('black', stk.r - 0.02, stk.r + 0.02, stk.top - sbTop, 32, ax(stk.a), (stk.top + sbTop) / 2, 0);
   gb.add('black', new THREE.TorusGeometry(stk.r - 0.02, 0.045, 10, 32).rotateX(Math.PI / 2).translate(ax(stk.a), stk.top - 0.04, 0));
   gb.add('blackMatte', new THREE.CircleGeometry(stk.r - 0.04, 28).rotateX(-Math.PI / 2).translate(ax(stk.a), stk.top - 0.1, 0));
-  const dome = (a0, a1, w, top, k) => {
-    const L = a1 - a0, base = O.top((a0 + a1) / 2) - 0.32, h = top - base, g = new THREE.SphereGeometry(1, 32, 16, 0, TAU, 0, Math.PI / 2);
-    const p = g.attributes.position;
-    for (let i = 0; i < p.count; i++) {
-      const x = p.getX(i), z = p.getZ(i), y = p.getY(i), r = Math.hypot(x, z), ang = Math.atan2(z, x), c = Math.cos(ang), sn = Math.sin(ang);
-      const se = Math.pow(Math.pow(Math.abs(c), 3) + Math.pow(Math.abs(sn), 3), -1 / 3);
-      p.setXYZ(i, c * se * r * L / 2, Math.pow(y, 0.55) * h, sn * se * r * w / 2);
-    }
-    g.computeVertexNormals(); g.translate(ax((a0 + a1) / 2), base, 0); gb.add(k || 'jacket', g);
-    gb.add(k || 'jacket', new THREE.CylinderGeometry(1, 1, 0.34, 32, 1, true).scale(L / 2, 1, w / 2).translate(ax((a0 + a1) / 2), base - 0.17 + 0.001, 0));
+  const dome = (a0, a1, w, top, k, np = 2.6) => {
+    const L = a1 - a0, base = O.top((a0 + a1) / 2) - 0.32, d = domeShape(L, w, top - base, np);
+    for (const g of d.geos) gb.add(k || 'jacket', g.translate(ax((a0 + a1) / 2), base, 0));
   };
   dome(5.2, 6.3, 0.95, 4.55);                                                      // front sand dome
   dome(8.9, 9.9, 1.0, 4.60);                                                       // steam dome

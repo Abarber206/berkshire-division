@@ -136,6 +136,9 @@ function wear(m, soot = 0, seed) {
   if (soot && !m.map) m.map = wearSoot(seed, soot);
   m.needsUpdate = true; return m;
 }
+/* weathering drawn in the paint's shader (06l_grime.js): grmTag names the profile a material takes */
+const GRM = { K: { value: 1 }, mats: new WeakMap(), no: new WeakSet(), tag: new WeakMap() };
+function grmTag(m, prof) { if (m) GRM.tag.set(m, prof); return m; }
 /* Canvas texture helper */
 function canvasTex(w, h, draw, opts = {}) {
   const c = document.createElement('canvas'); c.width = w; c.height = h;
