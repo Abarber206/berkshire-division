@@ -8,6 +8,11 @@ const CONSISTS = {
   coal: { name: 'Coal drag', sub: '26 cars · 2,300 tons', build: () => { const a = []; for (let i = 0; i < 25; i++) a.push(['hopper', 0]); a.push(['caboose', 0]); return a; } },
   light: { name: 'Light engine', sub: 'Pick up cars in the yard', build: () => [] },
   // made up for the BD-2 time freight job; not offered in the menu
+  // made up for the Laurel Mountain and Raven Lake jobs (src/11d_jobs.js); not offered in the menu either.
+  // Fourteen loads is more than one Berkshire can lift up the 1.9 per cent: it takes the pusher.
+  mtncoal: { name: 'Mine run', sub: '14 loads · 1,300 tons', hidden: true, build: () => { const a = []; for (let i = 0; i < 14; i++) a.push(['hopper', 0]); a.push(['caboose', 0]); return a; } },
+  lakemail: { name: 'Lake mail', sub: '4 cars', hidden: true, build: () => [['coach', 0], ['coach', 0], ['coach', 0], ['coach', 1]] },
+  lakefreight: { name: 'Ice freight', sub: '11 cars · 900 tons', hidden: true, build: () => ['box', 'hopper', 'box', 'tank', 'box', 'gon', 'hopper', 'box', 'tank', 'box', 'caboose'].map(t => [t, 0]) },
   timefreight: { name: 'Time freight', sub: '18 cars · 1,400 tons', hidden: true, build: () => ['box', 'box', 'tank', 'box', 'hopper', 'box', 'gon', 'box', 'box', 'tank', 'tank', 'box', 'hopper', 'hopper', 'box', 'gon', 'box', 'box', 'caboose'].map(t => [t, 0]) },
 };
 
