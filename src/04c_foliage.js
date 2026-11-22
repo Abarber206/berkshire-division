@@ -266,75 +266,114 @@ function foliageMaterial() {
 }
 
 /* ---- impostors: one card per tree, facing the camera, whose picture is the near tree rendered once at load.
-   Eight 256 px slots across: 0 and 1 the summer hardwood and conifer (grey, tinted per tree as they draw),
+   Eight slots across: 0 and 1 the summer hardwood and conifer (grey, tinted per tree as they draw),
    2 and 3 the same in winter, bare and with no snow, 4 and 5 winter with a coat of snow. Winter cards are
-   baked in their own colours, and the far shader blends the bare and snowy slots by how much snow lies. */
-const IMP = { dec: { u0: 0 }, con: { u0: 1 }, slots: 8 };
+   baked in their own colours, and the far shader blends the bare and snowy slots by how much snow lies.
+   Two rows: the two shapes of each tree (dec/dec2, con/con2), so a far woodlot is not one tree repeated.
+   A second picture of the same layout holds each pixel's normal (the crown's outward lean), so the far card
+   is lit like the tree: bright on the sun's side, darker on the other, instead of an evenly lit round blob. */
+const IMP = { dec: { u0: 0 }, con: { u0: 1 }, slots: 8, rows: 2 };
 const IMP_WINTER = { needle: [0.032, 0.062, 0.026], twig: [0.72, 0.72, 0.72], snow: [0.78, 0.81, 0.86] };   // linear, as the near shader draws them
-/* the square frame each tree is drawn in: its height from the bounding box, centred on the trunk */
-function impFrame(k, g) {
-  const p = g.attributes.position, c = g.attributes.aCorner, B = IMP[k]; let y0 = 1e9, y1 = -1e9;
-  for (let i = 0; i < p.count; i++) { const e = Math.hypot(c.getX(i), c.getY(i)); y0 = Math.min(y0, p.getY(i) - e); y1 = Math.max(y1, p.getY(i) + e); }
+/* the square frame each tree is drawn in: its height from the bounding box of both its shapes, centred on the trunk */
+function impFrame(k, ...gs) {
+  const B = IMP[k]; let y0 = 1e9, y1 = -1e9;
+  for (const g of gs) {
+    const p = g.attributes.position, c = g.attributes.aCorner;
+    for (let i = 0; i < p.count; i++) { const e = Math.hypot(c.getX(i), c.getY(i)); y0 = Math.min(y0, p.getY(i) - e); y1 = Math.max(y1, p.getY(i) + e); }
+  }
   B.y0 = y0 - 0.1; B.y1 = y1 + 0.1; B.x = (B.y1 - B.y0) / 2; return B;
 }
 function bakeImpostors(G) {
-  const rt = new THREE.WebGLRenderTarget(256 * IMP.slots, 256, { minFilter: THREE.LinearMipmapLinearFilter, magFilter: THREE.LinearFilter, generateMipmaps: true });
+  const px = IMP.px = GFX.lite ? 128 : 256;
+  const opt = { minFilter: THREE.LinearMipmapLinearFilter, magFilter: THREE.LinearFilter, generateMipmaps: true };
+  const rt = new THREE.WebGLRenderTarget(px * IMP.slots, px * IMP.rows, opt), rtN = new THREE.WebGLRenderTarget(px * IMP.slots, px * IMP.rows, opt);
+  const vs = 'attribute float aLeaf; attribute vec3 aCorner; attribute float aSnow; uniform float uWinter; varying vec2 vUv; varying vec3 vCol; varying float vLeaf; varying vec3 vN; varying float vSnow;\n' +
+      'void main(){ vUv = uv; float vBare = 0.0;' + FOL_BARE_GLSL + ' vCol = color; vLeaf = aLeaf * (1.0 - vBare); vSnow = aSnow; vN = normal; vec4 mv = modelViewMatrix * vec4(position, 1.0); mv.xy += aCorner.xy * aCorner.z; gl_Position = projectionMatrix * mv; }';
+  const U = () => ({ map: { value: FOL.tex }, uWinter: { value: 0 }, uLay: { value: 0 }, uNeedle: { value: new THREE.Vector3(...IMP_WINTER.needle) }, uTwig: { value: new THREE.Vector3(...IMP_WINTER.twig) }, uSnowC: { value: new THREE.Vector3(...IMP_WINTER.snow) } });
   const mat = new THREE.ShaderMaterial({
-    uniforms: { map: { value: FOL.tex }, uWinter: { value: 0 }, uLay: { value: 0 }, uNeedle: { value: new THREE.Vector3(...IMP_WINTER.needle) }, uTwig: { value: new THREE.Vector3(...IMP_WINTER.twig) }, uSnowC: { value: new THREE.Vector3(...IMP_WINTER.snow) } }, side: THREE.DoubleSide,
-    vertexShader: 'attribute float aLeaf; attribute vec3 aCorner; attribute float aSnow; uniform float uWinter; varying vec2 vUv; varying vec3 vCol; varying float vLeaf; varying vec3 vN; varying float vSnow;\n' +
-      'void main(){ vUv = uv; float vBare = 0.0;' + FOL_BARE_GLSL + ' vCol = color; vLeaf = aLeaf * (1.0 - vBare); vSnow = aSnow; vN = normal; vec4 mv = modelViewMatrix * vec4(position, 1.0); mv.xy += aCorner.xy * aCorner.z; gl_Position = projectionMatrix * mv; }',
+    uniforms: U(), side: THREE.DoubleSide, vertexShader: vs, vertexColors: true,
     fragmentShader: 'uniform sampler2D map; uniform float uWinter, uLay; uniform vec3 uNeedle, uTwig, uSnowC; varying vec2 vUv; varying vec3 vCol; varying float vLeaf; varying vec3 vN; varying float vSnow;\n' +
       'void main(){ vec4 t = texture2D(map, vUv); if (t.a < 0.45) discard; vec3 tl = pow(t.rgb, vec3(2.2)); vec3 c = tl * vCol;\n' +
       // winter cards carry their own colour: green needles, grey-brown twigs and bark, and the snow
       ' if (uWinter > 0.5) { c *= vLeaf > 0.5 ? uNeedle * 1.6 : uTwig * 1.4;\n' +
       '   float cov = smoothstep(0.34, 0.58, vSnow * (0.3 + 1.1 * uLay) + 0.3 * (dot(tl, vec3(0.3, 0.5, 0.2)) - 0.75)) * step(0.02, uLay);\n' +
       '   c = mix(c, uSnowC * mix(1.0, vCol.g, 0.3), cov); }\n' +
-      // a little of the near tree's own light, from above and from the viewer's side, so the far card is not flat
-      ' vec3 n = normalize(vN); c *= 0.82 + 0.28 * clamp(n.y * 0.6 + n.z * 0.5, -0.4, 1.0);\n' +
+      // the light itself comes from the normal picture as the far card draws; a touch of shape stays baked in
+      ' vec3 n = normalize(vN); c *= 0.94 + 0.08 * clamp(n.y * 0.6 + n.z * 0.5, -0.4, 1.0);\n' +
       ' gl_FragColor = vec4(c, 1.0); }',
-    vertexColors: true,
+  });
+  // the normal picture: the crown's outward lean (the leaf cards carry it), turned toward the viewer a little, as the near
+  // tree's shader lights back faces as front
+  const matN = new THREE.ShaderMaterial({
+    uniforms: U(), side: THREE.DoubleSide, vertexShader: vs, vertexColors: true,
+    fragmentShader: 'uniform sampler2D map; varying vec2 vUv; varying vec3 vN;\n' +
+      'void main(){ vec4 t = texture2D(map, vUv); if (t.a < 0.45) discard; vec3 n = normalize(vN); n.z = abs(n.z) * 0.8 + 0.25; n.y += 0.2; n = normalize(n); gl_FragColor = vec4(n * 0.5 + 0.5, 1.0); }',
   });
   const sc = new THREE.Scene(), oldRT = renderer.getRenderTarget(), oldC = renderer.getClearColor(new THREE.Color()), oldA = renderer.getClearAlpha();
-  renderer.setClearColor(0x5d6450, 0);   // the colour the edge texels fade toward in the small mip levels
-  rt.scissorTest = true;
-  for (const [wi, lay] of [[0, 0], [1, 0], [1, 0.85]]) for (const k of ['dec', 'con']) {
+  rt.scissorTest = rtN.scissorTest = true;
+  for (const [wi, lay] of [[0, 0], [1, 0], [1, 0.85]]) for (const k of ['dec', 'con']) for (let row = 0; row < IMP.rows; row++) {
     const B = IMP[k], slot = B.u0 + 2 * wi + (lay > 0 ? 2 : 0);
-    mat.uniforms.uWinter.value = wi; mat.uniforms.uLay.value = lay;
+    mat.uniforms.uWinter.value = matN.uniforms.uWinter.value = wi; mat.uniforms.uLay.value = lay;
     const cam = new THREE.OrthographicCamera(-B.x, B.x, B.y1, B.y0, -50, 50); cam.position.set(0, 0, 10); cam.lookAt(0, 0, 0); cam.updateProjectionMatrix();
-    const m = new THREE.Mesh(G[k], mat); sc.add(m);
-    rt.viewport.set(slot * 256, 0, 256, 256); rt.scissor.copy(rt.viewport);
-    renderer.setRenderTarget(rt); renderer.clear(); renderer.render(sc, cam);
+    const m = new THREE.Mesh(G[row ? k + '2' : k], mat); sc.add(m);
+    // the colour picture is cleared to nothing, so its small mips average the leaves with black at their own coverage
+    // (premultiplied, divided back out as the card draws): no dark fringe creeping in as the tree gets small
+    for (const [target, mm, clear] of [[rt, mat, 0x000000], [rtN, matN, 0x8080ff]]) {
+      m.material = mm; renderer.setClearColor(clear, 0);
+      target.viewport.set(slot * px, row * px, px, px); target.scissor.copy(target.viewport);
+      renderer.setRenderTarget(target); renderer.clear(); renderer.render(sc, cam);
+    }
     sc.remove(m);
   }
   renderer.setRenderTarget(oldRT); renderer.setClearColor(oldC, oldA);
-  mat.dispose();
+  mat.dispose(); matN.dispose();
+  FOL.impN = rtN.texture;
   return rt.texture;
 }
 function impostorGeo(k) {
   const B = IMP[k], g = new THREE.PlaneGeometry(B.x * 2, B.y1 - B.y0);
   g.translate(0, (B.y1 + B.y0) / 2, 0);
-  const uv = g.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setX(i, (B.u0 + uv.getX(i)) / IMP.slots);
+  const uv = g.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, (B.u0 + uv.getX(i)) / IMP.slots, uv.getY(i) / IMP.rows);
   const c = new Float32Array(uv.count * 3).fill(1); g.setAttribute('color', new THREE.BufferAttribute(c, 3));
   (linearizeObject.done || (linearizeObject.done = new WeakSet())).add(c);
   return g;
 }
+/* The far card. Its second shape is marked by a negative height in the instance matrix (treeMeshes), which the card's
+   own size ignores. Per pixel lighting (Phong, no shine) from the baked normal, turned to face the viewer as the card does.
+   Mip levels average the leaves' cut-out edges into a soft halo, so a small far tree shrank to a round blob: the alpha is
+   pushed back up in the small mips, keeping the crown's real outline */
 function impostorMaterial(tex) {
-  const m = new THREE.MeshLambertMaterial({ vertexColors: true, map: tex, alphaTest: 0.5 });
+  const m = new THREE.MeshPhongMaterial({ vertexColors: true, map: tex, alphaTest: 0.5, specular: 0x000000, shininess: 1 });
+  m.extensions = { derivatives: true };
   m.onBeforeCompile = sh => {
-    sh.uniforms.uWinter = FOL.winterU; sh.uniforms.uLay = FOL.layU;
+    sh.uniforms.uWinter = FOL.winterU; sh.uniforms.uLay = FOL.layU; sh.uniforms.uImpN = { value: FOL.impN || tex };
+    sh.uniforms.uImpPx = { value: new THREE.Vector2((IMP.px || 256) * IMP.slots, (IMP.px || 256) * IMP.rows) };
     // winter: the bare and the snowy pictures (two and four slots along), blended by the snow lying; their
     // colours are baked in, so the per-tree season tint is left off
     sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', '#include <common>\nuniform float uWinter, uLay;')
+      .replace('#include <common>', '#include <common>\nuniform float uWinter, uLay; uniform sampler2D uImpN; uniform vec2 uImpPx; varying vec3 vImpR; varying vec3 vImpU; varying vec3 vImpF; varying vec2 vImpUv;')
       .replace('#include <map_fragment>', `
-        vec4 texelColor = texture2D( map, vUv );
-        if ( uWinter > 0.5 ) texelColor = mix( texture2D( map, vUv + vec2( 0.25, 0.0 ) ), texture2D( map, vUv + vec2( 0.5, 0.0 ) ), smoothstep( 0.0, 0.85, uLay ) );
+        vec4 texelColor = texture2D( map, vImpUv );
+        if ( uWinter > 0.5 ) texelColor = mix( texture2D( map, vImpUv + vec2( 0.25, 0.0 ) ), texture2D( map, vImpUv + vec2( 0.5, 0.0 ) ), smoothstep( 0.0, 0.85, uLay ) );
+        texelColor.rgb /= max( texelColor.a, 0.004 );
+        {
+          vec2 tx = vImpUv * uImpPx, dx = dFdx( tx ), dy = dFdy( tx );
+          float lod = 0.5 * log2( max( max( dot( dx, dx ), dot( dy, dy ) ), 1e-6 ) );
+          texelColor.a *= 1.0 + max( lod, 0.0 ) * 0.3;
+        }
         texelColor = mapTexelToLinear( texelColor );
-        diffuseColor *= texelColor;`);
+        diffuseColor *= texelColor;`)
+      .replace('#include <normal_fragment_begin>', `
+        vec2 impNuv = vImpUv + ( uWinter > 0.5 ? vec2( mix( 0.25, 0.5, step( 0.425, uLay ) ), 0.0 ) : vec2( 0.0 ) );
+        vec3 impN = texture2D( uImpN, impNuv ).xyz * 2.0 - 1.0;
+        // the even 'up and toward you' the far card always had, leaned a little by the crown's own shape: the near trees light
+        // their back faces as front, so a far one shows a brighter sunny side and a shaded one without going darker overall
+        vec3 normal = normalize( vImpU * 0.7 + vImpF * 0.5 + 0.45 * ( vImpR * impN.x + vImpU * ( impN.y - 0.2 ) ) );
+        vec3 geometryNormal = normal;`);
     sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\nuniform float uWinter;')
+      .replace('#include <common>', '#include <common>\nuniform float uWinter; varying vec3 vImpR; varying vec3 vImpU; varying vec3 vImpF; varying vec2 vImpUv;')
+      .replace('#include <uv_vertex>', '#include <uv_vertex>\n vImpUv = uv;\n#ifdef USE_INSTANCING\n if ( instanceMatrix[ 1 ].y < 0.0 ) vImpUv.y += 0.5;\n#endif')
       .replace('#include <color_vertex>', '#include <color_vertex>\n if ( uWinter > 0.5 ) vColor.xyz = color.xyz;')
-      .replace('#include <defaultnormal_vertex>', '#include <defaultnormal_vertex>\n transformedNormal = normalize((viewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz * 0.7 + vec3(0.0, 0.0, 0.5));')
       .replace('#include <project_vertex>', `
         vec4 mvPosition = modelViewMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);
         vec3 upV = normalize((viewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz);
@@ -343,6 +382,7 @@ function impostorMaterial(tex) {
         upV = normalize(mix(upV, upC, 0.5));   // lean back a little toward the viewer when seen from above
         mvPosition.xyz += rightV * position.x * length(instanceMatrix[0].xyz) + upV * position.y * length(instanceMatrix[1].xyz);
         gl_Position = projectionMatrix * mvPosition;
+        vImpR = rightV; vImpU = upV; vImpF = normalize(cross(rightV, upV));
         #ifdef LAMP_DECL
           vLampP = vec3(1e6); vLampN = vec3(0.0, 1.0, 0.0);   // far trees: out of reach of the lamps (10c_lamps.js)
         #endif`);
@@ -355,7 +395,7 @@ function impostorMaterial(tex) {
 function foliageGeos() {
   if (FOL.geos) return FOL.geos;
   const G = { dec: hardwoodGeo(11), dec2: hardwoodGeo(23), con: coniferGeo(5), con2: coniferGeo(9), bush: bushGeo(3) };
-  impFrame('dec', G.dec); impFrame('con', G.con);
+  impFrame('dec', G.dec, G.dec2); impFrame('con', G.con, G.con2);
   if (typeof renderer !== 'undefined' && renderer) FOL.imp = bakeImpostors(G);
   G.decLo = impostorGeo('dec'); G.conLo = impostorGeo('con');
   return (FOL.geos = G);

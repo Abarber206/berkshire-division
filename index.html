@@ -3084,7 +3084,8 @@ function makeFieldTexture() {
   const tex = new THREE.DataTexture(data, w, h, THREE.RGBAFormat);
   tex.magFilter = THREE.NearestFilter; tex.minFilter = THREE.NearestFilter; tex.generateMipmaps = false; tex.needsUpdate = true;
   const plant = (fi, fj) => { const i = fi - i0, j = fj - j0; if (i >= 0 && j >= 0 && i < w && j < h) { data[(j * w + i) * 4 + 3] = 255; tex.needsUpdate = true; } };
-  return { tex, i0, j0, w, h, plant };
+  const planted = (fi, fj) => { const i = fi - i0, j = fj - j0; return i >= 0 && j >= 0 && i < w && j < h && data[(j * w + i) * 4 + 3] > 0; };
+  return { tex, i0, j0, w, h, plant, planted };
 }
 const CROP_GLSL = `
   {
@@ -3764,7 +3765,7 @@ function updateTrackLOD(cam) {
   // buildings and signals stay until the fog has hidden them, so they never blink out in clear air
   const far = fogFar(6500);
   updateWire(cp);
-  for (const b of WORLD.binGroups || []) b.visible = b.userData.c.distanceTo(cp) - b.userData.r < Math.max(3400, far);
+  for (const b of WORLD.binGroups || []) b.visible = b.userData.c.distanceTo(cp) - b.userData.r < Math.max(3400, fogFar(9500));   // clear air shows towns further (the haze's thin tail)
   for (const sg of SCN.signals) { const d = Math.hypot(sg.X - cp.x, -sg.N - cp.z); for (const h of sg.heads) h.visible = d < Math.max(3500, far); }
   let hiBudget = 1;
   for (const t of WORLD.tiles) {
@@ -4492,75 +4493,114 @@ function foliageMaterial() {
 }
 
 /* ---- impostors: one card per tree, facing the camera, whose picture is the near tree rendered once at load.
-   Eight 256 px slots across: 0 and 1 the summer hardwood and conifer (grey, tinted per tree as they draw),
+   Eight slots across: 0 and 1 the summer hardwood and conifer (grey, tinted per tree as they draw),
    2 and 3 the same in winter, bare and with no snow, 4 and 5 winter with a coat of snow. Winter cards are
-   baked in their own colours, and the far shader blends the bare and snowy slots by how much snow lies. */
-const IMP = { dec: { u0: 0 }, con: { u0: 1 }, slots: 8 };
+   baked in their own colours, and the far shader blends the bare and snowy slots by how much snow lies.
+   Two rows: the two shapes of each tree (dec/dec2, con/con2), so a far woodlot is not one tree repeated.
+   A second picture of the same layout holds each pixel's normal (the crown's outward lean), so the far card
+   is lit like the tree: bright on the sun's side, darker on the other, instead of an evenly lit round blob. */
+const IMP = { dec: { u0: 0 }, con: { u0: 1 }, slots: 8, rows: 2 };
 const IMP_WINTER = { needle: [0.032, 0.062, 0.026], twig: [0.72, 0.72, 0.72], snow: [0.78, 0.81, 0.86] };   // linear, as the near shader draws them
-/* the square frame each tree is drawn in: its height from the bounding box, centred on the trunk */
-function impFrame(k, g) {
-  const p = g.attributes.position, c = g.attributes.aCorner, B = IMP[k]; let y0 = 1e9, y1 = -1e9;
-  for (let i = 0; i < p.count; i++) { const e = Math.hypot(c.getX(i), c.getY(i)); y0 = Math.min(y0, p.getY(i) - e); y1 = Math.max(y1, p.getY(i) + e); }
+/* the square frame each tree is drawn in: its height from the bounding box of both its shapes, centred on the trunk */
+function impFrame(k, ...gs) {
+  const B = IMP[k]; let y0 = 1e9, y1 = -1e9;
+  for (const g of gs) {
+    const p = g.attributes.position, c = g.attributes.aCorner;
+    for (let i = 0; i < p.count; i++) { const e = Math.hypot(c.getX(i), c.getY(i)); y0 = Math.min(y0, p.getY(i) - e); y1 = Math.max(y1, p.getY(i) + e); }
+  }
   B.y0 = y0 - 0.1; B.y1 = y1 + 0.1; B.x = (B.y1 - B.y0) / 2; return B;
 }
 function bakeImpostors(G) {
-  const rt = new THREE.WebGLRenderTarget(256 * IMP.slots, 256, { minFilter: THREE.LinearMipmapLinearFilter, magFilter: THREE.LinearFilter, generateMipmaps: true });
+  const px = IMP.px = GFX.lite ? 128 : 256;
+  const opt = { minFilter: THREE.LinearMipmapLinearFilter, magFilter: THREE.LinearFilter, generateMipmaps: true };
+  const rt = new THREE.WebGLRenderTarget(px * IMP.slots, px * IMP.rows, opt), rtN = new THREE.WebGLRenderTarget(px * IMP.slots, px * IMP.rows, opt);
+  const vs = 'attribute float aLeaf; attribute vec3 aCorner; attribute float aSnow; uniform float uWinter; varying vec2 vUv; varying vec3 vCol; varying float vLeaf; varying vec3 vN; varying float vSnow;\n' +
+      'void main(){ vUv = uv; float vBare = 0.0;' + FOL_BARE_GLSL + ' vCol = color; vLeaf = aLeaf * (1.0 - vBare); vSnow = aSnow; vN = normal; vec4 mv = modelViewMatrix * vec4(position, 1.0); mv.xy += aCorner.xy * aCorner.z; gl_Position = projectionMatrix * mv; }';
+  const U = () => ({ map: { value: FOL.tex }, uWinter: { value: 0 }, uLay: { value: 0 }, uNeedle: { value: new THREE.Vector3(...IMP_WINTER.needle) }, uTwig: { value: new THREE.Vector3(...IMP_WINTER.twig) }, uSnowC: { value: new THREE.Vector3(...IMP_WINTER.snow) } });
   const mat = new THREE.ShaderMaterial({
-    uniforms: { map: { value: FOL.tex }, uWinter: { value: 0 }, uLay: { value: 0 }, uNeedle: { value: new THREE.Vector3(...IMP_WINTER.needle) }, uTwig: { value: new THREE.Vector3(...IMP_WINTER.twig) }, uSnowC: { value: new THREE.Vector3(...IMP_WINTER.snow) } }, side: THREE.DoubleSide,
-    vertexShader: 'attribute float aLeaf; attribute vec3 aCorner; attribute float aSnow; uniform float uWinter; varying vec2 vUv; varying vec3 vCol; varying float vLeaf; varying vec3 vN; varying float vSnow;\n' +
-      'void main(){ vUv = uv; float vBare = 0.0;' + FOL_BARE_GLSL + ' vCol = color; vLeaf = aLeaf * (1.0 - vBare); vSnow = aSnow; vN = normal; vec4 mv = modelViewMatrix * vec4(position, 1.0); mv.xy += aCorner.xy * aCorner.z; gl_Position = projectionMatrix * mv; }',
+    uniforms: U(), side: THREE.DoubleSide, vertexShader: vs, vertexColors: true,
     fragmentShader: 'uniform sampler2D map; uniform float uWinter, uLay; uniform vec3 uNeedle, uTwig, uSnowC; varying vec2 vUv; varying vec3 vCol; varying float vLeaf; varying vec3 vN; varying float vSnow;\n' +
       'void main(){ vec4 t = texture2D(map, vUv); if (t.a < 0.45) discard; vec3 tl = pow(t.rgb, vec3(2.2)); vec3 c = tl * vCol;\n' +
       // winter cards carry their own colour: green needles, grey-brown twigs and bark, and the snow
       ' if (uWinter > 0.5) { c *= vLeaf > 0.5 ? uNeedle * 1.6 : uTwig * 1.4;\n' +
       '   float cov = smoothstep(0.34, 0.58, vSnow * (0.3 + 1.1 * uLay) + 0.3 * (dot(tl, vec3(0.3, 0.5, 0.2)) - 0.75)) * step(0.02, uLay);\n' +
       '   c = mix(c, uSnowC * mix(1.0, vCol.g, 0.3), cov); }\n' +
-      // a little of the near tree's own light, from above and from the viewer's side, so the far card is not flat
-      ' vec3 n = normalize(vN); c *= 0.82 + 0.28 * clamp(n.y * 0.6 + n.z * 0.5, -0.4, 1.0);\n' +
+      // the light itself comes from the normal picture as the far card draws; a touch of shape stays baked in
+      ' vec3 n = normalize(vN); c *= 0.94 + 0.08 * clamp(n.y * 0.6 + n.z * 0.5, -0.4, 1.0);\n' +
       ' gl_FragColor = vec4(c, 1.0); }',
-    vertexColors: true,
+  });
+  // the normal picture: the crown's outward lean (the leaf cards carry it), turned toward the viewer a little, as the near
+  // tree's shader lights back faces as front
+  const matN = new THREE.ShaderMaterial({
+    uniforms: U(), side: THREE.DoubleSide, vertexShader: vs, vertexColors: true,
+    fragmentShader: 'uniform sampler2D map; varying vec2 vUv; varying vec3 vN;\n' +
+      'void main(){ vec4 t = texture2D(map, vUv); if (t.a < 0.45) discard; vec3 n = normalize(vN); n.z = abs(n.z) * 0.8 + 0.25; n.y += 0.2; n = normalize(n); gl_FragColor = vec4(n * 0.5 + 0.5, 1.0); }',
   });
   const sc = new THREE.Scene(), oldRT = renderer.getRenderTarget(), oldC = renderer.getClearColor(new THREE.Color()), oldA = renderer.getClearAlpha();
-  renderer.setClearColor(0x5d6450, 0);   // the colour the edge texels fade toward in the small mip levels
-  rt.scissorTest = true;
-  for (const [wi, lay] of [[0, 0], [1, 0], [1, 0.85]]) for (const k of ['dec', 'con']) {
+  rt.scissorTest = rtN.scissorTest = true;
+  for (const [wi, lay] of [[0, 0], [1, 0], [1, 0.85]]) for (const k of ['dec', 'con']) for (let row = 0; row < IMP.rows; row++) {
     const B = IMP[k], slot = B.u0 + 2 * wi + (lay > 0 ? 2 : 0);
-    mat.uniforms.uWinter.value = wi; mat.uniforms.uLay.value = lay;
+    mat.uniforms.uWinter.value = matN.uniforms.uWinter.value = wi; mat.uniforms.uLay.value = lay;
     const cam = new THREE.OrthographicCamera(-B.x, B.x, B.y1, B.y0, -50, 50); cam.position.set(0, 0, 10); cam.lookAt(0, 0, 0); cam.updateProjectionMatrix();
-    const m = new THREE.Mesh(G[k], mat); sc.add(m);
-    rt.viewport.set(slot * 256, 0, 256, 256); rt.scissor.copy(rt.viewport);
-    renderer.setRenderTarget(rt); renderer.clear(); renderer.render(sc, cam);
+    const m = new THREE.Mesh(G[row ? k + '2' : k], mat); sc.add(m);
+    // the colour picture is cleared to nothing, so its small mips average the leaves with black at their own coverage
+    // (premultiplied, divided back out as the card draws): no dark fringe creeping in as the tree gets small
+    for (const [target, mm, clear] of [[rt, mat, 0x000000], [rtN, matN, 0x8080ff]]) {
+      m.material = mm; renderer.setClearColor(clear, 0);
+      target.viewport.set(slot * px, row * px, px, px); target.scissor.copy(target.viewport);
+      renderer.setRenderTarget(target); renderer.clear(); renderer.render(sc, cam);
+    }
     sc.remove(m);
   }
   renderer.setRenderTarget(oldRT); renderer.setClearColor(oldC, oldA);
-  mat.dispose();
+  mat.dispose(); matN.dispose();
+  FOL.impN = rtN.texture;
   return rt.texture;
 }
 function impostorGeo(k) {
   const B = IMP[k], g = new THREE.PlaneGeometry(B.x * 2, B.y1 - B.y0);
   g.translate(0, (B.y1 + B.y0) / 2, 0);
-  const uv = g.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setX(i, (B.u0 + uv.getX(i)) / IMP.slots);
+  const uv = g.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, (B.u0 + uv.getX(i)) / IMP.slots, uv.getY(i) / IMP.rows);
   const c = new Float32Array(uv.count * 3).fill(1); g.setAttribute('color', new THREE.BufferAttribute(c, 3));
   (linearizeObject.done || (linearizeObject.done = new WeakSet())).add(c);
   return g;
 }
+/* The far card. Its second shape is marked by a negative height in the instance matrix (treeMeshes), which the card's
+   own size ignores. Per pixel lighting (Phong, no shine) from the baked normal, turned to face the viewer as the card does.
+   Mip levels average the leaves' cut-out edges into a soft halo, so a small far tree shrank to a round blob: the alpha is
+   pushed back up in the small mips, keeping the crown's real outline */
 function impostorMaterial(tex) {
-  const m = new THREE.MeshLambertMaterial({ vertexColors: true, map: tex, alphaTest: 0.5 });
+  const m = new THREE.MeshPhongMaterial({ vertexColors: true, map: tex, alphaTest: 0.5, specular: 0x000000, shininess: 1 });
+  m.extensions = { derivatives: true };
   m.onBeforeCompile = sh => {
-    sh.uniforms.uWinter = FOL.winterU; sh.uniforms.uLay = FOL.layU;
+    sh.uniforms.uWinter = FOL.winterU; sh.uniforms.uLay = FOL.layU; sh.uniforms.uImpN = { value: FOL.impN || tex };
+    sh.uniforms.uImpPx = { value: new THREE.Vector2((IMP.px || 256) * IMP.slots, (IMP.px || 256) * IMP.rows) };
     // winter: the bare and the snowy pictures (two and four slots along), blended by the snow lying; their
     // colours are baked in, so the per-tree season tint is left off
     sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', '#include <common>\nuniform float uWinter, uLay;')
+      .replace('#include <common>', '#include <common>\nuniform float uWinter, uLay; uniform sampler2D uImpN; uniform vec2 uImpPx; varying vec3 vImpR; varying vec3 vImpU; varying vec3 vImpF; varying vec2 vImpUv;')
       .replace('#include <map_fragment>', `
-        vec4 texelColor = texture2D( map, vUv );
-        if ( uWinter > 0.5 ) texelColor = mix( texture2D( map, vUv + vec2( 0.25, 0.0 ) ), texture2D( map, vUv + vec2( 0.5, 0.0 ) ), smoothstep( 0.0, 0.85, uLay ) );
+        vec4 texelColor = texture2D( map, vImpUv );
+        if ( uWinter > 0.5 ) texelColor = mix( texture2D( map, vImpUv + vec2( 0.25, 0.0 ) ), texture2D( map, vImpUv + vec2( 0.5, 0.0 ) ), smoothstep( 0.0, 0.85, uLay ) );
+        texelColor.rgb /= max( texelColor.a, 0.004 );
+        {
+          vec2 tx = vImpUv * uImpPx, dx = dFdx( tx ), dy = dFdy( tx );
+          float lod = 0.5 * log2( max( max( dot( dx, dx ), dot( dy, dy ) ), 1e-6 ) );
+          texelColor.a *= 1.0 + max( lod, 0.0 ) * 0.3;
+        }
         texelColor = mapTexelToLinear( texelColor );
-        diffuseColor *= texelColor;`);
+        diffuseColor *= texelColor;`)
+      .replace('#include <normal_fragment_begin>', `
+        vec2 impNuv = vImpUv + ( uWinter > 0.5 ? vec2( mix( 0.25, 0.5, step( 0.425, uLay ) ), 0.0 ) : vec2( 0.0 ) );
+        vec3 impN = texture2D( uImpN, impNuv ).xyz * 2.0 - 1.0;
+        // the even 'up and toward you' the far card always had, leaned a little by the crown's own shape: the near trees light
+        // their back faces as front, so a far one shows a brighter sunny side and a shaded one without going darker overall
+        vec3 normal = normalize( vImpU * 0.7 + vImpF * 0.5 + 0.45 * ( vImpR * impN.x + vImpU * ( impN.y - 0.2 ) ) );
+        vec3 geometryNormal = normal;`);
     sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\nuniform float uWinter;')
+      .replace('#include <common>', '#include <common>\nuniform float uWinter; varying vec3 vImpR; varying vec3 vImpU; varying vec3 vImpF; varying vec2 vImpUv;')
+      .replace('#include <uv_vertex>', '#include <uv_vertex>\n vImpUv = uv;\n#ifdef USE_INSTANCING\n if ( instanceMatrix[ 1 ].y < 0.0 ) vImpUv.y += 0.5;\n#endif')
       .replace('#include <color_vertex>', '#include <color_vertex>\n if ( uWinter > 0.5 ) vColor.xyz = color.xyz;')
-      .replace('#include <defaultnormal_vertex>', '#include <defaultnormal_vertex>\n transformedNormal = normalize((viewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz * 0.7 + vec3(0.0, 0.0, 0.5));')
       .replace('#include <project_vertex>', `
         vec4 mvPosition = modelViewMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);
         vec3 upV = normalize((viewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz);
@@ -4569,6 +4609,7 @@ function impostorMaterial(tex) {
         upV = normalize(mix(upV, upC, 0.5));   // lean back a little toward the viewer when seen from above
         mvPosition.xyz += rightV * position.x * length(instanceMatrix[0].xyz) + upV * position.y * length(instanceMatrix[1].xyz);
         gl_Position = projectionMatrix * mvPosition;
+        vImpR = rightV; vImpU = upV; vImpF = normalize(cross(rightV, upV));
         #ifdef LAMP_DECL
           vLampP = vec3(1e6); vLampN = vec3(0.0, 1.0, 0.0);   // far trees: out of reach of the lamps (10c_lamps.js)
         #endif`);
@@ -4581,7 +4622,7 @@ function impostorMaterial(tex) {
 function foliageGeos() {
   if (FOL.geos) return FOL.geos;
   const G = { dec: hardwoodGeo(11), dec2: hardwoodGeo(23), con: coniferGeo(5), con2: coniferGeo(9), bush: bushGeo(3) };
-  impFrame('dec', G.dec); impFrame('con', G.con);
+  impFrame('dec', G.dec, G.dec2); impFrame('con', G.con, G.con2);
   if (typeof renderer !== 'undefined' && renderer) FOL.imp = bakeImpostors(G);
   G.decLo = impostorGeo('dec'); G.conLo = impostorGeo('con');
   return (FOL.geos = G);
@@ -5785,11 +5826,14 @@ function treeMeshes(L, scene) {
     const list = L[k]; if (!list || !list.length) continue;
     const pts = list.map(q => new THREE.Vector3(q[0], q[1], -q[2]));
     const sph = new THREE.Sphere().setFromPoints(pts); sph.radius += 14;
-    const vari = [list.filter(q => ((q[0] * 7.3 + q[2] * 3.1) % 2 + 2) % 2 < 1), list.filter(q => ((q[0] * 7.3 + q[2] * 3.1) % 2 + 2) % 2 >= 1)];
-    const set = (im, i, q) => {
-      _m4.compose(_v1.set(q[0], q[1], -q[2]), _q.setFromEuler(_e.set(0, ((q[0] * 13.1 + q[2]) % TAU + TAU) % TAU, 0)), _v2.set(q[3], q[4], q[3]));
+
+    const two = q => ((q[0] * 7.3 + q[2] * 3.1) % 2 + 2) % 2 >= 1;   // which of the two shapes
+    // far: the second shape is marked by a negative height, which the far card reads and its size ignores (04c impostorMaterial)
+    const set = (im, i, q, far) => {
+      _m4.compose(_v1.set(q[0], q[1], -q[2]), _q.setFromEuler(_e.set(0, ((q[0] * 13.1 + q[2]) % TAU + TAU) % TAU, 0)), _v2.set(q[3], far && two(q) ? -q[4] : q[4], q[3]));
       im.setMatrixAt(i, _m4); setFolColor(im, i, q[5]);
     };
+    const vari = [list.filter(q => !two(q)), list.filter(two)];
     // near trees go in 400 m patches, so only the patches round the camera send their leaf cards to the GPU
     // (smaller patches cut a little more vertex work but cost far more draws)
     vari.forEach((vl, v) => {
@@ -5803,7 +5847,7 @@ function treeMeshes(L, scene) {
       }
     });
     const lo = new THREE.InstancedMesh(shareGeo(G[k + 'Lo'], sph.clone()), MAT.treeFar, list.length);
-    list.forEach((q, i) => set(lo, i, q)); folColorsDone(lo);
+    list.forEach((q, i) => set(lo, i, q, true)); folColorsDone(lo);
     out.lo.push(lo); out.pts.push(...pts);
   }
   for (const m of [...out.hi, ...out.lo]) { m.castShadow = false; m.receiveShadow = false; m.visible = false; scene.add(m); WORLD.treeMeshes.push(m); }
@@ -7478,6 +7522,356 @@ function frFacilities() {
 }
 function frBuildScenery(scene) {
   frShoreMarks(scene);
+}
+
+/* ============================================================================
+   Far woods: the trees out past the planted ones, all the way to the haze.
+
+   The real trees (04c_foliage.js) stand only round the line, and their baked far
+   pictures dissolve away between about 4.5 and 7 km. Past that the world used to
+   be bare ground to the horizon. Now:
+
+   - Ohio (and layouts): every woodlot and fence row in the field pattern, out to
+     the horizon, as a low block of canopy whose sides are cut into a line of
+     tree crowns (round hardwoods, the odd pointed cedar) and whose top is a
+     mottle of crowns in the season's colours. Fence rows have gaps, as the
+     planted ones do. Each block stands exactly where the planted woodlot or
+     fence row is, so as the far pictures dissolve the blocks dissolve in, in
+     the same dither turned inside out: nothing pops and nothing doubles.
+   - Laurel Mountain and Raven Lake: the forest that covers the hills, as a
+     canopy skin over the far terrain (the same grid the far ground is built on,
+     so it sits on it exactly), raised to tree height where the woods are and
+     sunk into the ground where they thin out, at the rivers, the towns, the
+     line and the lake.
+
+   One instanced draw for the blocks and a few merged ones for the skin.
+   ========================================================================== */
+const FARW = { meshes: [], H: 12.5, near: { value: new THREE.Vector2(1900, 2700) } };
+
+/* the crowns, the season and the dither; shared by the blocks and the skin */
+const FARW_GLSL = `
+  uniform vec4 uFade; uniform vec2 uFwNear; uniform float uWinter, uLay;
+  uniform vec3 uFwPal[ 5 ]; uniform vec3 uFwCut; uniform vec3 uFwTwig; uniform vec3 uFwSnow;
+  varying vec4 vFw; varying vec4 vFw2; varying vec2 vFwW; varying float vFwD;
+  float fwHash( vec2 p ) { return fract( 52.9829189 * fract( dot( p, vec2( 0.06711056, 0.00583715 ) ) + 0.1 * p.y ) ); }
+  // a crown's colour: evergreen for the conifer share, else the hardwood palette (green, gold, red, brown) by the cut points
+  vec3 fwLeaf( float h, float con ) {
+    if ( h < con ) return uWinter > 0.5 ? mix( uFwPal[ 0 ], uFwSnow, uLay * 0.55 ) : uFwPal[ 0 ];
+    float x = ( h - con ) / max( 1.0 - con, 0.001 );
+    vec3 c = x < uFwCut.x ? uFwPal[ 1 ] : x < uFwCut.y ? uFwPal[ 2 ] : x < uFwCut.z ? uFwPal[ 3 ] : uFwPal[ 4 ];
+    c = mix( vec3( dot( c, vec3( 0.3, 0.55, 0.15 ) ) ), c, 0.78 ) * ( 0.82 + 0.36 * fract( h * 7.7 ) );   // the leaf texture's grey and each tree's own shade
+    return uWinter > 0.5 ? mix( uFwTwig * ( 0.85 + 0.3 * fract( h * 13.7 ) ), uFwSnow, uLay * 0.3 ) : c;
+  }
+  // the line of crowns along a side at (u, y) (m along it, m above the ground): round hardwoods, spire conifers, and in a
+  // fence row gaps with the trunks showing. Returns 1 where a crown or trunk is; col its lit colour, top the crowns' highest
+  float fwLine( float u, float y, float H, float cell, float gap, float con, out vec3 col, out float top ) {
+    float c = floor( u / cell ), best = -1.0, cover = 0.0; col = vec3( 0.0 ); top = 0.0;
+    for ( int k = -1; k <= 1; k++ ) {
+      float ci = c + float( k ), h1 = fwHash( vec2( ci, 3.1 ) ), h2 = fwHash( vec2( ci, 8.7 ) );
+      if ( h1 < gap ) continue;
+      float r = cell * ( gap > 0.0 ? 0.2 + 0.1 * h2 : 0.6 + 0.25 * h2 ), cx = ( ci + 0.5 + ( h2 - 0.5 ) * 0.5 ) * cell;
+      float ht = H * ( 0.8 + 0.34 * fract( h1 * 7.13 ) ), x = ( u - cx ) / r, ny, inside;
+      if ( fract( h2 * 5.3 ) < con ) {   // a spruce or cedar: a narrow spire from near the ground
+        inside = step( abs( u - cx ), r * 0.75 * clamp( ( ht - y ) / ( ht * 0.85 ), 0.0, 1.0 ) ) * step( ht * 0.1, y );
+        ny = y / ht * 2.0 - 1.0; top = max( top, ht * step( abs( x ), 0.75 ) * ( 1.0 - abs( x ) / 0.75 ) );
+      } else {                           // a hardwood: a round crown a little taller than wide
+        float ry = r * 1.1, cy = ht - ry, d = x * x + ( ( y - cy ) / ry ) * ( ( y - cy ) / ry );
+        inside = step( d, 1.0 ); ny = ( y - cy ) / ry; if ( abs( x ) < 1.0 ) top = max( top, cy + ry * sqrt( 1.0 - x * x ) );
+      }
+      if ( inside > 0.5 && ht > best ) {
+        best = ht; cover = 1.0;
+        // lit from above, shaded underneath and toward the rim
+        col = fwLeaf( fract( h1 * 31.7 + h2 ), con ) * ( 0.58 + 0.42 * clamp( ny * 0.5 + 0.55, 0.0, 1.0 ) - 0.2 * smoothstep( 0.5, 1.0, x * x ) );
+      }
+      if ( gap > 0.0 && cover < 0.5 && abs( u - cx ) < 0.35 && y < ht * 0.6 ) { col = uFwTwig * 0.22; cover = 1.0; }   // the trunk
+    }
+    return cover;
+  }`;
+
+function farWoodsMaterial(shell) {
+  const m = new THREE.MeshLambertMaterial({ color: 0xffffff, vertexColors: shell });   // the skin carries the ground's colour under it
+  m.extensions = { derivatives: true };
+  m.onBeforeCompile = sh => {
+    Object.assign(sh.uniforms, { uFade: LOD.treeFar, uFwNear: FARW.near, uWinter: FOL.winterU, uLay: FOL.layU, uFwPal: FARW.pal, uFwCut: FARW.cut, uFwTwig: FARW.twig, uFwSnow: FARW.snow });
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\n' + (shell ? 'attribute vec4 aFw;' : 'attribute vec4 aFw; attribute vec4 aFwI;') + '\nvarying vec4 vFw; varying vec4 vFw2; varying vec2 vFwW; varying float vFwD;')
+      .replace('#include <defaultnormal_vertex>', shell ? '#include <defaultnormal_vertex>' :
+        // a block's faces lean their light up toward the sky as the near trees' cards do, so the side away from the sun is
+        // shaded, not black (the block's own matrix is far from square, so its normals are worked out here)
+        `vec3 fwN = aFw.x < 0.5 ? normalize( instanceMatrix[ 2 ].xyz ) * sign( objectNormal.z ) : aFw.x < 1.5 ? normalize( instanceMatrix[ 0 ].xyz ) * sign( objectNormal.x ) : vec3( 0.0, 1.0, 0.0 );
+         fwN = normalize( vec3( fwN.x, 0.0, fwN.z ) * step( aFw.x, 1.5 ) + vec3( 0.0, aFw.x < 1.5 ? 0.65 : 1.0, 0.0 ) );
+         vec3 transformedNormal = normalize( ( viewMatrix * vec4( fwN, 0.0 ) ).xyz );`)
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\n' + (shell
+        // the skin: aFw = (canopy share, conifer share, real trees stand here, 0)
+        ? ' vFw = vec4( 0.0, 0.0, 0.0, aFw.y ); vFw2 = vec4( 0.0, aFw.z, aFw.x, 0.0 );'
+        // a block: position is the unit block (x 0..1 along, z -0.5..0.5 across, y up to the tallest crown); aFw = (side: 0 long, 1 end, 2 top, 3 bottom;
+        // height share), aFwI per block = (kind 0 woodlot / 1 fence row, real trees stand here, conifer share, random)
+        : ` float fwL = length( instanceMatrix[ 0 ].xyz ), fwW = length( instanceMatrix[ 2 ].xyz ), fwH = instanceMatrix[ 1 ].y;
+            float fwU = aFw.x < 0.5 ? position.x * fwL : aFw.x < 1.5 ? ( position.z + 0.5 ) * fwW : position.x * fwL;
+            vFw = vec4( fwU + aFwI.w * 997.0, position.y * fwH, fwH / 1.3, aFwI.z ); vFw2 = vec4( aFwI.x, aFwI.y, aFw.x, position.z * fwW );`) +
+        '\n vec4 fwP = vec4( transformed, 1.0 );\n#ifdef USE_INSTANCING\n fwP = instanceMatrix * fwP;\n#endif\n vFwW = ( modelMatrix * fwP ).xz; vFwD = length( ( modelViewMatrix * fwP ).xyz );');
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', '#include <common>\n' + FARW_GLSL)
+      .replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>
+        {
+          // the planted trees' far pictures dissolve out over uFade.zw; these dissolve in over the same band in the
+          // opposite dither. Where no trees were planted they come in sooner, past the near ground
+          float st = mix( uFwNear.x, uFade.z, vFw2.y ), en = mix( uFwNear.y, uFade.w, vFw2.y );
+          float keep = smoothstep( st, en, vFwD );
+          float dn = 1.0 - fract( 52.9829189 * fract( dot( gl_FragCoord.xy, vec2( 0.06711056, 0.00583715 ) ) ) );
+          if ( dn >= keep ) discard;
+        }`)
+      .replace('#include <color_fragment>', '#include <color_fragment>\n' + (shell ? `
+        {
+          // crowns 8 m across in the world, each its own colour, rounded by a little shade at its rim; they melt into
+          // their average once they are smaller than a pixel or two so the far hills don't shimmer
+          vec2 q = vFwW / 8.0, c = floor( q ), f = q - c - 0.5;
+          float h = fwHash( c + 0.37 ), rim = dot( f, f ) * 2.0;
+          float blur = smoothstep( 0.4, 1.4, length( fwidth( q ) ) );
+          vec3 leaf = fwLeaf( h, vFw.w ), avg = fwLeaf( 0.0, vFw.w ) * vFw.w + ( uWinter > 0.5 ? uFwTwig : uFwPal[ 1 ] * 0.6 + uFwPal[ 2 ] * 0.4 ) * ( 1.0 - vFw.w );
+          vec3 can = mix( leaf * ( 1.0 - 0.45 * rim ), avg * 0.85, blur ) * 1.25;
+          // the forest floor shows between the crowns, as it does under the planted trees (about half the ground is open)
+          diffuseColor.rgb = mix( vColor, can, 0.62 * smoothstep( 0.0, 0.6, vFw2.z ) + 0.2 );
+        }` : `
+        {
+          float kind = vFw2.x, side = vFw2.z, H = vFw.z, con = vFw.w, u = vFw.x, y = vFw.y;
+          float cell = kind > 0.5 ? 19.0 : 7.5, gap = kind > 0.5 ? 0.3 : 0.0;
+          // once a crown is under a couple of pixels the line melts into its average: a fence row a dark band, a woodlot a wall
+          float blur = smoothstep( 0.3, 0.9, fwidth( u ) / cell );
+          vec3 col; float top, cover;
+          if ( side < 1.5 ) {
+            cover = fwLine( u, y, H, cell, gap, con, col, top );
+            if ( kind < 0.5 && cover < 0.5 ) {
+              // a woodlot's deeper trees behind the front ones: a second row of crowns, a little lower and in shade, and
+              // under them a mosaic of crowns down to the ground
+              float top2; vec3 col2;
+              if ( fwLine( u + 531.7, y, H * 0.9, cell * 1.13, 0.0, con, col2, top2 ) > 0.5 ) { col = col2 * 0.78; cover = 1.0; }
+              float back = H * 0.55;
+              if ( cover < 0.5 && y < back ) {
+                vec2 q = vec2( u / 6.0 + 0.5 * floor( y / 5.0 ), y / 5.0 ), c = floor( q ), f = q - c - 0.5;
+                col = fwLeaf( fwHash( c + 4.1 ), con ) * ( 0.5 + 0.3 * clamp( y / back, 0.0, 1.0 ) ) * ( 1.0 - 0.3 * dot( f, f ) * 2.0 );
+                cover = 1.0;
+              }
+            }
+            vec3 avg = fwLeaf( 0.37, con ) * 0.75;
+            if ( blur > 0.5 ) {
+              float lo = kind > 0.5 ? H * 0.3 : -100.0;
+              cover = step( lo, y ) * step( y, H * ( kind > 0.5 ? 0.82 : 0.95 ) );
+              col = avg * mix( 0.7, 1.0, clamp( y / H, 0.0, 1.0 ) );
+            } else col = mix( col, avg, blur );
+            if ( cover < 0.5 ) discard;
+          } else if ( side < 2.5 ) {
+            // the top: a woodlot's closed canopy, a fence row's crowns from above, gaps and all
+            if ( kind > 0.5 && blur < 0.5 ) {
+              float c = floor( u / cell ), in0 = 0.0; col = vec3( 0.0 );
+              for ( int k = -1; k <= 1; k++ ) {
+                float ci = c + float( k ), h1 = fwHash( vec2( ci, 3.1 ) ), h2 = fwHash( vec2( ci, 8.7 ) );
+                float r = cell * ( 0.2 + 0.1 * h2 ), cx = ( ci + 0.5 + ( h2 - 0.5 ) * 0.5 ) * cell;
+                vec2 d = vec2( u - cx, vFw2.w ) / r;
+                if ( h1 >= gap && dot( d, d ) < 1.0 ) { in0 = 1.0; col = fwLeaf( fract( h1 * 31.7 + h2 ), con ) * ( 1.0 - 0.35 * dot( d, d ) ); }
+              }
+              if ( in0 < 0.5 ) discard;
+            } else {
+              vec2 q = vFwW / 7.0, c = floor( q ), f = q - c - 0.5;
+              float mb = smoothstep( 0.4, 1.4, length( fwidth( q ) ) );
+              col = mix( fwLeaf( fwHash( c + 0.37 ), con ) * ( 1.0 - 0.4 * dot( f, f ) * 2.0 ), fwLeaf( 0.37, con ) * 0.8, mb );
+            }
+          } else discard;
+          diffuseColor.rgb = col;
+        }`));
+  };
+  m.customProgramCacheKey = () => 'farwoods' + (shell ? 'S' : 'B');
+  return m;
+}
+
+/* the season's crown colours for this route, linear. Ohio's are the planted trees' autumn palette (05_scenery buildTrees),
+   the mountain's its own (05d mtForestTile); the leaf texture and the shade inside a crown make them darker than the tint */
+function farWoodsPalette() {
+  const lin = c => new THREE.Vector3(...c.map(x => Math.pow(x * FARW.leafK, 2.2)));
+  FARW.leafK = 0.62;
+  const P = WORLD.mtn
+    ? { pal: [[0.2, 0.33, 0.19], [0.33, 0.46, 0.16], [0.81, 0.60, 0.15], [0.73, 0.31, 0.11], [0.55, 0.40, 0.20]], cut: [0.45, 0.72, 0.90] }
+    : { pal: [[0.21, 0.33, 0.2], [0.33, 0.48, 0.20], [0.79, 0.62, 0.16], [0.75, 0.32, 0.12], [0.55, 0.40, 0.20]], cut: [0.55, 0.80, 0.93] };
+  FARW.pal = { value: P.pal.map(lin) }; FARW.cut = { value: new THREE.Vector3(...P.cut) };
+  FARW.twig = { value: lin([0.47, 0.42, 0.39]) }; FARW.snow = { value: new THREE.Vector3(...[0.8, 0.83, 0.88].map(x => Math.pow(x, 2.2))) };
+}
+
+/* the unit block: x 0..1 along, z -0.5..0.5 across, y from below the ground up to the tallest crown (1.3 H).
+   aFw.x: which face (0 a long side, 1 an end, 2 the top, 3 the underside never drawn); the top sits at the canopy's mean height */
+function farBlockGeo() {
+  const pos = [], nor = [], fw = [], idx = [], Y0 = -0.3, Y1 = 1, YT = 0.7;
+  const quad = (a, b, c, d, n, face) => { const o = pos.length / 3; for (const p of [a, b, c, d]) { pos.push(...p); nor.push(...n); fw.push(face, 0, 0, 0); } idx.push(o, o + 1, o + 2, o, o + 2, o + 3); };
+  quad([0, Y0, 0.5], [1, Y0, 0.5], [1, Y1, 0.5], [0, Y1, 0.5], [0, 0, 1], 0);
+  quad([1, Y0, -0.5], [0, Y0, -0.5], [0, Y1, -0.5], [1, Y1, -0.5], [0, 0, -1], 0);
+  quad([1, Y0, 0.5], [1, Y0, -0.5], [1, Y1, -0.5], [1, Y1, 0.5], [1, 0, 0], 1);
+  quad([0, Y0, -0.5], [0, Y0, 0.5], [0, Y1, 0.5], [0, Y1, -0.5], [-1, 0, 0], 1);
+  quad([0, YT, 0.5], [1, YT, 0.5], [1, YT, -0.5], [0, YT, -0.5], [0, 1, 0], 2);
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3)); g.setAttribute('aFw', new THREE.Float32BufferAttribute(fw, 4));
+  g.setIndex(idx);
+  return g;
+}
+
+/* every woodlot and fence row in the field pattern over the far ground: [kind, X0, N0, along X?, length, width, real].
+   Inside the inner region they follow the planted ones: a woodlot only if it was planted, a fence row broken where the
+   planted trees keep clear of the track, the roads and the rivers (buildTrees ok()) */
+function farFieldWoods(x0, x1, n0, n1) {
+  const out = [], inIn = (X, N) => X > INNER.x0 + 20 && X < INNER.x1 - 20 && N > INNER.n0 + 20 && N < INNER.n1 - 20;
+  const clear = (X, N, pad) => {
+    if (riverDist(X, N) < 30) return false;
+    for (const rx of WORLD.roadsX) if (Math.abs(X - rx) < 11 + pad) return false;   // the roads run on out across the far ground
+    if (Math.abs(N - WORLD.roadN) < 12 + pad) return false;
+    if (!inIn(X, N)) return true;
+    const lat = latticeAt(X, N); if (lat && lat.d < 30 + pad) return false;
+    if (WORLD.trackHash && trackWithin(X, N, 18 + pad)) return false;   // the lattice is a 20 m grid: check the real distance
+    return !kept(X, N, pad);
+  };
+  // a fence row from (X0, N0) along X or N, in the runs that are clear of the track
+  const row = (X0, N0, alongX, L) => {
+    let s0 = null, last = 0;
+    const close = () => { if (s0 !== null && last - s0 > 20) out.push([1, X0 + (alongX ? s0 : 0), N0 + (alongX ? 0 : s0), alongX, last - s0, 9, inIn(X0 + (alongX ? s0 : 0), N0 + (alongX ? 0 : s0)) ? 1 : 0]); s0 = null; };
+    for (let s = 0; ; s = Math.min(L, s + 15)) {
+      if (clear(X0 + (alongX ? s : 0), N0 + (alongX ? 0 : s), 6)) { if (s0 === null) s0 = s; last = s; } else close();   // a run ends at its last clear sample
+      if (s >= L) break;
+    }
+    close();
+  };
+  for (let i = Math.floor((x0 + 40000) / FIELD.w); i <= Math.floor((x1 + 40000) / FIELD.w); i++)
+    for (let j = Math.floor((n0 + 40000) / FIELD.h); j <= Math.floor((n1 + 40000) / FIELD.h); j++) {
+      const X0 = i * FIELD.w - 40000, N0 = j * FIELD.h - 40000;
+      const f = fieldAt(X0 + 1, N0 + 1);
+      // the planted woodlot covers 0.18..0.82 by 0.2..0.78 of the field (buildTrees), crowns reaching 4 m past the last trunks
+      if (f.t.n === 'woods') {
+        const a = X0 + 0.18 * FIELD.w - 4, b = N0 + 0.2 * FIELD.h - 4, L = 0.64 * FIELD.w + 8, W = 0.58 * FIELD.h + 8, cn = b + W / 2;
+        const inner = inIn(a + L / 2, cn);
+        let ok = !inner || WORLD.fieldTex.planted(i, j);
+        for (let q = 0; ok && q < 77; q++) ok = clear(a + L * (q % 11) / 10, b + W * Math.floor(q / 11) / 6, -2);
+        if (ok) out.push([0, a, cn, true, L, W, inner ? 1 : 0]);
+      }
+      // fence rows, chosen by the same hashes as the planted ones
+      if (Noise.hash(i * 3 + 1, j * 7 + 2) < 0.34) row(X0, N0, true, FIELD.w);
+      if (Noise.hash(i * 5 + 3, j * 11 + 1) < 0.26) row(X0, N0, false, FIELD.h);
+    }
+  return out;
+}
+
+function buildFarBlocks(scene) {
+  const reach = GFX.lite ? 7000 : 12000;
+  const list = farFieldWoods(INNER.x0 - reach, INNER.x1 + reach, INNER.n0 - reach, INNER.n1 + reach);
+  const mats = [], inst = [], r = rng(5150);
+  for (const [kind, cx, cn, alongX, L, W, real] of list) {
+    // the long axis (ax, an) and across it (px, pn), both in (X, N), turned so the block is not mirrored
+    const ax = alongX ? 1 : 0, an = alongX ? 0 : 1, px = an, pn = -ax;
+    // the block stands on the plane through its corners, so it follows a gentle slope; its sides run down below it
+    const hA = (u, v) => groundAt(cx + ax * L * u + px * W * v, cn + an * L * u + pn * W * v);
+    const h00 = hA(0, -0.5), h10 = hA(1, -0.5), h01 = hA(0, 0.5), h11 = hA(1, 0.5), h0 = (h00 + h01) / 2;
+    const dyL = ((h10 + h11) - (h00 + h01)) / 2, dyW = ((h01 + h11) - (h00 + h10)) / 2;
+    const H = (kind ? 11 : FARW.H) * (0.9 + 0.2 * r()) * 1.3, rnd = r();   // the unit block runs to 1.3 x the canopy height
+    // where the ground under it dips or rises well away from that plane (a creek, a knoll) the block would float or be
+    // buried: leave it out
+    let ok = true;
+    for (let q = 0; q < 15 && ok; q++) { const u = (q % 5) / 4, v = Math.floor(q / 5) / 2 - 0.5, d = hA(u, v) - (h0 + u * dyL + v * dyW); ok = d > -0.27 * H && d < 0.15 * H; }
+    if (!ok) continue;
+    // rows of the matrix; its columns are the block's axes (along, up, across) and its origin. World z is -N
+    mats.push(new THREE.Matrix4().set(ax * L, 0, px * W, cx,
+      dyL, H, dyW, h0,
+      -an * L, 0, -pn * W, -cn,
+      0, 0, 0, 1));
+    inst.push(kind, real, kind ? 0.12 : 0.0, rnd);
+  }
+  const g = farBlockGeo(), n = mats.length;
+  g.setAttribute('aFwI', new THREE.InstancedBufferAttribute(new Float32Array(inst), 4));
+  const im = new THREE.InstancedMesh(g, farWoodsMaterial(false), n);
+  mats.forEach((m, k) => im.setMatrixAt(k, m));
+  im.frustumCulled = false; im.castShadow = false; im.receiveShadow = false;
+  im.instanceMatrix.needsUpdate = true;
+  scene.add(im); FARW.meshes.push(im); FARW.blocks = n;
+}
+
+/* how much of the ground the forest covers on the mountain routes (the same field mtForestTile plants by, without its thinning
+   far from the line, since the woods out there are real woods too); 0 where trees can't stand */
+function farCanopyAt(X, N, h, sl) {
+  const wood = 0.55 + 0.5 * Noise.fbm(X / 420 + 9, N / 420 - 4, 3);
+  let c = smooth(0.18, 0.45, wood);
+  if (c <= 0) return 0;
+  if (sl === undefined) sl = Math.hypot(heightRaw(X + 30, N) - heightRaw(X - 30, N), heightRaw(X, N + 30) - heightRaw(X, N - 30)) / 60;
+  c *= 1 - 0.7 * smooth(0.8, 1.2, sl);                                        // bare rock on the steepest ground
+  if (WORLD.frost) c *= smooth(10, 40, frShore(X, N));
+  else c *= smooth(24, 60, mtRiverDist(X, N));
+  // the right of way: cut back far enough that the skin, interpolated between its nodes, never lies over the rails
+  if (farTrackNear(X, N, 55)) return 0;
+  if (c > 0 && typeof inTown === 'function' && inTown(X, N)) c = 0;
+  if (c > 0 && mtClearing(X, N, 20)) c = 0;
+  return c;
+}
+/* any track within r (m) of (X, N), bridges included and tunnels not: the woods grow over a bore */
+function farTrackNear(X, N, r) {
+  if (!FARW.trk) {
+    FARW.trk = new Map();
+    for (const e of NET.edges) for (let s = 0; s <= e.len; s += 5) {
+      if (e.isTunnel && e.isTunnel(s)) continue;
+      const [x, n] = e.xz(s), k = Math.floor(x / 50) + ',' + Math.floor(n / 50); let a = FARW.trk.get(k); if (!a) FARW.trk.set(k, a = []); a.push(x, n);
+    }
+  }
+  const ix = Math.floor(X / 50), iy = Math.floor(N / 50), c = Math.ceil(r / 50);
+  for (let j = iy - c; j <= iy + c; j++) for (let i = ix - c; i <= ix + c; i++) {
+    const a = FARW.trk.get(i + ',' + j); if (!a) continue;
+    for (let q = 0; q < a.length; q += 2) if ((a[q] - X) ** 2 + (a[q + 1] - N) ** 2 < r * r) return true;
+  }
+  return false;
+}
+/* the conifer share at a spot (mtForestTile's conK) */
+function farConAt(X, N, h) { return WORLD.frost ? 0.82 : clamp(0.18 + 0.55 * smooth(260, 560, h) + 0.35 * Noise.fbm(X / 300 - 2, N / 300 + 5, 2), 0.05, 0.9); }
+
+/* the canopy skin over one grid: step-spaced nodes from (x0, n0), nx by nn, heights hAt; skip(X, N) leaves out a cell */
+function farSkinGeo(x0, n0, step, nx, nn, hAt, skip) {
+  const H = FARW.H, cov = new Float32Array(nx * nn), pos = new Float32Array(nx * nn * 3), fw = new Float32Array(nx * nn * 4), col = new Float32Array(nx * nn * 3), gc = [0, 0, 0, 0];
+  const hs = new Float32Array(nx * nn);
+  for (let j = 0; j < nn; j++) for (let i = 0; i < nx; i++) hs[j * nx + i] = hAt(x0 + i * step, n0 + j * step);
+  const hg = (i, j) => hs[clamp(j, 0, nn - 1) * nx + clamp(i, 0, nx - 1)];
+  for (let j = 0; j < nn; j++) for (let i = 0; i < nx; i++) {
+    const X = x0 + i * step, N = n0 + j * step, k = j * nx + i, h = hs[k];
+    const c = farCanopyAt(X, N, h, Math.hypot(hg(i + 1, j) - hg(i - 1, j), hg(i, j + 1) - hg(i, j - 1)) / (2 * step));   // the slope from the grid itself
+    cov[k] = c;
+    // up to tree height where the woods are, sunk into the ground where they end, so the edge meets the ground
+    pos[k * 3] = X; pos[k * 3 + 1] = h - 3 + (H + 3) * Math.min(1, c * 1.6); pos[k * 3 + 2] = -N;
+    const dT = mtField(MT.dT, X, N);
+    fw[k * 4] = c; fw[k * 4 + 1] = farConAt(X, N, h); fw[k * 4 + 2] = 1 - smooth(2200, 3000, dT);
+    groundColor(X, N, h, null, gc); for (let q = 0; q < 3; q++) col[k * 3 + q] = Math.pow(gc[q], 2.2);   // linear, as the scene draws
+  }
+  const idx = [];
+  for (let j = 0; j < nn - 1; j++) for (let i = 0; i < nx - 1; i++) {
+    const a = j * nx + i, b = a + 1, d = a + nx, e = d + 1;
+    if (Math.max(cov[a], cov[b], cov[d], cov[e]) < 0.02) continue;
+    if (skip && skip(x0 + (i + 0.5) * step, n0 + (j + 0.5) * step)) continue;
+    idx.push(a, b, d, b, e, d);
+  }
+  if (!idx.length) return null;
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('aFw', new THREE.BufferAttribute(fw, 4)); g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  (linearizeObject.done || (linearizeObject.done = new WeakSet())).add(col);
+  g.setIndex(idx); g.computeVertexNormals(); g.computeBoundingSphere();
+  return g;
+}
+
+function buildFarSkin(scene) {
+  const mat = farWoodsMaterial(true), S = 1500;
+  // inside the inner region: the far ground's own 75 m grid (buildTerrainTile), a block of 4 x 4 tiles to a draw
+  for (let bx = INNER.x0; bx < INNER.x1; bx += S * 4) for (let bn = INNER.n0; bn < INNER.n1; bn += S * 4) {
+    const w = Math.min(S * 4, INNER.x1 - bx), d = Math.min(S * 4, INNER.n1 - bn);
+    const g = farSkinGeo(bx, bn, 75, Math.round(w / 75) + 1, Math.round(d / 75) + 1, (X, N) => groundAt(X, N));
+    if (g) { const m = new THREE.Mesh(g, mat); m.castShadow = m.receiveShadow = false; scene.add(m); FARW.meshes.push(m); }
+  }
+  // outside it: the far terrain's 250 m grid (buildFarTerrain), leaving out what lies inside
+  const st = 250, x0 = INNER.x0 - 15000, n0 = INNER.n0 - 15000, nx = Math.round((INNER.x1 - INNER.x0 + 30000) / st) + 1, nn = Math.round((INNER.n1 - INNER.n0 + 30000) / st) + 1;
+  const inside = (X, N) => X > INNER.x0 && X < INNER.x1 && N > INNER.n0 && N < INNER.n1;
+  const g = farSkinGeo(x0, n0, st, nx, nn, (X, N) => heightRaw(X, N), inside);
+  if (g) { const m = new THREE.Mesh(g, mat); m.castShadow = m.receiveShadow = false; scene.add(m); FARW.meshes.push(m); }
+}
+
+function buildFarWoods(scene) {
+  farWoodsPalette();
+  if (WORLD.mtn) buildFarSkin(scene); else buildFarBlocks(scene);
 }
 
 /* ============================================================================
@@ -19948,7 +20342,12 @@ const SKY = { hour: 6 + 40 / 60, weather: 'clear', dark: 0, night: false, look: 
   #ifdef FOG_EXP2
     float fogH = max( 0.0, cameraPosition.y + vFogWorld.y * 0.5 - fogHaze.x );
     float fogD = fogDensity * mix( 1.0, 0.4 + 0.6 * exp( - fogH / max( fogHaze.y, 1.0 ) ), fogHaze.z );
-    float fogFactor = 1.0 - exp( - fogD * fogD * fogDepth * fogDepth );
+    float fogX = fogD * fogDepth, fogT = exp( - fogX * fogX );
+    // in clear air, past the distance where the haze has taken two thirds of the view, what is left fades on slowly
+    // (plain exponential, as real haze does), so the ridges and tree lines 10 to 15 km off still show, faint and blue,
+    // instead of the world ending in a wall of haze. Thick fog keeps the squared curve, which hides everything past the draw distances
+    if ( fogX > 1.0 ) fogT = mix( fogT, max( fogT, 0.3679 * exp( - 0.75 * ( fogX - 1.0 ) ) ), 1.0 - smoothstep( 0.00028, 0.0005, fogDensity ) );
+    float fogFactor = 1.0 - fogT;
     float fogS = max( dot( normalize( vFogWorld ), fogSunDir ), 0.0 );
     vec3 fogC = fogColor + fogSunColor * ( pow( fogS, 12.0 ) * 0.3 + pow( fogS, 3.0 ) * 0.07 );
     gl_FragColor.rgb = mix( gl_FragColor.rgb, fogC, fogFactor );
@@ -20008,6 +20407,8 @@ function buildSky(scene, renderer) {
         c += uMoonC * (pow(m, 900.0)*6.0*(1.0-uGray) + pow(m, 12.0)*0.35*(1.0-uGray*0.7) + pow(m,3.0)*0.12);
         vec3 g = vec3(dot(c, vec3(0.3,0.5,0.2)));
         c = mix(c, g*vec3(0.95,0.98,1.03), uGray);
+        // a half-step of noise before the 8-bit scene buffer, so the long dim gradient of a low sun doesn't band
+        c += (fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715)))) - 0.5) / 255.0;
         gl_FragColor = vec4(c, 1.0); }`,
   });
   const dome = new THREE.Mesh(new THREE.SphereGeometry(9000, 40, 20), mat);
@@ -20816,8 +21217,12 @@ const CLOUD_GLSL_NOISE = `
 
 function buildClouds(scene) {
   const lite = GFX.lite;
-  const W = lite ? 448 : 1024, H = lite ? 144 : 288, STEPS = lite ? 12 : 22;
-  const opt = { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, format: THREE.RGBAFormat, depthBuffer: false, stencilBuffer: false, generateMipmaps: false };
+  // a computer marches a finer panorama: at 1024 across, one texel was ~9 screen pixels wide and cloud edges came out in steps
+  const W = lite ? 448 : 1536, H = lite ? 144 : 416, STEPS = lite ? 12 : 22;
+  // half float where it can be drawn into: the picture blends in 12% a frame, and in 8 bits the small steps of a
+  // dim golden-hour sky round away, so the blend stalls in visible bands (and silver edges brighter than 1 clip)
+  const half = !!(typeof POST !== 'undefined' && POST.halfOK);
+  const opt = { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, format: THREE.RGBAFormat, type: half ? THREE.HalfFloatType : THREE.UnsignedByteType, depthBuffer: false, stencilBuffer: false, generateMipmaps: false };
   const rts = [new THREE.WebGLRenderTarget(W, H, opt), new THREE.WebGLRenderTarget(W, H, opt)];
   for (const r of rts) { r.texture.wrapS = THREE.RepeatWrapping; r.texture.wrapT = THREE.ClampToEdgeWrapping; }
   const noise = cloudNoiseTex(), map = cloudMapTex();
@@ -20906,7 +21311,7 @@ function buildClouds(scene) {
   const qs = new THREE.Scene(), qc = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
   const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mat); quad.frustumCulled = false; qs.add(quad);
   // the layer over the sky: a sphere inside the far plane, drawn after the stars and moon
-  const LU = { uPano: { value: rts[0].texture }, uNoise: { value: noise }, uCam: U.uCam, uDrift: U.uDrift, uBase: U.uBase, uDetail: { value: lite ? 0.6 : 1 }, uFade: { value: 1 } };
+  const LU = { uPano: { value: rts[0].texture }, uRes: U.uRes, uNoise: { value: noise }, uCam: U.uCam, uDrift: U.uDrift, uBase: U.uBase, uDetail: { value: lite ? 0.6 : 1 }, uFade: { value: 1 } };
   const lay = new THREE.Mesh(new THREE.SphereGeometry(24000, 48, 24), new THREE.ShaderMaterial({
     uniforms: LU, side: THREE.BackSide, transparent: true, depthWrite: false, depthTest: true, fog: false,
     blending: THREE.CustomBlending, blendSrc: THREE.OneFactor, blendDst: THREE.OneMinusSrcAlphaFactor, blendSrcAlpha: THREE.OneFactor, blendDstAlpha: THREE.OneMinusSrcAlphaFactor,
@@ -20917,13 +21322,20 @@ function buildClouds(scene) {
       }`,
     fragmentShader: `#include <common>
       #include <logdepthbuf_pars_fragment>
-      uniform sampler2D uPano, uNoise; uniform vec3 uCam; uniform vec2 uDrift; uniform float uBase, uDetail, uFade; varying vec3 vDir;
+      uniform sampler2D uPano, uNoise; uniform vec3 uCam; uniform vec2 uDrift, uRes; uniform float uBase, uDetail, uFade; varying vec3 vDir;
       ${CLOUD_GLSL_NOISE}
       void main(){
         #include <logdepthbuf_fragment>
         vec3 d = normalize( vDir ); if ( d.y < -0.03 ) discard;
         vec2 uv = vec2( atan( d.x, -d.z ) / 6.2831853 + 0.5, sqrt( clamp( d.y, 0.0, 1.0 ) ) );
-        vec4 c = texture2D( uPano, uv );
+        // bicubic (B-spline, from four bilinear taps): magnified, plain bilinear draws a soft edge as a staircase
+        vec2 tp = uv * uRes - 0.5, fi = floor( tp ), fr = tp - fi;
+        vec2 w0 = ( 1.0 - fr ) * ( 1.0 - fr ) * ( 1.0 - fr ) / 6.0, w1 = ( 4.0 - 6.0 * fr * fr + 3.0 * fr * fr * fr ) / 6.0;
+        vec2 w3 = fr * fr * fr / 6.0, w2 = 1.0 - w0 - w1 - w3;
+        vec2 s0 = w0 + w1, s1 = w2 + w3, t0 = ( fi - 0.5 + w1 / s0 ) / uRes, t1 = ( fi + 1.5 + w3 / s1 ) / uRes;
+        t0.y = max( t0.y, 0.5 / uRes.y ); t1.y = min( t1.y, 1.0 - 0.5 / uRes.y );
+        vec4 c = ( texture2D( uPano, vec2( t0.x, t0.y ) ) * s0.x + texture2D( uPano, vec2( t1.x, t0.y ) ) * s1.x ) * s0.y
+               + ( texture2D( uPano, vec2( t0.x, t1.y ) ) * s0.x + texture2D( uPano, vec2( t1.x, t1.y ) ) * s1.x ) * s1.y;
         if ( c.a < 0.003 ) discard;
         // fine detail on the panorama's soft edges, fixed to the clouds as they drift
         vec2 q = ( d.xz * max( uBase - uCam.y, 200.0 ) / max( d.y, 0.04 ) + uCam.xz + uDrift ) / 130.0;
@@ -20932,6 +21344,8 @@ function buildClouds(scene) {
         c *= clamp( 1.0 + ( n - 0.5 ) * 1.3 * e, 0.0, 1.5 );
         c.a = min( c.a, 1.0 );
         c *= smoothstep( -0.03, 0.004, d.y ) * uFade;
+        // a half-step of noise before the 8-bit scene buffer, so soft gradients in the cloud don't step
+        c.rgb += ( fract( 52.9829189 * fract( dot( gl_FragCoord.xy, vec2( 0.06711056, 0.00583715 ) ) ) ) - 0.5 ) / 255.0 * c.a;
         gl_FragColor = c;
       }`,
   }));
@@ -30878,6 +31292,7 @@ async function loadWorld() {
   }
   prog(0.86, WORLD.frost ? 'Snow on the pines…' : WORLD.mtn ? 'Growing the forest…' : 'Planting woodlots…'); await frame();
   if (WORLD.mtn) mtBuildForest(scene); else buildTrees(scene);
+  buildFarWoods(scene);
   finalizeScenery(scene);
   prog(0.92, 'Lighting the fire…'); await frame();
   buildSky(scene, renderer); postSetup(renderer); buildClouds(scene); buildFX(scene); buildTreeFX(scene); rainGlassAll(); buildSparks(scene); buildDig(scene); buildIceFX(scene); buildLamps(scene); buildBirds(scene);

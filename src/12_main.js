@@ -69,6 +69,7 @@ async function loadWorld() {
   }
   prog(0.86, WORLD.frost ? 'Snow on the pines…' : WORLD.mtn ? 'Growing the forest…' : 'Planting woodlots…'); await frame();
   if (WORLD.mtn) mtBuildForest(scene); else buildTrees(scene);
+  buildFarWoods(scene);
   finalizeScenery(scene);
   prog(0.92, 'Lighting the fire…'); await frame();
   buildSky(scene, renderer); postSetup(renderer); buildClouds(scene); buildFX(scene); buildTreeFX(scene); rainGlassAll(); buildSparks(scene); buildDig(scene); buildIceFX(scene); buildLamps(scene); buildBirds(scene);

@@ -1184,11 +1184,14 @@ function treeMeshes(L, scene) {
     const list = L[k]; if (!list || !list.length) continue;
     const pts = list.map(q => new THREE.Vector3(q[0], q[1], -q[2]));
     const sph = new THREE.Sphere().setFromPoints(pts); sph.radius += 14;
-    const vari = [list.filter(q => ((q[0] * 7.3 + q[2] * 3.1) % 2 + 2) % 2 < 1), list.filter(q => ((q[0] * 7.3 + q[2] * 3.1) % 2 + 2) % 2 >= 1)];
-    const set = (im, i, q) => {
-      _m4.compose(_v1.set(q[0], q[1], -q[2]), _q.setFromEuler(_e.set(0, ((q[0] * 13.1 + q[2]) % TAU + TAU) % TAU, 0)), _v2.set(q[3], q[4], q[3]));
+
+    const two = q => ((q[0] * 7.3 + q[2] * 3.1) % 2 + 2) % 2 >= 1;   // which of the two shapes
+    // far: the second shape is marked by a negative height, which the far card reads and its size ignores (04c impostorMaterial)
+    const set = (im, i, q, far) => {
+      _m4.compose(_v1.set(q[0], q[1], -q[2]), _q.setFromEuler(_e.set(0, ((q[0] * 13.1 + q[2]) % TAU + TAU) % TAU, 0)), _v2.set(q[3], far && two(q) ? -q[4] : q[4], q[3]));
       im.setMatrixAt(i, _m4); setFolColor(im, i, q[5]);
     };
+    const vari = [list.filter(q => !two(q)), list.filter(two)];
     // near trees go in 400 m patches, so only the patches round the camera send their leaf cards to the GPU
     // (smaller patches cut a little more vertex work but cost far more draws)
     vari.forEach((vl, v) => {
@@ -1202,7 +1205,7 @@ function treeMeshes(L, scene) {
       }
     });
     const lo = new THREE.InstancedMesh(shareGeo(G[k + 'Lo'], sph.clone()), MAT.treeFar, list.length);
-    list.forEach((q, i) => set(lo, i, q)); folColorsDone(lo);
+    list.forEach((q, i) => set(lo, i, q, true)); folColorsDone(lo);
     out.lo.push(lo); out.pts.push(...pts);
   }
   for (const m of [...out.hi, ...out.lo]) { m.castShadow = false; m.receiveShadow = false; m.visible = false; scene.add(m); WORLD.treeMeshes.push(m); }
