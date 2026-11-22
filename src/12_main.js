@@ -76,7 +76,7 @@ async function loadWorld() {
   for (const st of ROUTE.stations) { st.edge.pose(st.s, FR); st.p = FR.p.clone(); }
   for (const w of ROUTE.water) { w.edge.pose(w.s, FR); w.p = FR.p.clone(); }
   if (ROUTE.coal) { const c = ROUTE.coal; c.edge.pose(c.s, FR); c.p = FR.p.clone(); }
-  setupViewInput($('gl'), camera); PLACE.setup($('gl')); setupLevers(); setupButtons(); setupMap(); WALK.setup(); FLEET.setup();
+  setupViewInput($('gl'), camera); PLACE.setup($('gl')); setupLevers(); setupButtons(); setupMap(); WALK.setup(); FLEET.setup(); CTRL.setup();
   linearizeObject(scene);
   sceneryUpload(renderer);
   AI.lazy = true; makeTrain(); AI.lazy = false;
@@ -761,6 +761,7 @@ let chuffQ = 0, chuffQF = 0, pumpT = 0, bellT = 0, idleT = 0, prevV = 0, stopT =
 function loop() {
   requestAnimationFrame(loop);
   let dt = Math.min(clock.getDelta(), 0.05);
+  PAD.poll(dt);
   const T = GAME.train; if (!T) return;
   const active = GAME.running && !S.paused && !S.derailed && !PLACE.on;
   if (active) { simStep(dt, T); SAVE.tick(dt); } else { stepSwitches(dt); if (S.derailed && GAME.running && !S.paused && !PLACE.on) GAME.wreckStep(dt, T); }

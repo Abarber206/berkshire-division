@@ -10,7 +10,8 @@
 const TUT = { want: false, run: null, hz: 0, first: false };
 const TUT_GAP = 40;                  // metres from the tender to the cars waiting behind it on Yard 2
 const TUT_CARS = ['box/', 'box/', 'hopper/'];
-const tutKey = k => `<kbd>${k}</kbd>`;
+/* the key (and pad button, with a controller in) for an action, as the player has them bound (11o_ctrl.js) */
+const tutKey = id => typeof CTRL !== 'undefined' && CTRL_A[id] ? CTRL.hint(id) : `<kbd>${id}</kbd>`;
 const tutCars = T => T ? T.vehicles.filter(v => !isPower(v)).length : 0;
 const tutMph = () => Math.abs(S.v) / MPH;
 const tutStopped = () => Math.abs(S.v) < 0.05;
@@ -23,80 +24,80 @@ function tutPanelOpen() { const p = $('carPanel'); return !!p && p.hidden === fa
    done is read and dismissed with Next. enter(R) runs when the step comes up. */
 const TUT_STEPS = [
   { id: 'hello', title: 'Welcome to the cab',
-    body: () => `You are on Yard 2 at Bellevue with a light engine. Three cars are waiting behind you: you will back onto them, couple up and take them out on the main. Press ${tutKey('1')} to ${tutKey('6')} to change cameras (${tutKey('2')} is the cab), drag to look around, and tap Next when you are ready.` },
+    body: () => `You are on Yard 2 at Bellevue with a light engine. Three cars are waiting behind you: you will back onto them, couple up and take them out on the main. Press ${tutKey('cam1')} to ${tutKey('cam6')} (or ${tutKey('camCycle')}) to change cameras (${tutKey('cam2')} is the cab), drag to look around, and tap Next when you are ready.` },
   { id: 'indep', title: 'Release the engine brake', hi: ['lvInd'],
-    body: () => `The engine brake holds the engine on its own. Press ${tutKey('Z')} until the Engine lever reads 0, or drag the lever up. (${tutKey('C')} puts it back on.)`,
+    body: () => `The engine brake holds the engine on its own. Press ${tutKey('indRel')} until the Engine lever reads 0, or drag the lever up. (${tutKey('indApp')} puts it back on.)`,
     done: () => S.indH < 0.05 },
   { id: 'train', title: 'The train brake', hi: ['lvBrake'],
-    body: () => `The Train lever works the air brakes on every car. ${tutKey('E')} applies, ${tutKey('Q')} releases. It sits in RUN while you drive: leave it there for now. You will use it to stop later.`,
+    body: () => `The Train lever works the air brakes on every car. ${tutKey('brakeApp')} applies, ${tutKey('brakeRel')} releases. It sits in RUN while you drive: leave it there for now. You will use it to stop later.`,
     done: () => brakeZone(S.brakeH) === 'RUN' || brakeZone(S.brakeH) === 'REL' },
   { id: 'bell', title: 'Ring the bell, sound the whistle', hi: ['btnBell', 'btnWhistle'],
-    body: () => `Ring the bell before you move: ${tutKey('B')}. Then whistle to say you are about to go: three short blasts mean backing up. Hold ${tutKey('Space')}, or the Whistle key, for each.`,
+    body: () => `Ring the bell before you move: ${tutKey('bell')}. Then whistle to say you are about to go: three short blasts mean backing up. Hold ${tutKey('whistle')}, or the Whistle key, for each.`,
     enter: R => { R.blew = false; },
     done: (T, R) => S.bell && R.blew },
   { id: 'revBack', title: 'Reverser into reverse', hi: ['lvReverser'],
-    body: () => GAME.isDiesel() ? `The reverser picks the direction. The cars are behind you, so press ${tutKey('↓')} until it reads REV.` : `The reverser picks the direction and, on a steam engine, how long steam is admitted to the cylinders. The cars are behind you, so press ${tutKey('↓')} until it is well back toward full reverse.`,
+    body: () => GAME.isDiesel() ? `The reverser picks the direction. The cars are behind you, so press ${tutKey('revBack')} until it reads REV.` : `The reverser picks the direction and, on a steam engine, how long steam is admitted to the cylinders. The cars are behind you, so press ${tutKey('revBack')} until it is well back toward full reverse.`,
     done: () => tutRev(-1) },
   { id: 'throttleBack', title: 'Open the throttle', hi: ['lvThrottle'],
-    body: () => GAME.isDiesel() ? `Press ${tutKey('W')} to notch the throttle out to 1 or 2. The engine loads up and starts to roll back.` : `Ease the throttle open with ${tutKey('W')}, a little at a time, until she starts to roll back. Too much on a cold rail and the drivers slip: ease off with ${tutKey('S')}.`,
+    body: () => GAME.isDiesel() ? `Press ${tutKey('throttleUp')} to notch the throttle out to 1 or 2. The engine loads up and starts to roll back.` : `Ease the throttle open with ${tutKey('throttleUp')}, a little at a time, until she starts to roll back. Too much on a cold rail and the drivers slip: ease off with ${tutKey('throttleDown')}.`,
     done: () => S.throttle > 0.01 && tutMph() > 0.5 && tutRev(-1) },
   { id: 'couple', title: 'Couple to the cars', hi: ['lvThrottle', 'lvInd'],
-    body: () => `Watch behind you (${tutKey('5')} or ${tutKey('3')} helps) and keep it under 4 mph. Close the throttle (${tutKey('S')}) as you get close and let her drift into the cars. Their knuckle is open, so they couple when you touch.`,
+    body: () => `Watch behind you (${tutKey('cam5')} or ${tutKey('cam3')} helps) and keep it under 4 mph. Close the throttle (${tutKey('throttleDown')}) as you get close and let her drift into the cars. Their knuckle is open, so they couple when you touch.`,
     meter: () => ({ v: tutMph(), max: 8, mark: 4, txt: tutMph().toFixed(1) + ' mph', bad: tutMph() > 4 }),
     done: (T, R) => tutCars(T) > R.cars0 },
   { id: 'stop1', title: 'Stop', hi: ['lvThrottle', 'lvInd'],
-    body: () => `Throttle closed (${tutKey('S')}) and the engine brake on (${tutKey('C')}) to bring her to a stand.`,
+    body: () => `Throttle closed (${tutKey('throttleDown')}) and the engine brake on (${tutKey('indApp')}) to bring her to a stand.`,
     done: () => tutStopped() && S.throttle < 0.01 },
   { id: 'cars', title: 'Look at your train', hi: ['btnCars'],
-    body: () => `Press ${tutKey('U')} or tap the Couplers button to see your train car by car. Tapping a coupler there, or the cut lever on the cars themselves, pulls the pin to set cars out again.`,
+    body: () => `Press ${tutKey('cars')} or tap the Couplers button to see your train car by car. Tapping a coupler there, or the cut lever on the cars themselves, pulls the pin to set cars out again.`,
     done: () => tutPanelOpen() },
   { id: 'air', title: 'Pump up the air', hi: ['lvBrake'],
-    body: () => `The cars were standing with their brakes bled off. Amber cars in the Couplers panel are still charging. Leave the Train lever in RUN (or ${tutKey('Q')} to RELEASE to charge faster) until they all go grey.`,
+    body: () => `The cars were standing with their brakes bled off. Amber cars in the Couplers panel are still charging. Leave the Train lever in RUN (or ${tutKey('brakeRel')} to RELEASE to charge faster) until they all go grey.`,
     meter: (T) => { const c = T.vehicles.filter(v => !isPower(v)); const ok = c.filter(v => v.brake.AR >= 62).length; return { v: ok, max: Math.max(1, c.length), txt: `${ok} of ${c.length} charged` }; },
     done: T => T.vehicles.every(v => isPower(v) || v.brake.AR >= 62) },
   { id: 'revFwd', title: 'Reverser forward', hi: ['lvReverser', 'lvInd'],
     enter: () => { if (tutPanelOpen()) carPanelToggle(false); },
-    body: () => `Now head out. Release the engine brake (${tutKey('Z')}) and press ${tutKey('↑')} to put the reverser ${GAME.isDiesel() ? 'in FWD' : 'well forward'}. Bring the train brake back to RUN with ${tutKey('Q')} if you moved it.`,
+    body: () => `Now head out. Release the engine brake (${tutKey('indRel')}) and press ${tutKey('revFwd')} to put the reverser ${GAME.isDiesel() ? 'in FWD' : 'well forward'}. Bring the train brake back to RUN with ${tutKey('brakeRel')} if you moved it.`,
     done: () => tutRev(1) && S.indH < 0.05 && brakeZone(S.brakeH) !== 'SRV' && brakeZone(S.brakeH) !== 'EMG' },
   { id: 'out', title: 'Out onto the main', hi: ['lvThrottle'],
-    body: () => `Open the throttle and pull out of the yard. The ladder at the east end is already lined for the main: the switch card at the top shows which way the next switch lies, and ${tutKey('T')} throws it. Keep it under 15 mph through the yard switches.`,
+    body: () => `Open the throttle and pull out of the yard. The ladder at the east end is already lined for the main: the switch card at the top shows which way the next switch lies, and ${tutKey('throwSwitch')} throws it. Keep it under 15 mph through the yard switches.`,
     done: T => tutOnMain(T) },
   // ---- steam: the fire and the water
   { id: 'boiler', only: 'steam', title: 'Steam and water',
     body: () => `Everything comes from the boiler. On the gauges, watch the steam pressure (the big dial) and the water glass. Work her hard and the pressure falls; let the water drop out of the glass and you can melt the crown sheet. On Easy your fireman handles both, but try it yourself for a minute.` },
   { id: 'fire', only: 'steam', title: 'Fire her', hi: ['btnFire'],
-    body: () => `Press ${tutKey('F')} or tap Stoker to feed more coal to the fire. That hands you the fire. More coal means more steam, but only once the fire has caught up: watch the pressure needle.`,
+    body: () => `Press ${tutKey('stoker')} or tap Stoker to feed more coal to the fire. That hands you the fire. More coal means more steam, but only once the fire has caught up: watch the pressure needle.`,
     done: () => !S.autoFire },
   { id: 'inject', only: 'steam', title: 'Water in the boiler', hi: ['btnInj'],
-    body: () => `Press ${tutKey('I')} or tap Inject to put the injector on. It forces water from the tender into the boiler: the glass rises, but cold water knocks the pressure back a little. Keep the glass about half full.`,
+    body: () => `Press ${tutKey('injector')} or tap Inject to put the injector on. It forces water from the tender into the boiler: the glass rises, but cold water knocks the pressure back a little. Keep the glass about half full.`,
     done: () => S.injector },
   { id: 'fireBack', only: 'steam', title: 'Your fireman takes it back', enter: R => tutFireBack(R),
-    body: () => `That is the job: coal for steam, water for the glass, and never let either run away. Your fireman has the boiler again. Choose Hand fired under Driving in the menu when you want to run it yourself, and ${tutKey('L')} works the blower that draws the fire.` },
+    body: () => `That is the job: coal for steam, water for the glass, and never let either run away. Your fireman has the boiler again. Choose Hand fired under Driving in the menu when you want to run it yourself, and ${tutKey('blower')} works the blower that draws the fire.` },
   // ---- diesel: notches and the dynamic brake
   { id: 'notch', only: 'diesel', title: 'Notch out', hi: ['lvThrottle'],
-    body: () => `A diesel throttle has eight notches. Press ${tutKey('W')} for each one, and give the engine a moment to load up between notches. Run 4 or more.`,
+    body: () => `A diesel throttle has eight notches. Press ${tutKey('throttleUp')} for each one, and give the engine a moment to load up between notches. Run 4 or more.`,
     done: () => Math.round(S.throttle * GAME.notches()) >= 4 },
   // ---- running
   { id: 'speed', title: 'Up to 25 mph', hi: ['lvThrottle'],
-    body: () => `Bring her up to 25 mph. The badge under your speed is the speed limit here: stay at or under it. If the drivers slip, ease off and put down sand with ${tutKey('X')}.`,
+    body: () => `Bring her up to 25 mph. The badge under your speed is the speed limit here: stay at or under it. If the drivers slip, ease off and put down sand with ${tutKey('sander')}.`,
     meter: () => ({ v: tutMph(), max: 30, mark: 25, txt: Math.round(tutMph()) + ' mph' }),
     done: () => tutMph() >= 25 },
   { id: 'dyn', only: 'diesel', title: 'The dynamic brake', hi: ['lvThrottle', 'lvDyn'],
-    body: () => `The traction motors can hold the train back too. Throttle to idle (${tutKey('S')}), then ${tutKey('D')} to set up the dynamic brake and feel it pull. ${tutKey('A')} backs it off.`,
+    body: () => `The traction motors can hold the train back too. Throttle to idle (${tutKey('throttleDown')}), then ${tutKey('dynUp')} to set up the dynamic brake and feel it pull. ${tutKey('dynDown')} backs it off.`,
     done: () => S.dyn > 0.1 && S.throttle < 0.01 },
   { id: 'whistle', title: 'Whistle for the crossings', hi: ['btnWhistle'],
-    body: () => `Out on the main you whistle for every road crossing: two long, a short and a long. Give it a try with ${tutKey('Space')}.`,
+    body: () => `Out on the main you whistle for every road crossing: two long, a short and a long. Give it a try with ${tutKey('whistle')}.`,
     enter: R => { R.blew = false; },
     done: (T, R) => R.blew && S.whistle === 0 },
   { id: 'service', title: 'Set the train brake', hi: ['lvThrottle', 'lvBrake'],
-    body: () => `Time to stop. Close the throttle${GAME.isDiesel() ? ' and the dynamic brake' : ''}, then press ${tutKey('E')} until the Train lever reads SERVICE. Air takes a few seconds to reach the back of the train: plan your stops early.`,
+    body: () => `Time to stop. Close the throttle${GAME.isDiesel() ? ' and the dynamic brake' : ''}, then press ${tutKey('brakeApp')} until the Train lever reads SERVICE. Air takes a few seconds to reach the back of the train: plan your stops early.`,
     done: () => S.throttle < 0.01 && brakeZone(S.brakeH) === 'SRV' },
   { id: 'slow', title: 'Bring her down', hi: ['lvBrake'],
-    body: () => `Hold the brake and let the speed come down. More ${tutKey('E')} for a harder application. All the way down to EMERGENCY dumps the air at once, which is only for when something is in the way.`,
+    body: () => `Hold the brake and let the speed come down. More ${tutKey('brakeApp')} for a harder application. All the way down to EMERGENCY dumps the air at once, which is only for when something is in the way.`,
     meter: () => ({ v: tutMph(), max: 30, txt: Math.round(tutMph()) + ' mph' }),
     done: () => tutStopped() },
   { id: 'release', title: 'Release', hi: ['lvBrake', 'lvInd'],
-    body: () => `Stopped. Put the engine brake on (${tutKey('C')}) to hold her, then ${tutKey('Q')} back to RUN to release the train brake and recharge the air.`,
+    body: () => `Stopped. Put the engine brake on (${tutKey('indApp')}) to hold her, then ${tutKey('brakeRel')} back to RUN to release the train brake and recharge the air.`,
     done: () => tutStopped() && (brakeZone(S.brakeH) === 'RUN' || brakeZone(S.brakeH) === 'REL') && S.indH > 0.3 },
 ];
 
@@ -210,7 +211,7 @@ TUT.ui = function (ok) {
   if (R.over) {
     $('tutStep').textContent = 'Lesson complete';
     $('tutTitle').textContent = 'You can drive a train';
-    $('tutBody').innerHTML = `Brakes, reverser, throttle, coupling${GAME.isDiesel() ? ', notches and the dynamic brake' : ' and the fire'}: that is the whole of it. Keep going on the main, set the cars out with ${tutKey('U')}, or take a job from the Run tab: <b>Elevator pickup</b> is a good first one. The keys are listed under Driving in the menu.`;
+    $('tutBody').innerHTML = `Brakes, reverser, throttle, coupling${GAME.isDiesel() ? ', notches and the dynamic brake' : ' and the fire'}: that is the whole of it. Keep going on the main, set the cars out with ${tutKey('cars')}, or take a job from the Run tab: <b>Elevator pickup</b> is a good first one. The keys are listed under Driving in the menu.`;
     $('tutMeter').hidden = true;
     $('tutNext').textContent = 'Keep driving'; $('tutNext').hidden = false;
     $('tutJob').hidden = !JOB.available || !JOB.available() || !JOB.def('elevator');
