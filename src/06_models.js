@@ -1952,6 +1952,11 @@ function coachModel(spec, num, observation, trim = '') {
   for (const s of [-1, 1]) gb.add(nk, new THREE.PlaneGeometry(0.9, 0.32), M(-7.5, 1.8, s * (hw + 0.002), 0, s > 0 ? 0 : Math.PI, 0));
   // vestibules: side walls with the Dutch door, steps under it, grab irons beside it, the end wall and the diaphragm
   const xd = (CH.xb + CH.xv) / 2, dw = 0.62;
+  /* the doors and the step traps open (11q_crowd.js swings them for the travellers), so they are a group of their own
+     with a list of which vertices are whose (coachDoorSet) */
+  const dg = new GeoBin(), dparts = {};
+  const dcount = g => g.index ? g.index.count : g.attributes.position.count;
+  const dadd = (id, key, geo, m) => { const n = (dg.bins[key] || []).reduce((a, g) => a + dcount(g), 0); dg.add(key, geo, m); (dparts[id] || (dparts[id] = [])).push([key, n, dcount(geo)]); };
   const vest = e => {
     const xv = e * CH.xv, zz = hw - 0.02;
     for (const s of [-1, 1]) {
@@ -1959,15 +1964,16 @@ function coachModel(spec, num, observation, trim = '') {
       gb.box(body, 0.08, yE - CH.yT, 0.05, e * (CH.xb + 0.03), (yE + CH.yT) / 2, z);                     // door posts
       gb.box(body, 0.06, yE - CH.yT, 0.05, e * (CH.xv - 0.03), (yE + CH.yT) / 2, z);
       gb.box(body, CH.xv - CH.xb, yE - 3.08, 0.05, e * xd, (yE + 3.08) / 2, z);                          // over the door
-      gb.box(body, dw, 3.08 - CH.yT, 0.04, e * xd, (3.08 + CH.yT) / 2, s * (zz - 0.04));                 // the door
-      gb.box(win, dw - 0.16, 0.66, 0.02, e * xd, 2.6, s * (zz - 0.015));
-      gb.box(G, dw, 0.04, 0.03, e * xd, 2.2, s * (zz - 0.01));                                             // the Dutch door's split
-      gb.box('brass', 0.03, 0.12, 0.05, e * (xd - 0.24), 2.05, s * (zz + 0.0));
+      const lf = 'L' + e + s, tp = 'T' + e + s;
+      dadd(lf, body, new THREE.BoxGeometry(dw, 3.08 - CH.yT, 0.04), M(e * xd, (3.08 + CH.yT) / 2, s * (zz - 0.04)));      // the door
+      dadd(lf, win, new THREE.BoxGeometry(dw - 0.16, 0.66, 0.02), M(e * xd, 2.6, s * (zz - 0.015)));
+      dadd(lf, G, new THREE.BoxGeometry(dw, 0.04, 0.03), M(e * xd, 2.2, s * (zz - 0.01)));                            // the Dutch door's split
+      dadd(lf, 'brass', new THREE.BoxGeometry(0.03, 0.12, 0.05), M(e * (xd - 0.24), 2.05, s * (zz + 0.0)));
       for (const x of [e * (CH.xb - 0.0), e * (CH.xv + 0.0)]) gb.add('brass', barGeo(0.013, [x, 1.5, s * (hw + 0.06)], [x, 2.9, s * (hw + 0.06)], 5)), gb.box('brass', 0.04, 0.04, 0.09, x, 1.55, s * (hw + 0.03)), gb.box('brass', 0.04, 0.04, 0.09, x, 2.85, s * (hw + 0.03));
       // steps: three treads on stringers hung from the floor, and the trap plate at floor level
       for (const d of [-1, 1]) gb.box(G, 0.04, CH.yT - 0.36, 0.34, e * xd + d * (dw / 2 - 0.02), (CH.yT + 0.36) / 2, s * (zz - 0.18));
       for (const y of [0.4, 0.72, 1.02]) gb.box(G, dw - 0.06, 0.04, 0.32 - (y - 0.4) * 0.2, e * xd, y, s * (zz - 0.18 + (y - 0.4) * 0.1 * 0));
-      gb.box(G, dw - 0.06, 0.04, 0.36, e * xd, CH.yT - 0.02, s * (zz - 0.18));
+      dadd(tp, G, new THREE.BoxGeometry(dw - 0.06, 0.04, 0.36), M(e * xd, CH.yT - 0.02, s * (zz - 0.18)));        // the trap over them
       if (T) addWreath(gb, 0.15, 0.035, M(e * xd, 2.62, s * (zz + 0.0), 0, s > 0 ? 0 : Math.PI, 0));
     }
     // end wall with the end door
@@ -2159,6 +2165,7 @@ function coachModel(spec, num, observation, trim = '') {
   }
   const couplers = carCouplers(gb, root, L, -0.55, 0.955, 1.08);
   root.add(shareCarGeos(gb.build(RMAT)));
+  { const dgr = shareCarGeos(dg.build(RMAT)); dgr.name = 'doors'; root.add(dgr); root.userData.doors = { grp: dgr, parts: dparts, k: {}, own: null, xd, dw, zz: hw - 0.02 }; }
   root.traverse(o => { if (o.isMesh && !o.userData.cpl) { o.castShadow = true; o.receiveShadow = true; } });
   // the saloon (06g_person.js): every coach carries it, near or far, so a car never changes as the camera comes up to it.
   // Its geometry is shared by every car of the same kind.
@@ -2172,6 +2179,49 @@ function coachModel(spec, num, observation, trim = '') {
   const cp = coachPairs();
   root.userData.winLight = { x0: cp[0], pitch: cp[1] - cp[0], n: cp.length, so: 0.33, hw: 0.28, side: hw - 0.05, skin: hw + 0.08, sill: w0, head: w1, yL: yE + 0.4, half: CH.xb, col: T ? 0xffbb6a : 0xffc47c, I: T ? 2.3 : 2.0, lit: 'coach' };
   return { root, len: L, trucks: [{ a: 3.5, type: 'six', R: 0.457 }, { a: 21.2, type: 'six', R: 0.457 }], frame: [3.5, 21.2], weight: 82 * STON, kind: 'coach', axles: 6, area: 120, couplers };
+}
+
+/* Open a coach's vestibule door (e: the end, +1 or -1; s: the side) by k, 0 shut to 1 open: the Dutch door swings in
+   on its hinge at the end post until it lies along the end wall, and the trap over the steps lifts up against it.
+   A car keeps the shared geometry of its doors until one opens; then it takes its own copy, and gives it back once
+   they are all shut again. */
+function coachDoorSet(root, e, s, k) {
+  const D = root && root.userData.doors; if (!D) return;
+  const id = '' + e + s; k = clamp(k, 0, 1);
+  if ((D.k[id] || 0) === k) return;
+  D.k[id] = k;
+  if (!D.own) {
+    if (k <= 0) return;
+    D.own = new Map();
+    for (const m of D.grp.children) {
+      const g0 = m.geometry, g = new THREE.BufferGeometry();
+      for (const a in g0.attributes) g.setAttribute(a, g0.attributes[a].clone());
+      g.boundingSphere = g0.boundingSphere; g.boundingBox = g0.boundingBox;
+      D.own.set(m.name, { m, g0, P0: g0.attributes.position.array, N0: g0.attributes.normal.array });
+      m.geometry = g;
+    }
+  }
+  const zz = D.zz, xh = e * (CH.xv - 0.06), zh = s * (zz - 0.06), a = -e * s * Math.PI / 2 * 0.97 * k;
+  const xt = e * (D.xd + (D.dw - 0.06) / 2), yt = CH.yT, b = -e * Math.PI / 2 * 0.97 * k;
+  const ca = Math.cos(a), sa = Math.sin(a), cb = Math.cos(b), sb = Math.sin(b);
+  for (const [which, list] of [['L', D.parts['L' + id]], ['T', D.parts['T' + id]]]) for (const [key, n, c] of list || []) {
+    const o = D.own.get(key); if (!o) continue;
+    const P = o.m.geometry.attributes.position, N = o.m.geometry.attributes.normal, p = P.array, nn = N.array, P0 = o.P0, N0 = o.N0;
+    for (let i = n * 3, e3 = (n + c) * 3; i < e3; i += 3) {
+      if (which === 'L') {
+        const dx = P0[i] - xh, dz = P0[i + 2] - zh;
+        p[i] = xh + dx * ca + dz * sa; p[i + 1] = P0[i + 1]; p[i + 2] = zh - dx * sa + dz * ca;
+        nn[i] = N0[i] * ca + N0[i + 2] * sa; nn[i + 1] = N0[i + 1]; nn[i + 2] = -N0[i] * sa + N0[i + 2] * ca;
+      } else {
+        const dx = P0[i] - xt, dy = P0[i + 1] - yt;
+        p[i] = xt + dx * cb - dy * sb; p[i + 1] = yt + dx * sb + dy * cb; p[i + 2] = P0[i + 2];
+        nn[i] = N0[i] * cb - N0[i + 1] * sb; nn[i + 1] = N0[i] * sb + N0[i + 1] * cb; nn[i + 2] = N0[i + 2];
+      }
+    }
+    P.needsUpdate = true; N.needsUpdate = true;
+  }
+  // all shut: back to the shared doors
+  if (Object.values(D.k).every(v => v <= 0)) { for (const o of D.own.values()) { o.m.geometry.dispose(); o.m.geometry = o.g0; } D.own = null; }
 }
 
 /* ======== trucks ========

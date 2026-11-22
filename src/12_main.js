@@ -884,6 +884,7 @@ function renderStep(dt, T) {
   AI.render(dt);
   MP.frame(dt);
   WALK.frame(dt);
+  CROWD.frame(dt);
   if (GAME.running && !S.paused && !S.derailed && !PLACE.on) MP.contact(T); else S.pushF = 0;
   // headlight & glows, brightening through dusk
   const night = SKY.dark, darkH = Math.max(night, smooth(0.3, 0.7, SKY.boreK || 0));   // in a tunnel the headlight works as it does at night

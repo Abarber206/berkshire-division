@@ -4737,6 +4737,7 @@ function sceneryMaterials() {
   SMAT.brick = new THREE.MeshLambertMaterial({ map: brick });
   SMAT.cream = new THREE.MeshLambertMaterial({ color: 0xd8c592, map: siding });
   SMAT.trim = new THREE.MeshLambertMaterial({ color: 0x4d3420 });
+  SMAT.doorway = new THREE.MeshLambertMaterial({ color: 0x17120d });   // an open doorway into the dim waiting room
   SMAT.white = new THREE.MeshLambertMaterial({ color: 0xe9e5d8, map: siding });
   SMAT.barn = new THREE.MeshLambertMaterial({ color: 0x8c2d20, map: siding });
   SMAT.slate = new THREE.MeshLambertMaterial({ color: 0x55585e, map: shingle });
@@ -5025,7 +5026,7 @@ function depot(pl, name, big) {
   gb.add('cream', boxT(3.1, H - 0.9, 1.35, 2), P(base, 0, 0.9 + (H - 0.9) / 2, W / 2 + 0.6));
   gb.add('trim', new THREE.BoxGeometry(3.3, 0.18, 1.5), P(base, 0, 0.95, W / 2 + 0.6));
   windowsRow(gb, base, -1.0, 1.0, 2.4, W / 2 + 1.275, 0.8, 1.5, 2);
-  windowsRow(gb, base, -L / 2 + 2, -2.6, 2.4, W / 2 - 0.05, 0.9, 1.6, big ? 4 : 2);
+  windowsRow(gb, base, -L / 2 + 2, -3.3, 2.4, W / 2 - 0.05, 0.9, 1.6, big ? 4 : 2);
   windowsRow(gb, base, 2.6, L / 2 - 2, 2.4, W / 2 - 0.05, 0.9, 1.6, big ? 3 : 2);
   windowsRow(gb, base, -L / 2 + 2, L / 2 - 2, 2.4, -W / 2 + 0.05, 0.9, 1.6, big ? 6 : 4, -1);
   // freight doors
@@ -5049,7 +5050,8 @@ function depot(pl, name, big) {
   gb.add(mat, new THREE.PlaneGeometry(2.9, 0.5), P(base, 0, 3.55, W / 2 + 1.285));
   for (const s of [-1, 1]) gb.add(mat, new THREE.PlaneGeometry(3.4, 0.65), P(base, s * (L / 2 - 0.045), H - 0.8, 0, 0, s * Math.PI / 2, 0));
   // benches on the platform (top at 0.16)
-  for (const bx of [-L / 2 + 2.2, -L / 2 + 5, 3.2]) {
+  const benches = big ? [-L / 2 + 2.2, -L / 2 + 5, 3.2] : [-L / 2 + 1.9, -L / 2 + 3.75, 3.2];
+  for (const bx of benches) {
     const bz = W / 2 + 0.7;
     gb.add('trim', new THREE.BoxGeometry(1.8, 0.06, 0.45), P(base, bx, 0.6, bz));
     gb.add('trim', new THREE.BoxGeometry(1.8, 0.4, 0.05), P(base, bx, 0.83, bz - 0.2));
@@ -5063,8 +5065,26 @@ function depot(pl, name, big) {
   gb.add('steel', new THREE.CylinderGeometry(0.08, 0.1, 7, 8), P(base, 0, 3.5 + 0.16, W / 2 + 2.4));
   gb.add('steel', new THREE.CylinderGeometry(0.16, 0.18, 0.12, 10), P(base, 0, 0.22, W / 2 + 2.4));
   for (const s of [-1, 1]) gb.add('redPaint', new THREE.BoxGeometry(1.4, 0.3, 0.05), P(base, s * (0.04 + 0.7 * Math.cos(0.7)), 6.3 + 0.7 * Math.sin(0.7), W / 2 + 2.4, 0, 0, s * 0.7));
+  /* the passengers' door beside the bay, open into the waiting room, up two steps and a landing from the platform
+     (the floor is on the brick base, 0.9 m up); the travellers on the platform come and go by it (11q_crowd.js) */
+  const dx = -2.2, dw = 0.95, steps = [[0.3, 0.9], [0.6, 0.653], [0.9, 0.407]];
+  gb.add('doorway', new THREE.BoxGeometry(dw, 2.15, 0.06), P(base, dx, 0.9 + 1.075, W / 2 + 0.033));
+  for (const e of [-1, 1]) gb.add('trim', new THREE.BoxGeometry(0.09, 2.27, 0.08), P(base, dx + e * (dw / 2 + 0.045), 0.9 + 1.135, W / 2 + 0.03));
+  gb.add('trim', new THREE.BoxGeometry(dw + 0.3, 0.12, 0.1), P(base, dx, 0.9 + 2.21, W / 2 + 0.04));
+  let z0 = W / 2;
+  for (const [z1, top] of steps) {
+    gb.add('concrete', boxT(dw + 0.36, top - 0.1, z1 - (z0 - W / 2) + 0.02, 2), P(base, dx, 0.1 + (top - 0.1) / 2, (z0 + W / 2 + z1) / 2));
+    walkDeck(base, dx, (z0 + W / 2 + z1) / 2, dw + 0.36, W / 2 + z1 - z0, top);
+    z0 = W / 2 + z1;
+  }
   keep(pl.X, pl.N, L / 2 + 8);
   SCN.lamps.push(new THREE.Vector3().setFromMatrixPosition(P(base, 0, 3.4, W / 2 + 1.7)));
+  /* the platform as the travellers know it, in the depot's frame (x along, z out to the track, the platform top at 0.16):
+     its length, the depot's face, the track edge, the door and its steps, the benches and what stands in the way */
+  const obs = [[0, W / 2 + 0.6, 1.65 + 0.05, 0.8], [L / 2 + 6, W / 2 + 2.6, 1.45, 0.65], [0, W / 2 + 2.4, 0.25, 0.25]];
+  for (const lx of [-(L / 2 + 20), -(L / 2 + 9), L / 2 + 11, L / 2 + 20]) obs.push([lx, W / 2 + 0.9, 0.2, 0.2]);
+  for (const bx of benches) obs.push([bx, W / 2 + 0.65, 0.95, 0.32]);
+  return { base: base.clone(), L, W, big, PL: L + 50, z0: W / 2 + 0.1, zE: W / 2 + 5.3, top: 0.16, floor: 0.9, door: { x: dx, w: dw, steps }, benches, obs };
 }
 /* A plank walk over both main tracks at the depot, for trains on the far main: planks between the rails
    like a road crossing, and timber decking between the tracks (and out to a depot beyond track 2, or beyond
@@ -5858,7 +5878,7 @@ function buildStations() {
   for (const st of ROUTE.stations) {
     if (st.kind === 'quarry') continue;
     const pl = linePlace(st.line, st.sLine, st.side * (12 + (st.across || 0))); pl.lat = st.side;
-    depot(pl, st.name.toUpperCase(), st.kind === 'depot');
+    st.plat = depot(pl, st.name.toUpperCase(), st.kind === 'depot');
     if (st.line === ROUTE.main && ROUTE.main2 && (!ROUTE.span2 || (st.sLine > ROUTE.span2[0] && st.sLine < ROUTE.span2[1]))) stationCrossing(st);
   }
   for (const w of ROUTE.water) {
@@ -9946,6 +9966,11 @@ function coachModel(spec, num, observation, trim = '') {
   for (const s of [-1, 1]) gb.add(nk, new THREE.PlaneGeometry(0.9, 0.32), M(-7.5, 1.8, s * (hw + 0.002), 0, s > 0 ? 0 : Math.PI, 0));
   // vestibules: side walls with the Dutch door, steps under it, grab irons beside it, the end wall and the diaphragm
   const xd = (CH.xb + CH.xv) / 2, dw = 0.62;
+  /* the doors and the step traps open (11q_crowd.js swings them for the travellers), so they are a group of their own
+     with a list of which vertices are whose (coachDoorSet) */
+  const dg = new GeoBin(), dparts = {};
+  const dcount = g => g.index ? g.index.count : g.attributes.position.count;
+  const dadd = (id, key, geo, m) => { const n = (dg.bins[key] || []).reduce((a, g) => a + dcount(g), 0); dg.add(key, geo, m); (dparts[id] || (dparts[id] = [])).push([key, n, dcount(geo)]); };
   const vest = e => {
     const xv = e * CH.xv, zz = hw - 0.02;
     for (const s of [-1, 1]) {
@@ -9953,15 +9978,16 @@ function coachModel(spec, num, observation, trim = '') {
       gb.box(body, 0.08, yE - CH.yT, 0.05, e * (CH.xb + 0.03), (yE + CH.yT) / 2, z);                     // door posts
       gb.box(body, 0.06, yE - CH.yT, 0.05, e * (CH.xv - 0.03), (yE + CH.yT) / 2, z);
       gb.box(body, CH.xv - CH.xb, yE - 3.08, 0.05, e * xd, (yE + 3.08) / 2, z);                          // over the door
-      gb.box(body, dw, 3.08 - CH.yT, 0.04, e * xd, (3.08 + CH.yT) / 2, s * (zz - 0.04));                 // the door
-      gb.box(win, dw - 0.16, 0.66, 0.02, e * xd, 2.6, s * (zz - 0.015));
-      gb.box(G, dw, 0.04, 0.03, e * xd, 2.2, s * (zz - 0.01));                                             // the Dutch door's split
-      gb.box('brass', 0.03, 0.12, 0.05, e * (xd - 0.24), 2.05, s * (zz + 0.0));
+      const lf = 'L' + e + s, tp = 'T' + e + s;
+      dadd(lf, body, new THREE.BoxGeometry(dw, 3.08 - CH.yT, 0.04), M(e * xd, (3.08 + CH.yT) / 2, s * (zz - 0.04)));      // the door
+      dadd(lf, win, new THREE.BoxGeometry(dw - 0.16, 0.66, 0.02), M(e * xd, 2.6, s * (zz - 0.015)));
+      dadd(lf, G, new THREE.BoxGeometry(dw, 0.04, 0.03), M(e * xd, 2.2, s * (zz - 0.01)));                            // the Dutch door's split
+      dadd(lf, 'brass', new THREE.BoxGeometry(0.03, 0.12, 0.05), M(e * (xd - 0.24), 2.05, s * (zz + 0.0)));
       for (const x of [e * (CH.xb - 0.0), e * (CH.xv + 0.0)]) gb.add('brass', barGeo(0.013, [x, 1.5, s * (hw + 0.06)], [x, 2.9, s * (hw + 0.06)], 5)), gb.box('brass', 0.04, 0.04, 0.09, x, 1.55, s * (hw + 0.03)), gb.box('brass', 0.04, 0.04, 0.09, x, 2.85, s * (hw + 0.03));
       // steps: three treads on stringers hung from the floor, and the trap plate at floor level
       for (const d of [-1, 1]) gb.box(G, 0.04, CH.yT - 0.36, 0.34, e * xd + d * (dw / 2 - 0.02), (CH.yT + 0.36) / 2, s * (zz - 0.18));
       for (const y of [0.4, 0.72, 1.02]) gb.box(G, dw - 0.06, 0.04, 0.32 - (y - 0.4) * 0.2, e * xd, y, s * (zz - 0.18 + (y - 0.4) * 0.1 * 0));
-      gb.box(G, dw - 0.06, 0.04, 0.36, e * xd, CH.yT - 0.02, s * (zz - 0.18));
+      dadd(tp, G, new THREE.BoxGeometry(dw - 0.06, 0.04, 0.36), M(e * xd, CH.yT - 0.02, s * (zz - 0.18)));        // the trap over them
       if (T) addWreath(gb, 0.15, 0.035, M(e * xd, 2.62, s * (zz + 0.0), 0, s > 0 ? 0 : Math.PI, 0));
     }
     // end wall with the end door
@@ -10153,6 +10179,7 @@ function coachModel(spec, num, observation, trim = '') {
   }
   const couplers = carCouplers(gb, root, L, -0.55, 0.955, 1.08);
   root.add(shareCarGeos(gb.build(RMAT)));
+  { const dgr = shareCarGeos(dg.build(RMAT)); dgr.name = 'doors'; root.add(dgr); root.userData.doors = { grp: dgr, parts: dparts, k: {}, own: null, xd, dw, zz: hw - 0.02 }; }
   root.traverse(o => { if (o.isMesh && !o.userData.cpl) { o.castShadow = true; o.receiveShadow = true; } });
   // the saloon (06g_person.js): every coach carries it, near or far, so a car never changes as the camera comes up to it.
   // Its geometry is shared by every car of the same kind.
@@ -10166,6 +10193,49 @@ function coachModel(spec, num, observation, trim = '') {
   const cp = coachPairs();
   root.userData.winLight = { x0: cp[0], pitch: cp[1] - cp[0], n: cp.length, so: 0.33, hw: 0.28, side: hw - 0.05, skin: hw + 0.08, sill: w0, head: w1, yL: yE + 0.4, half: CH.xb, col: T ? 0xffbb6a : 0xffc47c, I: T ? 2.3 : 2.0, lit: 'coach' };
   return { root, len: L, trucks: [{ a: 3.5, type: 'six', R: 0.457 }, { a: 21.2, type: 'six', R: 0.457 }], frame: [3.5, 21.2], weight: 82 * STON, kind: 'coach', axles: 6, area: 120, couplers };
+}
+
+/* Open a coach's vestibule door (e: the end, +1 or -1; s: the side) by k, 0 shut to 1 open: the Dutch door swings in
+   on its hinge at the end post until it lies along the end wall, and the trap over the steps lifts up against it.
+   A car keeps the shared geometry of its doors until one opens; then it takes its own copy, and gives it back once
+   they are all shut again. */
+function coachDoorSet(root, e, s, k) {
+  const D = root && root.userData.doors; if (!D) return;
+  const id = '' + e + s; k = clamp(k, 0, 1);
+  if ((D.k[id] || 0) === k) return;
+  D.k[id] = k;
+  if (!D.own) {
+    if (k <= 0) return;
+    D.own = new Map();
+    for (const m of D.grp.children) {
+      const g0 = m.geometry, g = new THREE.BufferGeometry();
+      for (const a in g0.attributes) g.setAttribute(a, g0.attributes[a].clone());
+      g.boundingSphere = g0.boundingSphere; g.boundingBox = g0.boundingBox;
+      D.own.set(m.name, { m, g0, P0: g0.attributes.position.array, N0: g0.attributes.normal.array });
+      m.geometry = g;
+    }
+  }
+  const zz = D.zz, xh = e * (CH.xv - 0.06), zh = s * (zz - 0.06), a = -e * s * Math.PI / 2 * 0.97 * k;
+  const xt = e * (D.xd + (D.dw - 0.06) / 2), yt = CH.yT, b = -e * Math.PI / 2 * 0.97 * k;
+  const ca = Math.cos(a), sa = Math.sin(a), cb = Math.cos(b), sb = Math.sin(b);
+  for (const [which, list] of [['L', D.parts['L' + id]], ['T', D.parts['T' + id]]]) for (const [key, n, c] of list || []) {
+    const o = D.own.get(key); if (!o) continue;
+    const P = o.m.geometry.attributes.position, N = o.m.geometry.attributes.normal, p = P.array, nn = N.array, P0 = o.P0, N0 = o.N0;
+    for (let i = n * 3, e3 = (n + c) * 3; i < e3; i += 3) {
+      if (which === 'L') {
+        const dx = P0[i] - xh, dz = P0[i + 2] - zh;
+        p[i] = xh + dx * ca + dz * sa; p[i + 1] = P0[i + 1]; p[i + 2] = zh - dx * sa + dz * ca;
+        nn[i] = N0[i] * ca + N0[i + 2] * sa; nn[i + 1] = N0[i + 1]; nn[i + 2] = -N0[i] * sa + N0[i + 2] * ca;
+      } else {
+        const dx = P0[i] - xt, dy = P0[i + 1] - yt;
+        p[i] = xt + dx * cb - dy * sb; p[i + 1] = yt + dx * sb + dy * cb; p[i + 2] = P0[i + 2];
+        nn[i] = N0[i] * cb - N0[i + 1] * sb; nn[i + 1] = N0[i] * sb + N0[i + 1] * cb; nn[i + 2] = N0[i + 2];
+      }
+    }
+    P.needsUpdate = true; N.needsUpdate = true;
+  }
+  // all shut: back to the shared doors
+  if (Object.values(D.k).every(v => v <= 0)) { for (const o of D.own.values()) { o.m.geometry.dispose(); o.m.geometry = o.g0; } D.own = null; }
 }
 
 /* ======== trucks ========
@@ -14581,6 +14651,368 @@ function saloonLamps(list, cam, cars, dark) {
     const l = _salPool[i] || (_salPool[i] = { kind: 'saloon', p: new THREE.Vector3(), dyn: true, lv: 0 });
     l.p.copy(p).applyMatrix4(best.matrixWorld); l.lv = lv; list.push(l);
   });
+}
+
+/* ============================================================================
+   Travellers: the people who wait on the platforms, climb aboard the coaches,
+   ride in the seats and get off at their stations (11q_crowd.js moves them).
+   Each is one skinned mesh on the same jointed skeleton as the railroader you
+   walk about as (06g_person.js PD, posePerson), so they stand on their soles,
+   sit on the cushions and walk the same way, at one draw call apiece.
+   The clothes are the 1940s: men in suits and overcoats under fedoras, women in
+   dresses and coats with small hats, soldiers going home on leave, children.
+   Every piece overlaps the piece it hangs from, so no pose opens a gap.
+   Person frame as in 06g: soles on y = 0, facing +Z, +X to the left.
+   ========================================================================== */
+/* the skeleton: the joints of buildPerson, in this order (index 0 of each pair is the +X side, his left) */
+const FOLK_BONES = ['hips', 'spine', 'neck', 'head', 'sh0', 'el0', 'wr0', 'sh1', 'el1', 'wr1', 'hip0', 'kn0', 'an0', 'hip1', 'kn1', 'an1', 'skirt'];
+const FOLK_PARENT = [-1, 0, 1, 2, 1, 4, 5, 1, 7, 8, 0, 10, 11, 0, 13, 14, 0];
+const FOLK_REST = (() => {
+  const P = [[0, PD.hips, 0], [0, PD.spine, 0], [0, PD.neck, 0], [0, PD.head, 0]];
+  for (const s of [1, -1]) P.push([s * PD.shX, PD.shY, 0], [0, -PD.upper, 0], [0, -PD.fore, 0]);
+  for (const s of [1, -1]) P.push([s * PD.hipX, -0.005, 0], [0, -PD.thigh, 0], [0, -PD.shin, 0]);
+  P.push([0, -0.005, 0]);   // the skirt's middle, swung halfway between the thighs
+  return P;
+})();
+/* each joint's rest position in the person frame (the skeleton has no rotation at rest) */
+const FOLK_AT = FOLK_REST.map((p, i) => { const o = p.slice(); for (let j = FOLK_PARENT[i]; j >= 0; j = FOLK_PARENT[j]) for (let k = 0; k < 3; k++) o[k] += FOLK_REST[j][k]; return o; });
+const FB = Object.fromEntries(FOLK_BONES.map((n, i) => [n, i]));
+/* colour slots: what each part of a traveller is made of */
+const FS = { skin: 0, hair: 1, hat: 2, coat: 3, shirt: 4, legs: 5, shoes: 6, skirt: 7, bag: 8, accent: 9, dark: 10, band: 11 };
+/* the kinds of traveller: build adds their parts; h is the range of heights (as a scale of the 1.78 m frame) */
+const FOLK_KINDS = {
+  suit: { h: [0.94, 1.03], seat: 1 },
+  coat: { h: [0.94, 1.03], seat: 1 },
+  dress: { h: [0.9, 0.97], seat: 1 },
+  wcoat: { h: [0.9, 0.97], seat: 1 },
+  soldier: { h: [0.95, 1.03], seat: 1 },
+  boy: { h: [0.64, 0.74], seat: 1, kid: true },
+  girl: { h: [0.62, 0.72], seat: 1, kid: true },
+};
+const FOLK_CASE = { suit: 0.55, coat: 0.45, wcoat: 0.4, soldier: 0.7, dress: 0, boy: 0, girl: 0 };   // how many carry a suitcase (or a kit bag)
+const FOLK_BAG = { dress: 0.75, wcoat: 0.5 };                                                        // and a handbag on the arm
+
+/* ---------- parts ---------- */
+function folkParts(kind, carry) {
+  const parts = [], kid = FOLK_KINDS[kind].kid, wom = kind === 'dress' || kind === 'wcoat' || kind === 'girl';
+  const add = (bone, slot, g, m) => { if (m) g.applyMatrix4(m); parts.push([FB[bone], slot, g]); return g; };
+  const tz = TORSO_ZS, coatK = kind === 'coat' || kind === 'wcoat';
+  // the torso: a jacket, coat, dress bodice, sweater or uniform blouse; narrower in the shoulders for a woman
+  const sx = wom ? 0.9 : 1, R = coatK ? 1.08 : 1.04;
+  {
+    const prof = TORSO.map(([r, y]) => [r * R, y]);
+    add('spine', FS.coat, turned(prof, tz, 12).scale(sx, 1, 1));
+    // the shoulders' round, so an arm swung any way still meets the body
+    for (const s of [-1, 1]) add('spine', FS.coat, new THREE.SphereGeometry(0.06, 10, 8).scale(1, 0.9, 0.95).translate(s * PD.shX * (wom ? 0.95 : 1), PD.shY, 0));
+    if (kind === 'suit' || kind === 'soldier') {
+      // the shirt and tie in the jacket's open front
+      add('spine', FS.shirt, new THREE.BoxGeometry(0.075, 0.15, 0.012).translate(...torsoAt(0, 0.4, 1, 0.012)));
+      add('spine', FS.accent, new THREE.BoxGeometry(0.03, 0.17, 0.01).translate(...torsoAt(0, 0.385, 1, 0.022)));
+      // jacket buttons
+      for (const y of [0.18, 0.25]) add('spine', FS.dark, new THREE.SphereGeometry(0.011, 6, 4).translate(...torsoAt(0.02, y, 1, 0.012 + (R - 1) * 0.16)));
+    }
+    if (coatK) {
+      // a scarf round the neck, its end hanging down the front, and the coat's buttons
+      add('spine', FS.accent, new THREE.TorusGeometry(0.064, 0.024, 6, 14).rotateX(Math.PI / 2).translate(0, 0.47, 0));
+      add('spine', FS.accent, new THREE.BoxGeometry(0.06, 0.2, 0.02).rotateZ(0.12).translate(...torsoAt(0.05, 0.36, 1, 0.025 + 0.012)));
+      for (const y of [0.1, 0.2, 0.3]) add('spine', FS.dark, new THREE.SphereGeometry(0.012, 6, 4).translate(...torsoAt(0.045, y, 1, 0.014 + 0.012)));
+    }
+    if (kind === 'dress') add('spine', FS.accent, new THREE.TorusGeometry(0.06, 0.012, 5, 14).rotateX(Math.PI / 2).translate(0, 0.468, 0));   // collar
+    if (kind === 'soldier') { add('spine', FS.band, turned([[0.0, 0.0], [torsoR(0.03) * R * 1.03, 0.0], [torsoR(0.03) * R * 1.03, 0.06], [0, 0.06]], tz, 12)); }   // belt
+    if (kind === 'boy') add('spine', FS.shirt, new THREE.TorusGeometry(0.058, 0.016, 5, 14).rotateX(Math.PI / 2).translate(0, 0.47, 0));     // shirt collar over the sweater
+  }
+  // the pelvis: trousers, a skirt's top, or the coat over them
+  {
+    const skirtTop = kind === 'wcoat' || coatK ? FS.coat : wom ? FS.skirt : kind === 'boy' ? FS.skirt : FS.legs;
+    add('hips', skirtTop, turned([[0.0, -0.15], [0.105, -0.145], [0.158, -0.09], [0.17, -0.01], [0.162, 0.06], [0.145, 0.11]].map(([r, y]) => [r * (wom ? 0.97 : 1), y]), 0.74, 12));
+  }
+  // the neck and head
+  add('neck', FS.skin, new THREE.CylinderGeometry(0.05, 0.055, 0.15, 10).translate(0, 0.045, 0));
+  {
+    const hs = kid ? 1.22 : 1, H = (g) => g.scale(hs, hs, hs);
+    const fx = 0.78, fy = wom ? 1.1 : 1.15, fz = 0.98;
+    add('head', FS.skin, H(new THREE.SphereGeometry(0.1, 14, 11).scale(fx, fy, fz)));
+    add('head', FS.skin, H(new THREE.SphereGeometry(0.019, 6, 5).scale(0.8, 1.3, 1).translate(0, -0.012, 0.096)));       // nose
+    for (const s of [-1, 1]) {
+      add('head', FS.skin, H(new THREE.SphereGeometry(0.025, 6, 5).scale(0.35, 1, 0.7).translate(s * 0.077, -0.005, -0.005)));
+      add('head', FS.dark, H(new THREE.SphereGeometry(0.011, 6, 4).translate(s * 0.032, 0.018, 0.083)));                 // eyes
+      add('head', FS.hair, H(new THREE.BoxGeometry(0.03, 0.007, 0.012).translate(s * 0.033, 0.038, 0.088)));             // brows
+    }
+    // hair: short back and sides for the men and the boy, longer and rolled for the women, a ribbon on the girl
+    // the crown, down to the hairline, and the back and sides (the face left clear, 60 degrees either side)
+    const hr = wom ? 0.107 : 0.104;
+    add('head', FS.hair, H(new THREE.SphereGeometry(hr, 14, 4, 0, TAU, 0, Math.PI * 0.27).scale(fx, fy, fz)));
+    add('head', FS.hair, H(new THREE.SphereGeometry(hr, 12, 7, Math.PI * 0.83, Math.PI * 1.34, Math.PI * 0.2, Math.PI * (wom ? 0.44 : 0.36)).scale(fx, fy, fz * (wom ? 1.03 : 1))));
+    if (wom) {
+      add('head', FS.hair, H(new THREE.SphereGeometry(0.075, 10, 8).scale(1.25, 0.8, 0.85).translate(0, -0.06, -0.06)));   // the roll at the nape
+      if (kind === 'girl') add('head', FS.accent, H(new THREE.TorusGeometry(0.03, 0.012, 5, 10).scale(1.4, 1, 1).translate(0, 0.09, -0.06)));
+    }
+    // hats
+    const hat = FOLK_HAT[kind];
+    if (hat === 'fedora') {
+      add('head', FS.hat, H(new THREE.CylinderGeometry(0.083, 0.094, 0.1, 14).scale(1, 1, 1.15).translate(0, 0.125, 0)));
+      add('head', FS.hat, H(new THREE.SphereGeometry(0.084, 14, 5, 0, TAU, 0, Math.PI / 2).scale(1, 0.32, 1.15).translate(0, 0.172, 0)));
+      add('head', FS.band, H(new THREE.CylinderGeometry(0.0955, 0.0965, 0.026, 14).scale(1, 1, 1.15).translate(0, 0.088, 0)));
+      add('head', FS.hat, H(new THREE.CylinderGeometry(0.17, 0.165, 0.012, 18).scale(1, 1, 1.12).translate(0, 0.075, 0.005)));
+    } else if (hat === 'garrison') {
+      // the folded overseas cap, worn tipped to the right
+      const g = new THREE.BoxGeometry(0.1, 0.07, 0.24); const p = g.attributes.position;
+      for (let i = 0; i < p.count; i++) if (p.getY(i) > 0) p.setX(i, p.getX(i) * 0.35);
+      g.computeVertexNormals();
+      add('head', FS.hat, H(g.rotateZ(-0.12).translate(-0.012, 0.115, 0)));
+    } else if (hat === 'cap') {
+      add('head', FS.hat, H(new THREE.CylinderGeometry(0.097, 0.092, 0.06, 14).scale(1, 1, 1.1).translate(0, 0.095, -0.004)));
+      add('head', FS.hat, H(new THREE.SphereGeometry(0.098, 14, 5, 0, TAU, 0, Math.PI / 2).scale(1.04, 0.3, 1.2).translate(0, 0.122, 0.012)));
+      add('head', FS.hat, H(new THREE.CylinderGeometry(0.1, 0.1, 0.008, 14, 1, false, -1.1, 2.2).scale(1, 1, 0.75).rotateX(0.12).translate(0, 0.075, 0.04)));
+    } else if (hat === 'lady') {
+      // a small felt hat tipped forward over the rolled hair, with a band
+      add('head', FS.hat, H(new THREE.CylinderGeometry(0.07, 0.078, 0.06, 14).scale(1, 1, 1.12).rotateX(0.18).translate(0, 0.128, 0.012)));
+      add('head', FS.hat, H(new THREE.CylinderGeometry(0.13, 0.125, 0.01, 18).scale(1, 1, 1.05).rotateX(0.18).translate(0, 0.098, 0.018)));
+      add('head', FS.band, H(new THREE.CylinderGeometry(0.0785, 0.0795, 0.02, 14).scale(1, 1, 1.12).rotateX(0.18).translate(0, 0.108, 0.014)));
+    }
+  }
+  // arms: sleeves to the hands
+  for (const i of [0, 1]) {
+    const s = i ? 'sh1' : 'sh0', e = i ? 'el1' : 'el0', w = i ? 'wr1' : 'wr0';
+    const slv = kind === 'boy' ? FS.coat : FS.coat;
+    add(s, slv, limbGeo(0.055 * (coatK ? 1.05 : 1) * (wom ? 0.92 : 1), 0.046 * (wom ? 0.92 : 1), PD.upper, 10));
+    add(e, slv, limbGeo(0.048 * (coatK ? 1.06 : 1), 0.04, PD.fore, 10));
+    add(e, kind === 'suit' ? FS.shirt : slv, new THREE.CylinderGeometry(0.043, 0.041, 0.035, 10).translate(0, -PD.fore + 0.012, 0));   // the cuff
+    const glove = kind === 'wcoat' ? FS.accent : FS.skin;
+    add(w, glove, new THREE.SphereGeometry(0.046, 9, 8).scale(0.6, 1.7, 1.0).translate(0, -0.075, 0.005));
+    add(w, glove, limbGeo(0.015, 0.013, 0.045, 6).rotateX(-0.6).rotateZ(-(i ? -1 : 1) * 0.35).translate(0, -0.045, 0.03));   // thumb
+  }
+  // legs: trousers (or stockings under a skirt, or the coat's skirts over trousers) to the shoes
+  for (const i of [0, 1]) {
+    const hp = i ? 'hip1' : 'hip0', kn = i ? 'kn1' : 'kn0', an = i ? 'an1' : 'an0', side = i ? -1 : 1;
+    if (wom) {
+      add(hp, FS.legs, limbGeo(0.078, 0.056, PD.thigh, 10));
+      add(kn, FS.legs, limbGeo(0.056, 0.042, PD.shin, 10));
+      /* the skirt, worn to just below the knee: each half flares round its own thigh and they overlap between
+         the legs, so it hangs as one standing still, swings with the stride and drapes over the lap seated */
+      const L = kind === 'girl' ? 0.36 : 0.5, top = 0.135, hem = kind === 'wcoat' ? 0.2 : 0.185;
+      const g = new THREE.LatheGeometry([[hem * 0.86, -L + 0.004], [hem, -L], [hem * 0.92, -L + 0.06], [top * 1.1, -0.12], [top * 1.08, 0.0], [top * 0.9, 0.1], [0, 0.1]].map(([r, y]) => new THREE.Vector2(r, y)), 12);
+      g.scale(1, 1, 0.86).translate(-side * 0.04, 0, 0.012);
+      add(hp, kind === 'wcoat' ? FS.coat : FS.skirt, g);
+    } else if (kind === 'boy') {
+      add(hp, FS.skin, limbGeo(0.07, 0.052, PD.thigh, 10));
+      add(hp, FS.skirt, new THREE.LatheGeometry([[0.075, -0.222], [0.098, -0.22], [0.104, -0.12], [0.1, 0.02], [0, 0.02]].map(([r, y]) => new THREE.Vector2(r, y)), 10));   // short trousers
+      add(kn, FS.skin, limbGeo(0.052, 0.042, PD.shin, 10));
+      add(kn, FS.legs, new THREE.CylinderGeometry(0.05, 0.047, 0.25, 10).translate(0, -PD.shin + 0.1, 0));            // knee socks
+    } else {
+      add(hp, FS.legs, limbGeo(0.088, 0.065, PD.thigh, 10));
+      add(kn, FS.legs, limbGeo(0.065, 0.054, PD.shin, 10));
+      add(kn, FS.legs, new THREE.CylinderGeometry(0.068, 0.066, 0.06, 10).translate(0, -PD.shin + 0.085, 0));          // the trouser cuff over the shoe
+      if (kind === 'coat') {
+        // the overcoat's skirts, to below the knee, each round its own thigh
+        const g = new THREE.LatheGeometry([[0.13, -0.505], [0.152, -0.5], [0.148, -0.14], [0.142, 0.02], [0, 0.02]].map(([r, y]) => new THREE.Vector2(r, y)), 12);
+        g.scale(1, 1, 0.86).translate(-side * 0.035, 0, 0.008);
+        add(hp, FS.coat, g);
+      }
+      if (kind === 'soldier') add(kn, FS.band, new THREE.CylinderGeometry(0.062, 0.06, 0.13, 10).translate(0, -PD.shin + 0.1, 0));   // canvas leggings
+    }
+    // shoes: soles on the ground at y = -ankle in the ankle's frame
+    const y0 = -PD.ankle, sw = wom ? 0.08 : 0.095, sl = wom ? 0.22 : 0.255;
+    add(an, FS.shoes, new THREE.CylinderGeometry(wom ? 0.046 : 0.056, wom ? 0.05 : 0.06, 0.1, 10).translate(0, 0.0, -0.005));
+    add(an, FS.shoes, new THREE.BoxGeometry(sw, 0.065, sl).translate(0, y0 + 0.0325, 0.04));
+    add(an, FS.shoes, new THREE.SphereGeometry(sw / 2, 9, 6, 0, TAU, 0, Math.PI / 2).scale(1, 0.9, 1.1).translate(0, y0 + 0.012, 0.04 + sl / 2 - 0.01));
+    add(an, FS.dark, new THREE.BoxGeometry(sw + 0.006, 0.014, sl + 0.01).translate(0, y0 + 0.007, 0.04));
+  }
+  /* the middle of a skirt or overcoat, hung from the hips and swung halfway between the thighs (folkPose), so the
+     gap the two halves open at full stride is filled; just inside them standing still, over the lap seated */
+  if (wom || kind === 'coat') {
+    const L = kind === 'girl' ? 0.36 : 0.5, hm = kind === 'coat' ? 0.138 : 0.148, c = kind === 'coat' || kind === 'wcoat' ? FS.coat : FS.skirt;
+    const g = new THREE.LatheGeometry([[hm * 0.84, -L + 0.006], [hm, -L + 0.002], [hm * 0.95, -L + 0.06], [0.11, -0.12], [0.1, 0.0], [0.09, 0.08], [0, 0.08]].map(([r, y]) => new THREE.Vector2(r, y)), 14);
+    add('skirt', c, g.scale(1.35, 1, 0.97).translate(0, 0, 0.012));
+  }
+  // luggage: a suitcase (a soldier's kit bag) in the right hand, a handbag on the left forearm
+  if (carry === 'case') {
+    const w = 'wr1';
+    if (kind === 'soldier') {
+      add(w, FS.bag, new THREE.CylinderGeometry(0.13, 0.13, 0.52, 12).rotateX(Math.PI / 2).translate(0, -0.25, 0));
+      add(w, FS.band, new THREE.TorusGeometry(0.05, 0.012, 5, 10).translate(0, -0.12, 0));
+    } else {
+      add(w, FS.bag, new THREE.BoxGeometry(0.12, 0.34, 0.48).translate(0, -0.3, 0));
+      add(w, FS.band, new THREE.BoxGeometry(0.128, 0.03, 0.488).translate(0, -0.2, 0));
+      add(w, FS.band, new THREE.BoxGeometry(0.1, 0.03, 0.03).translate(0, -0.115, 0));          // the handle in his grip
+      for (const z of [-0.15, 0.15]) add(w, FS.band, new THREE.BoxGeometry(0.02, 0.04, 0.02).translate(0, -0.13, z * 0.25));
+    }
+  } else if (carry === 'bag') {
+    add('el0', FS.bag, new THREE.BoxGeometry(0.06, 0.16, 0.22).translate(0.075, -0.12, 0.02));
+    add('el0', FS.band, new THREE.TorusGeometry(0.06, 0.008, 4, 12).rotateY(Math.PI / 2).translate(0.06, -0.06, 0.0));
+  }
+  return parts;
+}
+const FOLK_HAT = { suit: 'fedora', coat: 'fedora', soldier: 'garrison', boy: 'cap', dress: 'lady', wcoat: 'lady', girl: null };
+
+/* ---------- colourways ---------- */
+const FOLK_PAL = {
+  skin: ['#f2cba8', '#e3b08a', '#d29c74', '#b97e57', '#9a6443', '#7a4c31', '#5c3722'],
+  hair: ['#1b1511', '#2f2219', '#4a3322', '#6b4428', '#93643a', '#c19a62', '#837c74', '#c9c4bb'],
+  mCoat: ['#283140', '#35363a', '#4a3a2c', '#655440', '#55595d', '#2c3729', '#7a684e', '#1d2026', '#45403a'],
+  wCoat: ['#7a2430', '#2b4a6b', '#4b5e3a', '#8a6a3e', '#5a3a5e', '#a5482f', '#2e2e35', '#6d7f8c', '#b28d5a'],
+  dress: ['#9b3b3b', '#3b6b8a', '#c49a3e', '#5e7b4a', '#7a5a8a', '#2e4a6e', '#a85a6a', '#d8c9a8', '#3f5f5a'],
+  mHat: ['#2a2420', '#4a3a2a', '#5c5c58', '#3a3d44', '#6b5a40', '#1b1b1d'],
+  wHat: ['#1b1b1d', '#7a2430', '#2b3a5a', '#5a3a2a', '#d9cdb5', '#3a4a3a'],
+  shoes: ['#1a1410', '#3a2416', '#2a1a12', '#4a2c18'],
+  wShoes: ['#1a1410', '#5a2a1a', '#2a2a2a', '#7a4a2a', '#d0c4b0'],
+  shirt: ['#e8e6df', '#dfe6ee', '#efe8d8'],
+  accent: ['#7a1f1f', '#1f3a6b', '#2f4a2f', '#6b4a1f', '#3a1f4a', '#a8862a', '#5a2a2a'],
+  bag: ['#6b4424', '#3d2a1c', '#7a6a4a', '#2a3a4a', '#5a1f1f', '#8a7a5a'],
+  band: ['#2a1c12', '#1b1b1b', '#3a2a1a'],
+  sweater: ['#8a2a2a', '#2a4a7a', '#4a6a3a', '#b88a3a', '#5a5a5a'],
+};
+function folkWay(kind, k) {
+  const r = rng(7919 * (k + 1) + kind.length * 131 + kind.charCodeAt(0) * 17), pick = a => a[Math.floor(r() * a.length) % a.length];
+  const skin = pick(FOLK_PAL.skin), hair = pick(FOLK_PAL.hair.slice(0, FOLK_KINDS[kind].kid ? 6 : 8));
+  const w = { skin, hair, dark: '#1c1916', shirt: pick(FOLK_PAL.shirt), accent: pick(FOLK_PAL.accent), bag: pick(FOLK_PAL.bag), band: pick(FOLK_PAL.band) };
+  if (kind === 'suit' || kind === 'coat') { w.coat = pick(FOLK_PAL.mCoat); w.legs = r() < 0.6 ? w.coat : pick(FOLK_PAL.mCoat); w.hat = pick(FOLK_PAL.mHat); w.shoes = pick(FOLK_PAL.shoes); w.skirt = w.coat; }
+  else if (kind === 'soldier') { const navy = r() < 0.3; w.coat = navy ? '#1d2433' : '#5b5a3c'; w.legs = navy ? '#1d2433' : '#6b6447'; w.hat = w.coat; w.shoes = navy ? '#121212' : '#4a2e1c'; w.accent = navy ? '#121212' : '#4d4a36'; w.band = navy ? '#121212' : '#8f8665'; w.bag = navy ? '#e2ddd0' : '#77714f'; w.skirt = w.legs; }
+  else if (kind === 'dress' || kind === 'girl') { w.coat = pick(FOLK_PAL.dress); w.skirt = w.coat; w.legs = folkMix(skin, '#c8a184', 0.55); w.hat = pick(FOLK_PAL.wHat); w.shoes = pick(FOLK_PAL.wShoes); if (kind === 'girl') w.legs = '#ece8e0'; }
+  else if (kind === 'wcoat') { w.coat = pick(FOLK_PAL.wCoat); w.skirt = pick(FOLK_PAL.dress); w.legs = folkMix(skin, '#c8a184', 0.55); w.hat = pick(FOLK_PAL.wHat); w.shoes = pick(FOLK_PAL.wShoes); w.accent = r() < 0.5 ? '#1b1b1d' : pick(FOLK_PAL.accent); }
+  else if (kind === 'boy') { w.coat = pick(FOLK_PAL.sweater); w.skirt = pick(['#4a4a4a', '#5a4a3a', '#2a3346']); w.legs = pick(['#e2ddd0', '#5a5a5a', '#2a3346']); w.hat = pick(FOLK_PAL.mHat); w.shoes = pick(FOLK_PAL.shoes); }
+  return w;
+}
+function folkMix(a, b, k) { const A = new THREE.Color(a), B = new THREE.Color(b); return '#' + A.lerp(B, k).getHexString(); }
+const FOLK_WAYS = 8;   // colourways of each kind
+
+/* ---------- the shared geometry ---------- */
+const FOLK = { base: {}, geo: {}, mat: null, matIn: null, inK: { value: 0 }, inv: null };
+/* the merged parts of one kind with what it carries: positions in the rest pose, a bone and a slot for every vertex */
+function folkBase(kind, carry) {
+  const key = kind + '|' + (carry || '');
+  if (FOLK.base[key]) return FOLK.base[key];
+  const parts = folkParts(kind, carry);
+  let nv = 0, ni = 0;
+  for (const [, , g] of parts) { nv += g.attributes.position.count; ni += g.index ? g.index.count : g.attributes.position.count; }
+  const pos = new Float32Array(nv * 3), nor = new Float32Array(nv * 3), si = new Uint16Array(nv * 4), sw = new Float32Array(nv * 4), slot = new Uint8Array(nv);
+  const idx = nv > 65535 ? new Uint32Array(ni) : new Uint16Array(ni);
+  let v = 0, q = 0;
+  for (const [b, s, g0] of parts) {
+    const g = g0.attributes.normal ? g0 : (g0.computeVertexNormals(), g0);
+    const P = g.attributes.position, N = g.attributes.normal, at = FOLK_AT[b];
+    for (let i = 0; i < P.count; i++) {
+      pos[(v + i) * 3] = P.getX(i) + at[0]; pos[(v + i) * 3 + 1] = P.getY(i) + at[1]; pos[(v + i) * 3 + 2] = P.getZ(i) + at[2];
+      nor[(v + i) * 3] = N.getX(i); nor[(v + i) * 3 + 1] = N.getY(i); nor[(v + i) * 3 + 2] = N.getZ(i);
+      si[(v + i) * 4] = b; sw[(v + i) * 4] = 1; slot[v + i] = s;
+    }
+    if (g.index) for (let i = 0; i < g.index.count; i++) idx[q++] = g.index.getX(i) + v;
+    else for (let i = 0; i < P.count; i++) idx[q++] = v + i;
+    v += P.count;
+    g.dispose();
+  }
+  const B = {
+    key, kind, carry, slot, count: nv,
+    position: new THREE.BufferAttribute(pos, 3), normal: new THREE.BufferAttribute(nor, 3),
+    skinIndex: new THREE.Uint16BufferAttribute(si, 4), skinWeight: new THREE.BufferAttribute(sw, 4), index: new THREE.BufferAttribute(idx, 1),
+    parts: parts.map(([b, s]) => [b, s]),
+  };
+  return (FOLK.base[key] = B);
+}
+/* one kind in one colourway: shares every attribute of its base but the colours */
+const FOLK_SLOTKEY = Object.entries(FS).reduce((o, [k, v]) => (o[v] = k, o), []);
+function folkGeo(kind, way, carry) {
+  const key = kind + '|' + (carry || '') + '|' + way;
+  if (FOLK.geo[key]) return FOLK.geo[key];
+  const B = folkBase(kind, carry), W = folkWay(kind, way), col = new Float32Array(B.count * 3), c = new THREE.Color();
+  const lin = FOLK_SLOTKEY.map(k => { c.set(W[k] || '#ff00ff'); return [Math.pow(c.r, 2.2), Math.pow(c.g, 2.2), Math.pow(c.b, 2.2)]; });
+  for (let i = 0; i < B.count; i++) { const L = lin[B.slot[i]]; col[i * 3] = L[0]; col[i * 3 + 1] = L[1]; col[i * 3 + 2] = L[2]; }
+  const g = new THREE.BufferGeometry();
+  g.setIndex(B.index);
+  for (const a of ['position', 'normal', 'skinIndex', 'skinWeight']) g.setAttribute(a, B[a]);
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  if (typeof linearizeObject === 'function') (linearizeObject.done || (linearizeObject.done = new WeakSet())).add(col);   // already linear
+  // posed any way (seated, arms up, a suitcase swinging) he stays inside this
+  g.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0.9, 0.1), 1.15);
+  g.boundingBox = new THREE.Box3(new THREE.Vector3(-0.8, -0.1, -0.8), new THREE.Vector3(0.8, 2.0, 1.0));
+  g.userData.shared = true;
+  return (FOLK.geo[key] = g);
+}
+/* two materials: outdoors, and inside a coach, where the saloon's lamps light them too (11q_crowd sets FOLK.inK) */
+function folkMaterials() {
+  if (FOLK.mat) return;
+  const mk = inside => {
+    const m = new THREE.MeshStandardMaterial({ color: 0xffffff, vertexColors: true, roughness: 0.86, metalness: 0 });
+    m.skinning = true; m.userData.noSnow = true; m.userData.lin = true; m.userData.person = true;
+    if (inside) {
+      m.onBeforeCompile = sh => {
+        sh.uniforms.folkIn = FOLK.inK;
+        sh.fragmentShader = 'uniform float folkIn;\n' + sh.fragmentShader.replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n totalEmissiveRadiance += diffuseColor.rgb * folkIn;');
+      };
+      m.customProgramCacheKey = () => 'folkIn';
+    }
+    return m;
+  };
+  FOLK.mat = mk(false); FOLK.matIn = mk(true);
+}
+/* the bones' inverse bind matrices, the same for everyone */
+function folkInverses() {
+  if (FOLK.inv) return FOLK.inv;
+  return (FOLK.inv = FOLK_AT.map(p => new THREE.Matrix4().makeTranslation(-p[0], -p[1], -p[2])));
+}
+/* a traveller: { mesh, rig } where rig is posePerson's (root, j, soles) over the mesh's bones */
+function folkMesh(kind, way, carry) {
+  folkMaterials();
+  const bones = FOLK_BONES.map(n => { const b = new THREE.Bone(); b.name = n; return b; });
+  bones.forEach((b, i) => { b.position.fromArray(FOLK_REST[i]); if (FOLK_PARENT[i] >= 0) bones[FOLK_PARENT[i]].add(b); });
+  const mesh = new THREE.SkinnedMesh(folkGeo(kind, way, carry), FOLK.mat);
+  mesh.add(bones[0]);
+  mesh.bind(new THREE.Skeleton(bones, folkInverses()), new THREE.Matrix4());
+  mesh.matrixAutoUpdate = false; mesh.castShadow = false; mesh.receiveShadow = true; mesh.name = 'traveller';
+  const soles = [];
+  for (const a of [bones[FB.an0], bones[FB.an1]]) for (const z of [-0.1, 0.19]) for (const x of [-0.045, 0.045]) { const o = new THREE.Object3D(); o.position.set(x, -PD.ankle, z); a.add(o); soles.push(o); }
+  const j = { hips: bones[0], spine: bones[1], neck: bones[2], head: bones[3], sh: [bones[4], bones[7]], el: [bones[5], bones[8]], wr: [bones[6], bones[9]], hip: [bones[10], bones[13]], kn: [bones[11], bones[14]], an: [bones[12], bones[15]], skirt: bones[16] };
+  const rig = { root: mesh, j, soles, hull: [], _inv: new THREE.Matrix4(), _p: new THREE.Vector3() };
+  return { mesh, rig, kind, way, carry };
+}
+/* change what a traveller is (another kind, colourway or luggage) without a new skeleton */
+function folkDress(f, kind, way, carry) { f.mesh.geometry = folkGeo(kind, way, carry); f.kind = kind; f.way = way; f.carry = carry; }
+
+/* Pose a traveller. st as posePerson's ({ phase, speed, sit, t }), and also:
+   turn: head turned (radians, + to his left), look: head pitch (as posePerson), watch: 0..1 lifting the left wrist to read a watch,
+   carry: the suitcase hand held out from the leg, steady, scale: his height (for a seat height in metres),
+   reach: seated, let the thighs slope so the shoes find the floor (a bench higher than a coach seat) */
+function folkPose(f, st) {
+  const rig = f.rig, j = rig.j, sc = st.scale || 1;
+  const sit = st.sit ? st.sit / sc : 0;
+  posePerson(rig, sit ? { sit, look: st.look || 0 } : st);
+  if (sit) {
+    // the soles hang (sit + seatHip - 0.005) - (thigh slope) - shin - ankle below the hips: let the thighs slope down to reach
+    const lo = sit + PD.seatHip - 0.005 - PD.shin - PD.ankle - 0.03, reach = st.reach === false ? 0 : clamp(lo / PD.thigh, 0, FOLK_KINDS[f.kind].kid ? 0.1 : 0.28);
+    if (reach > 0) { const d = Math.asin(reach); for (let s = 0; s < 2; s++) { j.hip[s].rotation.x += d; j.kn[s].rotation.x -= d; } }
+    // hands in the lap
+    for (let s = 0; s < 2; s++) { j.sh[s].rotation.set(-0.42, 0, (s ? -1 : 1) * 0.06); j.el[s].rotation.set(-0.95, 0, 0); j.wr[s].rotation.set(0, 0, 0); }
+    if (st.read) { for (let s = 0; s < 2; s++) { j.sh[s].rotation.x = -0.6; j.el[s].rotation.x = -1.55; } j.neck.rotation.x = 0.32; }
+  }
+  if (st.turn) { j.neck.rotation.y = st.turn * 0.75; j.spine.rotation.y += st.turn * 0.25; }
+  if (st.watch > 0) {
+    const k = st.watch;
+    j.sh[0].rotation.x = lerp(j.sh[0].rotation.x, -0.55, k); j.sh[0].rotation.z = lerp(j.sh[0].rotation.z, -0.25, k);
+    j.el[0].rotation.x = lerp(j.el[0].rotation.x, -1.75, k); j.el[0].rotation.y = lerp(j.el[0].rotation.y, -0.5, k);
+    j.neck.rotation.x = lerp(j.neck.rotation.x, 0.42, k);
+  }
+  if (f.carry === 'case' && !sit) {
+    // the bag's weight: the arm hangs straight and a little out from the leg, swinging only a little
+    j.sh[1].rotation.x *= 0.25; j.sh[1].rotation.z = f.kind === 'wcoat' || f.kind === 'dress' ? -0.33 : -0.21; j.el[1].rotation.x = -0.04; j.spine.rotation.z = -0.035;
+  }
+  if (f.carry === 'bag' && !sit) { j.sh[0].rotation.x *= 0.3; j.sh[0].rotation.z = 0.12; j.el[0].rotation.x = -1.35; }
+  if (st.wave >= 0 && st.wave !== undefined && !sit) {
+    const w = st.wave, up = smooth(0, 0.35, w) * (1 - smooth(2.2, 2.7, w));
+    j.sh[0].rotation.set(-0.35 * up, 0, 2.55 * up + 0.07);
+    j.el[0].rotation.set(0, 0, (0.25 + 0.45 * Math.sin(w * 9)) * up);
+  }
+  j.skirt.quaternion.copy(j.hip[0].quaternion).slerp(j.hip[1].quaternion, 0.5);
+}
+/* the kinds and colourways a crowd draws from, weighted: mostly grown-ups in their travelling clothes */
+const FOLK_MIX = [['suit', 26], ['coat', 16], ['dress', 18], ['wcoat', 16], ['soldier', 9], ['boy', 8], ['girl', 7]];
+function folkPick(r, opt = {}) {
+  const wt = k => (opt.noKids && FOLK_KINDS[k].kid) || (opt.winter && k === 'dress') ? 0 : opt.winter && (k === 'coat' || k === 'wcoat') ? 1.8 : 1;
+  let tot = 0; for (const [k, w] of FOLK_MIX) tot += w * wt(k);
+  let x = r() * tot, kind = 'suit';
+  for (const [k, w] of FOLK_MIX) { const ww = w * wt(k); if (ww > 0 && (x -= ww) <= 0) { kind = k; break; } }
+  const K = FOLK_KINDS[kind];
+  const carry = r() < (FOLK_CASE[kind] || 0) * (opt.bags === undefined ? 1 : opt.bags) ? 'case' : r() < (FOLK_BAG[kind] || 0) ? 'bag' : null;
+  return { kind, way: Math.floor(r() * FOLK_WAYS), carry, scale: lerp(K.h[0], K.h[1], r()), seed: Math.floor(r() * 1e9) };
 }
 
 /* ============================================================================
@@ -30935,6 +31367,7 @@ function walkSolid(p, skip) {
       const fl = Math.hypot(v.fwd.x, v.fwd.z) || 1, ax = v.fwd.x / fl, az = v.fwd.z / fl;
       pushOut(p, [v.pos.x, v.pos.z, ax, az, -az, ax, v.len / 2 + 0.05, 1.62], WALK_R);
     }
+    if (typeof CROWD !== 'undefined') CROWD.push(p);   // and the travellers waiting on the platforms
   }
 }
 
@@ -31190,13 +31623,14 @@ WALK.findAction = function () {
   if (best) return best.wait ? { label: best.label, sub: 'Too fast · run alongside', off: true } : best;
   return null;
 };
-WALK.seatTaken = function (v, s) { for (const p of WALK.peers.values()) if (p.seatOf === v && p.seat && Math.abs(p.seat.x - s.x) < 0.1 && Math.abs(p.seat.z - s.z) < 0.1) return true; return false; };
+WALK.seatTaken = function (v, s) { if (typeof CROWD !== 'undefined' && CROWD.seatTaken(v, s)) return true; for (const p of WALK.peers.values()) if (p.seatOf === v && p.seat && Math.abs(p.seat.x - s.x) < 0.1 && Math.abs(p.seat.z - s.z) < 0.1) return true; return false; };
 WALK.sit = function (s) {
   const r = WALK.ride; if (!r) return;
   // the window seat if it is free, else the one by the aisle
   const P = walkPlan(r.v), side = q => Math.sign(q.z - P.mid);
   const row = P.seats.filter(q => Math.abs(q.x - s.x) < 0.01 && side(q) === side(s)).sort((a, b) => Math.abs(b.z - P.mid) - Math.abs(a.z - P.mid));
-  const free = row.find(q => !WALK.seatTaken(r.v, q)) || row[0];
+  // both taken: the nearest free seat in the car
+  const free = row.find(q => !WALK.seatTaken(r.v, q)) || P.seats.filter(q => !WALK.seatTaken(r.v, q)).sort((a, b) => Math.hypot(a.x - s.x, a.z - s.z) - Math.hypot(b.x - s.x, b.z - s.z))[0] || row[0];
   r.seat = free; r.l.set(free.x, P.yF, free.z); r.yaw = free.yaw; WALK.lookYaw = free.look; WALK.lookPitch = -0.05;
   WALK.ui();
 };
@@ -31747,6 +32181,685 @@ WALK.peerTag = function (p, w) {
   el.style.display = '';
   el.style.transform = `translate(${Math.round((_kB.x * 0.5 + 0.5) * innerWidth)}px,${Math.round((-_kB.y * 0.5 + 0.5) * innerHeight)}px) translate(-50%,-100%)`;
   if (el.children[1].textContent !== p.st.nm) el.children[1].textContent = p.st.nm;
+};
+
+/* ============================================================================
+   Crowds at the stations: travellers (06m_folk.js) wait on the platforms near
+   the camera, chatting in twos and threes, sitting on the benches, checking
+   their watches and looking down the line. When a passenger train stops they
+   let the riders off first, then walk to the nearest vestibule door (across the
+   plank walk to a train on the far main, or along the ballast past the end of
+   the platform), queue, climb the steps, walk down the aisle and take a seat.
+   Riders get up at their stations, step down and go in by the depot's door.
+   Every coach keeps who is in its seats (CROWD.C) wherever it is; the people
+   in them are drawn only near the camera, a few hundred at most on a PC and a
+   few dozen on a phone (CROWD.max), so nothing big is ever held for long.
+   ========================================================================== */
+const CROWD = {
+  on: true, S: new Map(), C: new Map(), T: new Map(), live: new Set(), pool: [], grp: null, t: 0, scanT: 0, rideT: 0, pruneT: 0,
+  max: GFX.lite ? 48 : 230, rSt: GFX.lite ? 170 : 380, rRide: GFX.lite ? 42 : 100, shadowR: GFX.lite ? 0 : 50, poseR: GFX.lite ? 35 : 70,
+};
+const CROWD_V = 1.35;              // m/s: an unhurried walk along the platform
+const CROWD_R = 0.26;              // m: how close two of them stand
+const _qA = new THREE.Vector3(), _qB = new THREE.Vector3(), _qM = new THREE.Matrix4(), _qQ = new THREE.Quaternion(), _qS = new THREE.Vector3(), _qU = new THREE.Vector3(0, 1, 0);
+const crowdRnd = (a, b) => a + Math.random() * (b - a);
+const CROWD_XD = (CH.xb + CH.xv) / 2;   // a coach's vestibule doors, either end
+
+/* ---------------- a station's platform ---------------- */
+/* base-local (the depot's frame: x along the platform, z out to the track) to world and back */
+function crowdW(S, x, z, y, out) { return (out || new THREE.Vector3()).set(x, y === undefined ? S.pl.top : y, z).applyMatrix4(S.pl.base); }
+function crowdL(S, w, out) { return (out || new THREE.Vector3()).copy(w).applyMatrix4(S.Bi); }
+/* the height of what is underfoot at base-local (x, z): the platform, the door steps, or (off them) the railroad's own floorAt */
+function crowdFloor(S, F) {
+  const q = crowdL(S, F.p, _qA), pl = S.pl, by = pl.base.elements[13], d = pl.door;
+  if (Math.abs(q.x - d.x) < d.w / 2 + 0.2 && q.z < pl.W / 2 + 0.9 && q.z > pl.W / 2 - 1.2) {
+    if (q.z < pl.W / 2) return by + pl.floor;
+    for (const [z1, top] of d.steps) if (q.z < pl.W / 2 + z1) return by + top;
+  }
+  if (Math.abs(q.x) <= pl.PL / 2 && q.z >= pl.z0 - 0.05 && q.z <= pl.zE) return by + pl.top;
+  return floorAt(F.p.x, F.p.z, F.p.y + 0.3).y;
+}
+/* a free place to stand and wait, toward the middle of the platform, clear of the benches, lamps and the bay */
+function crowdSpot(S, near) {
+  const pl = S.pl;
+  for (let k = 0; k < 30; k++) {
+    const x = near ? near.x + crowdRnd(-1.4, 1.4) : (Math.random() + Math.random() + Math.random() - 1.5) / 1.5 * (pl.PL / 2 - 4);
+    const z = near ? near.z + crowdRnd(-1.0, 1.0) : crowdRnd(pl.W / 2 + 1.6, pl.zE - 1.0);
+    if (Math.abs(x) > pl.PL / 2 - 1.5 || z < pl.W / 2 + 1.0 || z > pl.zE - 0.9) continue;
+    if (pl.obs.some(o => Math.abs(x - o[0]) < o[2] + 0.45 && Math.abs(z - o[1]) < o[3] + 0.45)) continue;
+    if (Math.abs(x - pl.door.x) < 1.3 && z < pl.W / 2 + 2.0) continue;
+    let ok = true;
+    for (const F of S.people) { if (F.mode !== 'world' || !F.q) continue; if (Math.hypot(F.q.x - x, F.q.z - z) < (near ? 0.62 : 0.9)) { ok = false; break; } }
+    if (ok) return { x, z };
+  }
+  return null;
+}
+/* how many wait at a station now: busier in the morning and evening, few late at night, fewer on a phone */
+function crowdWant(S) {
+  const h = ((SKY.hour % 24) + 24) % 24;
+  const k = h < 5 ? 0.2 : h < 6.5 ? 0.5 : h < 9.5 ? 1.25 : h < 16 ? 1 : h < 19 ? 1.25 : h < 22 ? 0.7 : 0.35;
+  const n = (S.pl.big ? 12 : 6) * k * (WORLD.frost ? 0.7 : 1) * (GFX.lite ? 0.45 : 1);
+  return Math.max(1, Math.round(n * S.mood));
+}
+CROWD.activate = function (st) {
+  const pl = st.plat, S = { st, pl, Bi: new THREE.Matrix4().copy(pl.base).invert(), people: [], doors: [], spawnT: crowdRnd(4, 10), mood: crowdRnd(0.7, 1.3), y: pl.base.elements[13] + pl.top };
+  S.cross = !!(st.line === ROUTE.main && ROUTE.main2 && (!ROUTE.span2 || (st.sLine > ROUTE.span2[0] && st.sLine < ROUTE.span2[1])));
+  CROWD.S.set(st, S);
+  // the ones already waiting: some in twos and threes, some alone, one or two on the benches
+  const want = crowdWant(S); let n = 0;
+  const benchSeats = []; for (const bx of pl.benches) for (const e of [-0.45, 0.45]) benchSeats.push(bx + e);
+  for (const x of benchSeats) if (n < want && Math.random() < 0.3) { crowdSpawn(S, { bench: x }); n++; }
+  while (n < want) {
+    const g = Math.random() < 0.4 ? (Math.random() < 0.7 ? 2 : 3) : 1, at = crowdSpot(S); if (!at) break;
+    let lead = null;
+    for (let i = 0; i < g && n < want; i++) {
+      const spot = i === 0 ? at : crowdSpot(S, at); if (!spot) break;
+      const kid = lead && Math.random() < 0.45;
+      const F = crowdSpawn(S, { spot, group: lead, kid }); if (!lead) lead = F; n++;
+    }
+  }
+  return S;
+};
+CROWD.deactivate = function (S) {
+  for (const F of [...S.people]) {
+    if (F.mode === 'car' && F.alight) { crowdReseat(F); F.S = null; continue; }   // on the way off: back to a seat after all
+    if (F.mode === 'car') { F.S = null; continue; }          // already aboard: it is the coach's now
+    if (F.door && F.after === 'board') crowdSeatAbstract(F);  // on the way to a train: let them have got on
+    crowdDrop(F);
+  }
+  S.people.length = 0;
+  CROWD.S.delete(S.st);
+};
+/* a new traveller on the platform: at a spot (waiting), on a bench, or out of the depot's door (o.fromDoor) */
+function crowdSpawn(S, o = {}) {
+  const pl = S.pl, spec = o.spec || folkPick(Math.random, { winter: !!WORLD.frost || (typeof SKY !== 'undefined' && SKY.weather === 'snow'), noKids: !o.kid && false });
+  if (o.kid) { const kd = folkPick(Math.random, { winter: !!WORLD.frost }); if (!FOLK_KINDS[kd.kind].kid) { const K = Math.random() < 0.5 ? 'boy' : 'girl'; Object.assign(spec, { kind: K, carry: null, scale: lerp(FOLK_KINDS[K].h[0], FOLK_KINDS[K].h[1], Math.random()) }); } }
+  if (!o.kid && FOLK_KINDS[spec.kind].kid && !o.group) { spec.kind = Math.random() < 0.5 ? 'suit' : 'wcoat'; spec.scale = lerp(FOLK_KINDS[spec.kind].h[0], FOLK_KINDS[spec.kind].h[1], Math.random()); spec.carry = Math.random() < 0.4 ? 'case' : null; }
+  const F = { spec, S, mode: 'world', p: new THREE.Vector3(), l: null, v: null, yaw: 0, ph: Math.random() * TAU, spd: CROWD_V * crowdRnd(0.9, 1.1) * (FOLK_KINDS[spec.kind].kid ? 1.12 : 1), st: 'idle', t: 0, path: [], turn: 0, turnTo: 0, turnT: crowdRnd(1, 5), watch: 0, watchT: crowdRnd(8, 30), poseT: 0, group: o.group || null, q: null, stay: Math.random() < 0.12 };
+  if (o.bench !== undefined) {
+    F.st = 'bench'; F.q = new THREE.Vector3(o.bench, 0, pl.W / 2 + 0.72); crowdW(S, F.q.x, F.q.z, 0.63, F.p);
+    F.yaw = crowdYaw(S, 0); F.benchH = 0.63 - pl.top;
+  } else if (o.fromDoor) {
+    const d = pl.door; F.q = new THREE.Vector3(d.x, 0, pl.W / 2 - 0.45); crowdW(S, F.q.x, F.q.z, pl.floor, F.p);
+    const at = crowdSpot(S) || { x: d.x + 3, z: pl.W / 2 + 2.5 };
+    F.st = 'walk'; F.after = 'idle'; F.path = [crowdW(S, d.x, pl.W / 2 + 1.3), crowdW(S, at.x, at.z)]; F.yaw = crowdYaw(S, 0);
+  } else {
+    F.q = new THREE.Vector3(o.spot.x, 0, o.spot.z); crowdW(S, F.q.x, F.q.z, pl.top, F.p);
+    F.yaw = crowdYaw(S, crowdRnd(-0.7, 0.7));
+  }
+  if (F.group) {
+    // a group stands facing each other, talking
+    const L = F.group; L.talk = true; F.talk = true;
+    F.yaw = Math.atan2(L.p.x - F.p.x, L.p.z - F.p.z);
+    if (!L.faced) { L.yaw = Math.atan2(F.p.x - L.p.x, F.p.z - L.p.z); L.faced = true; }
+  }
+  S.people.push(F);
+  crowdShow(F, true);
+  return F;
+}
+/* world yaw facing the track (base +z), turned by a */
+function crowdYaw(S, a) { const e = S.pl.base.elements; return Math.atan2(e[8], e[10]) + a; }
+
+/* ---------------- meshes ---------------- */
+function crowdShow(F, on) {
+  if (on && !F.f) {
+    if (CROWD.live.size >= CROWD.max) return false;
+    if (!CROWD.grp) { CROWD.grp = new THREE.Group(); CROWD.grp.name = 'crowd'; scene.add(CROWD.grp); }
+    const sp = F.spec, carry = F.mode === 'car' && sp.carry === 'case' ? null : sp.carry;
+    let f = CROWD.pool.pop();
+    if (f) folkDress(f, sp.kind, sp.way, carry); else f = folkMesh(sp.kind, sp.way, carry);
+    F.f = f; F.poseT = 0; f.mesh.material = F.mode === 'car' ? FOLK.matIn : FOLK.mat;
+    CROWD.grp.add(f.mesh); CROWD.live.add(F);
+    crowdPlace(F); crowdPose(F, 0, true);
+  } else if (!on && F.f) {
+    const f = F.f; F.f = null; CROWD.live.delete(F);
+    if (f.mesh.parent) f.mesh.parent.remove(f.mesh);
+    if (CROWD.pool.length < 40) CROWD.pool.push(f); else f.mesh.skeleton.dispose();
+  }
+  return !!F.f;
+}
+function crowdDrop(F) {
+  crowdShow(F, false);
+  if (F.S) { const i = F.S.people.indexOf(F); if (i >= 0) F.S.people.splice(i, 1); }
+  if (F.door) { const D = F.door; const i = D.q.indexOf(F); if (i >= 0) D.q.splice(i, 1); if (F.alight && !F.outDone) { D.out = Math.max(0, D.out - 1); F.outDone = true; } }
+  if (F.v && F.seat !== undefined && F.seat !== null) { const C = CROWD.C.get(F.v); if (C) { if (C.vis.get(F.seat) === F) C.vis.delete(F.seat); C.res.delete(F.seat); } }
+  F.dead = true;
+}
+/* the mesh where the traveller is: in the world, or in the coach's own frame */
+function crowdPlace(F) {
+  const f = F.f; if (!f) return;
+  const m = f.mesh, s = F.spec.scale;
+  _qQ.setFromAxisAngle(_qU, F.yaw); _qS.set(s, s, s);
+  if (F.mode === 'car') {
+    m.visible = crowdSeen(F.v);   // a car hidden far off (11e_traffic) hides its riders with it
+    const fr = walkPlan(F.v).frame; fr.updateWorldMatrix(true, false);
+    m.matrix.compose(F.l, _qQ, _qS).premultiply(fr.matrixWorld);
+  } else { m.matrix.compose(F.p, _qQ, _qS); m.visible = true; }
+  m.matrixWorldNeedsUpdate = true;
+  const want = F.mode === 'car' ? FOLK.matIn : FOLK.mat; if (m.material !== want) m.material = want;
+  m.castShadow = F.mode === 'world' && CROWD.shadowR > 0 && F.p.distanceToSquared(camera.position) < CROWD.shadowR * CROWD.shadowR;
+}
+function crowdSeen(v) { for (let o = v.model && v.model.root; o; o = o.parent) if (!o.visible) return false; return !!(v.model && v.model.root); }
+/* pose for the state. Far away a traveller is posed only now and then. */
+const _qQA = FOLK_BONES.map(() => new THREE.Quaternion());
+function crowdPose(F, dt, force) {
+  const f = F.f; if (!f) return;
+  const sc = F.spec.scale, at = F.mode === 'car' ? F.v.pos : F.p;
+  const far = at && at.distanceToSquared(camera.position) > CROWD.poseR * CROWD.poseR;
+  F.poseT -= dt;
+  const moving = F.st === 'walk' || F.st === 'inwalk' || F.st === 'climb' || F.st === 'climbdown' || F.st === 'sitdown' || F.st === 'rise';
+  if (!force && F.poseT > 0 && (!moving || far)) return;
+  F.poseT = moving ? (far ? 0.12 : 0) : far ? 0.6 : 0.18;
+  f.mesh.updateMatrixWorld(true);
+  const sitH = F.st === 'bench' ? F.benchH : F.seatH || 0.43;
+  switch (F.st) {
+    case 'walk': case 'inwalk': folkPose(f, { phase: F.ph, speed: F.held ? 0 : F.spd, t: CROWD.t + F.ph, scale: sc, turn: F.held ? F.turn * 0.6 : 0 }); break;
+    case 'climb': case 'climbdown': folkPose(f, { phase: F.ph, speed: 0.95, t: CROWD.t, scale: sc }); break;
+    case 'bench': case 'seated': folkPose(f, { sit: sitH, scale: sc, turn: F.turn, look: F.st === 'seated' ? -0.1 : 0 }); break;
+    case 'sitdown': case 'rise': {
+      const k = F.st === 'sitdown' ? smooth(0, 1, F.t / F.dur) : 1 - smooth(0, 1, F.t / F.dur);
+      folkPose(f, { scale: sc, t: CROWD.t });
+      const bs = f.mesh.skeleton.bones; bs.forEach((b, i) => _qQA[i].copy(b.quaternion)); const hy = bs[0].position.y;
+      folkPose(f, { sit: sitH, scale: sc });
+      bs.forEach((b, i) => { _qQT.copy(b.quaternion); b.quaternion.copy(_qQA[i]).slerp(_qQT, k); }); bs[0].position.y = lerp(hy, bs[0].position.y, k);
+      break;
+    }
+    default: folkPose(f, { t: CROWD.t + F.ph * 3, scale: sc, turn: F.turn, watch: F.watch });
+  }
+}
+const _qQT = new THREE.Quaternion();
+
+/* ---------------- moving ---------------- */
+/* one step along the path (world points in the world, coach-local ones aboard); true once at its end */
+function crowdWalk(F, dt) {
+  const P = F.mode === 'car' ? F.l : F.p, tg = F.path[0];
+  if (!tg) return true;
+  const dx = tg.x - P.x, dz = tg.z - P.z, d = Math.hypot(dx, dz);
+  // queued for a door: stop short behind the ones ahead
+  let hold = 0;
+  if (F.after === 'board' && F.door && F.path.length === 1) {
+    const i = F.door.q.indexOf(F);
+    if (i < 0 && d < 2.6) F.door.q.push(F);
+    const ahead = F.door.q.indexOf(F);
+    if (ahead > 0 || F.door.out > 0 || F.door.busy > CROWD.t) hold = 0.62 * Math.max(ahead, F.door.out > 0 || F.door.busy > CROWD.t ? 1 : 0);
+  }
+  if (F.delay > 0) { F.delay -= dt; F.held = true; return false; }
+  if (d <= hold + (F.path.length > 1 ? 0.45 : 0.06)) {
+    if (hold > 0) { F.held = true; return false; }
+    F.path.shift(); F.held = false;
+    return !F.path.length;
+  }
+  F.held = false;
+  const step = Math.min(d - hold, F.spd * (F.mode === 'car' ? 0.75 : 1) * dt);
+  P.x += dx / d * step; P.z += dz / d * step;
+  F.ph = (F.ph + TAU * step / (1.5 * F.spec.scale)) % (TAU * 1000);
+  const want = Math.atan2(dx, dz); let dy = ((want - F.yaw) % TAU + TAU * 1.5) % TAU - Math.PI;
+  F.yaw += clamp(dy, -7 * dt, 7 * dt);
+  return false;
+}
+/* keep standing and walking travellers out of each other, the benches and the bay, and you */
+function crowdSpace(S, dt) {
+  const L = S.people, pl = S.pl;
+  for (const F of L) { if (F.mode !== 'world' || F.st === 'bench') continue; F.q = crowdL(S, F.p, F.q || new THREE.Vector3()); }
+  for (const F of L) {
+    if (F.mode !== 'world' || F.st === 'bench' || !F.q) continue;
+    const q = F.q, onPl = Math.abs(q.x) < pl.PL / 2 && q.z > pl.z0 && q.z < pl.zE;
+    let mx = 0, mz = 0;
+    if (F.st === 'walk' || F.st === 'idle') for (const G of L) {
+      if (G === F || G.mode !== 'world' || !G.q) continue;
+      const dx = q.x - G.q.x, dz = q.z - G.q.z, d2 = dx * dx + dz * dz, R = 2 * CROWD_R + 0.08;
+      if (d2 > R * R || d2 < 1e-8) continue;
+      const d = Math.sqrt(d2), k = (R - d) / d * (F.st === 'idle' && G.st === 'walk' ? 0.25 : F.st === 'walk' && G.st === 'walk' ? 0.2 : 0.5);
+      mx += dx * k; mz += dz * k;
+    }
+    if (onPl && F.st !== 'idle') for (const o of pl.obs) {
+      const ux = q.x - o[0], uz = q.z - o[1], pu = o[2] + CROWD_R - Math.abs(ux), pw = o[3] + CROWD_R - Math.abs(uz);
+      if (pu > 0 && pw > 0) { if (pu < pw) mx += Math.sign(ux || 1) * pu; else mz += Math.sign(uz || 1) * pw; }
+    }
+    if (WALK.on && WALK.mode === 'foot') {
+      const w = crowdL(S, WALK.p, _qB), dx = q.x - w.x, dz = q.z - w.z, d = Math.hypot(dx, dz), R = CROWD_R + 0.3;
+      if (d < R && d > 1e-4) { mx += dx / d * (R - d) * 0.6; mz += dz / d * (R - d) * 0.6; }
+    }
+    if (mx || mz) {
+      const m = Math.hypot(mx, mz), lim = 1.2 * dt; if (m > lim) { mx *= lim / m; mz *= lim / m; }
+      q.x += mx; q.z += mz;
+      if (onPl && F.st === 'idle') q.z = clamp(q.z, pl.W / 2 + 0.35, pl.zE - 0.35);   // walkers may be stepping off to a train
+      const y = F.p.y; crowdW(S, q.x, q.z, 0, F.p); F.p.y = y;
+    }
+  }
+}
+/* the player on foot can't walk through anyone waiting (called from walkSolid) */
+CROWD.push = function (p) {
+  for (const S of CROWD.S.values()) {
+    if (Math.abs(S.y - p.y) > 2 || S.st.p && (Math.abs(S.st.p.x - p.x) > 200 || Math.abs(S.st.p.z - p.z) > 200)) continue;
+    for (const F of S.people) {
+      if (F.mode !== 'world') continue;
+      const dx = p.x - F.p.x, dz = p.z - F.p.z, d = Math.hypot(dx, dz), R = WALK_R + CROWD_R * F.spec.scale;
+      if (d < R && d > 1e-4 && Math.abs(p.y - F.p.y) < 1.5) { p.x = F.p.x + dx / d * R; p.z = F.p.z + dz / d * R; }
+    }
+  }
+};
+
+/* ---------------- the coaches and who sits in them ---------------- */
+const crowdCar = v => { const P = walkPlan(v); return P && P.seats && P.seats.length && (P.coach || P.hs) ? P : null; };
+const crowdBoardable = v => { const P = walkPlan(v); return !!(P && P.coach); };
+CROWD.car = function (v, c) {
+  let C = CROWD.C.get(v);
+  if (C) return C;
+  const P = crowdCar(v); if (!P) return null;
+  C = { v, occ: new Array(P.seats.length).fill(null), res: new Set(), vis: new Map() };
+  const h = ((SKY.hour % 24) + 24) % 24, late = h < 5.5 || h > 22.5 ? 0.45 : 1;
+  const frac = !c ? 0.3 : c.parkS ? 0 : c.ai ? crowdRnd(0.22, 0.6) : c === GAME.train ? crowdRnd(0.15, 0.45) : crowdRnd(0.1, 0.35);
+  const n = Math.round(P.seats.length * frac * late);
+  for (let i = 0; i < n; i++) { const k = crowdFreeSeat(v, C, P, null); if (k >= 0) C.occ[k] = folkPick(Math.random, { winter: !!WORLD.frost }); }
+  CROWD.C.set(v, C);
+  return C;
+};
+/* a free seat in the car: window seats first, near door x (coach-local) if given */
+function crowdFreeSeat(v, C, P, x, near) {
+  let best = -1, bd = Infinity;
+  const mine = WALK.ride && WALK.ride.v === v && WALK.ride.seat;
+  for (let i = 0; i < P.seats.length; i++) {
+    const q = P.seats[i];
+    if (C.occ[i] || C.res.has(i) || q === mine) continue;
+    if (typeof WALK !== 'undefined' && WALK.peers.size && WALK.seatTaken(v, q)) continue;
+    const win = Math.abs(q.z - P.mid) > (P.hs ? 0.45 : 0.6) ? 0 : 1.8;
+    const d = (near ? Math.hypot(q.x - near.x, q.z - near.z) * 3 : x === null ? Math.random() * 30 : Math.abs(q.x - x) + Math.random() * 6) + win;
+    if (d < bd) { bd = d; best = i; }
+  }
+  return best;
+}
+/* someone on the way to a train that pulled out of sight of the camera: count them aboard */
+function crowdSeatAbstract(F) {
+  const v = F.door && F.door.v, C = v && CROWD.car(v), P = v && crowdCar(v); if (!C || !P) return;
+  const k = crowdFreeSeat(v, C, P, null); if (k >= 0) C.occ[k] = F.spec;
+}
+CROWD.seatTaken = function (v, q) {
+  const C = CROWD.C.get(v), P = walkPlan(v); if (!C || !P) return false;
+  const i = P.seats.indexOf(q); return i >= 0 && (!!C.occ[i] || C.res.has(i));
+};
+/* the people in the coaches near the camera: drawn (seated, looking about) out to rRide, dropped beyond */
+CROWD.ridersFrame = function () {
+  const cam = camera.position, cars = [];
+  for (const c of camConsists()) for (const v of c.vehicles) {
+    if (!v.pos || !crowdCar(v)) continue;
+    const d = v.pos.distanceTo(cam), C = CROWD.car(v, c);
+    if (C) cars.push([d, v, C]);
+  }
+  cars.sort((a, b) => a[0] - b[0]);
+  for (const [d, v, C] of cars) {
+    if (d > CROWD.rRide + 15) { for (const F of [...C.vis.values()]) if (F.st === 'seated') { crowdShow(F, false); C.vis.delete(F.seat); CROWD.riders.delete(F); } continue; }
+    if (d > CROWD.rRide || !crowdSeen(v)) continue;
+    const P = crowdCar(v);
+    for (let i = 0; i < C.occ.length; i++) {
+      if (!C.occ[i] || C.vis.has(i)) continue;
+      if (CROWD.live.size >= CROWD.max) return;
+      const q = P.seats[i], F = { spec: C.occ[i], S: null, mode: 'car', v, p: new THREE.Vector3(), l: new THREE.Vector3(q.x, P.yF, q.z), yaw: q.yaw, ph: 0, spd: CROWD_V, st: 'seated', t: 0, path: [], seat: i, seatH: q.h, turn: crowdRideTurn(P, q), turnT: crowdRnd(3, 12), poseT: 0 };
+      C.vis.set(i, F); CROWD.riders.add(F);
+      if (!crowdShow(F, true)) { C.vis.delete(i); CROWD.riders.delete(F); return; }
+    }
+  }
+};
+CROWD.riders = new Set();
+/* a rider's head: mostly out of the window, now and then down the car or across the aisle */
+function crowdRideTurn(P, q) { const r = Math.random(), out = -Math.sign((q.z - P.mid) || 1) * Math.sign(Math.sin(q.yaw) || 1); return r < 0.55 ? out * crowdRnd(0.35, 0.8) : r < 0.8 ? crowdRnd(-0.25, 0.25) : -out * crowdRnd(0.2, 0.5); }
+/* coaches gone from the world (a train made up again, a swap): forget them and their riders */
+CROWD.prune = function () {
+  const live = new Set(); for (const c of camConsists()) for (const v of c.vehicles) live.add(v);
+  for (const [v, C] of CROWD.C) if (!live.has(v)) { for (const F of C.vis.values()) { crowdShow(F, false); CROWD.riders.delete(F); F.dead = true; } CROWD.C.delete(v); }
+  for (const F of [...CROWD.live]) if (F.mode === 'car' && !live.has(F.v)) crowdDrop(F);
+  for (const c of [...CROWD.T.keys()]) if (!camConsists().includes(c)) CROWD.T.delete(c);
+  for (const v of [...CROWD.doorA.keys()]) if (!live.has(v)) CROWD.doorA.delete(v);
+};
+
+/* ---------------- trains calling at the stations ---------------- */
+/* the doors of a stopped train that people on this platform can reach, each with the ground point beside it */
+function crowdDoors(S, c) {
+  const pl = S.pl, out = [];
+  // a train standing on the near track blocks the plank walk to the far one
+  let nearBlocked = false;
+  for (const o of camConsists()) for (const v of o.vehicles) { if (!v.pos) continue; const q = crowdL(S, v.pos, _qA); if (Math.abs(q.z - 12) < 1.2 && Math.abs(q.x) < v.len / 2 + 2.5) nearBlocked = true; }
+  for (const v of c.vehicles) {
+    if (!v.pos || !crowdBoardable(v)) continue;
+    const P = walkPlan(v), qc = crowdL(S, v.pos, _qB);
+    if (Math.abs(qc.x) > pl.PL / 2 + 40) continue;
+    const near = Math.abs(qc.z - 12) < 1.3, far = S.cross && !near && qc.z > pl.zE + 3 && qc.z < 12 + 2 * (ROUTE.spacing || 4.5) + 1;
+    if (!near && !(far && !nearBlocked)) continue;
+    for (const [x, s, zi] of P.doors) {
+      const e = Math.sign(x), xp = e * (CROWD_XD - 0.05);
+      const O = local2world(v, _qA.set(xp, 0, s * (P.hw + 0.35)), new THREE.Vector3()), q = crowdL(S, O, new THREE.Vector3());
+      if (q.z > qc.z) continue;                                 // the door on the platform side only
+      if (near && Math.abs(q.x) > pl.PL / 2 + 25) continue;      // too far past the platform's end
+      if (far && Math.abs(q.x) > pl.PL / 2) continue;
+      O.y = floorAt(O.x, O.z, O.y + 1).y;
+      out.push({ v, c, x, e, xp, s, zi, P, O, bx: q.x, bz: q.z, far, q: [], out: 0, busy: 0, n: 0 });
+    }
+  }
+  return out;
+}
+/* platform waypoints (world) from base-local (x, z) to door D: along the edge, past the platform's end or over the planks */
+function crowdPathTo(S, x, z, D) {
+  const pl = S.pl, lane = pl.zE - 0.45, end = pl.PL / 2 - 0.6, pts = [];
+  if (D.far) {
+    const xc = (D.bx >= 0 ? 0.9 : -0.9) + crowdRnd(-0.35, 0.35);
+    if (z < pl.W / 2 + 1.5) pts.push(crowdW(S, x, pl.W / 2 + 1.6));
+    pts.push(crowdW(S, xc, lane), crowdW(S, xc, D.bz), D.O.clone());   // over the planks, then between the tracks
+  } else {
+    const lx = clamp(D.bx, -end, end);
+    if (z < pl.W / 2 + 1.5) pts.push(crowdW(S, x, pl.W / 2 + 1.6));
+    pts.push(crowdW(S, lx, lane));
+    if (Math.abs(D.bx) > end) pts.push(crowdW(S, Math.sign(D.bx) * (end + 0.3), lane));
+    pts.push(D.O.clone());
+  }
+  return pts;
+}
+/* from a door's ground point back onto the platform and in at the depot's door */
+function crowdPathOut(S, D) {
+  const pl = S.pl, lane = pl.zE - 0.45, end = pl.PL / 2 - 0.6, d = pl.door, pts = [];
+  if (D.far) { const xc = (D.bx >= 0 ? 0.9 : -0.9) + crowdRnd(-0.35, 0.35); pts.push(crowdW(S, xc, D.bz), crowdW(S, xc, lane)); }
+  else if (Math.abs(D.bx) > end) pts.push(crowdW(S, Math.sign(D.bx) * (end + 0.3), lane));
+  else pts.push(crowdW(S, D.bx + crowdRnd(-0.4, 0.4), lane - 0.6));
+  pts.push(crowdW(S, d.x + crowdRnd(-0.3, 0.3), pl.W / 2 + 1.45), crowdW(S, d.x, pl.W / 2 + 0.95), crowdW(S, d.x, pl.W / 2 - 0.6));
+  return pts;
+}
+/* a train has stood a moment at a station: riders off, then the waiting travellers on */
+CROWD.serve = function (c, st) {
+  const S = CROWD.S.get(st), Tn = CROWD.T.get(c);
+  const coaches = c.vehicles.filter(v => crowdCar(v));
+  if (!coaches.length) return;
+  if (!S) {
+    // out of sight: some get off, a few get on
+    for (const v of coaches) {
+      const C = CROWD.car(v, c), P = crowdCar(v); if (!C) continue;
+      for (let i = 0; i < C.occ.length; i++) if (C.occ[i] && !C.vis.has(i) && Math.random() < 0.25) C.occ[i] = null;
+      const add = Math.floor(Math.random() * (st.kind === 'depot' ? 6 : 3));
+      for (let k = 0; k < add; k++) { const i = crowdFreeSeat(v, C, P, null); if (i >= 0) C.occ[i] = folkPick(Math.random, { winter: !!WORLD.frost }); }
+    }
+    return;
+  }
+  const doors = crowdDoors(S, c);
+  Tn.doors = doors; S.doors.push(...doors);
+  if (!doors.length) return;
+  // getting off: a share of each coach that has a door here
+  for (const v of new Set(doors.map(D => D.v))) {
+    const C = CROWD.car(v, c), P = walkPlan(v); if (!C) continue;
+    const mine = doors.filter(D => D.v === v);
+    let n = 0; for (const o of C.occ) if (o) n++;
+    const k = Math.min(GFX.lite ? 3 : 7, Math.round(n * crowdRnd(0.12, 0.35)));
+    const vis = [...C.vis.values()].filter(F => F.st === 'seated').sort(() => Math.random() - 0.5);
+    for (let i = 0; i < k; i++) {
+      const F = vis[i];
+      if (!F) { const idx = C.occ.findIndex((o, j) => o && !C.vis.has(j)); if (idx >= 0) C.occ[idx] = null; continue; }
+      const q = P.seats[F.seat], D = mine.reduce((a, b) => Math.abs(b.x - q.x) < Math.abs(a.x - q.x) ? b : a);
+      C.occ[F.seat] = null; C.vis.delete(F.seat); CROWD.riders.delete(F); F.seat = null;
+      F.S = S; F.door = D; F.alight = true; F.train = c; D.out++; S.people.push(F);
+      F.st = 'rise'; F.t = 0; F.dur = 0.8; F.delay = crowdRnd(0, 2.5); F.aisle = new THREE.Vector3(q.sx !== undefined ? q.sx : q.ax, P.yF, P.mid);
+      F.path = [new THREE.Vector3(D.xp, P.yF, P.mid), new THREE.Vector3(D.xp, P.yF, D.s * 0.95)]; F.after = 'climbdown';
+      F.seatQ = q;
+    }
+  }
+  // getting on: everyone waiting but a few who are waiting for another train, families together
+  const waiting = S.people.filter(F => F.mode === 'world' && (F.st === 'idle' || F.st === 'bench') && !F.stay);
+  for (const F of waiting) {
+    if (F.group && waiting.includes(F.group) && F.group.door) continue;   // follows the one they came with (below)
+    const q = F.q || crowdL(S, F.p, new THREE.Vector3());
+    let best = null, bd = Infinity;
+    for (const D of doors) { const d = Math.abs(D.bx - q.x) + (D.far ? 8 : 0) + D.n * 2.5 + Math.random() * 6; if (d < bd) { bd = d; best = D; } }
+    if (!best || bd > 120) continue;
+    crowdGo(S, F, best, crowdRnd(1.0, 4.5));
+    for (const G of waiting) if (G.group === F && !G.door) crowdGo(S, G, best, F.delay + crowdRnd(0.4, 1.0), F);
+  }
+};
+function crowdGo(S, F, D, delay, with_) {
+  const q = F.q || crowdL(S, F.p, new THREE.Vector3());
+  if (F.st === 'bench') { F.st = 'walk'; crowdW(S, q.x, S.pl.W / 2 + 1.15, S.pl.top, F.p); F.q = crowdL(S, F.p, F.q); }
+  F.st = 'walk'; F.after = 'board'; F.door = D; F.train = D.c; F.delay = delay; F.with = with_ || null; D.n++;
+  F.path = crowdPathTo(S, q.x, q.z, D);
+}
+/* the train is leaving: whoever is still on the platform side of the door goes back to waiting */
+CROWD.depart = function (c) {
+  const Tn = CROWD.T.get(c);
+  for (const S of CROWD.S.values()) {
+    for (const F of [...S.people]) {
+      if (F.train !== c) continue;
+      if (F.mode === 'world' && F.after === 'board') {
+        const D = F.door, i = D.q.indexOf(F); if (i >= 0) D.q.splice(i, 1);
+        F.door = null; F.train = null; F.after = 'idle';
+        const at = crowdSpot(S); F.path = at ? [crowdW(S, at.x, at.z)] : []; if (!at) F.st = 'idle';
+      } else if (F.st === 'climb') { F.t = F.dur; }   // already on the steps: aboard
+      else if (F.st === 'climbdown') { F.t = F.dur; }
+      else if (F.alight && F.mode === 'car') crowdReseat(F);   // still in the aisle: sit down again
+    }
+    if (Tn && Tn.doors) S.doors = S.doors.filter(D => !Tn.doors.includes(D));
+  }
+  for (const v of c.vehicles) { const M = CROWD.doorA.get(v); if (M) for (const id in M) M[id].until = 0; }
+  if (Tn) Tn.doors = null;
+};
+/* someone who meant to get off sits down again (the train left, or the platform went out of sight) */
+function crowdReseat(F) {
+  const C = CROWD.car(F.v), P = walkPlan(F.v), k = C ? crowdFreeSeat(F.v, C, P, null, F.l) : -1;
+  if (F.door && !F.outDone) { F.door.out = Math.max(0, F.door.out - 1); F.outDone = true; }
+  F.alight = false; F.door = null; F.train = null; F.delay = 0;
+  if (k < 0) { crowdDrop(F); return; }
+  if (F.st === 'rise') F.l.copy(F.aisle);
+  crowdTakeSeat(F, C, P, k);
+}
+/* walk to seat k and sit down */
+function crowdTakeSeat(F, C, P, k) {
+  const q = P.seats[k]; C.res.add(k); F.seat = k; F.seatH = q.h;
+  const ax = q.sx !== undefined ? q.sx : q.ax;
+  F.aisle = new THREE.Vector3(ax, P.yF, P.mid);
+  F.path = [new THREE.Vector3(F.l.x, P.yF, P.mid), F.aisle.clone()]; F.st = 'inwalk'; F.after = 'sitdown';
+  if (Math.abs(F.l.z - P.mid) < 0.05) F.path.shift();
+}
+
+/* ---------------- the vestibule steps and doors ---------------- */
+/* Up the steps into a coach (or down them): from the ground beside the car onto the three treads under the door,
+   up through the open trap onto the vestibule floor, and in. Keyframes [x, y, z, seconds to get there], coach-local,
+   the soles on each tread's top (06_models.js coachModel: treads at 0.4, 0.72, 1.02 above the rail, 4 cm thick). */
+function crowdKeys(D, P, g, down) {
+  const xp = D.xp, s = D.s, T = [0.6, 0.42, 0.42, 0.45, 0.4];
+  const pts = [[g.x, g.y, g.z], [xp, 0.42, s * 1.4], [xp, 0.74, s * 1.37], [xp, 1.04, s * 1.35], [xp, P.yF, s * 1.17], [xp, P.yF, s * 0.95]];
+  if (down) { pts.reverse(); T.reverse(); }
+  const K = [{ p: new THREE.Vector3(...pts[0]), t: 0 }]; let t = 0;
+  for (let i = 1; i < pts.length; i++) { t += T[i - 1]; K.push({ p: new THREE.Vector3(...pts[i]), t }); }
+  K.T = t; return K;
+}
+function crowdKeyAt(K, t, out, down) {
+  let i = 1; while (i < K.length - 1 && K[i].t < t) i++;
+  const a = K[i - 1], b = K[i], u = clamp((t - a.t) / Math.max(1e-3, b.t - a.t), 0, 1);
+  out.x = lerp(a.p.x, b.p.x, smooth(0, 1, u)); out.z = lerp(a.p.z, b.p.z, smooth(0, 1, u));
+  out.y = lerp(a.p.y, b.p.y, b.p.y > a.p.y ? smooth(0, 0.6, u) : smooth(0.4, 1, u));
+  return out;
+}
+/* each door's swing: open while anyone is coming or going by it, shut a few seconds after */
+CROWD.doorA = new Map();
+function crowdDoorA(v, e, s) { let M = CROWD.doorA.get(v); if (!M) CROWD.doorA.set(v, M = {}); const id = e + ',' + s; return M[id] || (M[id] = { e, s, k: 0, until: 0 }); }
+function crowdDoorWant(D, sec) { const A = crowdDoorA(D.v, D.e, D.s); A.until = Math.max(A.until, CROWD.t + sec); }
+function crowdDoorsFrame(dt) {
+  for (const [v, M] of CROWD.doorA) {
+    let any = false;
+    for (const id in M) {
+      const A = M[id], want = CROWD.t < A.until ? 1 : 0;
+      if (A.k !== want) { A.k = want > A.k ? Math.min(1, A.k + dt * 1.25) : Math.max(0, A.k - dt * 0.9); if (v.model) coachDoorSet(v.model.root, A.e, A.s, A.k); }
+      if (A.k > 0 || want) any = true;
+    }
+    if (!any) CROWD.doorA.delete(v);
+  }
+}
+
+/* ---------------- the states ---------------- */
+function crowdStep(F, dt) {
+  F.t += dt;
+  switch (F.st) {
+    case 'idle': {
+      // looking about, now and then at a watch; a group keeps talking
+      F.turnT -= dt; if (F.turnT <= 0) { F.turnTo = F.talk ? crowdRnd(-0.35, 0.35) : crowdRnd(-1.0, 1.0); F.turnT = crowdRnd(2.5, 8); }
+      F.turn += clamp(F.turnTo - F.turn, -1.5 * dt, 1.5 * dt);
+      F.watchT -= dt; if (F.watchT <= 0) { F.watchOn = !F.watchOn; F.watchT = F.watchOn ? crowdRnd(1.8, 3) : crowdRnd(15, 45); }
+      F.watch = clamp(F.watch + (F.watchOn ? 2.5 : -2.5) * dt, 0, 1);
+      break;
+    }
+    case 'bench': case 'seated': {
+      F.turnT -= dt;
+      if (F.turnT <= 0) { F.turnT = crowdRnd(4, 14); F.turn = F.st === 'seated' ? crowdRideTurn(walkPlan(F.v), walkPlan(F.v).seats[F.seat]) : crowdRnd(-0.8, 0.8); F.poseT = 0; }
+      break;
+    }
+    case 'walk': case 'inwalk': {
+      if (!crowdWalk(F, dt)) break;
+      crowdArrive(F);
+      break;
+    }
+    case 'climb': {
+      // up the vestibule steps from the platform or the ballast into the car
+      crowdKeyAt(F.keys, F.t, F.l, false); F.ph += TAU * dt * 1.1;
+      if (F.t >= F.dur) {
+        const D = F.door, C = CROWD.car(D.v, D.c), P = walkPlan(D.v);
+        const sib = F.with && F.with.v === D.v && F.with.seat !== null && F.with.seat !== undefined ? P.seats[F.with.seat] : null;
+        const kk = C ? crowdFreeSeat(D.v, C, P, D.x, sib) : -1;
+        F.door = null; F.train = null; F.after = null;
+        if (kk < 0) { crowdDrop(F); break; }
+        crowdTakeSeat(F, C, P, kk);
+      }
+      break;
+    }
+    case 'climbdown': {
+      crowdKeyAt(F.keys, F.t, F.l, true); F.ph += TAU * dt * 1.1;
+      if (F.t >= F.dur) {
+        const D = F.door; D.out = Math.max(0, D.out - 1); F.outDone = true;
+        local2world(F.v, F.l, F.p); F.yaw = yawToWorld(F.v, F.yaw); F.mode = 'world'; F.v = null; F.l = null;
+        F.st = 'walk'; F.after = 'exit'; F.path = crowdPathOut(F.S, D); F.train = null;
+        if (F.spec.carry === 'case' && F.f) folkDress(F.f, F.spec.kind, F.spec.way, 'case');
+      }
+      break;
+    }
+    case 'sitdown': case 'rise': {
+      const k = Math.min(1, F.t / F.dur), P = walkPlan(F.v), q = F.seatQ;
+      if (F.st === 'sitdown') { F.l.lerpVectors(F.aisle, _qA.set(q.x, P.yF, q.z), smooth(0, 1, k)); F.yaw = lerpAngle(F.yaw0, q.yaw, smooth(0, 0.7, k)); }
+      else { F.l.lerpVectors(_qA.set(q.x, P.yF, q.z), F.aisle, smooth(0.3, 1, k)); }
+      if (F.delay > 0 && F.st === 'rise') { F.delay -= dt; F.t = 0; break; }
+      if (k >= 1) {
+        if (F.st === 'sitdown') {
+          const C = CROWD.car(F.v); if (!C) { crowdDrop(F); break; }
+          C.res.delete(F.seat); C.occ[F.seat] = F.spec; C.vis.set(F.seat, F); CROWD.riders.add(F);
+          const i = F.S ? F.S.people.indexOf(F) : -1; if (i >= 0) F.S.people.splice(i, 1);
+          F.S = null; F.st = 'seated'; F.turn = crowdRideTurn(P, q); F.turnT = crowdRnd(4, 12); F.poseT = 0;
+        } else { F.st = 'inwalk'; F.t = 0; }
+      }
+      break;
+    }
+  }
+}
+const lerpAngle = (a, b, k) => a + (((b - a) % TAU + TAU * 1.5) % TAU - Math.PI) * k;
+/* the end of a walk */
+function crowdArrive(F) {
+  const S = F.S;
+  switch (F.after) {
+    case 'idle': F.st = 'idle'; F.after = null; if (S) F.yaw = crowdYaw(S, crowdRnd(-0.6, 0.6)); break;
+    case 'board': {
+      const D = F.door;
+      crowdDoorWant(D, 3);
+      if (D.q[0] !== F || D.out > 0 || D.busy > CROWD.t || crowdDoorA(D.v, D.e, D.s).k < 0.97) { F.path = [D.O.clone()]; F.held = true; break; }
+      D.q.shift();
+      const P = walkPlan(D.v);
+      F.mode = 'car'; F.v = D.v; F.l = world2local(D.v, F.p, new THREE.Vector3());
+      F.keys = crowdKeys(D, P, F.l, false); F.dur = F.keys.T; D.busy = CROWD.t + F.dur * 0.62;
+      F.yaw = D.s > 0 ? Math.PI : 0; F.st = 'climb'; F.t = 0;
+      if (F.f) { F.f.mesh.material = FOLK.matIn; if (F.spec.carry === 'case') folkDress(F.f, F.spec.kind, F.spec.way, null); }
+      break;
+    }
+    case 'climbdown': {
+      const D = F.door, P = walkPlan(F.v);
+      crowdDoorWant(D, 3);
+      if (D.busy > CROWD.t || crowdDoorA(D.v, D.e, D.s).k < 0.97) { F.path = [F.l.clone()]; break; }
+      F.keys = crowdKeys(D, P, world2local(F.v, D.O, new THREE.Vector3()), true); F.dur = F.keys.T; D.busy = CROWD.t + F.dur * 0.8;
+      F.yaw = D.s > 0 ? 0 : Math.PI; F.st = 'climbdown'; F.t = 0;
+      break;
+    }
+    case 'sitdown': {
+      const P = walkPlan(F.v); F.seatQ = P.seats[F.seat]; F.yaw0 = F.yaw; F.st = 'sitdown'; F.t = 0; F.dur = 0.9;
+      break;
+    }
+    case 'exit': crowdDrop(F); break;
+    default: F.st = 'idle';
+  }
+}
+
+/* ---------------- each frame ---------------- */
+CROWD.frame = function (dt) {
+  if (!CROWD.on || typeof camera === 'undefined' || !ROUTE.stations) return;
+  if (S && S.paused) dt = 0;
+  CROWD.t += dt;
+  FOLK.inK.value = typeof SAL !== 'undefined' ? SAL.I.value * 0.32 : 0.15;
+  // which stations are near enough to people
+  CROWD.scanT -= dt;
+  if (CROWD.scanT <= 0) {
+    CROWD.scanT = 0.5;
+    const cam = camera.position;
+    for (const st of ROUTE.stations) {
+      if (!st.plat || !st.p) continue;
+      const d = Math.hypot(st.p.x - cam.x, st.p.z - cam.z), A = CROWD.S.get(st);
+      if (!A && d < CROWD.rSt) CROWD.activate(st);
+      else if (A && d > CROWD.rSt + 60) CROWD.deactivate(A);
+    }
+  }
+  // trains standing at a station
+  for (const c of camConsists()) {
+    let Tn = CROWD.T.get(c); if (!Tn) CROWD.T.set(c, Tn = { stopT: 0, served: null, hold: 0, doors: null });
+    if (!c.vehicles.some(v => crowdCar(v))) continue;
+    const sp = Math.abs(walkSpeedOf(c));
+    if (sp < 0.05) Tn.stopT += dt; else if (sp > 0.25) { if (Tn.served) CROWD.depart(c); Tn.stopT = 0; Tn.served = null; Tn.hold = 0; }
+    if (Tn.stopT > 1.5 && Tn.served === null && !c.parkS) {
+      Tn.served = false;
+      let best = null, bd = 300;
+      for (const st of ROUTE.stations) { if (!st.plat || !st.p || !c.lead.pos) continue; for (const v of c.vehicles) { if (!v.pos) continue; const d = v.pos.distanceTo(st.p); if (d < bd) { bd = d; best = st; } } }
+      if (best && bd < 160) { Tn.served = best; CROWD.serve(c, best); }
+    }
+    // a timetable train waits for its passengers (a minute more at most)
+    if (c.ai && c.ai.dwell > 0 && c.ai.dwell < 3 && Tn.served && Tn.hold < 60) {
+      let busy = false;
+      for (const F of CROWD.live) if (F.train === c && (F.st !== 'walk' || F.mode === 'car' || F.door && F.door.O.distanceTo(F.p) < 40)) { busy = true; break; }
+      if (!busy) for (const S of CROWD.S.values()) for (const F of S.people) if (F.train === c) { busy = true; break; }
+      if (busy) { Tn.hold += dt; c.ai.dwell = 3; }
+    }
+  }
+  // the people on the platforms
+  for (const S of CROWD.S.values()) {
+    S.spawnT -= dt;
+    if (S.spawnT <= 0) {
+      S.spawnT = crowdRnd(8, 26);
+      const waiting = S.people.filter(F => F.mode === 'world' && F.after !== 'exit' && F.after !== 'board').length;
+      if (waiting < crowdWant(S) && !(S.doors && S.doors.length)) crowdSpawn(S, { fromDoor: true });
+    }
+    for (const F of [...S.people]) if (!F.dead && !(F.mode === 'car' && CROWD.riders.has(F))) {
+      crowdStep(F, dt);
+      if (!F.dead && F.mode === 'world' && F.st === 'walk') { const y = crowdFloor(S, F); F.p.y += clamp(y - F.p.y, -7 * dt, 3 * dt) || 0; if (Math.abs(y - F.p.y) > 0.6) F.p.y = y; }
+    }
+    crowdSpace(S, dt);
+    for (const F of S.people) if (F.door && (F.alight || F.st === 'climb' || (F.mode === 'world' && F.p.distanceTo(F.door.O) < 9))) crowdDoorWant(F.door, 2.5);
+  }
+  crowdDoorsFrame(dt);
+  // the riders
+  for (const F of CROWD.riders) crowdStep(F, dt);
+  // aboard but no longer at a platform the camera can see (the station went out of range): carry on to the seat
+  for (const F of [...CROWD.live]) if (!F.dead && F.mode === 'car' && !F.S && !CROWD.riders.has(F)) crowdStep(F, dt);
+  CROWD.rideT -= dt; if (CROWD.rideT <= 0) { CROWD.rideT = 0.5; CROWD.ridersFrame(); }
+  CROWD.pruneT -= dt; if (CROWD.pruneT <= 0) { CROWD.pruneT = 2; CROWD.prune(); }
+  for (const F of CROWD.live) { crowdPlace(F); crowdPose(F, dt); }
+};
+/* drop everyone (a new world) */
+CROWD.reset = function () {
+  for (const S of [...CROWD.S.values()]) CROWD.deactivate(S);
+  for (const F of [...CROWD.live]) crowdDrop(F);
+  CROWD.C.clear(); CROWD.T.clear(); CROWD.riders.clear();
+};
+/* how many of each, for the tests and the console */
+CROWD.count = function () {
+  let wait = 0, walk = 0, seated = 0, occ = 0;
+  for (const S of CROWD.S.values()) for (const F of S.people) { if (F.mode === 'world' && (F.st === 'idle' || F.st === 'bench')) wait++; else walk++; }
+  for (const C of CROWD.C.values()) for (const o of C.occ) if (o) occ++;
+  for (const F of CROWD.riders) if (F.st === 'seated') seated++;
+  return { stations: CROWD.S.size, wait, walk, seated, occ, drawn: CROWD.live.size };
 };
 
 /* ============================================================================
@@ -33281,6 +34394,7 @@ function renderStep(dt, T) {
   AI.render(dt);
   MP.frame(dt);
   WALK.frame(dt);
+  CROWD.frame(dt);
   if (GAME.running && !S.paused && !S.derailed && !PLACE.on) MP.contact(T); else S.pushF = 0;
   // headlight & glows, brightening through dusk
   const night = SKY.dark, darkH = Math.max(night, smooth(0.3, 0.7, SKY.boreK || 0));   // in a tunnel the headlight works as it does at night
