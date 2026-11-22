@@ -12,23 +12,36 @@ const JOB_SPAWNS = {
   yardEast: { line: 'Yard 2', s: -175, o: 1, lined: ['Yard ladder E2', 'Bellevue East'], name: 'Yard 2, Bellevue' },
   yardWest: { line: 'Yard 2', s: 175, o: -1, lined: ['Yard ladder W2', 'Bellevue West'], name: 'Yard 2, Bellevue' },
   depot: { line: 'Main', s: 1120, o: 1, lined: [], cabAt: 'Bellevue', name: 'the Bellevue depot' },
+  // Laurel Mountain: track 1 on the level stretch past Hollins, short of the climb; the Summit platform
+  belowClimb: { line: 'Main', s: 9900, o: 1, lined: [], name: 'track 1 east of Hollins' },
+  summit: { line: 'Main', s: 38800, o: 1, lined: [], cabAt: 'Summit', name: 'the Summit platform' },
+  // Raven Lake: the Hollow Pine siding, lined out at the east end for the run down the cliff
+  pineDepot: { line: 'Hollow Pine Siding', s: 640, o: 1, lined: ['Hollow Pine East'], cabAt: 'Hollow Pine', name: 'the Hollow Pine depot' },
+  pineSiding: { line: 'Hollow Pine Siding', s: 900, o: 1, lined: ['Hollow Pine East'], name: 'the siding at Hollow Pine' },
+};
+/* Places on a route that are not stations, for 'pass' steps: where they are along the main (metres) */
+const JOB_MARKS = {
+  'Horseshoe Curve': () => 20950,
+  'the climb': () => 11500,
+  'the foot of the cliff': () => FROST.cliff[1],
+  'the far shore': () => FROST.sIce[1] + 30,
 };
 
 const JOBS = [
-  { id: 'elevator', name: 'Elevator pickup', kind: 'switch', level: 'Easy', look: 'morning', train: 'light', spawn: 'yardEast', start: hm(6, 50), due: hm(7, 20),
+  { id: 'elevator', pay: 1200, name: 'Elevator pickup', kind: 'switch', level: 'Easy', look: 'morning', train: 'light', spawn: 'yardEast', start: hm(6, 50), due: hm(7, 20),
     brief: 'The elevator at Fostoria has loaded four boxcars of grain overnight. Run light to the elevator track, couple to the loads and set them out on Yard 1 at Bellevue for the evening manifest.',
     steps: [
       { type: 'pickup', from: 'Elevator Track', text: 'Couple to the four loads on the Elevator Track', hint: 'Out of the yard at Bellevue East, over to track 2 at Bellevue crossover A, into the Fostoria siding at Fostoria West, then the Elevator switch. Couple at 4 mph or less.' },
       { type: 'spot', to: 'Yard 1', tag: 'Y1', text: 'Set the loads out on Yard 1, clear of the switches', hint: 'Back west out of the siding onto track 2, over to track 1 at Bellevue crossover A and in at Bellevue East. Stop, cut the cars off, and leave them at least 125 ft from every switch.' },
     ] },
-  { id: 'no3', name: 'No. 3, Kenton local', kind: 'passenger', level: 'Easy', look: 'morning', train: 'passenger', spawn: 'depot', start: hm(7, 39), traffic: [['no12', 12500]],
+  { id: 'no3', pay: 1500, name: 'No. 3, Kenton local', kind: 'passenger', level: 'Easy', look: 'morning', train: 'passenger', spawn: 'depot', start: hm(7, 39), traffic: [['no12', 12500]],
     brief: 'The morning local. Eight heavyweights out of Bellevue, a stop at Fostoria, and over Kenton Hill to Kenton. Keep the ride smooth, leave no station early and put the engine on the mark.',
     steps: [
       { type: 'depart', at: 'Bellevue', dep: hm(7, 40) },
       { type: 'stop', at: 'Fostoria', arr: hm(7, 45), dep: hm(7, 46) },
       { type: 'stop', at: 'Kenton', arr: hm(7, 55) },
     ] },
-  { id: 'bd2', name: 'BD-2 time freight', kind: 'freight', level: 'Medium', look: 'golden', train: 'timefreight', spawn: 'yardEast', start: hm(17, 30), vmax: 50,
+  { id: 'bd2', pay: 3000, name: 'BD-2 time freight', kind: 'freight', level: 'Medium', look: 'golden', train: 'timefreight', spawn: 'yardEast', start: hm(17, 30), vmax: 50,
     traffic: [['no5', 46350], ['no12', 16500]],
     brief: 'Eighteen cars and a caboose of hot merchandise around the division on track 1. No. 5, the eastward express, is right behind you: take the Kenton siding and let it by. Hold it to 50 mph, the timetable speed for freight, and bring it home to stop in the clear on the main at Bellevue.',
     steps: [
@@ -39,7 +52,7 @@ const JOBS = [
       { type: 'pass', at: 'Spencerville', by: hm(18, 23) },
       { type: 'clear', between: ['Bellevue West', 'Bellevue East'], where: 'Bellevue', by: hm(18, 28), text: 'Stop in the clear on the main at Bellevue', hint: 'The whole train between Bellevue West and Bellevue East, at least 125 ft from both switches.' },
     ] },
-  { id: 'no7', name: 'No. 7, around the division', kind: 'passenger', level: 'Medium', look: 'noon', train: 'passenger', spawn: 'depot', start: hm(12, 9), traffic: [['no12', 15000], ['x2210', 8200]],
+  { id: 'no7', pay: 2500, name: 'No. 7, around the division', kind: 'passenger', level: 'Medium', look: 'noon', train: 'passenger', spawn: 'depot', start: hm(12, 9), traffic: [['no12', 15000], ['x2210', 8200]],
     brief: 'The midday train makes every regular stop on the division: Fostoria, Kenton over the hill, Delphos past the river bridge, out over the moraine to Van Wert, round the far curve to Spencerville, and home to Bellevue. Six stops, six chances to be early, late or off the mark.',
     steps: [
       { type: 'depart', at: 'Bellevue', dep: hm(12, 10) },
@@ -50,18 +63,54 @@ const JOBS = [
       { type: 'stop', at: 'Spencerville', arr: hm(13, 0), dep: hm(13, 1) },
       { type: 'stop', at: 'Bellevue', arr: hm(13, 6) },
     ] },
-  { id: 'quarry', name: 'Night quarry turn', kind: 'switch', level: 'Hard', look: 'night', train: 'light', spawn: 'yardWest', start: hm(21, 30), due: hm(22, 45),
+  { id: 'quarry', pay: 3500, name: 'Night quarry turn', kind: 'switch', level: 'Hard', look: 'night', train: 'light', spawn: 'yardWest', start: hm(21, 30), due: hm(22, 45),
     brief: 'Five loads of stone are waiting in quarry storage. Run light out the west end, round the Van Wert extension and past Delphos, back up the branch at Quarry Jct, pull the loads and bring them home over Kenton Hill and round the east end to Yard 2. In the dark.',
     steps: [
       { type: 'pickup', from: 'Quarry Storage', text: 'Couple to the five loads on Quarry Storage', hint: 'West out of the yard at Bellevue West, over to track 2 at Spencerville crossover B, and round through Willshire, Van Wert and Middle Point. Cross back to track 1 at Delphos crossover A. The branch faces the other way at Quarry Jct, just beyond: run past it, throw it, and back up the branch. Storage is off the runaround.' },
       { type: 'spot', to: 'Yard 2', tag: 'Y2', text: 'Set the loads out on Yard 2, clear of the switches', hint: 'Pull off the branch onto track 1 and head east over the river. Cross to track 2 at Kenton crossover B, then round the east curve and west past Fostoria. Cross back at Bellevue crossover A, in at Bellevue East and up the ladder to Yard 2.' },
     ] },
-  { id: 'wayfreight', name: 'Kenton & Delphos way freight', kind: 'switch', level: 'Medium', look: 'noon', train: 'light', spawn: 'yardEast', start: hm(9, 0), due: hm(10, 15),
+  { id: 'wayfreight', pay: 2000, name: 'Kenton & Delphos way freight', kind: 'switch', level: 'Medium', look: 'noon', train: 'light', spawn: 'yardEast', start: hm(9, 0), due: hm(10, 15),
     brief: 'Five cars on Yard 3 are billed out on the line: coal and feed for Kenton Coal & Feed, fuel oil for the Delphos bulk plant. Take them round on track 1 and spot each car at its customer. Both spurs trail behind you: pull past the switch, then back the cars in.',
     steps: [
       { type: 'pickup', from: 'Yard 3', text: 'Couple to the way freight on Yard 3', hint: 'Out at Bellevue East, then back in over the ladder to Yard 3. The two tank cars are on the east end, the Kenton cars behind them. Couple at 4 mph or less.' },
       { type: 'bills', to: 'kenton', by: hm(9, 50), text: 'Spot the coal and feed at Kenton Coal & Feed', hint: 'East on track 1 round to Kenton. Take the siding at Kenton East, run past the Kenton Spur switch, throw it and back in. Cut off the hoppers and the boxcar, and leave them clear of the switch.' },
       { type: 'bills', to: 'delphos', text: 'Spot the tank cars at Delphos Oil', hint: 'Out of the siding at Kenton West and on over the river, past Quarry Jct to Delphos. Run past the Delphos Spur switch, throw it, back the tanks in and cut them off clear of the switch. Put the switch back for the main.' },
+    ] },
+
+  /* ---------- Laurel Mountain ---------- */
+  { id: 'pusher', route: 'laurel', pay: 6000, name: 'Mine run over the mountain', kind: 'freight', level: 'Hard', look: 'morning', train: 'mtncoal', spawn: 'belowClimb', start: hm(6, 10), helper: 24,
+    brief: 'Fourteen loads of coal for the east, 1,300 tons: more than one engine can lift up the 1.9 per cent. A pusher is waiting on track 1 just behind your caboose. Couple it on, then take the train up through Big Laurel, round the Horseshoe and past Glen Iron to Summit, where the pusher comes off.',
+    steps: [
+      { type: 'helper', miss: 'the climb', by: hm(6, 14), text: 'Back down onto the pusher and couple up', hint: 'The pusher stands about 80 ft behind your caboose with its knuckle open. Reverser back, release the brakes and ease down onto it at 4 mph or less. It works off your throttle and brakes from then on.' },
+      { type: 'pass', at: 'Big Laurel', by: hm(6, 27), hint: 'Over the river and onto the 1.9 per cent. Work it hard and keep the sand handy: a slip on the grade costs you speed you will not get back.' },
+      { type: 'pass', at: 'Horseshoe Curve', by: hm(6, 34), hint: '30 mph round the Horseshoe. The curve drags at a heavy train: do not let it stall there.' },
+      { type: 'pass', at: 'Glen Iron', by: hm(6, 48) },
+      { type: 'cutoff', at: 'Summit', by: hm(7, 2), text: 'Stop at Summit and cut the pusher off', hint: 'The grade eases at Summit. Stop with the train on track 1 by the station, open Couplers (U) and pull the pin between the caboose and the pusher. It stays behind; you are done.' },
+    ] },
+  { id: 'no21', route: 'laurel', pay: 2500, name: 'No. 21, down Pine Creek', kind: 'passenger', level: 'Medium', look: 'golden', train: 'passenger', spawn: 'summit', start: hm(16, 20),
+    brief: 'The afternoon local off the top of the mountain. Eight heavyweights out of Summit, through the bore and down Pine Creek, 1.6 per cent all the way to Pine Flats, then on to Ashby. Keep the brakes working and the ride smooth: the passengers feel every grab.',
+    steps: [
+      { type: 'depart', at: 'Summit', dep: hm(16, 22) },
+      { type: 'stop', at: 'Pine Flats', arr: hm(16, 37), dep: hm(16, 38) },
+      { type: 'stop', at: 'Ashby', arr: hm(16, 46) },
+    ] },
+
+  /* ---------- Raven Lake ---------- */
+  { id: 'lakemail', route: 'frost', pay: 2500, name: 'Lake mail, against the clock', kind: 'passenger', level: 'Medium', look: 'night', train: 'lakemail', spawn: 'pineDepot', start: hm(22, 0),
+    brief: 'The mail for Owl Creek is late, and it has to make the connection. Four cars down the cliff, across the frozen lake and up to Owl Creek, and every minute counts. The ice will take speed, but brake hard or swing out there and the train goes off the rails.',
+    steps: [
+      { type: 'depart', at: 'Hollow Pine', dep: hm(22, 1) },
+      { type: 'pass', at: 'the foot of the cliff', by: hm(22, 7), hint: '4 per cent down the cliff and 30 mph on the shelf. Get the brakes on early and keep them on: the wheels throw sparks all the way down.' },
+      { type: 'pass', at: 'the far shore', by: hm(22, 10), hint: 'Out on the ice there are no rails to hold you. Keep it straight, do not brake hard, and let it run to the far rails.' },
+      { type: 'stop', at: 'Owl Creek', arr: hm(22, 15) },
+    ] },
+  { id: 'icefreight', route: 'frost', pay: 5000, name: 'Night freight over the ice', kind: 'freight', level: 'Hard', look: 'night', train: 'lakefreight', spawn: 'pineSiding', start: hm(22, 30),
+    brief: 'Eleven cars, 900 tons, down a 4 per cent grade to a frozen lake. Hold the train back on the cliff without sliding the wheels, cross the ice without jackknifing, then lift it up the 1.4 per cent past Owl Creek and all the way round to put it away in the Hollow Pine siding.',
+    steps: [
+      { type: 'pass', at: 'the foot of the cliff', by: hm(22, 38), hint: 'Out at Hollow Pine East and over the plateau. Set the train brakes before the cliff grade, not on it: a heavy train gets away fast on 4 per cent.' },
+      { type: 'pass', at: 'the far shore', by: hm(22, 43), hint: 'Gently on the ice. Hard braking, or the engine brake alone, can shove the cars round and off the rails.' },
+      { type: 'pass', at: 'Owl Creek', by: hm(22, 50) },
+      { type: 'track', to: 'Hollow Pine Siding', by: hm(23, 5), text: 'Put the train away in the Hollow Pine siding, clear of the switches', hint: 'Round the far side of the lake and back over the plateau. Throw Hollow Pine West for the siding, pull in and stop with the whole train at least 125 ft from both switches.' },
     ] },
 ];
 
@@ -76,8 +125,19 @@ const stationNamed = n => ROUTE.stations.find(s => s.name === n);
 JOB.load = function () { try { JOB.best = JSON.parse(localStorage.getItem('bd_jobs') || '{}') || {}; } catch (e) { JOB.best = {}; } };
 JOB.save = function () { try { localStorage.setItem('bd_jobs', JSON.stringify(JOB.best)); } catch (e) {} };
 /* jobs are written for the built-in railroad, single player */
-JOB.available = () => !MP.on && !PLAY_LAYOUT && !WORLD.mtn && !LOCO_SPEC[GAME.settings.loco].set;
-JOB.def = id => JOBS.find(j => j.id === id) || null;
+JOB.route = () => typeof PLAY_LAYOUT !== 'undefined' && PLAY_LAYOUT ? '' : typeof ROUTE_KEY !== 'undefined' ? ROUTE_KEY : 'ohio';
+JOB.list = () => JOBS.filter(j => (j.route || 'ohio') === JOB.route());
+JOB.available = () => !MP.on && !PLAY_LAYOUT && JOB.list().length > 0 && !LOCO_SPEC[GAME.settings.loco].set;
+JOB.def = id => JOB.list().find(j => j.id === id) || null;
+/* a station, or a named place on the main (JOB_MARKS), as a point in the world */
+JOB.where = function (name) {
+  const sn = stationNamed(name); if (sn) return sn.p;
+  const m = JOB_MARKS[name]; if (!m) return null;
+  if (!JOB.wc) JOB.wc = {};
+  if (!JOB.wc[name]) { const loc = ROUTE.main.locate(m()), [X, N] = loc.edge.xz(loc.s); JOB.wc[name] = new THREE.Vector3(X, 0, -N); }
+  return JOB.wc[name];
+};
+const flatDist = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 JOB.wanted = () => JOB.available() ? JOB.def(GAME.settings.job) : null;
 JOB.activeId = () => JOB.run && !JOB.run.over ? JOB.run.def.id : '';
 JOB.consist = () => { const j = JOB.wanted(); return j ? j.train : GAME.settings.consist; };
@@ -120,9 +180,29 @@ JOB.begin = function (def) {
       R.cars.push(v);
     }
   }
+  if (def.helper) JOB.makeHelper(def);
   carPanelState.key = '';
   JOB.ui();
 };
+/* A pusher for the job's train: an engine like yours, standing on the same track a few metres behind the
+   train, facing the same way with its front knuckle open. It is one of your trains (11l_fleet.js) until you
+   couple it on; then it is MU'd to your controls like any other helper (07b_cars.js helperOf). */
+JOB.makeHelper = function (def) {
+  const T = GAME.train; if (!T || typeof FLEET === 'undefined') return null;
+  const sp = JOB.spawn(def), sF = sp.s - sp.o * (T.length + def.helper);
+  const H = new Train(scene, T.locoKey, 'light', dieselOpts());
+  const loc = sp.line.locate(sF);
+  H.place(new TrackPos(loc.edge, loc.s, sp.o));
+  prepareTrain(H);
+  H.cfg = fleetCfgOut();
+  fleetPark(H); crewShut(H);
+  H.fid = ++FLEET.n; H.pusher = true;
+  setKn(endCoupler(H, 'front'), KN_OPEN);
+  H.dropLights(); FLEET.dim(H); H.update(0);
+  CARS.gen++; if (typeof IX !== 'undefined') IX.idx = null;
+  return H;
+};
+const hasHelper = T => T.vehicles.some(v => v.helper);
 JOB.intro = function () {
   const R = JOB.run, d = R.def, first = R.steps[0];
   setTimeout(() => toast(`${d.name}: on duty at ${fmtClock(d.start, true)}, ${GAME.spawnName}. Tap the job card for the whole sheet.`, '', 6000, 'jobintro'), 600);
@@ -235,7 +315,8 @@ JOB.steps = function (R, T, now) {
       if (!near) {
         st.depT = R.moveAt != null ? R.moveAt : now;
         if (st.depT < st.dep - 5) JOB.dock('time', 5, `Left ${st.at} early`, `${fmtDur(st.dep - st.depT)} before ${fmtClock(st.dep)}`);
-        toast(`Departed ${st.at}${st.depT >= st.dep - 5 ? ' on time' : ''}. Next stop ${R.steps[R.i + 1].at}, due ${fmtClock(R.steps[R.i + 1].arr)}.`, 'good', 4200, 'jobdep');
+        const nx = R.steps[R.i + 1];
+        toast(`Departed ${st.at}${st.depT >= st.dep - 5 ? ' on time' : ''}. ${nx.type === 'stop' ? `Next stop ${nx.at}, due ${fmtClock(nx.arr)}` : nx.type === 'pass' ? `Pass ${nx.at} by ${fmtClock(nx.by)}` : nx.text}.`, 'good', 4200, 'jobdep');
         done();
       }
       return;
@@ -256,7 +337,7 @@ JOB.steps = function (R, T, now) {
       if (st.seen && !near && along > PLATFORM && st.state === 'todo') { st.state = 'ranby'; toast(`You ran by ${st.at}. Stop and back up to the platform.`, 'bad', 5000, 'ranby'); }
       // carried on without stopping: the stop is missed
       const next = R.steps[R.i + 1];
-      const nextNear = next && next.at && cab.distanceTo(stationNamed(next.at).p) < PLATFORM * 3;
+      const nextNear = next && next.at && JOB.where(next.at) && flatDist(cab, JOB.where(next.at)) < PLATFORM * 3;
       if (st.state === 'ranby' && (along > 1500 || nextNear)) {
         st.state = 'missed'; JOB.dock('rules', 15, `Missed the ${st.at} stop`, '');
         if (!next) { JOB.finish(); return; }
@@ -276,12 +357,13 @@ JOB.steps = function (R, T, now) {
     return;
   }
   if (st.type === 'pass') {
-    const sn = stationNamed(st.at);
-    if (T.lead.pos.distanceTo(sn.p) < 40) {
+    const p = JOB.where(st.at);
+    if (p && flatDist(T.lead.pos, p) < (WORLD.frost ? 60 : 40)) {   // out on the ice the train runs free of the rails
       st.passT = now; const late = lateBy(st.by);
       if (late > 0) JOB.dock('time', Math.min(8, 2 * Math.ceil(late / 60)), `Late past ${st.at}`, `${fmtDur(late)} behind ${fmtClock(st.by)}`);
       toast(`By ${st.at} at ${fmtClock(now)}: ${late > 0 ? fmtDur(late) + ' late' : fmtDur(-late) + ' to spare'}.`, late > 0 ? 'warn' : 'good', 4200, 'jobpass');
       done();
+      const nx = R.steps[R.i]; if (nx && nx.hint && !R.over) setTimeout(() => { if (JOB.step() === nx) toast(nx.hint, '', 7000, 'jobhint'); }, 4500);
     }
     return;
   }
@@ -311,6 +393,34 @@ JOB.steps = function (R, T, now) {
       toast(`${a.name} is by. Wait for the signal, then on your way.`, 'good', 4600, 'jobmeet');
       st.doneT = now; done();
     }
+    return;
+  }
+  if (st.type === 'helper') {
+    // couple the pusher on; run on up the hill without it and the step is missed
+    if (hasHelper(T)) { st.doneT = now; const nx = R.steps[R.i + 1]; toast(`Pusher on. ${nx.type === 'pass' ? 'Pass ' + nx.at + ' by ' + fmtClock(nx.by) : nx.text}: give it everything.`, 'good', 5200, 'jobhelp'); done(); return; }
+    const m = st.miss && JOB.where(st.miss);
+    if (m && flatDist(T.lead.pos, m) < 40) { JOB.dock('rules', 10, 'Left the pusher behind', ''); done(); st.state = 'missed'; }
+    return;
+  }
+  if (st.type === 'cutoff') {
+    // stopped by the station with the pusher cut off and left behind
+    const p = JOB.where(st.at), near = p && flatDist(cabPos(T), p) < 500;
+    st.why = !near ? '' : hasHelper(T) ? 'Pull the pin between the caboose and the pusher' : R.lastStop < 1.5 ? 'Bring the train to a stand' : '';
+    if (!near || hasHelper(T) || R.lastStop < 1.5) return;
+    st.doneT = now; const late = lateBy(st.by);
+    if (late > 0) JOB.dock('time', Math.min(20, 3 * Math.ceil(late / 60)), `Late into ${st.at}`, `${fmtDur(late)} behind ${fmtClock(st.by)}`);
+    done();
+    return;
+  }
+  if (st.type === 'track') {
+    // the whole train stands on the track, clear of every switch
+    if (R.lastStop < 2) { st.why = ''; return; }
+    const on = T.pts.filter(p => p.tp.e.line && p.tp.e.line.name === st.to).length;
+    if (on < T.pts.length) { st.why = on ? `Not all of the train is on ${st.to}` : ''; return; }
+    const sw = foulOf(T); if (sw) { st.why = `The train is foul of ${sw.name}: pull ahead clear`; return; }
+    st.why = ''; st.doneT = now; const late = lateBy(st.by);
+    if (late > 0) JOB.dock('time', Math.min(20, 4 * Math.ceil(late / 60)), 'Late putting the train away', `${fmtDur(late)} behind ${fmtClock(st.by)}`);
+    done();
     return;
   }
   if (st.type === 'pickup') {
@@ -370,7 +480,8 @@ JOB.finish = function () {
   R.prevBest = prev ? prev.score : null;
   if (!prev || sc > prev.score) JOB.best[R.def.id] = { score: sc, stars: starsFor(sc), at: Date.now() };
   JOB.save();
-  toast(`${R.def.name} complete: ${sc} points.`, 'good', 4000, 'jobdone');
+  R.paid = CAREER.payJob(R.def, sc);
+  toast(`${R.def.name} complete: ${sc} points${R.paid ? `, $${R.paid.toLocaleString()} earned` : ''}.`, 'good', 4000, 'jobdone');
   setTimeout(() => JOB.results(), 1600);
   JOB.ui();
 };
@@ -455,7 +566,7 @@ JOB.results = function () {
   $('jdStars').textContent = fail ? '' : stars(st);
   $('jdScore').innerHTML = fail ? '' : `<b>${total}</b><small>/ 100</small>`;
   $('jdFail').textContent = fail ? fail.body + ' The job is over.' : '';
-  $('jdBest').textContent = fail ? '' : R.prevBest == null ? 'First run of this job.' : total > R.prevBest ? `New best: up from ${R.prevBest}.` : `Best so far: ${R.prevBest}.`;
+  $('jdBest').textContent = fail ? '' : (R.prevBest == null ? 'First run of this job.' : total > R.prevBest ? `New best: up from ${R.prevBest}.` : `Best so far: ${R.prevBest}.`) + (R.paid ? ` Paid $${R.paid.toLocaleString()}.` : '');
   $('jdCats').innerHTML = fail ? '' : cats.map(c => `<div class="jc"><span>${c.name}</span><i><em style="width:${(c.got / c.max * 100).toFixed(1)}%"></em></i><b>${c.got}<small>/${c.max}</small></b></div>`).join('');
   $('jdSheet').innerHTML = JOB.sheet(R, R.end, false);
   $('jdDrive').textContent = !fail ? 'Keep driving' : /plug/i.test(fail.title) ? 'Relight and drive on' : 'Re-rail and drive on';
@@ -481,9 +592,9 @@ function jobMenu() {
   const ok = JOB.available();
   $('grpJob').hidden = false;
   host.innerHTML = '';
-  if (!ok) { $('jobBrief').innerHTML = `<p class="help">${MP.on ? 'Jobs are single player for now. Leave the room to take one.' : LOCO_SPEC[GAME.settings.loco].set ? 'Jobs are written for engines that pick up and set out cars. Pick a steam or diesel engine to take one.' : 'Jobs are written for the Berkshire Division. Pick it under Railroad to take one.'}</p>`; refreshJobGroups(); return; }
+  if (!ok) { $('jobBrief').innerHTML = `<p class="help">${MP.on ? 'Jobs are single player for now. Leave the room to take one.' : LOCO_SPEC[GAME.settings.loco].set ? 'Jobs are written for engines that pick up and set out cars. Pick a steam or diesel engine to take one.' : 'Jobs are written for the built-in railroads. Pick one under Railroad to take one.'}</p>`; refreshJobGroups(); return; }
   const opts = [['', 'Free run', 'No clock, no score', null]];
-  for (const j of JOBS) { const b = JOB.best[j.id]; opts.push([j.id, j.name, `${{ switch: 'Switching', passenger: 'Passenger', freight: 'Freight' }[j.kind]} · ${j.level}`, b]); }
+  for (const j of JOB.list()) { const b = JOB.best[j.id]; opts.push([j.id, j.name, `${{ switch: 'Switching', passenger: 'Passenger', freight: 'Freight' }[j.kind]} · ${j.level}`, b]); }
   const cur = JOB.def(GAME.settings.job) ? GAME.settings.job : '';
   for (const [id, name, sub, best] of opts) {
     const b = document.createElement('button'); b.type = 'button'; b.id = 'optJob_' + (id || 'free');
@@ -500,9 +611,9 @@ function jobBrief() {
   if (!j) { el.innerHTML = ''; el.hidden = true; return; }
   el.hidden = false;
   const R = { def: j, steps: j.steps.map(s => ({ ...s })) };
-  const trains = { light: 'Light engine', passenger: '8 coaches', timefreight: '18 cars, caboose' };
+  const trains = { light: 'Light engine', passenger: '8 coaches', timefreight: '18 cars, caboose', mtncoal: '14 loads + pusher', lakemail: '4 cars', lakefreight: '11 cars, caboose' };
   const b = JOB.best[j.id], last = j.steps[j.steps.length - 1];
-  el.innerHTML = `<p class="jb">${j.brief}</p><div class="jm"><span><b>${fmtClock(j.start, true)}</b>On duty</span><span><b>${fmtClock(j.due || last.arr || last.by, true)}</b>${j.due ? 'Work done by' : last.type === 'stop' ? 'Due ' + last.at : 'In the clear by'}</span><span><b>${trains[j.train]}</b>Your train</span><span><b>${b ? stars(b.stars) + ' ' + b.score : '—'}</b>Best</span></div>` + JOB.sheet(R, 0, false);
+  el.innerHTML = `<p class="jb">${j.brief}</p><div class="jm"><span><b>${fmtClock(j.start, true)}</b>On duty</span><span><b>${fmtClock(j.due || last.arr || last.by, true)}</b>${j.due ? 'Work done by' : last.type === 'stop' ? 'Due ' + last.at : 'In the clear by'}</span><span><b>${trains[j.train]}</b>Your train</span><span><b>${b ? stars(b.stars) + ' ' + b.score : '—'}</b>Best</span><span><b>$${(j.pay || 0).toLocaleString()}</b>Pays at 100 points</span><span><b>$${CAREER.earned().toLocaleString()}</b>Earned so far</span></div>` + JOB.sheet(R, 0, false);
 }
 /* a job picks the train and the time of day itself */
 function refreshJobGroups() {
@@ -514,6 +625,7 @@ function jobSetup() {
   JOB.load(); IND.load();
   if (GAME.settings.job && !JOB.def(GAME.settings.job)) GAME.settings.job = '';
   jobMenu();
+  CAREER.setup();
   $('jobBox').addEventListener('click', () => { const R = JOB.run; if (!R) return; if (R.over) JOB.results(); else { const p = $('jobPanel'); p.hidden = !p.hidden; if (!p.hidden) { $('carPanel').hidden = true; $('btnCars').classList.remove('on'); $('mpPanel').hidden = true; JOB.panel(); } } });
   $('jpClose').addEventListener('click', () => { $('jobPanel').hidden = true; });
   $('jpAbandon').addEventListener('click', () => {
@@ -540,8 +652,13 @@ JOB.drawMap = function (g, tx, ty, opt) {
     for (const e of ln.edges) { const L = MAP.lines.find(m => m.e === e); if (!L) continue; g.beginPath(); L.pts.forEach((p, i) => { const x = tx(p[0]), y = ty(p[1]); i ? g.lineTo(x, y) : g.moveTo(x, y); }); g.stroke(); }
     g.setLineDash([]);
   }
-  const at = st.at || (st.type === 'clear' ? st.where : null), sn = at && stationNamed(at);
-  if (sn) { const [X, N] = sn.edge.xz(sn.s); const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 250); g.strokeStyle = `rgba(242,179,61,${0.5 + 0.5 * pulse})`; g.lineWidth = 2.5 * opt.w; g.beginPath(); g.arc(tx(X), ty(N), (9 + 4 * pulse) * opt.w, 0, TAU); g.stroke(); }
+  if (st.type === 'track' && ROUTE.lines[st.to]) {
+    g.strokeStyle = 'rgba(207,166,81,0.85)'; g.lineWidth = 5 * opt.w; g.setLineDash([6 * opt.w, 5 * opt.w]);
+    for (const e of ROUTE.lines[st.to].edges) { const L = MAP.lines.find(m => m.e === e); if (!L) continue; g.beginPath(); L.pts.forEach((p, i) => { const x = tx(p[0]), y = ty(p[1]); i ? g.lineTo(x, y) : g.moveTo(x, y); }); g.stroke(); }
+    g.setLineDash([]);
+  }
+  const at = st.at || (st.type === 'clear' ? st.where : null), wp = at && JOB.where(at);
+  if (wp) { const X = wp.x, N = -wp.z; const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 250); g.strokeStyle = `rgba(242,179,61,${0.5 + 0.5 * pulse})`; g.lineWidth = 2.5 * opt.w; g.beginPath(); g.arc(tx(X), ty(N), (9 + 4 * pulse) * opt.w, 0, TAU); g.stroke(); }
   // the waybilled cars
   g.fillStyle = '#ffb347';
   for (const v of R.cars) { if (!v.pos) continue; g.beginPath(); g.arc(tx(v.pos.x), ty(-v.pos.z), 2.4 * opt.w, 0, TAU); g.fill(); }

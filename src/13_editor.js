@@ -746,6 +746,7 @@ function railMenu() {
   for (const m of Object.values(LAYOUTS.all()).filter(m => (m.pieces || []).length).sort((a, b) => (b.saved || 0) - (a.saved || 0)).slice(0, 5)) opts.push([m.id, m.name || 'Untitled', `${(m.pieces || []).length} pieces · yours`]);
   for (const [id, name, sub] of opts) {
     const b = document.createElement('button'); b.type = 'button'; b.setAttribute('aria-pressed', String(id === cur));
+    if (id.startsWith('route:')) b.dataset.route = id.slice(6);
     b.innerHTML = '<span></span><small></small>'; b.firstChild.textContent = name; b.lastChild.textContent = sub;
     const changed = !id.startsWith('route:') && id === cur && (LAYOUTS.get(id) || {}).saved !== PLAY_LAYOUT.saved;
     if (changed) b.lastChild.textContent = 'Edited · tap to reload';
@@ -757,6 +758,7 @@ function railMenu() {
     });
     host.appendChild(b);
   }
+  if (typeof CAREER !== 'undefined') CAREER.paint();
 }
 function edInit() {
   $('btnEditor').addEventListener('click', edOpen);
