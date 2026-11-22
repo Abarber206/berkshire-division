@@ -2,7 +2,7 @@
    Game: boot, world loading, main loop, rules, HUD
    ========================================================================== */
 const GAME = {
-  settings: { traffic: 'on', loco: '765', consist: 'passenger', time: 'morning', gfx: 'auto', cycle: 'x30', weather: 'changing', wxV: 1, fire: 'easy', fireV: 2, units: 1, livery: 'ss', mix: false, finish: 'standard', job: '', custom: { body: 0x2c5f8a, roof: 0x24384a, accent: 0xf0f0ea, letter: 0xf0f0ea, rail: 0xf0f0ea }, number: 4401, coach: 'road', coachV: 1, obsLamp: 'side', coachColor: 0x2a3a2a, whistles: 'new' },
+  settings: { traffic: 'on', loco: '765', consist: 'passenger', time: 'morning', gfx: 'auto', cycle: 'x30', weather: 'changing', wxV: 1, fire: 'easy', fireV: 2, units: 1, livery: 'ss', mix: false, finish: 'standard', job: '', custom: { body: 0x2c5f8a, roof: 0x24384a, accent: 0xf0f0ea, letter: 0xf0f0ea, rail: 0xf0f0ea }, number: 4401, coach: 'road', coachV: 1, obsLamp: 'side', coachColor: 0x2a3a2a, whistles: 'new', grime: 'full' },
   train: null, running: false, ready: false, stats: { runThrough: 0 },
   events: {}, stopped: 0, lastStation: null, filling: null,
 };
@@ -320,7 +320,7 @@ function setObsLamps(st) {
     if (v.lamps) { for (const o of [...v.lamps.meshes, ...v.lamps.glows]) { if (o.parent) o.parent.remove(o); if (o.geometry) o.geometry.dispose(); } v.lamps.mat.dispose(); v.lamps = null; }
   }
 }
-const SAVE_KEYS = ['job', 'traffic', 'loco', 'consist', 'time', 'cycle', 'weather', 'wxV', 'fire', 'fireV', 'units', 'livery', 'mix', 'finish', 'custom', 'number', 'coach', 'coachV', 'obsLamp', 'coachColor', 'gfx', 'whistles'];
+const SAVE_KEYS = ['job', 'traffic', 'loco', 'consist', 'time', 'cycle', 'weather', 'wxV', 'fire', 'fireV', 'units', 'livery', 'mix', 'finish', 'custom', 'number', 'coach', 'coachV', 'obsLamp', 'coachColor', 'gfx', 'whistles', 'grime'];
 function saveSettings() { try { const o = {}; for (const k of SAVE_KEYS) o[k] = GAME.settings[k]; localStorage.setItem('bd_settings', JSON.stringify(o)); } catch (e) {} }
 function loadSettings() { try { const o = JSON.parse(localStorage.getItem('bd_settings') || 'null'); if (o) for (const k of SAVE_KEYS) if (o[k] !== undefined) GAME.settings[k] = o[k]; } catch (e) {}
   // easy steam came in as the default after 'auto' had been saved by everyone: move them up to it once
@@ -332,6 +332,7 @@ function loadSettings() { try { const o = JSON.parse(localStorage.getItem('bd_se
   if (GAME.settings.obsLamp !== 'roof') GAME.settings.obsLamp = 'side';
   if (GAME.settings.whistles !== 'classic') GAME.settings.whistles = 'new';
   if (!WEATHER[GAME.settings.weather]) GAME.settings.weather = 'changing';
+  if (!GRM_LEVELS[GAME.settings.grime]) GAME.settings.grime = 'full'; grmLevel(GAME.settings.grime);
   if (!['easy', 'auto', 'hand'].includes(GAME.settings.fire)) GAME.settings.fire = 'easy'; if (!LOCO_SPEC[GAME.settings.loco]) GAME.settings.loco = '765'; if (!LIVERIES[GAME.settings.livery]) GAME.settings.livery = 'ss'; if (!DN.starts[GAME.settings.time]) GAME.settings.time = 'morning'; if (!DN.rates[GAME.settings.cycle]) GAME.settings.cycle = 'x30'; if (!COACH_PAINT[GAME.settings.coach]) GAME.settings.coach = 'road'; if (!GFX_MENU[GAME.settings.gfx]) GAME.settings.gfx = 'auto'; }
 GAME.needNewTrain = function () { const t = GAME.train, g = GAME.settings, j = JOB.wanted(); return !t || MP.needSpawn || t.locoKey !== g.loco || (!t.elec && t.consistKey !== JOB.consist()) || (j ? j.id : '') !== JOB.activeId() || (t.diesel && !t.elec && t.nUnits !== (+g.units || 1)) || (!t.diesel && (t.trim || '') !== trimWanted()); };
 function buildWhistleIfReady() { if (!AU.on) return; buildWhistle(WHISTLES[whistleKeyOf(GAME.settings.loco)]); }
@@ -396,6 +397,7 @@ function buildMenu() {
   segButtons('optTime', DN.starts, 'time', k => { GAME.frostNight = false; if (GAME.ready) applyLook(k, null); saveSettings(); });
   segButtons('optCycle', DN.rates, 'cycle', () => { GAME.frostNight = false; saveSettings(); });
   segButtons('optGfx', GFX_MENU, 'gfx', k => { if (POST.ready) { postQuality(postResolve(k)); gfxNote(); } saveSettings(); });
+  segButtons('optGrime', GRM_LEVELS, 'grime', k => { grmLevel(k); saveSettings(); });
   segButtons('optWeather', WEATHER, 'weather', k => { if (GAME.ready) applyLook(null, k); saveSettings(); });
   segButtons('optFire', { easy: { name: 'Easy', sub: 'Fireman, and the reverser hooks up for you' }, auto: { name: 'Fireman', sub: 'Stoker & water handled, you work the reverser' }, hand: { name: 'Hand fired', sub: 'You run the boiler' } }, 'fire', k => { applyFireSetting(k); GAME.refreshKeys(); saveSettings(); });
   segButtons('optTraffic', { on: { name: 'Timetable', sub: ROUTE_KEY === 'frost' ? 'No timetable trains out on the ice' : ROUTE_KEY === 'laurel' ? 'No. 21, No. 22 and coal trains on the mountain' : 'No. 5, No. 12 and freights on the road' }, off: { name: 'Clear road', sub: 'Just you and the signals' } }, 'traffic', () => { if (GAME.ready && GAME.train) AI.setup(); saveSettings(); });

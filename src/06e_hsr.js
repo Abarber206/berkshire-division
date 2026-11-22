@@ -266,7 +266,7 @@ function hsGangway(gb, sect, a0, a1, ref, k = 0.975, door = 0) {
 function hsSkin(key, uvL, uvH, w, h, draw, opts = {}) {
   if (RMAT[key]) return RMAT[key];
   const tex = canvasTex(w, h, (g, W, H) => draw(g, a => a / uvL * W, y => H - y / uvH * H, W, H));
-  return (RMAT[key] = new THREE.MeshStandardMaterial({ map: tex, metalness: opts.metal ?? 0.25, roughness: opts.rough ?? 0.32, side: THREE.DoubleSide }));
+  return (RMAT[key] = grmTag(new THREE.MeshStandardMaterial({ map: tex, metalness: opts.metal ?? 0.25, roughness: opts.rough ?? 0.32, side: THREE.DoubleSide }), 'hs'));
 }
 const E5C = { green: '#0f6b4c', white: '#eef0ec', pink: '#e8558f', silver: '#a9adb1' };
 
