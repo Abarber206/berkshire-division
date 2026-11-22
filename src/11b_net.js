@@ -255,6 +255,7 @@ class RemoteTrain {
     const code = extra && extra.code;
     this.train = new Train(scene, st.lk, code ? 'light' : st.ck, Object.assign(mpOpts(st), { remote: true }));
     if (code) { try { mpCompose(this.train, code); } catch (e) { this.train.disposeDeep(); throw e; } }
+    if (extra && extra.pusher) aiPusher(this.train, extra.pusher);   // a timetable train's helper on the rear (11e_traffic.js)
     prepareTrain(this.train);
     this.a0 = this.train.pts[0].a;
     this.tp = null; this.err = 0; this.v = 0; this.theta = 0; this.chuffQ = null; this.idleT = 0; this.bellT = 0.8; this.updT = 0;

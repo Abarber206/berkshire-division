@@ -382,6 +382,7 @@ class Train extends Consist {
   dispose() {
     for (const v of this.vehicles) { this.scene.remove(v.root); }
     if (this.diesel) this.units.forEach(m => m.trucks.forEach(t => this.scene.remove(t))); else for (const o of this.steamExtras()) this.scene.remove(o);
+    for (const o of this.helperParts || []) this.scene.remove(o);
     for (const im of this.inst) this.scene.remove(im);
     if (this.head) { this.scene.remove(this.head); this.scene.remove(this.head.target); }
   }
@@ -394,6 +395,7 @@ class Train extends Consist {
   setVisible(v) {
     super.setVisible(v);
     if (this.diesel) this.units.forEach(m => m.trucks.forEach(t => { t.visible = v; })); else for (const o of this.steamExtras()) o.visible = v;
+    for (const o of this.helperParts || []) o.visible = v;   // a helper's trucks and running gear, which stand in the scene on their own
   }
 }
 

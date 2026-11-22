@@ -432,7 +432,7 @@ function buildMenu() {
   segButtons('optGrime', GRM_LEVELS, 'grime', k => { grmLevel(k); saveSettings(); });
   segButtons('optWeather', WEATHER, 'weather', k => { if (GAME.ready) applyLook(null, k); saveSettings(); });
   segButtons('optFire', { easy: { name: 'Easy', sub: 'Fireman, and the reverser hooks up for you' }, auto: { name: 'Fireman', sub: 'Stoker & water handled, you work the reverser' }, hand: { name: 'Hand fired', sub: 'You run the boiler' } }, 'fire', k => { applyFireSetting(k); GAME.refreshKeys(); saveSettings(); });
-  segButtons('optTraffic', { on: { name: 'Timetable', sub: ROUTE_KEY === 'frost' ? 'No timetable trains out on the ice' : ROUTE_KEY === 'laurel' ? 'No. 21, No. 22 and coal trains on the mountain' : 'No. 5, No. 12 and freights on the road' }, off: { name: 'Clear road', sub: 'Just you and the signals' } }, 'traffic', () => { if (GAME.ready && GAME.train) AI.setup(); saveSettings(); });
+  segButtons('optTraffic', { on: { name: 'Timetable', sub: ROUTE_KEY === 'frost' ? 'No timetable trains out on the ice' : ROUTE_KEY === 'laurel' ? 'No. 21, No. 22, coal with a pusher and merchandise' : 'Two locals, an express and four freights' }, off: { name: 'Clear road', sub: 'Just you and the signals' } }, 'traffic', () => { if (GAME.ready && GAME.train) AI.setup(); saveSettings(); });
   specGrid();
   jobSetup();
   volumeSliders();

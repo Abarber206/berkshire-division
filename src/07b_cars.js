@@ -86,7 +86,7 @@ function trainRoots(t) {
   const out = t.vehicles.map(v => v.root);
   if (t.diesel && t.units) t.units.forEach(m => out.push(...(m.trucks || [])));
   else if (t.steamExtras && t.loco) out.push(...t.steamExtras());
-  return out.concat(t.inst || []);
+  return out.concat(t.inst || [], t.helperParts || []);
 }
 
 /* ---------------- making up the yard ---------------- */
