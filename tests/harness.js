@@ -9,14 +9,14 @@ const path = require('path');
 const vm = require('vm');
 
 const SRC = path.join(__dirname, '..', 'src');
-const FILES = ['01_util.js', '02_track.js', '06_models.js', '06d_cab.js', '06e_hsr.js', '06h_bigboy.js', '06k_mallet.js', '06i_graffiti.js', '06j_turbine.js', '07_train.js', '07b_cars.js', '07c_place.js', '07e_knock.js', '08_physics.js', '08b_slack.js', '11d_jobs.js', '11e_traffic.js', '11g_save.js', '11h_mpcars.js', '11k_industry.js', '11m_career.js', '11l_fleet.js'];
+const FILES = ['01_util.js', '02_track.js', '06_models.js', '06d_cab.js', '06e_hsr.js', '06h_bigboy.js', '06k_mallet.js', '06i_graffiti.js', '06j_turbine.js', '07_train.js', '07b_cars.js', '07c_place.js', '07e_knock.js', '08_physics.js', '08b_slack.js', '11d_jobs.js', '11e_traffic.js', '11g_save.js', '11h_mpcars.js', '11k_industry.js', '11m_career.js', '11l_fleet.js', '11n_tutor.js'];
 const EXPORTS = ['S', 'SLK', 'slackStep', 'ENV', 'GAME', 'autoCutoff', 'railPatch', 'applyFireSetting', 'CARS', 'JOB', 'LOCO_SPEC', 'HSR', 'HS_AERO', 'setVehicle', 'hsLimit', 'turnoutDerailMph', 'Consist', 'Cut', 'physicsStep', 'brakeZone', 'brakeLabel', 'consistMass',
   'COUPLE_OK', 'COUPLE_HARD', 'COUPLE_DAMAGE', 'COUPLE_WRECK', 'KN_CLOSED', 'KN_OPEN', 'KN_LIFTED', 'HANDBRAKE', 'MPH', 'LBF', 'STON', 'PSI',
   'curveUnbalanced', 'CURVE_WARN', 'CURVE_TIP', 'CURVE_HOLD', 'PathBuilder', 'Network', 'TrackPos', 'FOUL_LEN', 'POINTS_CLEAR',
   'IX', 'AI', 'TRAFFIC', 'routeWalk', 'PLACE', 'PLACE_SNAP', 'PLACE_CLEAR', 'endCoupler', 'carVehicle', 'signalRoute', 'signalAspect', 'swPair',
   'MPC', 'mpcBeats', 'trainCode', 'carToken', 'carTokenIn', 'trackDelta', 'Train', 'CONSISTS', 'SAVE', 'IND', 'INDUSTRIES', 'LADING', 'LOAD_TONS', 'IND_WORK', 'YARD_TURN', 'YARD_CUTS', 'consistOut', 'seatConsist', 'vehicleIn', 'stateOut', 'jobOut', 'jobIn', 'tpOut', 'lineOut',
   'steamK', 'BB', 'BBT', 'ML', 'MLT', 'bbDrift', 'CTL', 'ctlTravel', 'ctlSetTravel', 'pullToWhistle', 'whistleToPull', 'dialAngle', 'glassLevel', 'stokerNext', 'CAB_READ', 'DIALS',
-  'FLEET', 'fleetPark', 'fleetResume', 'isTrainC', 'fleetOut', 'powerOf', 'FLEET_WORLD', 'crewNew', 'crewStep', 'turbinePower', 'GT', 'GTE', 'GTP', 'turbineSwitch', 'turbineState', 'jointPts', 'helperTender', 'helperK', 'CAREER', 'CAREER_PRICE', 'JOBS', 'JOB_SPAWNS', 'JOB_MARKS'];
+  'FLEET', 'fleetPark', 'fleetResume', 'isTrainC', 'fleetOut', 'powerOf', 'FLEET_WORLD', 'crewNew', 'crewStep', 'turbinePower', 'GT', 'GTE', 'GTP', 'turbineSwitch', 'turbineState', 'jointPts', 'helperTender', 'helperK', 'CAREER', 'CAREER_PRICE', 'JOBS', 'JOB_SPAWNS', 'JOB_MARKS', 'TUT', 'TUT_STEPS'];
 
 /* just enough three.js: real Vector3 math, everything else accepts any call and returns itself */
 class Vector3 {

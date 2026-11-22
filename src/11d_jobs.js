@@ -140,7 +140,7 @@ JOB.where = function (name) {
 const flatDist = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 JOB.wanted = () => JOB.available() ? JOB.def(GAME.settings.job) : null;
 JOB.activeId = () => JOB.run && !JOB.run.over ? JOB.run.def.id : '';
-JOB.consist = () => { const j = JOB.wanted(); return j ? j.train : GAME.settings.consist; };
+JOB.consist = () => { const j = JOB.wanted(); return j ? j.train : typeof TUT !== 'undefined' && TUT.want ? 'light' : GAME.settings.consist; };
 /* a job can hold the train below the track speed (freight timetable speed) */
 JOB.vmax = () => JOB.run && !JOB.run.over && JOB.run.def.vmax || 99;
 JOB.clock = () => JOB.run ? JOB.run.def.start + (S.time - JOB.run.t0) : 0;

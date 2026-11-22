@@ -597,6 +597,39 @@ details.keys kbd{color:var(--brass)}
   #hud.job #toast{top:calc(env(safe-area-inset-top,0px) + 100px)}
   #jobPanel{top:calc(env(safe-area-inset-top,0px) + 42px);right:calc(env(safe-area-inset-right,0px) + 206px);width:min(440px,calc(100vw - 236px));max-height:calc(100vh - 50px)}
 }
+/* ---------- guided first run ---------- */
+.tutOffer{display:flex;flex-direction:column;gap:8px}
+.tutOffer p{margin:0;font-size:12.5px;line-height:1.45;color:#b9c3c8}
+.tutOffer .row2{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+#tutState{font-size:11.5px;color:var(--ink-dim)}
+#grpTut.first .tutOffer{border:1px solid var(--brass);border-radius:6px;padding:10px;background:rgba(207,166,81,.08)}
+#grpTut.first #tutState{color:var(--brass);font-weight:600}
+#tutBox{position:absolute;z-index:6;left:calc(env(safe-area-inset-left,0px) + 10px);top:calc(env(safe-area-inset-top,0px) + 118px);
+  width:min(330px,calc(100vw - 20px));box-sizing:border-box;padding:9px 11px 10px;display:flex;flex-direction:column;gap:6px;border-left:3px solid var(--brass)}
+#tutBox[hidden]{display:none}
+.tutTop{display:flex;align-items:center;gap:6px;font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:var(--brass)}
+#tutStep{flex:1;min-width:0}
+.tutTop button{background:none;border:0;color:var(--ink-dim);font-size:13px;line-height:1;padding:2px 5px;border-radius:3px}
+.tutTop button:hover{color:var(--ink);background:rgba(255,255,255,.06)}
+#tutTitle{font-size:15px;line-height:1.2}
+#tutBox.ok #tutTitle{color:var(--clear)}
+#tutBody{margin:0;font-size:12.5px;line-height:1.45;color:#c9d1d5}
+#tutBody kbd{font-family:var(--f-num);font-size:11px;border:1px solid var(--rule);border-bottom-width:2px;border-radius:3px;padding:0 4px;color:var(--ink);background:rgba(0,0,0,.25)}
+#tutMeter{display:flex;align-items:center;gap:8px}
+#tutMeter[hidden]{display:none}
+#tutMeter span{position:relative;flex:1;height:6px;border-radius:3px;background:#0a0d10}
+#tutMeter em{position:absolute;left:0;top:0;bottom:0;border-radius:3px;background:var(--clear)}
+#tutMeter.bad em{background:var(--stop)}
+#tutMeter i{position:absolute;top:-3px;bottom:-3px;width:2px;margin-left:-1px;background:var(--ink)}
+#tutMeter b{font-family:var(--f-num);font-size:11.5px;font-weight:600;min-width:74px;text-align:right;font-variant-numeric:tabular-nums}
+.tutActs{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap}
+.tutActs .btn[hidden]{display:none}
+#tutBox.mini #tutBody,#tutBox.mini #tutMeter,#tutBox.mini .tutActs{display:none}
+#tutBox.over{border-left-color:var(--clear)}
+.tutHi{outline:2px solid var(--brass)!important;outline-offset:2px;animation:tutPulse 1.2s ease-in-out infinite}
+@keyframes tutPulse{50%{outline-color:rgba(207,166,81,.25)}}
+@media (max-width:600px){ #tutBox{top:calc(env(safe-area-inset-top,0px) + 150px);padding:7px 9px}#tutBody{font-size:12px} }
+@media (max-height:500px) and (orientation:landscape){ #tutBox{top:calc(env(safe-area-inset-top,0px) + 92px);width:min(300px,44vw);gap:4px;padding:6px 8px}#tutBody{font-size:11px;line-height:1.35}#tutTitle{font-size:13px} }
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 
 /* ---------- layout editor ---------- */
@@ -779,6 +812,13 @@ h1{text-shadow:0 2px 0 #000,0 10px 40px rgba(0,0,0,.6)}
     </div>
     <div id="walkKeys"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> walk · <kbd>Shift</kbd> run · drag to look · <kbd>F</kbd> board, sit, get off · <kbd>V</kbd> view · <kbd>G</kbd> wave · <kbd>Enter</kbd> back to your cab</div>
   </div>
+  <div id="tutBox" class="hud-box" hidden role="region" aria-label="Guided first run" aria-live="polite">
+    <div class="tutTop"><span id="tutStep"></span><button type="button" id="tutMin" aria-label="Fold the lesson card">▾</button><button type="button" id="tutQuit" aria-label="End the lesson">✕</button></div>
+    <b id="tutTitle"></b>
+    <p id="tutBody"></p>
+    <div id="tutMeter" hidden><span><em></em><i></i></span><b></b></div>
+    <div class="tutActs"><button class="btn" id="tutSkip" type="button">Skip step</button><button class="btn" id="tutJob" type="button" hidden>Try a job</button><button class="btn prim" id="tutNext" type="button">Next</button></div>
+  </div>
   <div id="toast"></div>
   <div id="cplTip" hidden></div>
   <div id="placeTip" hidden></div>
@@ -959,6 +999,12 @@ h1{text-shadow:0 2px 0 #000,0 10px 40px rgba(0,0,0,.6)}
       </div>
       <div class="mpanes" id="menuPanes">
       <section class="mpane" data-pane="run" role="tabpanel">
+        <div class="fgroup" id="grpTut"><span class="lbl">Guided first run</span>
+          <div class="tutOffer">
+            <p>Learn to drive in about ten minutes, one control at a time: the brakes, the reverser and throttle, backing onto cars and coupling up, the fire and the water, and stopping a train with the air. Nothing is scored, and you can skip any step.</p>
+            <div class="row2"><button class="btn prim" id="tutGo" type="button">Start the lesson</button><button class="btn" id="tutEnd" type="button" hidden>End the lesson</button><span id="tutState"></span></div>
+          </div>
+        </div>
         <div class="fgroup" id="grpSave" hidden><span class="lbl">Saved runs</span><div class="saves" id="saveList"></div></div>
         <div class="fgroup" id="grpRail"><span class="lbl">Railroad</span><div class="seg" id="optRail"></div>
           <div class="row2"><button class="btn" id="btnEditor" type="button">Build your own layout</button></div>

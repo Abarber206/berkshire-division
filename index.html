@@ -605,6 +605,39 @@ details.keys kbd{color:var(--brass)}
   #hud.job #toast{top:calc(env(safe-area-inset-top,0px) + 100px)}
   #jobPanel{top:calc(env(safe-area-inset-top,0px) + 42px);right:calc(env(safe-area-inset-right,0px) + 206px);width:min(440px,calc(100vw - 236px));max-height:calc(100vh - 50px)}
 }
+/* ---------- guided first run ---------- */
+.tutOffer{display:flex;flex-direction:column;gap:8px}
+.tutOffer p{margin:0;font-size:12.5px;line-height:1.45;color:#b9c3c8}
+.tutOffer .row2{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+#tutState{font-size:11.5px;color:var(--ink-dim)}
+#grpTut.first .tutOffer{border:1px solid var(--brass);border-radius:6px;padding:10px;background:rgba(207,166,81,.08)}
+#grpTut.first #tutState{color:var(--brass);font-weight:600}
+#tutBox{position:absolute;z-index:6;left:calc(env(safe-area-inset-left,0px) + 10px);top:calc(env(safe-area-inset-top,0px) + 118px);
+  width:min(330px,calc(100vw - 20px));box-sizing:border-box;padding:9px 11px 10px;display:flex;flex-direction:column;gap:6px;border-left:3px solid var(--brass)}
+#tutBox[hidden]{display:none}
+.tutTop{display:flex;align-items:center;gap:6px;font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:var(--brass)}
+#tutStep{flex:1;min-width:0}
+.tutTop button{background:none;border:0;color:var(--ink-dim);font-size:13px;line-height:1;padding:2px 5px;border-radius:3px}
+.tutTop button:hover{color:var(--ink);background:rgba(255,255,255,.06)}
+#tutTitle{font-size:15px;line-height:1.2}
+#tutBox.ok #tutTitle{color:var(--clear)}
+#tutBody{margin:0;font-size:12.5px;line-height:1.45;color:#c9d1d5}
+#tutBody kbd{font-family:var(--f-num);font-size:11px;border:1px solid var(--rule);border-bottom-width:2px;border-radius:3px;padding:0 4px;color:var(--ink);background:rgba(0,0,0,.25)}
+#tutMeter{display:flex;align-items:center;gap:8px}
+#tutMeter[hidden]{display:none}
+#tutMeter span{position:relative;flex:1;height:6px;border-radius:3px;background:#0a0d10}
+#tutMeter em{position:absolute;left:0;top:0;bottom:0;border-radius:3px;background:var(--clear)}
+#tutMeter.bad em{background:var(--stop)}
+#tutMeter i{position:absolute;top:-3px;bottom:-3px;width:2px;margin-left:-1px;background:var(--ink)}
+#tutMeter b{font-family:var(--f-num);font-size:11.5px;font-weight:600;min-width:74px;text-align:right;font-variant-numeric:tabular-nums}
+.tutActs{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap}
+.tutActs .btn[hidden]{display:none}
+#tutBox.mini #tutBody,#tutBox.mini #tutMeter,#tutBox.mini .tutActs{display:none}
+#tutBox.over{border-left-color:var(--clear)}
+.tutHi{outline:2px solid var(--brass)!important;outline-offset:2px;animation:tutPulse 1.2s ease-in-out infinite}
+@keyframes tutPulse{50%{outline-color:rgba(207,166,81,.25)}}
+@media (max-width:600px){ #tutBox{top:calc(env(safe-area-inset-top,0px) + 150px);padding:7px 9px}#tutBody{font-size:12px} }
+@media (max-height:500px) and (orientation:landscape){ #tutBox{top:calc(env(safe-area-inset-top,0px) + 92px);width:min(300px,44vw);gap:4px;padding:6px 8px}#tutBody{font-size:11px;line-height:1.35}#tutTitle{font-size:13px} }
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 
 /* ---------- layout editor ---------- */
@@ -790,6 +823,13 @@ h1{text-shadow:0 2px 0 #000,0 10px 40px rgba(0,0,0,.6)}
     </div>
     <div id="walkKeys"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> walk · <kbd>Shift</kbd> run · drag to look · <kbd>F</kbd> board, sit, get off · <kbd>V</kbd> view · <kbd>G</kbd> wave · <kbd>Enter</kbd> back to your cab</div>
   </div>
+  <div id="tutBox" class="hud-box" hidden role="region" aria-label="Guided first run" aria-live="polite">
+    <div class="tutTop"><span id="tutStep"></span><button type="button" id="tutMin" aria-label="Fold the lesson card">▾</button><button type="button" id="tutQuit" aria-label="End the lesson">✕</button></div>
+    <b id="tutTitle"></b>
+    <p id="tutBody"></p>
+    <div id="tutMeter" hidden><span><em></em><i></i></span><b></b></div>
+    <div class="tutActs"><button class="btn" id="tutSkip" type="button">Skip step</button><button class="btn" id="tutJob" type="button" hidden>Try a job</button><button class="btn prim" id="tutNext" type="button">Next</button></div>
+  </div>
   <div id="toast"></div>
   <div id="cplTip" hidden></div>
   <div id="placeTip" hidden></div>
@@ -970,6 +1010,12 @@ h1{text-shadow:0 2px 0 #000,0 10px 40px rgba(0,0,0,.6)}
       </div>
       <div class="mpanes" id="menuPanes">
       <section class="mpane" data-pane="run" role="tabpanel">
+        <div class="fgroup" id="grpTut"><span class="lbl">Guided first run</span>
+          <div class="tutOffer">
+            <p>Learn to drive in about ten minutes, one control at a time: the brakes, the reverser and throttle, backing onto cars and coupling up, the fire and the water, and stopping a train with the air. Nothing is scored, and you can skip any step.</p>
+            <div class="row2"><button class="btn prim" id="tutGo" type="button">Start the lesson</button><button class="btn" id="tutEnd" type="button" hidden>End the lesson</button><span id="tutState"></span></div>
+          </div>
+        </div>
         <div class="fgroup" id="grpSave" hidden><span class="lbl">Saved runs</span><div class="saves" id="saveList"></div></div>
         <div class="fgroup" id="grpRail"><span class="lbl">Railroad</span><div class="seg" id="optRail"></div>
           <div class="row2"><button class="btn" id="btnEditor" type="button">Build your own layout</button></div>
@@ -17290,35 +17336,43 @@ CARS.setup = function () {
 /* the cuts spotted around the yard, as every new run (and every room) starts with them. In a room each car is
    lettered alike for everyone (road), and each cut is known by its place in YARD_CUTS ('y0', 'y1', ...). */
 CARS.yard = function (road) {
-  if (!CARS.geo) { CARS.geo = carGeos(); }
   const r = rng(1959), was = ROAD_SHORT;
   if (road) ROAD_SHORT = road;
   let num = 21000;
   YARD_CUTS.forEach((def, i) => {
     const line = ROUTE.lines[def.line]; if (!line) return;
-    const vehicles = def.cars.map(spec => {
-      const { type, ld, to } = IND.parse(spec);
-      const m = freightModel(type, num += 7 + ((r() * 40) | 0), r);
-      scene.add(m.root); linearizeObject(m.root);
-      const v = carVehicle(m); v.yard = true; v.hb = true; v.made = { type, num, rs: ROAD_SHORT };
-      v.brake = { AR: 0, BC: 0, BP: 0, emerg: false, released: true };   // bled off and tied down
-      IND.setLoad(v, ld); IND.bill(v, to);
-      return v;
-    });
-    const c = new Cut(scene, vehicles);
-    const sF = def.end !== undefined ? line.len - def.end : line.len * def.at;
-    const sR = sF - c.length;
-    const foul = line.cuts.some(k => k.s > sR - 45 && k.s < sF + 45) || sR < 10;
-    if (foul) console.warn('cut on', def.line, 'fouls a switch');
-    const loc = line.locate(sF);
-    c.place(new TrackPos(loc.edge, loc.s, 1));
-    // one of your other trains is standing there: the cars are not made up on top of it
-    if (!MP.on && CARS.overlaps(c)) { c.dispose(); vehicles.forEach(freeVehicle); return; }
-    c.home = def.line; c.mid = 'y' + i;
-    for (const end of ['front', 'rear']) setKn(endCoupler(c, end), KN_OPEN);   // the crew left the end knuckles open
-    CARS.cuts.push(c);
+    const c = CARS.makeCut(def, line, def.end !== undefined ? line.len - def.end : line.len * def.at, r, num);
+    num = c.num;
+    if (!c.cut) return;
+    c.cut.mid = 'y' + i;
   });
   ROAD_SHORT = was;
+};
+/* One cut of cars spotted on `line` with its front end at sF, tied down with the end knuckles open. Returns the
+   cut (null if one of your other trains stands there) and the last car number used, so numbers run on. */
+CARS.makeCut = function (def, line, sF, r, num) {
+  if (!CARS.geo) { CARS.geo = carGeos(); }
+  const vehicles = def.cars.map(spec => {
+    const { type, ld, to } = IND.parse(spec);
+    const m = freightModel(type, num += 7 + ((r() * 40) | 0), r);
+    scene.add(m.root); linearizeObject(m.root);
+    const v = carVehicle(m); v.yard = true; v.hb = true; v.made = { type, num, rs: ROAD_SHORT };
+    v.brake = { AR: 0, BC: 0, BP: 0, emerg: false, released: true };   // bled off and tied down
+    IND.setLoad(v, ld); IND.bill(v, to);
+    return v;
+  });
+  const c = new Cut(scene, vehicles);
+  const sR = sF - c.length;
+  const foul = line.cuts.some(k => k.s > sR - 45 && k.s < sF + 45) || sR < 10;
+  if (foul) console.warn('cut on', def.line, 'fouls a switch');
+  const loc = line.locate(sF);
+  c.place(new TrackPos(loc.edge, loc.s, 1));
+  // one of your other trains is standing there: the cars are not made up on top of it
+  if (!MP.on && CARS.overlaps(c)) { c.dispose(); vehicles.forEach(freeVehicle); return { cut: null, num }; }
+  c.home = def.line;
+  for (const end of ['front', 'rear']) setKn(endCoupler(c, end), KN_OPEN);   // the crew left the end knuckles open
+  CARS.cuts.push(c);
+  return { cut: c, num };
 };
 
 /* ---------------- what a car is, as a few characters ---------------- */
@@ -26707,7 +26761,7 @@ JOB.where = function (name) {
 const flatDist = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 JOB.wanted = () => JOB.available() ? JOB.def(GAME.settings.job) : null;
 JOB.activeId = () => JOB.run && !JOB.run.over ? JOB.run.def.id : '';
-JOB.consist = () => { const j = JOB.wanted(); return j ? j.train : GAME.settings.consist; };
+JOB.consist = () => { const j = JOB.wanted(); return j ? j.train : typeof TUT !== 'undefined' && TUT.want ? 'light' : GAME.settings.consist; };
 /* a job can hold the train below the track speed (freight timetable speed) */
 JOB.vmax = () => JOB.run && !JOB.run.over && JOB.run.def.vmax || 99;
 JOB.clock = () => JOB.run ? JOB.run.def.start + (S.time - JOB.run.t0) : 0;
@@ -27795,7 +27849,7 @@ AI.clear = function () {
 AI.setup = function () {
   AI.clear();
   if (!AI.enabled()) return;
-  const job = JOB.wanted(), list = job ? job.traffic || [] : WORLD.frost ? [] : WORLD.mtn ? MTN_TRAFFIC : FREE_TRAFFIC;   // Raven Lake is yours alone
+  const job = JOB.wanted(), list = job ? job.traffic || [] : typeof TUT !== 'undefined' && TUT.want ? [] : WORLD.frost ? [] : WORLD.mtn ? MTN_TRAFFIC : FREE_TRAFFIC;   // Raven Lake is yours alone
   // while the game is still loading the trains are made up one at a time after the menu is ready (AI.lazy, set by
   // loadWorld), so the menu is not kept waiting for them; AI.flush() finishes the job at once when you start
   if (AI.lazy) { AI.pending = list.slice(); AI.drip(); return; }
@@ -29467,6 +29521,275 @@ CAREER.setup = function () {
   CAREER.check(true);
   CAREER.paint();
 };
+
+/* ============================================================================
+   Guided first run: a lesson in the yard at Bellevue and out on the main that
+   teaches the controls one at a time. Brakes, bell and whistle, the reverser
+   and throttle, backing onto three cars and coupling up, charging the air, the
+   fire (steam) or the notches and dynamic brake (diesel), then a run up to
+   speed and a stop with the train brake. Offered from the Run tab of the menu,
+   and picked out there on the very first launch. It never scores you, and you
+   can skip a step or end it at any time. Free running and jobs are untouched.
+   ========================================================================== */
+const TUT = { want: false, run: null, hz: 0, first: false };
+const TUT_GAP = 40;                  // metres from the tender to the cars waiting behind it on Yard 2
+const TUT_CARS = ['box/', 'box/', 'hopper/'];
+const tutKey = k => `<kbd>${k}</kbd>`;
+const tutCars = T => T ? T.vehicles.filter(v => !isPower(v)).length : 0;
+const tutMph = () => Math.abs(S.v) / MPH;
+const tutStopped = () => Math.abs(S.v) < 0.05;
+const tutRev = d => GAME.isDiesel() ? Math.sign(Math.round(S.reverser)) === d : d > 0 ? S.reverser > 0.25 : S.reverser < -0.25;
+const tutOnMain = T => !!(T && ROUTE.main && ROUTE.main.edges.includes(T.frontTP().e));
+function tutPanelOpen() { const p = $('carPanel'); return !!p && p.hidden === false; }
+
+/* The lesson. Each step: what to do (title), why and how (body), the controls to light up on the stand (hi),
+   who it is for (only: 'steam' | 'diesel'), and done(T, R) for steps the sim can see you do. A step without
+   done is read and dismissed with Next. enter(R) runs when the step comes up. */
+const TUT_STEPS = [
+  { id: 'hello', title: 'Welcome to the cab',
+    body: () => `You are on Yard 2 at Bellevue with a light engine. Three cars are waiting behind you: you will back onto them, couple up and take them out on the main. Press ${tutKey('1')} to ${tutKey('6')} to change cameras (${tutKey('2')} is the cab), drag to look around, and tap Next when you are ready.` },
+  { id: 'indep', title: 'Release the engine brake', hi: ['lvInd'],
+    body: () => `The engine brake holds the engine on its own. Press ${tutKey('Z')} until the Engine lever reads 0, or drag the lever up. (${tutKey('C')} puts it back on.)`,
+    done: () => S.indH < 0.05 },
+  { id: 'train', title: 'The train brake', hi: ['lvBrake'],
+    body: () => `The Train lever works the air brakes on every car. ${tutKey('E')} applies, ${tutKey('Q')} releases. It sits in RUN while you drive: leave it there for now. You will use it to stop later.`,
+    done: () => brakeZone(S.brakeH) === 'RUN' || brakeZone(S.brakeH) === 'REL' },
+  { id: 'bell', title: 'Ring the bell, sound the whistle', hi: ['btnBell', 'btnWhistle'],
+    body: () => `Ring the bell before you move: ${tutKey('B')}. Then whistle to say you are about to go: three short blasts mean backing up. Hold ${tutKey('Space')}, or the Whistle key, for each.`,
+    enter: R => { R.blew = false; },
+    done: (T, R) => S.bell && R.blew },
+  { id: 'revBack', title: 'Reverser into reverse', hi: ['lvReverser'],
+    body: () => GAME.isDiesel() ? `The reverser picks the direction. The cars are behind you, so press ${tutKey('↓')} until it reads REV.` : `The reverser picks the direction and, on a steam engine, how long steam is admitted to the cylinders. The cars are behind you, so press ${tutKey('↓')} until it is well back toward full reverse.`,
+    done: () => tutRev(-1) },
+  { id: 'throttleBack', title: 'Open the throttle', hi: ['lvThrottle'],
+    body: () => GAME.isDiesel() ? `Press ${tutKey('W')} to notch the throttle out to 1 or 2. The engine loads up and starts to roll back.` : `Ease the throttle open with ${tutKey('W')}, a little at a time, until she starts to roll back. Too much on a cold rail and the drivers slip: ease off with ${tutKey('S')}.`,
+    done: () => S.throttle > 0.01 && tutMph() > 0.5 && tutRev(-1) },
+  { id: 'couple', title: 'Couple to the cars', hi: ['lvThrottle', 'lvInd'],
+    body: () => `Watch behind you (${tutKey('5')} or ${tutKey('3')} helps) and keep it under 4 mph. Close the throttle (${tutKey('S')}) as you get close and let her drift into the cars. Their knuckle is open, so they couple when you touch.`,
+    meter: () => ({ v: tutMph(), max: 8, mark: 4, txt: tutMph().toFixed(1) + ' mph', bad: tutMph() > 4 }),
+    done: (T, R) => tutCars(T) > R.cars0 },
+  { id: 'stop1', title: 'Stop', hi: ['lvThrottle', 'lvInd'],
+    body: () => `Throttle closed (${tutKey('S')}) and the engine brake on (${tutKey('C')}) to bring her to a stand.`,
+    done: () => tutStopped() && S.throttle < 0.01 },
+  { id: 'cars', title: 'Look at your train', hi: ['btnCars'],
+    body: () => `Press ${tutKey('U')} or tap the Couplers button to see your train car by car. Tapping a coupler there, or the cut lever on the cars themselves, pulls the pin to set cars out again.`,
+    done: () => tutPanelOpen() },
+  { id: 'air', title: 'Pump up the air', hi: ['lvBrake'],
+    body: () => `The cars were standing with their brakes bled off. Amber cars in the Couplers panel are still charging. Leave the Train lever in RUN (or ${tutKey('Q')} to RELEASE to charge faster) until they all go grey.`,
+    meter: (T) => { const c = T.vehicles.filter(v => !isPower(v)); const ok = c.filter(v => v.brake.AR >= 62).length; return { v: ok, max: Math.max(1, c.length), txt: `${ok} of ${c.length} charged` }; },
+    done: T => T.vehicles.every(v => isPower(v) || v.brake.AR >= 62) },
+  { id: 'revFwd', title: 'Reverser forward', hi: ['lvReverser', 'lvInd'],
+    enter: () => { if (tutPanelOpen()) carPanelToggle(false); },
+    body: () => `Now head out. Release the engine brake (${tutKey('Z')}) and press ${tutKey('↑')} to put the reverser ${GAME.isDiesel() ? 'in FWD' : 'well forward'}. Bring the train brake back to RUN with ${tutKey('Q')} if you moved it.`,
+    done: () => tutRev(1) && S.indH < 0.05 && brakeZone(S.brakeH) !== 'SRV' && brakeZone(S.brakeH) !== 'EMG' },
+  { id: 'out', title: 'Out onto the main', hi: ['lvThrottle'],
+    body: () => `Open the throttle and pull out of the yard. The ladder at the east end is already lined for the main: the switch card at the top shows which way the next switch lies, and ${tutKey('T')} throws it. Keep it under 15 mph through the yard switches.`,
+    done: T => tutOnMain(T) },
+  // ---- steam: the fire and the water
+  { id: 'boiler', only: 'steam', title: 'Steam and water',
+    body: () => `Everything comes from the boiler. On the gauges, watch the steam pressure (the big dial) and the water glass. Work her hard and the pressure falls; let the water drop out of the glass and you can melt the crown sheet. On Easy your fireman handles both, but try it yourself for a minute.` },
+  { id: 'fire', only: 'steam', title: 'Fire her', hi: ['btnFire'],
+    body: () => `Press ${tutKey('F')} or tap Stoker to feed more coal to the fire. That hands you the fire. More coal means more steam, but only once the fire has caught up: watch the pressure needle.`,
+    done: () => !S.autoFire },
+  { id: 'inject', only: 'steam', title: 'Water in the boiler', hi: ['btnInj'],
+    body: () => `Press ${tutKey('I')} or tap Inject to put the injector on. It forces water from the tender into the boiler: the glass rises, but cold water knocks the pressure back a little. Keep the glass about half full.`,
+    done: () => S.injector },
+  { id: 'fireBack', only: 'steam', title: 'Your fireman takes it back', enter: R => tutFireBack(R),
+    body: () => `That is the job: coal for steam, water for the glass, and never let either run away. Your fireman has the boiler again. Choose Hand fired under Driving in the menu when you want to run it yourself, and ${tutKey('L')} works the blower that draws the fire.` },
+  // ---- diesel: notches and the dynamic brake
+  { id: 'notch', only: 'diesel', title: 'Notch out', hi: ['lvThrottle'],
+    body: () => `A diesel throttle has eight notches. Press ${tutKey('W')} for each one, and give the engine a moment to load up between notches. Run 4 or more.`,
+    done: () => Math.round(S.throttle * GAME.notches()) >= 4 },
+  // ---- running
+  { id: 'speed', title: 'Up to 25 mph', hi: ['lvThrottle'],
+    body: () => `Bring her up to 25 mph. The badge under your speed is the speed limit here: stay at or under it. If the drivers slip, ease off and put down sand with ${tutKey('X')}.`,
+    meter: () => ({ v: tutMph(), max: 30, mark: 25, txt: Math.round(tutMph()) + ' mph' }),
+    done: () => tutMph() >= 25 },
+  { id: 'dyn', only: 'diesel', title: 'The dynamic brake', hi: ['lvThrottle', 'lvDyn'],
+    body: () => `The traction motors can hold the train back too. Throttle to idle (${tutKey('S')}), then ${tutKey('D')} to set up the dynamic brake and feel it pull. ${tutKey('A')} backs it off.`,
+    done: () => S.dyn > 0.1 && S.throttle < 0.01 },
+  { id: 'whistle', title: 'Whistle for the crossings', hi: ['btnWhistle'],
+    body: () => `Out on the main you whistle for every road crossing: two long, a short and a long. Give it a try with ${tutKey('Space')}.`,
+    enter: R => { R.blew = false; },
+    done: (T, R) => R.blew && S.whistle === 0 },
+  { id: 'service', title: 'Set the train brake', hi: ['lvThrottle', 'lvBrake'],
+    body: () => `Time to stop. Close the throttle${GAME.isDiesel() ? ' and the dynamic brake' : ''}, then press ${tutKey('E')} until the Train lever reads SERVICE. Air takes a few seconds to reach the back of the train: plan your stops early.`,
+    done: () => S.throttle < 0.01 && brakeZone(S.brakeH) === 'SRV' },
+  { id: 'slow', title: 'Bring her down', hi: ['lvBrake'],
+    body: () => `Hold the brake and let the speed come down. More ${tutKey('E')} for a harder application. All the way down to EMERGENCY dumps the air at once, which is only for when something is in the way.`,
+    meter: () => ({ v: tutMph(), max: 30, txt: Math.round(tutMph()) + ' mph' }),
+    done: () => tutStopped() },
+  { id: 'release', title: 'Release', hi: ['lvBrake', 'lvInd'],
+    body: () => `Stopped. Put the engine brake on (${tutKey('C')}) to hold her, then ${tutKey('Q')} back to RUN to release the train brake and recharge the air.`,
+    done: () => tutStopped() && (brakeZone(S.brakeH) === 'RUN' || brakeZone(S.brakeH) === 'REL') && S.indH > 0.3 },
+];
+
+TUT.steps = loco => TUT_STEPS.filter(st => !st.only || st.only === loco);
+TUT.done = () => { try { return localStorage.getItem('bd_tut') === 'done'; } catch (e) { return false; } };
+TUT.mark = v => { try { localStorage.setItem('bd_tut', v); } catch (e) {} };
+
+/* ---------------- starting, running and ending the lesson ---------------- */
+/* from the menu: the lesson needs the Berkshire Division, one player and an engine that picks up cars */
+TUT.start = function () {
+  if (!GAME.ready) return;
+  if (MP.on) { toast('The guided first run is single player. Leave the room to take it.', 'warn', 4200, 'tutmp'); return; }
+  if (WORLD.custom || ROUTE_KEY !== 'ohio') {
+    try { localStorage.setItem('bd_route', 'ohio'); localStorage.setItem('bd_tutGo', '1'); } catch (e) {}
+    leavePage(location.pathname + '?route=ohio'); return;
+  }
+  const sp = LOCO_SPEC[GAME.settings.loco];
+  if (sp.set || sp.turb) { const b = $('optLoco_765'); if (b) b.click(); }
+  if (JOB.run) JOB.end();
+  if (GAME.settings.job) { GAME.settings.job = ''; saveSettings(); jobMenu(); }
+  TUT.want = true;
+  GAME.start();
+};
+/* called by GAME.start right after the light engine is made up on Yard 2 */
+TUT.begin = function () {
+  const T = GAME.train; if (!T) return;
+  const R = TUT.run = { i: 0, steps: TUT.steps(T.diesel ? 'diesel' : 'steam'), fire0: GAME.settings.fire, cars0: 0, blew: false, okT: 0, t0: S.time, cut: null };
+  // three cars on the same track, a few car lengths behind the tender, their knuckles open
+  const line = ROUTE.startLine, sF = line.len - 175 - T.length - TUT_GAP;
+  R.cut = CARS.makeCut({ line: line.name, cars: TUT_CARS }, line, sF, rng(1944), 30000).cut;
+  if (R.cut) R.cut.mid = 'tut';
+  R.cars0 = tutCars(T);
+  if (SKY.night) applyLook('morning', null);   // learn in daylight; the clock and the saved time of day are left alone
+  CARS.gen++;
+  TUT.enter();
+  TUT.ui();
+};
+TUT.intro = function () { setTimeout(() => toast('Guided first run: follow the card on the left. Skip a step or end the lesson any time.', 'good', 5200, 'tutintro'), 600); };
+TUT.step = () => TUT.run ? TUT.run.steps[TUT.run.i] || null : null;
+TUT.enter = function () { const R = TUT.run, st = TUT.step(); R.okT = 0; R.stepT = S.time; if (st && st.enter) st.enter(R); TUT.glow(); };
+TUT.next = function () {
+  const R = TUT.run; if (!R) return;
+  R.i++;
+  if (R.i >= R.steps.length) { TUT.finish(); return; }
+  TUT.enter(); TUT.ui();
+};
+/* the end of the lesson: the card says so, and the train is yours to keep driving */
+TUT.finish = function () {
+  const R = TUT.run; if (!R) return;
+  tutFireBack(R);
+  TUT.mark('done');
+  R.over = true;
+  TUT.glow();
+  TUT.ui();
+  toast('Guided first run complete. The railroad is yours.', 'good', 4200, 'tutdone');
+  tutMenu();
+};
+/* stop the lesson; the train stays where it is and becomes an ordinary free run */
+TUT.end = function (quiet) {
+  const R = TUT.run; if (!R) { TUT.want = false; return; }
+  tutFireBack(R);
+  if (!R.over && !quiet) { TUT.mark(TUT.done() ? 'done' : 'skip'); toast('Lesson ended. Free running: the guided first run is in the Run tab whenever you want it.', '', 4600, 'tutend'); }
+  TUT.run = null; TUT.want = false;
+  // the menu's train choice follows the train you are on, so Resume keeps it rather than making up a new one
+  const t = GAME.train; if (t && CONSISTS[t.consistKey] && !CONSISTS[t.consistKey].hidden) {
+    GAME.settings.consist = t.consistKey; const host = $('optTrain');
+    if (host) [...host.children].forEach(b => b.setAttribute('aria-pressed', String(b.id === 'optTrain_' + t.consistKey)));
+  }
+  TUT.glow(); TUT.ui(); tutMenu();
+};
+/* hand the fire back to however the player had it set before the lesson took it over */
+function tutFireBack(R) {
+  if (!R || R.fire0 === GAME.settings.fire) return;
+  const b = $('optFire_' + R.fire0);
+  if (b && b.click) b.click(); else { GAME.settings.fire = R.fire0; applyFireSetting(R.fire0); }
+}
+
+/* every frame from simStep: is the step done? a short pause on the tick before moving on */
+TUT.tick = function (dt) {
+  const R = TUT.run, T = GAME.train; if (!R || R.over || !T) return;
+  if (S.whistle > 0) R.blew = true;   // a quick tap on the whistle is shorter than the check below
+  TUT.hz += dt; if (TUT.hz < 0.1) return;
+  const h = TUT.hz; TUT.hz = 0;
+  const st = TUT.step(); if (!st) return;
+  if (st.id === 'couple' && tutCars(T) > R.cars0 && !R.hit) {
+    R.hit = R.lastMph || tutMph();
+    toast(R.hit <= 4.5 ? `Coupled at ${R.hit.toFixed(1)} mph: nice and gentle.` : `Coupled at ${R.hit.toFixed(1)} mph. That rattled the cars: aim for 4 mph or less.`, R.hit <= 4.5 ? 'good' : 'warn', 3600, 'tutcpl');
+  }
+  R.lastMph = tutMph();
+  if (!st.done) { TUT.meter(); return; }
+  if (R.okT > 0 || st.done(T, R)) {
+    if (!R.okT) TUT.ui(true);
+    R.okT += h;
+    if (R.okT > 0.9) TUT.next();
+  } else TUT.meter();
+};
+
+/* ---------------- the card on the HUD ---------------- */
+/* light up the levers and keys the step is about */
+TUT.glow = function () {
+  for (const el of document.querySelectorAll ? document.querySelectorAll('.tutHi') : []) el.classList.remove('tutHi');
+  const st = TUT.run && !TUT.run.over && TUT.step(); if (!st || !st.hi) return;
+  for (const id of st.hi) { const el = $(id); if (el && el.classList) el.classList.add('tutHi'); }
+};
+TUT.ui = function (ok) {
+  const box = $('tutBox'); if (!box) return;
+  const R = TUT.run;
+  box.hidden = !R;
+  if (!R) return;
+  box.classList.toggle('ok', !!ok); box.classList.toggle('over', !!R.over);
+  if (R.over) {
+    $('tutStep').textContent = 'Lesson complete';
+    $('tutTitle').textContent = 'You can drive a train';
+    $('tutBody').innerHTML = `Brakes, reverser, throttle, coupling${GAME.isDiesel() ? ', notches and the dynamic brake' : ' and the fire'}: that is the whole of it. Keep going on the main, set the cars out with ${tutKey('U')}, or take a job from the Run tab: <b>Elevator pickup</b> is a good first one. The keys are listed under Driving in the menu.`;
+    $('tutMeter').hidden = true;
+    $('tutNext').textContent = 'Keep driving'; $('tutNext').hidden = false;
+    $('tutJob').hidden = !JOB.available || !JOB.available() || !JOB.def('elevator');
+    $('tutSkip').hidden = true;
+    return;
+  }
+  const st = TUT.step(); if (!st) return;
+  const T = GAME.train;
+  $('tutStep').textContent = `Guided first run · ${R.i + 1} of ${R.steps.length}`;
+  $('tutTitle').textContent = (ok ? '✓ ' : '') + st.title;
+  $('tutBody').innerHTML = st.body(T, R);
+  $('tutNext').textContent = 'Next'; $('tutNext').hidden = !!st.done;
+  $('tutJob').hidden = true;
+  $('tutSkip').hidden = !st.done;
+  TUT.meter();
+};
+TUT.meter = function () {
+  const st = TUT.step(), m = $('tutMeter'); if (!m) return;
+  if (!st || !st.meter || !GAME.train) { m.hidden = true; return; }
+  const v = st.meter(GAME.train, TUT.run);
+  m.hidden = false;
+  const fill = m.querySelector('em'), mark = m.querySelector('i'), txt = m.querySelector('b');
+  fill.style.width = (clamp(v.v / v.max, 0, 1) * 100).toFixed(1) + '%';
+  m.classList.toggle('bad', !!v.bad);
+  mark.hidden = v.mark == null; if (v.mark != null) mark.style.left = (clamp(v.mark / v.max, 0, 1) * 100).toFixed(1) + '%';
+  if (txt.textContent !== v.txt) txt.textContent = v.txt;
+};
+
+/* ---------------- the offer in the menu ---------------- */
+function tutMenu() {
+  const g = $('grpTut'); if (!g) return;
+  const done = TUT.done(), on = !!TUT.run && !TUT.run.over;
+  g.classList.toggle('first', TUT.first && !done && !on);
+  $('tutGo').textContent = on ? 'Restart the lesson' : done ? 'Take it again' : 'Start the lesson';
+  $('tutState').textContent = on ? 'In progress: the card on the left walks you through it.' : done ? '✓ Completed. Run it again any time.' : TUT.first ? 'New here? Start with this.' : '';
+  $('tutEnd').hidden = !on;
+}
+/* nothing saved yet: this browser has never run the game */
+function tutFirst() {
+  try { return !localStorage.getItem('bd_settings') && !localStorage.getItem('bd.menuTab') && !localStorage.getItem('bd_tut') && !localStorage.getItem('bd_jobs'); } catch (e) { return false; }
+}
+function tutSetup() {
+  // the very first launch (TUT.first, read before the menu saved anything): open the menu on Run with the lesson picked out
+  let go = false; try { go = localStorage.getItem('bd_tutGo') === '1'; localStorage.removeItem('bd_tutGo'); } catch (e) {}
+  if ((TUT.first || go) && MENU_TABS.show) MENU_TABS.show('run');
+  if (go) TUT.first = true;   // came over from another railroad to take it: picked out the same way
+  $('tutGo').addEventListener('click', () => { if (TUT.run) TUT.end(true); TUT.start(); });
+  $('tutEnd').addEventListener('click', () => { TUT.end(); GAME.start(); });
+  $('tutNext').addEventListener('click', () => { if (TUT.run && TUT.run.over) TUT.end(true); else TUT.next(); });
+  $('tutSkip').addEventListener('click', () => TUT.next());
+  $('tutQuit').addEventListener('click', () => TUT.end());
+  $('tutJob').addEventListener('click', () => { TUT.end(true); GAME.settings.job = 'elevator'; saveSettings(); jobMenu(); startLabel(); MENU_TABS.show('run'); GAME.pause(true); });
+  $('tutMin').addEventListener('click', () => { const b = $('tutBox'); b.classList.toggle('mini'); $('tutMin').textContent = b.classList.contains('mini') ? '▸' : '▾'; });
+  tutMenu();
+}
 
 /* ============================================================================
    HUD themes and the cursor.
@@ -31336,7 +31659,8 @@ function resetState() {
 }
 function makeTrain() {
   // your other trains stay where they stand when you make up a new one; a job or a room starts with just the one
-  const others = FLEET.parked().length, keep = others > 0 && !MP.on && !JOB.wanted();
+  const others = FLEET.parked().length, keep = others > 0 && !MP.on && !JOB.wanted() && !TUT.want;
+  if (TUT.run) TUT.end(true);   // a new train ends a lesson in progress (TUT.start ends it first to restart)
   KNOCK.clear();   // anything an old wreck knocked about goes back on the rails
   CARS.clear(GAME.train, false, keep);
   if (others && !keep && !MP.on) toast(`Your other ${others > 1 ? others + ' trains were' : 'train was'} put away: a job is worked with one train.`, 'warn', 5200, 'fleet');
@@ -31424,6 +31748,7 @@ function prepareTrain(t, keepBrakes) {
 GAME.swapLive = function () {
   const old = GAME.train, g = GAME.settings, j = JOB.wanted();
   if (!GAME.ready || !old) return false;
+  if (TUT.want && !TUT.run && GAME.running) return false;   // the guided first run makes up its own light engine
   if (!GAME.running) { if (!MP.on) makeTrain(); return true; }   // the train on show behind the menu
   if (LOCO_SPEC[g.loco].set && JOB.activeId()) toast('A trainset cannot work this job. Resume makes up the trainset and ends the job, or pick a steam or diesel engine to stay on it.', 'warn', 6000, 'swap');
   if (MP.needSpawn) return false;
@@ -31558,7 +31883,7 @@ function loadSettings() { try { const o = JSON.parse(localStorage.getItem('bd_se
   if (!WEATHER[GAME.settings.weather]) GAME.settings.weather = 'changing';
   if (!GRM_LEVELS[GAME.settings.grime]) GAME.settings.grime = 'full'; grmLevel(GAME.settings.grime);
   if (!['easy', 'auto', 'hand'].includes(GAME.settings.fire)) GAME.settings.fire = 'easy'; if (!LOCO_SPEC[GAME.settings.loco]) GAME.settings.loco = '765'; if (!LIVERIES[GAME.settings.livery]) GAME.settings.livery = 'ss'; if (!DN.starts[GAME.settings.time]) GAME.settings.time = 'morning'; if (!DN.rates[GAME.settings.cycle]) GAME.settings.cycle = 'x30'; if (!COACH_PAINT[GAME.settings.coach]) GAME.settings.coach = 'road'; if (!GFX_MENU[GAME.settings.gfx]) GAME.settings.gfx = 'auto'; }
-GAME.needNewTrain = function () { const t = GAME.train, g = GAME.settings, j = JOB.wanted(); return !t || MP.needSpawn || t.locoKey !== g.loco || (!t.elec && t.consistKey !== JOB.consist()) || (j ? j.id : '') !== JOB.activeId() || (t.diesel && !t.elec && t.nUnits !== (+g.units || 1)) || (!t.diesel && (t.trim || '') !== trimWanted()); };
+GAME.needNewTrain = function () { const t = GAME.train, g = GAME.settings, j = JOB.wanted(); return !t || MP.needSpawn || (TUT.want && !TUT.run) || t.locoKey !== g.loco || (!t.elec && t.consistKey !== JOB.consist()) || (j ? j.id : '') !== JOB.activeId() || (t.diesel && !t.elec && t.nUnits !== (+g.units || 1)) || (!t.diesel && (t.trim || '') !== trimWanted()); };
 function buildWhistleIfReady() { if (!AU.on) return; buildWhistle(WHISTLES[whistleKeyOf(GAME.settings.loco)]); }
 
 /* ---------------- menu ---------------- */
@@ -31579,6 +31904,7 @@ function locoGlyph(key) {
   return art ? `<span class="lart" aria-hidden="true" style="--art:url(${art})"></span>` : '';
 }
 function buildMenu() {
+  TUT.first = tutFirst();   // before anything is saved this launch
   loadSettings();
   MP.init();
   const locoOpts = { '765': { name: 'NKP 765', sub: 'S-2 · Lima 1944' }, '1225': { name: 'PM 1225', sub: 'N-1 · Lima 1941' }, '4014': { name: 'UP 4014 Big Boy', sub: '4-8-8-4 · Alco 1941' }, '1308': { name: 'C&O 1308', sub: 'H-6 Mallet · Baldwin 1949' }, '18': { name: 'UP 18 gas turbine', sub: 'GTEL · 8,500 hp · GE 1960' }, 'diesel': { name: 'Wide-cab diesel', sub: 'AC · 4,400 hp' },
@@ -31629,6 +31955,7 @@ function buildMenu() {
   jobSetup();
   volumeSliders();
   menuTabs();
+  tutSetup();
   $('btnStart').addEventListener('click', () => GAME.start());
   $('bigRetry').addEventListener('click', () => GAME.rerail());
   $('bigFar').addEventListener('click', () => iceRerailFar());
@@ -31729,6 +32056,7 @@ GAME.start = function () {
     if (JOB.run) JOB.end();
     makeTrain();
     if (job) JOB.begin(job);
+    else if (TUT.want) TUT.begin();
     else if (GAME.running) toast(`New train made up on ${WORLD.custom || WORLD.mtn || FLEET.parked().length ? GAME.spawnName : 'Yard 2'}.`, 'good');
     GAME.intro();
   }
@@ -31739,6 +32067,7 @@ GAME.start = function () {
   try { navigator.wakeLock && navigator.wakeLock.request('screen').catch(() => {}); } catch (e) {}
 };
 GAME.intro = function () {
+  if (TUT.run) { TUT.intro(); return; }   // the lesson card does the talking
   if (JOB.run) JOB.intro();
   else if (MP.on) setTimeout(() => toast(`Made up on ${GAME.spawnName}. The switches and the cars standing about are shared with everyone in the room.`, '', 5600), 600);
   else if (WORLD.custom) setTimeout(() => toast(`On ${GAME.spawnName}. Every switch is lined straight: tap one or use Throw to change it.`, '', 5000), 600);
@@ -32028,6 +32357,7 @@ function simStep(dt, T) {
       else { S.coal = Math.min(SK.coal, S.coal + 300 * dt); if (S.coal >= SK.coal - 1) { GAME.filling = null; toast(`Coal bunker full: ${Math.round(SK.coal / STON)} tons.`, 'good'); } }
     }
     JOB.tick(dt);
+    TUT.tick(dt);
     IND.tick(dt);
     AI.tick(dt);
     // station stop detection
@@ -32206,6 +32536,7 @@ GAME.snapshot = function () {
   return { running: GAME.running, settings: { ...GAME.settings }, sw: NET.switches.map(s => s.state), front: { e: f.e.id, s: f.s, o: f.o }, S: { v: S.v, P: S.P, W: S.W, water: S.water, coal: S.coal, throttle: S.throttle, reverser: S.reverser, brakeH: S.brakeH, indH: S.indH }, cam: CAM.mode, hour: SKY.hour };
 };
 GAME.restore = function (d) {
+  if (TUT.run) TUT.end(true);
   try {
     Object.assign(GAME.settings, d.settings);
     makeTrain(); GAME.train.consistKey = GAME.settings.consist;

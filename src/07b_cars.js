@@ -109,35 +109,43 @@ CARS.setup = function () {
 /* the cuts spotted around the yard, as every new run (and every room) starts with them. In a room each car is
    lettered alike for everyone (road), and each cut is known by its place in YARD_CUTS ('y0', 'y1', ...). */
 CARS.yard = function (road) {
-  if (!CARS.geo) { CARS.geo = carGeos(); }
   const r = rng(1959), was = ROAD_SHORT;
   if (road) ROAD_SHORT = road;
   let num = 21000;
   YARD_CUTS.forEach((def, i) => {
     const line = ROUTE.lines[def.line]; if (!line) return;
-    const vehicles = def.cars.map(spec => {
-      const { type, ld, to } = IND.parse(spec);
-      const m = freightModel(type, num += 7 + ((r() * 40) | 0), r);
-      scene.add(m.root); linearizeObject(m.root);
-      const v = carVehicle(m); v.yard = true; v.hb = true; v.made = { type, num, rs: ROAD_SHORT };
-      v.brake = { AR: 0, BC: 0, BP: 0, emerg: false, released: true };   // bled off and tied down
-      IND.setLoad(v, ld); IND.bill(v, to);
-      return v;
-    });
-    const c = new Cut(scene, vehicles);
-    const sF = def.end !== undefined ? line.len - def.end : line.len * def.at;
-    const sR = sF - c.length;
-    const foul = line.cuts.some(k => k.s > sR - 45 && k.s < sF + 45) || sR < 10;
-    if (foul) console.warn('cut on', def.line, 'fouls a switch');
-    const loc = line.locate(sF);
-    c.place(new TrackPos(loc.edge, loc.s, 1));
-    // one of your other trains is standing there: the cars are not made up on top of it
-    if (!MP.on && CARS.overlaps(c)) { c.dispose(); vehicles.forEach(freeVehicle); return; }
-    c.home = def.line; c.mid = 'y' + i;
-    for (const end of ['front', 'rear']) setKn(endCoupler(c, end), KN_OPEN);   // the crew left the end knuckles open
-    CARS.cuts.push(c);
+    const c = CARS.makeCut(def, line, def.end !== undefined ? line.len - def.end : line.len * def.at, r, num);
+    num = c.num;
+    if (!c.cut) return;
+    c.cut.mid = 'y' + i;
   });
   ROAD_SHORT = was;
+};
+/* One cut of cars spotted on `line` with its front end at sF, tied down with the end knuckles open. Returns the
+   cut (null if one of your other trains stands there) and the last car number used, so numbers run on. */
+CARS.makeCut = function (def, line, sF, r, num) {
+  if (!CARS.geo) { CARS.geo = carGeos(); }
+  const vehicles = def.cars.map(spec => {
+    const { type, ld, to } = IND.parse(spec);
+    const m = freightModel(type, num += 7 + ((r() * 40) | 0), r);
+    scene.add(m.root); linearizeObject(m.root);
+    const v = carVehicle(m); v.yard = true; v.hb = true; v.made = { type, num, rs: ROAD_SHORT };
+    v.brake = { AR: 0, BC: 0, BP: 0, emerg: false, released: true };   // bled off and tied down
+    IND.setLoad(v, ld); IND.bill(v, to);
+    return v;
+  });
+  const c = new Cut(scene, vehicles);
+  const sR = sF - c.length;
+  const foul = line.cuts.some(k => k.s > sR - 45 && k.s < sF + 45) || sR < 10;
+  if (foul) console.warn('cut on', def.line, 'fouls a switch');
+  const loc = line.locate(sF);
+  c.place(new TrackPos(loc.edge, loc.s, 1));
+  // one of your other trains is standing there: the cars are not made up on top of it
+  if (!MP.on && CARS.overlaps(c)) { c.dispose(); vehicles.forEach(freeVehicle); return { cut: null, num }; }
+  c.home = def.line;
+  for (const end of ['front', 'rear']) setKn(endCoupler(c, end), KN_OPEN);   // the crew left the end knuckles open
+  CARS.cuts.push(c);
+  return { cut: c, num };
 };
 
 /* ---------------- what a car is, as a few characters ---------------- */
