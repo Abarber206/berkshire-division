@@ -113,7 +113,8 @@ function resetState() {
 }
 function makeTrain() {
   // your other trains stay where they stand when you make up a new one; a job or a room starts with just the one
-  const others = FLEET.parked().length, keep = others > 0 && !MP.on && !JOB.wanted();
+  const others = FLEET.parked().length, keep = others > 0 && !MP.on && !JOB.wanted() && !TUT.want;
+  if (TUT.run) TUT.end(true);   // a new train ends a lesson in progress (TUT.start ends it first to restart)
   KNOCK.clear();   // anything an old wreck knocked about goes back on the rails
   CARS.clear(GAME.train, false, keep);
   if (others && !keep && !MP.on) toast(`Your other ${others > 1 ? others + ' trains were' : 'train was'} put away: a job is worked with one train.`, 'warn', 5200, 'fleet');
@@ -201,6 +202,7 @@ function prepareTrain(t, keepBrakes) {
 GAME.swapLive = function () {
   const old = GAME.train, g = GAME.settings, j = JOB.wanted();
   if (!GAME.ready || !old) return false;
+  if (TUT.want && !TUT.run && GAME.running) return false;   // the guided first run makes up its own light engine
   if (!GAME.running) { if (!MP.on) makeTrain(); return true; }   // the train on show behind the menu
   if (LOCO_SPEC[g.loco].set && JOB.activeId()) toast('A trainset cannot work this job. Resume makes up the trainset and ends the job, or pick a steam or diesel engine to stay on it.', 'warn', 6000, 'swap');
   if (MP.needSpawn) return false;
@@ -335,7 +337,7 @@ function loadSettings() { try { const o = JSON.parse(localStorage.getItem('bd_se
   if (!WEATHER[GAME.settings.weather]) GAME.settings.weather = 'changing';
   if (!GRM_LEVELS[GAME.settings.grime]) GAME.settings.grime = 'full'; grmLevel(GAME.settings.grime);
   if (!['easy', 'auto', 'hand'].includes(GAME.settings.fire)) GAME.settings.fire = 'easy'; if (!LOCO_SPEC[GAME.settings.loco]) GAME.settings.loco = '765'; if (!LIVERIES[GAME.settings.livery]) GAME.settings.livery = 'ss'; if (!DN.starts[GAME.settings.time]) GAME.settings.time = 'morning'; if (!DN.rates[GAME.settings.cycle]) GAME.settings.cycle = 'x30'; if (!COACH_PAINT[GAME.settings.coach]) GAME.settings.coach = 'road'; if (!GFX_MENU[GAME.settings.gfx]) GAME.settings.gfx = 'auto'; }
-GAME.needNewTrain = function () { const t = GAME.train, g = GAME.settings, j = JOB.wanted(); return !t || MP.needSpawn || t.locoKey !== g.loco || (!t.elec && t.consistKey !== JOB.consist()) || (j ? j.id : '') !== JOB.activeId() || (t.diesel && !t.elec && t.nUnits !== (+g.units || 1)) || (!t.diesel && (t.trim || '') !== trimWanted()); };
+GAME.needNewTrain = function () { const t = GAME.train, g = GAME.settings, j = JOB.wanted(); return !t || MP.needSpawn || (TUT.want && !TUT.run) || t.locoKey !== g.loco || (!t.elec && t.consistKey !== JOB.consist()) || (j ? j.id : '') !== JOB.activeId() || (t.diesel && !t.elec && t.nUnits !== (+g.units || 1)) || (!t.diesel && (t.trim || '') !== trimWanted()); };
 function buildWhistleIfReady() { if (!AU.on) return; buildWhistle(WHISTLES[whistleKeyOf(GAME.settings.loco)]); }
 
 /* ---------------- menu ---------------- */
@@ -356,6 +358,7 @@ function locoGlyph(key) {
   return art ? `<span class="lart" aria-hidden="true" style="--art:url(${art})"></span>` : '';
 }
 function buildMenu() {
+  TUT.first = tutFirst();   // before anything is saved this launch
   loadSettings();
   MP.init();
   const locoOpts = { '765': { name: 'NKP 765', sub: 'S-2 · Lima 1944' }, '1225': { name: 'PM 1225', sub: 'N-1 · Lima 1941' }, '4014': { name: 'UP 4014 Big Boy', sub: '4-8-8-4 · Alco 1941' }, '1308': { name: 'C&O 1308', sub: 'H-6 Mallet · Baldwin 1949' }, '18': { name: 'UP 18 gas turbine', sub: 'GTEL · 8,500 hp · GE 1960' }, 'diesel': { name: 'Wide-cab diesel', sub: 'AC · 4,400 hp' },
@@ -406,6 +409,7 @@ function buildMenu() {
   jobSetup();
   volumeSliders();
   menuTabs();
+  tutSetup();
   $('btnStart').addEventListener('click', () => GAME.start());
   $('bigRetry').addEventListener('click', () => GAME.rerail());
   $('bigFar').addEventListener('click', () => iceRerailFar());
@@ -506,6 +510,7 @@ GAME.start = function () {
     if (JOB.run) JOB.end();
     makeTrain();
     if (job) JOB.begin(job);
+    else if (TUT.want) TUT.begin();
     else if (GAME.running) toast(`New train made up on ${WORLD.custom || WORLD.mtn || FLEET.parked().length ? GAME.spawnName : 'Yard 2'}.`, 'good');
     GAME.intro();
   }
@@ -516,6 +521,7 @@ GAME.start = function () {
   try { navigator.wakeLock && navigator.wakeLock.request('screen').catch(() => {}); } catch (e) {}
 };
 GAME.intro = function () {
+  if (TUT.run) { TUT.intro(); return; }   // the lesson card does the talking
   if (JOB.run) JOB.intro();
   else if (MP.on) setTimeout(() => toast(`Made up on ${GAME.spawnName}. The switches and the cars standing about are shared with everyone in the room.`, '', 5600), 600);
   else if (WORLD.custom) setTimeout(() => toast(`On ${GAME.spawnName}. Every switch is lined straight: tap one or use Throw to change it.`, '', 5000), 600);
@@ -805,6 +811,7 @@ function simStep(dt, T) {
       else { S.coal = Math.min(SK.coal, S.coal + 300 * dt); if (S.coal >= SK.coal - 1) { GAME.filling = null; toast(`Coal bunker full: ${Math.round(SK.coal / STON)} tons.`, 'good'); } }
     }
     JOB.tick(dt);
+    TUT.tick(dt);
     IND.tick(dt);
     AI.tick(dt);
     // station stop detection
@@ -983,6 +990,7 @@ GAME.snapshot = function () {
   return { running: GAME.running, settings: { ...GAME.settings }, sw: NET.switches.map(s => s.state), front: { e: f.e.id, s: f.s, o: f.o }, S: { v: S.v, P: S.P, W: S.W, water: S.water, coal: S.coal, throttle: S.throttle, reverser: S.reverser, brakeH: S.brakeH, indH: S.indH }, cam: CAM.mode, hour: SKY.hour };
 };
 GAME.restore = function (d) {
+  if (TUT.run) TUT.end(true);
   try {
     Object.assign(GAME.settings, d.settings);
     makeTrain(); GAME.train.consistKey = GAME.settings.consist;
