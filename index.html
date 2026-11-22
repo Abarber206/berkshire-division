@@ -232,6 +232,19 @@ details.keys{font-size:12px;color:var(--ink-dim)}
 details.keys summary{cursor:var(--cur-hot,pointer);color:var(--ink);font-weight:600;font-size:12px}
 details.keys div{display:grid;grid-template-columns:auto 1fr;gap:3px 10px;margin-top:6px;font-family:var(--f-num);font-size:11px}
 details.keys kbd{color:var(--brass)}
+#ctrlList{display:grid;grid-template-columns:minmax(0,1fr) repeat(3,minmax(58px,74px));gap:3px 4px;margin-top:6px;font-size:11px;align-items:center}
+#ctrlList .ctrlHead,#ctrlList .ctrlRow{display:contents}
+#ctrlList .ctrlHead span{font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--ink-dim);text-align:center}
+#ctrlList .ctrlGrp{grid-column:1/-1;margin-top:8px;font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:var(--brass);font-weight:700;border-bottom:1px solid var(--rule);padding-bottom:2px}
+#ctrlList .ctrlRow>span{color:var(--ink);min-width:0;overflow:hidden;text-overflow:ellipsis}
+#ctrlList .kb{font-family:var(--f-num);font-size:11px;padding:4px 3px;border:1px solid var(--rule);border-bottom-width:2px;border-radius:4px;background:rgba(0,0,0,.25);color:var(--brass);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:var(--cur-hot,pointer)}
+#ctrlList .kb.none{color:var(--ink-dim);opacity:.6}
+#ctrlList .kb.pad{color:#9fc7d6}
+#ctrlList .kb.listen{border-color:var(--brass);color:var(--ink);background:rgba(207,166,81,.18);animation:ctrlBlink 1s infinite}
+@keyframes ctrlBlink{50%{background:rgba(207,166,81,.04)}}
+.ctrlFoot{display:flex;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap}
+.ctrlFoot .help{flex:1;min-width:160px}
+#menu .padFocus{outline:2px solid var(--brass)!important;outline-offset:2px;box-shadow:0 0 0 4px rgba(207,166,81,.25)}
 /* menu: one tab of settings at a time, a footer that keeps the start button in reach, and a minimize */
 .mtop{display:flex;align-items:flex-start;gap:6px;margin:-4px -4px 0}
 /* every tab stays in sight: the row wraps instead of scrolling sideways (a hidden sideways scroll left Sound and Online
@@ -1047,20 +1060,12 @@ h1{text-shadow:0 2px 0 #000,0 10px 40px rgba(0,0,0,.6)}
       <section class="mpane" data-pane="drive" role="tabpanel">
         <div class="fgroup"><span class="lbl">Firing</span><div class="seg" id="optFire"></div></div>
         <p class="help" id="helpText">Fire up, set the <b>reverser</b> forward, release the <b>train brake</b> to RUN, then ease the <b>throttle</b> open. Heavy throttle on a wet rail will slip the drivers. Check the switch card before every turnout: diverging routes are 30 mph.</p>
-        <details class="keys"><summary>Keyboard controls</summary><div>
-          <kbd>W / S</kbd><span>Throttle open / close</span>
-          <kbd>↑ / ↓</kbd><span>Reverser forward / back</span>
-          <kbd>Q / E</kbd><span>Train brake release / apply</span>
-          <kbd>Z / C</kbd><span>Engine brake release / apply</span>
-          <kbd>Space</kbd><span>Whistle (hold)</span>
-          <kbd>T</kbd><span>Throw next switch ahead</span>
-          <kbd>U</kbd><span>Couplers: cut cars off</span>
-          <kbd>G</kbd><span>Place engines and cars on the track</span>
-          <kbd>B X K H</kbd><span>Bell · Sand · Cocks · Headlight</span>
-          <kbd>I F L</kbd><span>Injector · Stoker · Blower</span>
-          <kbd>1–6 · V</kbd><span>Cameras (6 is cinematic) · <kbd>M</kbd> map · <kbd>P</kbd> pause</span>
-          <kbd>← / → · − / =</kbd><span>Turn and zoom the camera; drag, scroll or pinch too. Press a camera's number again to reset it</span>
-        </div></details>
+        <details class="keys" id="ctrlBox"><summary>Controls: keyboard and gamepad</summary>
+          <p class="help" id="ctrlPad"></p>
+          <p class="help">Click a key or button to change it, then press the new one. Right click clears it. Drag, scroll or pinch to look round and zoom; press a camera's number again to reset it.</p>
+          <div id="ctrlList"></div>
+          <div class="ctrlFoot"><button type="button" class="btn" id="ctrlReset">Reset to standard</button><span class="help" id="ctrlNote" aria-live="polite"></span></div>
+        </details>
       </section>
       <section class="mpane" data-pane="world" role="tabpanel">
         <div class="fgroup"><span class="lbl">Time of day</span><div class="seg" id="optTime"></div></div>
@@ -24717,55 +24722,19 @@ function setupButtons() {
   $('btnMenu').addEventListener('click', () => GAME.pause(true));
   $('btnThrow').addEventListener('click', () => GAME.throwAhead());
   $('btnThrowMini').addEventListener('click', () => GAME.throwAhead());
-  const keys = {};
+  // every driving key is an action in CTRL (11o_ctrl.js), so it can be moved to another key from the menu
   addEventListener('keydown', e => {
     if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
     if (PLACE.on) { PLACE.key(e); return; }
-    if (e.repeat && !['KeyW', 'KeyS', 'KeyQ', 'KeyE', 'KeyZ', 'KeyC', 'KeyA', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Minus', 'Equal', 'NumpadSubtract', 'NumpadAdd'].includes(e.code)) return;
+    const act = CTRL.keyAct(e.code);
+    if (e.repeat && !(act && CTRL_A[act].rep)) return;
     if ($('menu').hidden === false) return;
     if (WALK.on && WALK.key(e)) return;   // on foot the keys walk him about (11j_walk.js)
-    if (e.code === 'Enter' || e.code === 'NumpadEnter') { WALK.leaveCab(); return; }
-    keys[e.code] = true;
-    // skating across the frozen lake: A and D sand the left or right drivers to swing her (10n_ice.js)
-    if ((e.code === 'KeyA' || e.code === 'KeyD') && iceSkating()) { ICE.sk.steer = e.code === 'KeyA' ? 1 : -1; return; }
-    switch (e.code) {
-      case 'KeyW': S.throttle = GAME.isDiesel() ? clamp(Math.round(S.throttle * GAME.notches() + 1) / GAME.notches(), 0, 1) : clamp(S.throttle + 0.04, 0, 1); break;
-      case 'KeyS': S.throttle = GAME.isDiesel() ? clamp(Math.round(S.throttle * GAME.notches() - 1) / GAME.notches(), 0, 1) : clamp(S.throttle - 0.06, 0, 1); break;
-      case 'KeyD': if (GAME.isDiesel()) S.dyn = clamp(S.dyn < 0.06 ? 0.06 : S.dyn + 0.1, 0, 1); break;
-      case 'KeyA': if (GAME.isDiesel()) S.dyn = S.dyn <= 0.07 ? 0 : clamp(S.dyn - 0.1, 0.06, 1); break;
-      case 'ArrowUp': S.reverser = GAME.isDiesel() ? clamp(Math.round(S.reverser) + 1, -1, 1) : clamp(Math.round((S.reverser + 1 / 17) * 17) / 17, -1, 1); e.preventDefault(); break;
-      case 'ArrowDown': S.reverser = GAME.isDiesel() ? clamp(Math.round(S.reverser) - 1, -1, 1) : clamp(Math.round((S.reverser - 1 / 17) * 17) / 17, -1, 1); e.preventDefault(); break;
-      case 'KeyQ': S.brakeH = clamp(S.brakeH - 0.03, 0, 1); break;
-      case 'KeyE': S.brakeH = clamp(S.brakeH + 0.03, 0, 1); break;
-      case 'KeyZ': S.indH = clamp(S.indH - 0.05, 0, 1); break;
-      case 'KeyC': S.indH = clamp(S.indH + 0.05, 0, 1); break;
-      case 'Space': S.whistle = e.shiftKey ? 1 : 0.7; e.preventDefault(); break;
-      case 'KeyB': S.bell = !S.bell; break;
-      case 'KeyJ': if (!GAME.isDiesel() && !(GAME.train && GAME.train.elec)) S.classLamps = !S.classLamps; break;
-      case 'KeyX': S.sander = !S.sander; break;
-      case 'KeyK': if (GAME.isTurbine()) turbineSwitch(); else if (GAME.isDiesel()) S.ditch = !S.ditch; else S.cocks = !S.cocks; break;
-      case 'KeyH': S.light = (S.light + 1) % 3; break;
-      case 'KeyI': $('btnInj').click(); break;
-      case 'KeyF': if (GAME.isDiesel()) break; GAME.manualFire('stoker'); S.stoker = clamp(S.stoker + 0.25, 0, 1.0001) > 1 ? 0 : S.stoker + 0.25; break;
-      case 'KeyL': if (GAME.isDiesel()) break; GAME.manualFire('blower'); S.blower = S.blower > 0.3 ? 0 : 0.65; break;
-      case 'KeyT': GAME.throwAhead(); break;
-      case 'KeyN': CAB.nextLook(); break;
-      case 'KeyU': carPanelToggle(); break;
-      case 'KeyG': PLACE.enter(); break;
-      case 'KeyO': FLEET.toggle(); break;
-      case 'BracketLeft': FLEET.cycle(-1); break;
-      case 'BracketRight': FLEET.cycle(1); break;
-      case 'KeyM': MAP.visible ? MAP.close() : MAP.open(); break;
-      case 'KeyP': GAME.pause(!S.paused); break;
-      case 'Digit1': cycleCamera('chase'); break; case 'Digit2': cycleCamera('cab'); break; case 'Digit3': cycleCamera('side'); break; case 'Digit4': cycleCamera('drone'); break; case 'Digit5': cycleCamera('rear'); break; case 'Digit6': cycleCamera('cine'); break;
-      case 'KeyV': cycleCamera(); break;
-      case 'ArrowLeft': case 'ArrowRight': { const d = (e.code === 'ArrowLeft' ? 1 : -1) * 0.07; if (CAM.mode === 'drone') CAM.droneYaw += d; else if (CAM.mode === 'chase') CAM.yaw += d; else if (CAM.mode === 'cab') CAM.cabYaw = clamp(CAM.cabYaw + d, -2.2, 2.2); e.preventDefault(); break; }
-      case 'Minus': case 'NumpadSubtract': CAM.dist = clamp(CAM.dist * 1.12, 7, 140); break;
-      case 'Equal': case 'NumpadAdd': CAM.dist = clamp(CAM.dist / 1.12, 7, 140); break;
-    }
-    GAME.refreshKeys();
+    if (!act) return;
+    if (CTRL.ownKey(e.code)) e.preventDefault();
+    CTRL.act(act, { shift: e.shiftKey });
   });
-  addEventListener('keyup', e => { keys[e.code] = false; if (e.code === 'KeyA' || e.code === 'KeyD') ICE.sk.steer = 0; if (e.code === 'Space') S.whistle = 0; });
+  addEventListener('keyup', e => { const act = CTRL.keyAct(e.code); if (act) CTRL.release(act); });
 }
 
 /* ---------------- gauges ---------------- */
@@ -29534,7 +29503,8 @@ CAREER.setup = function () {
 const TUT = { want: false, run: null, hz: 0, first: false };
 const TUT_GAP = 40;                  // metres from the tender to the cars waiting behind it on Yard 2
 const TUT_CARS = ['box/', 'box/', 'hopper/'];
-const tutKey = k => `<kbd>${k}</kbd>`;
+/* the key (and pad button, with a controller in) for an action, as the player has them bound (11o_ctrl.js) */
+const tutKey = id => typeof CTRL !== 'undefined' && CTRL_A[id] ? CTRL.hint(id) : `<kbd>${id}</kbd>`;
 const tutCars = T => T ? T.vehicles.filter(v => !isPower(v)).length : 0;
 const tutMph = () => Math.abs(S.v) / MPH;
 const tutStopped = () => Math.abs(S.v) < 0.05;
@@ -29547,80 +29517,80 @@ function tutPanelOpen() { const p = $('carPanel'); return !!p && p.hidden === fa
    done is read and dismissed with Next. enter(R) runs when the step comes up. */
 const TUT_STEPS = [
   { id: 'hello', title: 'Welcome to the cab',
-    body: () => `You are on Yard 2 at Bellevue with a light engine. Three cars are waiting behind you: you will back onto them, couple up and take them out on the main. Press ${tutKey('1')} to ${tutKey('6')} to change cameras (${tutKey('2')} is the cab), drag to look around, and tap Next when you are ready.` },
+    body: () => `You are on Yard 2 at Bellevue with a light engine. Three cars are waiting behind you: you will back onto them, couple up and take them out on the main. Press ${tutKey('cam1')} to ${tutKey('cam6')} (or ${tutKey('camCycle')}) to change cameras (${tutKey('cam2')} is the cab), drag to look around, and tap Next when you are ready.` },
   { id: 'indep', title: 'Release the engine brake', hi: ['lvInd'],
-    body: () => `The engine brake holds the engine on its own. Press ${tutKey('Z')} until the Engine lever reads 0, or drag the lever up. (${tutKey('C')} puts it back on.)`,
+    body: () => `The engine brake holds the engine on its own. Press ${tutKey('indRel')} until the Engine lever reads 0, or drag the lever up. (${tutKey('indApp')} puts it back on.)`,
     done: () => S.indH < 0.05 },
   { id: 'train', title: 'The train brake', hi: ['lvBrake'],
-    body: () => `The Train lever works the air brakes on every car. ${tutKey('E')} applies, ${tutKey('Q')} releases. It sits in RUN while you drive: leave it there for now. You will use it to stop later.`,
+    body: () => `The Train lever works the air brakes on every car. ${tutKey('brakeApp')} applies, ${tutKey('brakeRel')} releases. It sits in RUN while you drive: leave it there for now. You will use it to stop later.`,
     done: () => brakeZone(S.brakeH) === 'RUN' || brakeZone(S.brakeH) === 'REL' },
   { id: 'bell', title: 'Ring the bell, sound the whistle', hi: ['btnBell', 'btnWhistle'],
-    body: () => `Ring the bell before you move: ${tutKey('B')}. Then whistle to say you are about to go: three short blasts mean backing up. Hold ${tutKey('Space')}, or the Whistle key, for each.`,
+    body: () => `Ring the bell before you move: ${tutKey('bell')}. Then whistle to say you are about to go: three short blasts mean backing up. Hold ${tutKey('whistle')}, or the Whistle key, for each.`,
     enter: R => { R.blew = false; },
     done: (T, R) => S.bell && R.blew },
   { id: 'revBack', title: 'Reverser into reverse', hi: ['lvReverser'],
-    body: () => GAME.isDiesel() ? `The reverser picks the direction. The cars are behind you, so press ${tutKey('↓')} until it reads REV.` : `The reverser picks the direction and, on a steam engine, how long steam is admitted to the cylinders. The cars are behind you, so press ${tutKey('↓')} until it is well back toward full reverse.`,
+    body: () => GAME.isDiesel() ? `The reverser picks the direction. The cars are behind you, so press ${tutKey('revBack')} until it reads REV.` : `The reverser picks the direction and, on a steam engine, how long steam is admitted to the cylinders. The cars are behind you, so press ${tutKey('revBack')} until it is well back toward full reverse.`,
     done: () => tutRev(-1) },
   { id: 'throttleBack', title: 'Open the throttle', hi: ['lvThrottle'],
-    body: () => GAME.isDiesel() ? `Press ${tutKey('W')} to notch the throttle out to 1 or 2. The engine loads up and starts to roll back.` : `Ease the throttle open with ${tutKey('W')}, a little at a time, until she starts to roll back. Too much on a cold rail and the drivers slip: ease off with ${tutKey('S')}.`,
+    body: () => GAME.isDiesel() ? `Press ${tutKey('throttleUp')} to notch the throttle out to 1 or 2. The engine loads up and starts to roll back.` : `Ease the throttle open with ${tutKey('throttleUp')}, a little at a time, until she starts to roll back. Too much on a cold rail and the drivers slip: ease off with ${tutKey('throttleDown')}.`,
     done: () => S.throttle > 0.01 && tutMph() > 0.5 && tutRev(-1) },
   { id: 'couple', title: 'Couple to the cars', hi: ['lvThrottle', 'lvInd'],
-    body: () => `Watch behind you (${tutKey('5')} or ${tutKey('3')} helps) and keep it under 4 mph. Close the throttle (${tutKey('S')}) as you get close and let her drift into the cars. Their knuckle is open, so they couple when you touch.`,
+    body: () => `Watch behind you (${tutKey('cam5')} or ${tutKey('cam3')} helps) and keep it under 4 mph. Close the throttle (${tutKey('throttleDown')}) as you get close and let her drift into the cars. Their knuckle is open, so they couple when you touch.`,
     meter: () => ({ v: tutMph(), max: 8, mark: 4, txt: tutMph().toFixed(1) + ' mph', bad: tutMph() > 4 }),
     done: (T, R) => tutCars(T) > R.cars0 },
   { id: 'stop1', title: 'Stop', hi: ['lvThrottle', 'lvInd'],
-    body: () => `Throttle closed (${tutKey('S')}) and the engine brake on (${tutKey('C')}) to bring her to a stand.`,
+    body: () => `Throttle closed (${tutKey('throttleDown')}) and the engine brake on (${tutKey('indApp')}) to bring her to a stand.`,
     done: () => tutStopped() && S.throttle < 0.01 },
   { id: 'cars', title: 'Look at your train', hi: ['btnCars'],
-    body: () => `Press ${tutKey('U')} or tap the Couplers button to see your train car by car. Tapping a coupler there, or the cut lever on the cars themselves, pulls the pin to set cars out again.`,
+    body: () => `Press ${tutKey('cars')} or tap the Couplers button to see your train car by car. Tapping a coupler there, or the cut lever on the cars themselves, pulls the pin to set cars out again.`,
     done: () => tutPanelOpen() },
   { id: 'air', title: 'Pump up the air', hi: ['lvBrake'],
-    body: () => `The cars were standing with their brakes bled off. Amber cars in the Couplers panel are still charging. Leave the Train lever in RUN (or ${tutKey('Q')} to RELEASE to charge faster) until they all go grey.`,
+    body: () => `The cars were standing with their brakes bled off. Amber cars in the Couplers panel are still charging. Leave the Train lever in RUN (or ${tutKey('brakeRel')} to RELEASE to charge faster) until they all go grey.`,
     meter: (T) => { const c = T.vehicles.filter(v => !isPower(v)); const ok = c.filter(v => v.brake.AR >= 62).length; return { v: ok, max: Math.max(1, c.length), txt: `${ok} of ${c.length} charged` }; },
     done: T => T.vehicles.every(v => isPower(v) || v.brake.AR >= 62) },
   { id: 'revFwd', title: 'Reverser forward', hi: ['lvReverser', 'lvInd'],
     enter: () => { if (tutPanelOpen()) carPanelToggle(false); },
-    body: () => `Now head out. Release the engine brake (${tutKey('Z')}) and press ${tutKey('↑')} to put the reverser ${GAME.isDiesel() ? 'in FWD' : 'well forward'}. Bring the train brake back to RUN with ${tutKey('Q')} if you moved it.`,
+    body: () => `Now head out. Release the engine brake (${tutKey('indRel')}) and press ${tutKey('revFwd')} to put the reverser ${GAME.isDiesel() ? 'in FWD' : 'well forward'}. Bring the train brake back to RUN with ${tutKey('brakeRel')} if you moved it.`,
     done: () => tutRev(1) && S.indH < 0.05 && brakeZone(S.brakeH) !== 'SRV' && brakeZone(S.brakeH) !== 'EMG' },
   { id: 'out', title: 'Out onto the main', hi: ['lvThrottle'],
-    body: () => `Open the throttle and pull out of the yard. The ladder at the east end is already lined for the main: the switch card at the top shows which way the next switch lies, and ${tutKey('T')} throws it. Keep it under 15 mph through the yard switches.`,
+    body: () => `Open the throttle and pull out of the yard. The ladder at the east end is already lined for the main: the switch card at the top shows which way the next switch lies, and ${tutKey('throwSwitch')} throws it. Keep it under 15 mph through the yard switches.`,
     done: T => tutOnMain(T) },
   // ---- steam: the fire and the water
   { id: 'boiler', only: 'steam', title: 'Steam and water',
     body: () => `Everything comes from the boiler. On the gauges, watch the steam pressure (the big dial) and the water glass. Work her hard and the pressure falls; let the water drop out of the glass and you can melt the crown sheet. On Easy your fireman handles both, but try it yourself for a minute.` },
   { id: 'fire', only: 'steam', title: 'Fire her', hi: ['btnFire'],
-    body: () => `Press ${tutKey('F')} or tap Stoker to feed more coal to the fire. That hands you the fire. More coal means more steam, but only once the fire has caught up: watch the pressure needle.`,
+    body: () => `Press ${tutKey('stoker')} or tap Stoker to feed more coal to the fire. That hands you the fire. More coal means more steam, but only once the fire has caught up: watch the pressure needle.`,
     done: () => !S.autoFire },
   { id: 'inject', only: 'steam', title: 'Water in the boiler', hi: ['btnInj'],
-    body: () => `Press ${tutKey('I')} or tap Inject to put the injector on. It forces water from the tender into the boiler: the glass rises, but cold water knocks the pressure back a little. Keep the glass about half full.`,
+    body: () => `Press ${tutKey('injector')} or tap Inject to put the injector on. It forces water from the tender into the boiler: the glass rises, but cold water knocks the pressure back a little. Keep the glass about half full.`,
     done: () => S.injector },
   { id: 'fireBack', only: 'steam', title: 'Your fireman takes it back', enter: R => tutFireBack(R),
-    body: () => `That is the job: coal for steam, water for the glass, and never let either run away. Your fireman has the boiler again. Choose Hand fired under Driving in the menu when you want to run it yourself, and ${tutKey('L')} works the blower that draws the fire.` },
+    body: () => `That is the job: coal for steam, water for the glass, and never let either run away. Your fireman has the boiler again. Choose Hand fired under Driving in the menu when you want to run it yourself, and ${tutKey('blower')} works the blower that draws the fire.` },
   // ---- diesel: notches and the dynamic brake
   { id: 'notch', only: 'diesel', title: 'Notch out', hi: ['lvThrottle'],
-    body: () => `A diesel throttle has eight notches. Press ${tutKey('W')} for each one, and give the engine a moment to load up between notches. Run 4 or more.`,
+    body: () => `A diesel throttle has eight notches. Press ${tutKey('throttleUp')} for each one, and give the engine a moment to load up between notches. Run 4 or more.`,
     done: () => Math.round(S.throttle * GAME.notches()) >= 4 },
   // ---- running
   { id: 'speed', title: 'Up to 25 mph', hi: ['lvThrottle'],
-    body: () => `Bring her up to 25 mph. The badge under your speed is the speed limit here: stay at or under it. If the drivers slip, ease off and put down sand with ${tutKey('X')}.`,
+    body: () => `Bring her up to 25 mph. The badge under your speed is the speed limit here: stay at or under it. If the drivers slip, ease off and put down sand with ${tutKey('sander')}.`,
     meter: () => ({ v: tutMph(), max: 30, mark: 25, txt: Math.round(tutMph()) + ' mph' }),
     done: () => tutMph() >= 25 },
   { id: 'dyn', only: 'diesel', title: 'The dynamic brake', hi: ['lvThrottle', 'lvDyn'],
-    body: () => `The traction motors can hold the train back too. Throttle to idle (${tutKey('S')}), then ${tutKey('D')} to set up the dynamic brake and feel it pull. ${tutKey('A')} backs it off.`,
+    body: () => `The traction motors can hold the train back too. Throttle to idle (${tutKey('throttleDown')}), then ${tutKey('dynUp')} to set up the dynamic brake and feel it pull. ${tutKey('dynDown')} backs it off.`,
     done: () => S.dyn > 0.1 && S.throttle < 0.01 },
   { id: 'whistle', title: 'Whistle for the crossings', hi: ['btnWhistle'],
-    body: () => `Out on the main you whistle for every road crossing: two long, a short and a long. Give it a try with ${tutKey('Space')}.`,
+    body: () => `Out on the main you whistle for every road crossing: two long, a short and a long. Give it a try with ${tutKey('whistle')}.`,
     enter: R => { R.blew = false; },
     done: (T, R) => R.blew && S.whistle === 0 },
   { id: 'service', title: 'Set the train brake', hi: ['lvThrottle', 'lvBrake'],
-    body: () => `Time to stop. Close the throttle${GAME.isDiesel() ? ' and the dynamic brake' : ''}, then press ${tutKey('E')} until the Train lever reads SERVICE. Air takes a few seconds to reach the back of the train: plan your stops early.`,
+    body: () => `Time to stop. Close the throttle${GAME.isDiesel() ? ' and the dynamic brake' : ''}, then press ${tutKey('brakeApp')} until the Train lever reads SERVICE. Air takes a few seconds to reach the back of the train: plan your stops early.`,
     done: () => S.throttle < 0.01 && brakeZone(S.brakeH) === 'SRV' },
   { id: 'slow', title: 'Bring her down', hi: ['lvBrake'],
-    body: () => `Hold the brake and let the speed come down. More ${tutKey('E')} for a harder application. All the way down to EMERGENCY dumps the air at once, which is only for when something is in the way.`,
+    body: () => `Hold the brake and let the speed come down. More ${tutKey('brakeApp')} for a harder application. All the way down to EMERGENCY dumps the air at once, which is only for when something is in the way.`,
     meter: () => ({ v: tutMph(), max: 30, txt: Math.round(tutMph()) + ' mph' }),
     done: () => tutStopped() },
   { id: 'release', title: 'Release', hi: ['lvBrake', 'lvInd'],
-    body: () => `Stopped. Put the engine brake on (${tutKey('C')}) to hold her, then ${tutKey('Q')} back to RUN to release the train brake and recharge the air.`,
+    body: () => `Stopped. Put the engine brake on (${tutKey('indApp')}) to hold her, then ${tutKey('brakeRel')} back to RUN to release the train brake and recharge the air.`,
     done: () => tutStopped() && (brakeZone(S.brakeH) === 'RUN' || brakeZone(S.brakeH) === 'REL') && S.indH > 0.3 },
 ];
 
@@ -29734,7 +29704,7 @@ TUT.ui = function (ok) {
   if (R.over) {
     $('tutStep').textContent = 'Lesson complete';
     $('tutTitle').textContent = 'You can drive a train';
-    $('tutBody').innerHTML = `Brakes, reverser, throttle, coupling${GAME.isDiesel() ? ', notches and the dynamic brake' : ' and the fire'}: that is the whole of it. Keep going on the main, set the cars out with ${tutKey('U')}, or take a job from the Run tab: <b>Elevator pickup</b> is a good first one. The keys are listed under Driving in the menu.`;
+    $('tutBody').innerHTML = `Brakes, reverser, throttle, coupling${GAME.isDiesel() ? ', notches and the dynamic brake' : ' and the fire'}: that is the whole of it. Keep going on the main, set the cars out with ${tutKey('cars')}, or take a job from the Run tab: <b>Elevator pickup</b> is a good first one. The keys are listed under Driving in the menu.`;
     $('tutMeter').hidden = true;
     $('tutNext').textContent = 'Keep driving'; $('tutNext').hidden = false;
     $('tutJob').hidden = !JOB.available || !JOB.available() || !JOB.def('elevator');
@@ -29790,6 +29760,402 @@ function tutSetup() {
   $('tutMin').addEventListener('click', () => { const b = $('tutBox'); b.classList.toggle('mini'); $('tutMin').textContent = b.classList.contains('mini') ? '▸' : '▾'; });
   tutMenu();
 }
+
+/* ============================================================================
+   Controls: every driving key goes through a table of actions, so a key or a
+   gamepad button can be moved to another one from the Controls list under
+   Driving in the menu (saved in localStorage bd_ctrl, only what differs from
+   the defaults). The default keys are the ones the game always had.
+   Gamepads use the browser Gamepad API with the standard layout: triggers work
+   the throttle, bumpers the train brake, the D-pad the reverser and engine
+   brake, A the whistle, the right stick looks round and the left stick zooms
+   (or walks, on foot). In the menu the D-pad or stick moves between buttons,
+   A presses, LB and RB change tab and B or Menu goes back to the railroad.
+   Walking and placing cars keep their own fixed keys (11j_walk.js, 11f_place.js).
+   ========================================================================== */
+const PAD_NAMES = ['A', 'B', 'X', 'Y', 'LB', 'RB', 'LT', 'RT', 'View', 'Menu', 'L3', 'R3', 'D-pad ↑', 'D-pad ↓', 'D-pad ←', 'D-pad →', 'Home'];
+const PAD_TRIG = [6, 7];   // analog buttons: how hard they are pulled sets how fast they repeat
+/* id, label, group, default keys (up to two), default pad button (-1 none), rep: keyboard auto-repeat is allowed,
+   pr: [steam, diesel] seconds between repeats while a pad button is held (0: once per press), hold: let go matters */
+const CTRL_ACTIONS = [
+  { id: 'throttleUp', label: 'Throttle open', g: 'Driving', keys: ['KeyW'], pad: 7, rep: 1, pr: [0.05, 0.32] },
+  { id: 'throttleDown', label: 'Throttle close', g: 'Driving', keys: ['KeyS'], pad: 6, rep: 1, pr: [0.04, 0.28] },
+  { id: 'revFwd', label: 'Reverser forward', g: 'Driving', keys: ['ArrowUp'], pad: 12, rep: 1, pr: [0.07, 0] },
+  { id: 'revBack', label: 'Reverser back', g: 'Driving', keys: ['ArrowDown'], pad: 13, rep: 1, pr: [0.07, 0] },
+  { id: 'brakeRel', label: 'Train brake release', g: 'Driving', keys: ['KeyQ'], pad: 4, rep: 1, pr: [0.05, 0.05] },
+  { id: 'brakeApp', label: 'Train brake apply', g: 'Driving', keys: ['KeyE'], pad: 5, rep: 1, pr: [0.05, 0.05] },
+  { id: 'indRel', label: 'Engine brake release', g: 'Driving', keys: ['KeyZ'], pad: 14, rep: 1, pr: [0.05, 0.05] },
+  { id: 'indApp', label: 'Engine brake apply', g: 'Driving', keys: ['KeyC'], pad: 15, rep: 1, pr: [0.05, 0.05] },
+  { id: 'dynUp', label: 'Dynamic brake up (diesel)', g: 'Driving', keys: ['KeyD'], pad: -1, rep: 1, pr: [0.15, 0.15], hold: 1 },
+  { id: 'dynDown', label: 'Dynamic brake down (diesel)', g: 'Driving', keys: ['KeyA'], pad: -1, rep: 1, pr: [0.15, 0.15], hold: 1 },
+  { id: 'whistle', label: 'Whistle / horn (hold)', g: 'Driving', keys: ['Space'], pad: 0, hold: 1 },
+  { id: 'bell', label: 'Bell', g: 'Driving', keys: ['KeyB'], pad: 1 },
+  { id: 'throwSwitch', label: 'Throw next switch ahead', g: 'Driving', keys: ['KeyT'], pad: 2 },
+  { id: 'sander', label: 'Sand', g: 'Engine', keys: ['KeyX'], pad: 10 },
+  { id: 'light', label: 'Headlight', g: 'Engine', keys: ['KeyH'], pad: 11 },
+  { id: 'cocks', label: 'Cylinder cocks / ditch lights', g: 'Engine', keys: ['KeyK'], pad: -1 },
+  { id: 'classLamps', label: 'Green class lamps', g: 'Engine', keys: ['KeyJ'], pad: -1 },
+  { id: 'injector', label: 'Injector / engine start', g: 'Engine', keys: ['KeyI'], pad: -1 },
+  { id: 'stoker', label: 'Stoker', g: 'Engine', keys: ['KeyF'], pad: -1 },
+  { id: 'blower', label: 'Blower', g: 'Engine', keys: ['KeyL'], pad: -1 },
+  { id: 'camCycle', label: 'Next camera', g: 'Camera', keys: ['KeyV'], pad: 3 },
+  { id: 'cam1', label: 'Chase camera', g: 'Camera', keys: ['Digit1'], pad: -1 },
+  { id: 'cam2', label: 'Cab camera', g: 'Camera', keys: ['Digit2'], pad: -1 },
+  { id: 'cam3', label: 'Lineside camera', g: 'Camera', keys: ['Digit3'], pad: -1 },
+  { id: 'cam4', label: 'Drone camera', g: 'Camera', keys: ['Digit4'], pad: -1 },
+  { id: 'cam5', label: 'Rear camera', g: 'Camera', keys: ['Digit5'], pad: -1 },
+  { id: 'cam6', label: 'Cinematic camera', g: 'Camera', keys: ['Digit6'], pad: -1 },
+  { id: 'camLeft', label: 'Turn camera left', g: 'Camera', keys: ['ArrowLeft'], pad: -1, rep: 1, pr: [0.04, 0.04] },
+  { id: 'camRight', label: 'Turn camera right', g: 'Camera', keys: ['ArrowRight'], pad: -1, rep: 1, pr: [0.04, 0.04] },
+  { id: 'zoomOut', label: 'Zoom out', g: 'Camera', keys: ['Minus', 'NumpadSubtract'], pad: -1, rep: 1, pr: [0.05, 0.05] },
+  { id: 'zoomIn', label: 'Zoom in', g: 'Camera', keys: ['Equal', 'NumpadAdd'], pad: -1, rep: 1, pr: [0.05, 0.05] },
+  { id: 'cabLook', label: 'Cab: look at the next gauge', g: 'Camera', keys: ['KeyN'], pad: -1 },
+  { id: 'cars', label: 'Couplers panel', g: 'Other', keys: ['KeyU'], pad: -1 },
+  { id: 'place', label: 'Place engines and cars', g: 'Other', keys: ['KeyG'], pad: -1 },
+  { id: 'fleet', label: 'Trains panel', g: 'Other', keys: ['KeyO'], pad: -1 },
+  { id: 'fleetPrev', label: 'Previous train', g: 'Other', keys: ['BracketLeft'], pad: -1 },
+  { id: 'fleetNext', label: 'Next train', g: 'Other', keys: ['BracketRight'], pad: -1 },
+  { id: 'leaveCab', label: 'Get down from the cab', g: 'Other', keys: ['Enter', 'NumpadEnter'], pad: -1 },
+  { id: 'map', label: 'Map', g: 'Other', keys: ['KeyM'], pad: 8 },
+  { id: 'pause', label: 'Menu / pause', g: 'Other', keys: ['KeyP'], pad: 9 },
+];
+const CTRL_A = {}; for (const a of CTRL_ACTIONS) CTRL_A[a.id] = a;
+/* keys the list will not take: Escape cancels, Backspace and Delete clear */
+const CTRL_RESERVED = ['Escape', 'Backspace', 'Delete', 'Tab', 'MetaLeft', 'MetaRight', 'ContextMenu'];
+
+const CTRL = { keys: {}, pad: {}, byCode: {}, byBtn: {}, listen: null, note: '' };
+CTRL.defaults = function () { for (const a of CTRL_ACTIONS) { CTRL.keys[a.id] = a.keys.slice(); CTRL.pad[a.id] = a.pad; } };
+CTRL.index = function () {
+  CTRL.byCode = {}; CTRL.byBtn = {};
+  for (const a of CTRL_ACTIONS) { for (const c of CTRL.keys[a.id]) if (c) CTRL.byCode[c] = a.id; const b = CTRL.pad[a.id]; if (b >= 0) CTRL.byBtn[b] = a.id; }
+};
+/* saved: only the actions that differ from the defaults; a key a saved action took is taken off the default it had */
+CTRL.load = function () {
+  CTRL.defaults();
+  let o = null; try { o = JSON.parse(localStorage.getItem('bd_ctrl') || 'null'); } catch (e) {}
+  if (o && typeof o === 'object') {
+    const k = o.k || {}, p = o.p || {};
+    for (const id in k) if (CTRL_A[id] && Array.isArray(k[id])) CTRL.keys[id] = k[id].filter(c => typeof c === 'string' && c && !CTRL_RESERVED.includes(c)).slice(0, 2);
+    for (const id in p) if (CTRL_A[id] && Number.isInteger(p[id]) && p[id] >= -1 && p[id] < PAD_NAMES.length) CTRL.pad[id] = p[id];
+    for (const id in k) if (CTRL_A[id]) for (const c of CTRL.keys[id]) for (const a of CTRL_ACTIONS) if (a.id !== id && !(a.id in k)) CTRL.keys[a.id] = CTRL.keys[a.id].filter(x => x !== c);
+    for (const id in p) if (CTRL_A[id] && CTRL.pad[id] >= 0) for (const a of CTRL_ACTIONS) if (a.id !== id && !(a.id in p) && CTRL.pad[a.id] === CTRL.pad[id]) CTRL.pad[a.id] = -1;
+  }
+  CTRL.index();
+};
+CTRL.save = function () {
+  const k = {}, p = {};
+  for (const a of CTRL_ACTIONS) {
+    if (CTRL.keys[a.id].join() !== a.keys.join()) k[a.id] = CTRL.keys[a.id].slice();
+    if (CTRL.pad[a.id] !== a.pad) p[a.id] = CTRL.pad[a.id];
+  }
+  try { if (Object.keys(k).length || Object.keys(p).length) localStorage.setItem('bd_ctrl', JSON.stringify({ k, p })); else localStorage.removeItem('bd_ctrl'); } catch (e) {}
+};
+CTRL.keyAct = code => CTRL.byCode[code] || null;
+/* put a key in an action's slot (0 or 1), or a pad button on it; whatever else had it lets it go. Returns what lost it. */
+CTRL.bindKey = function (id, slot, code) {
+  let lost = null;
+  for (const a of CTRL_ACTIONS) { const ks = CTRL.keys[a.id]; const i = ks.indexOf(code); if (i >= 0 && !(a.id === id && i === slot)) { ks.splice(i, 1); if (a.id !== id) lost = a.id; } }
+  const ks = CTRL.keys[id]; if (code) { if (slot < ks.length) ks[slot] = code; else ks.push(code); } else ks.splice(slot, 1);
+  CTRL.keys[id] = ks.filter(Boolean).slice(0, 2);
+  CTRL.index(); CTRL.save(); return lost;
+};
+CTRL.bindPad = function (id, btn) {
+  let lost = null;
+  if (btn >= 0) for (const a of CTRL_ACTIONS) if (a.id !== id && CTRL.pad[a.id] === btn) { CTRL.pad[a.id] = -1; lost = a.id; }
+  CTRL.pad[id] = btn; CTRL.index(); CTRL.save(); return lost;
+};
+CTRL.reset = function () { CTRL.defaults(); CTRL.index(); CTRL.save(); };
+
+/* ---------------- names ---------------- */
+const CTRL_KEYNAME = { ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→', Minus: '−', Equal: '=', BracketLeft: '[', BracketRight: ']', Semicolon: ';', Quote: "'", Comma: ',', Period: '.', Slash: '/', Backslash: '\\', Backquote: '`',
+  ShiftLeft: 'L Shift', ShiftRight: 'R Shift', ControlLeft: 'L Ctrl', ControlRight: 'R Ctrl', AltLeft: 'L Alt', AltRight: 'R Alt', NumpadAdd: 'Num +', NumpadSubtract: 'Num −', NumpadMultiply: 'Num *', NumpadDivide: 'Num /', NumpadEnter: 'Num Enter', NumpadDecimal: 'Num .', CapsLock: 'Caps', PageUp: 'PgUp', PageDown: 'PgDn' };
+CTRL.keyName = code => !code ? '' : CTRL_KEYNAME[code] || code.replace(/^Key/, '').replace(/^Digit/, '').replace(/^Numpad/, 'Num ');
+CTRL.padName = b => b >= 0 && b < PAD_NAMES.length ? PAD_NAMES[b] : '';
+/* the first key on an action, and its pad button while a pad is plugged in, as <kbd>s (the guided first run uses this) */
+CTRL.hint = function (id) {
+  const a = CTRL_A[id]; if (!a) return `<kbd>${id}</kbd>`;
+  const k = CTRL.keys[id][0], b = CTRL.pad[id];
+  const parts = [];
+  if (k) parts.push(`<kbd>${CTRL.keyName(k)}</kbd>`);
+  if (PAD.connected() && b >= 0) parts.push(`<kbd>${CTRL.padName(b)}</kbd>`);
+  return parts.length ? parts.join(' / ') : `<kbd>${a.label} (no key set)</kbd>`;
+};
+
+/* ---------------- what each action does ---------------- */
+CTRL.ice = () => typeof iceSkating === 'function' && iceSkating();
+/* o: { shift, v (0..1 how hard a pad button is pulled), pad } */
+CTRL.act = function (id, o = {}) {
+  // skating across the frozen lake: the dynamic brake keys sand the left or right drivers to swing her (10n_ice.js)
+  if ((id === 'dynUp' || id === 'dynDown') && CTRL.ice()) { ICE.sk.steer = id === 'dynDown' ? 1 : -1; return; }
+  const dsl = GAME.isDiesel();
+  switch (id) {
+    case 'throttleUp': S.throttle = dsl ? clamp(Math.round(S.throttle * GAME.notches() + 1) / GAME.notches(), 0, 1) : clamp(S.throttle + 0.04, 0, 1); break;
+    case 'throttleDown': S.throttle = dsl ? clamp(Math.round(S.throttle * GAME.notches() - 1) / GAME.notches(), 0, 1) : clamp(S.throttle - 0.06, 0, 1); break;
+    case 'dynUp': if (dsl) S.dyn = clamp(S.dyn < 0.06 ? 0.06 : S.dyn + 0.1, 0, 1); break;
+    case 'dynDown': if (dsl) S.dyn = S.dyn <= 0.07 ? 0 : clamp(S.dyn - 0.1, 0.06, 1); break;
+    case 'revFwd': S.reverser = dsl ? clamp(Math.round(S.reverser) + 1, -1, 1) : clamp(Math.round((S.reverser + 1 / 17) * 17) / 17, -1, 1); break;
+    case 'revBack': S.reverser = dsl ? clamp(Math.round(S.reverser) - 1, -1, 1) : clamp(Math.round((S.reverser - 1 / 17) * 17) / 17, -1, 1); break;
+    case 'brakeRel': S.brakeH = clamp(S.brakeH - 0.03, 0, 1); break;
+    case 'brakeApp': S.brakeH = clamp(S.brakeH + 0.03, 0, 1); break;
+    case 'indRel': S.indH = clamp(S.indH - 0.05, 0, 1); break;
+    case 'indApp': S.indH = clamp(S.indH + 0.05, 0, 1); break;
+    case 'whistle': S.whistle = o.pad ? (o.trig ? 0.3 + 0.7 * (o.v || 1) : 0.7) : o.shift ? 1 : 0.7; break;
+    case 'bell': S.bell = !S.bell; break;
+    case 'classLamps': if (!dsl && !(GAME.train && GAME.train.elec)) S.classLamps = !S.classLamps; break;
+    case 'sander': S.sander = !S.sander; break;
+    case 'cocks': if (GAME.isTurbine()) turbineSwitch(); else if (dsl) S.ditch = !S.ditch; else S.cocks = !S.cocks; break;
+    case 'light': S.light = (S.light + 1) % 3; break;
+    case 'injector': $('btnInj').click(); break;
+    case 'stoker': if (dsl) break; GAME.manualFire('stoker'); S.stoker = clamp(S.stoker + 0.25, 0, 1.0001) > 1 ? 0 : S.stoker + 0.25; break;
+    case 'blower': if (dsl) break; GAME.manualFire('blower'); S.blower = S.blower > 0.3 ? 0 : 0.65; break;
+    case 'throwSwitch': GAME.throwAhead(); break;
+    case 'cabLook': CAB.nextLook(); break;
+    case 'cars': carPanelToggle(); break;
+    case 'place': PLACE.enter(); break;
+    case 'fleet': FLEET.toggle(); break;
+    case 'fleetPrev': FLEET.cycle(-1); break;
+    case 'fleetNext': FLEET.cycle(1); break;
+    case 'map': MAP.visible ? MAP.close() : MAP.open(); break;
+    case 'pause': GAME.pause(!S.paused); break;
+    case 'leaveCab': WALK.leaveCab(); return;
+    case 'cam1': cycleCamera('chase'); break; case 'cam2': cycleCamera('cab'); break; case 'cam3': cycleCamera('side'); break;
+    case 'cam4': cycleCamera('drone'); break; case 'cam5': cycleCamera('rear'); break; case 'cam6': cycleCamera('cine'); break;
+    case 'camCycle': cycleCamera(); break;
+    case 'camLeft': case 'camRight': { const d = (id === 'camLeft' ? 1 : -1) * 0.07; if (CAM.mode === 'drone') CAM.droneYaw += d; else if (CAM.mode === 'chase') CAM.yaw += d; else if (CAM.mode === 'cab') CAM.cabYaw = clamp(CAM.cabYaw + d, -2.2, 2.2); break; }
+    case 'zoomOut': CAM.dist = clamp(CAM.dist * 1.12, 7, 140); break;
+    case 'zoomIn': CAM.dist = clamp(CAM.dist / 1.12, 7, 140); break;
+  }
+  GAME.refreshKeys();
+};
+/* letting go: the whistle stops, and on the ice the drivers stop being sanded */
+CTRL.release = function (id) {
+  if (id === 'dynUp' || id === 'dynDown') { if (typeof ICE !== 'undefined' && ICE.sk) ICE.sk.steer = 0; }
+  if (id === 'whistle') S.whistle = 0;
+};
+/* keys the browser would act on (scroll, find), held back when they drive something */
+CTRL.ownKey = code => /^(Arrow|Space$|Tab$|Slash$|Quote$|Backquote$|F\d+$|PageUp$|PageDown$|Home$|End$)/.test(code);
+
+/* ---------------- gamepad ---------------- */
+const PAD = { seen: false, idx: -1, name: '', prev: [], held: {}, nav: { t: 0, dir: '' }, stickT: 0 };
+PAD.DEAD = 0.18;
+PAD.list = () => { try { return navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : []; } catch (e) { return []; } };
+PAD.connected = () => PAD.seen && PAD.idx >= 0;
+PAD.get = function () {
+  const all = PAD.list();
+  const p = all.find(g => g.index === PAD.idx && g.connected) || all.find(g => g.connected && g.buttons && g.buttons.length >= 10) || null;
+  const was = PAD.idx; PAD.idx = p ? p.index : -1; PAD.name = p ? p.id : '';
+  if (PAD.idx !== was) CTRL.refreshUI();
+  return p;
+};
+PAD.val = (p, i) => { const b = p.buttons[i]; return !b ? 0 : typeof b === 'object' ? (b.pressed ? Math.max(b.value, 0.5) : b.value > 0.15 ? b.value : 0) : b; };
+PAD.down = (p, i) => PAD.val(p, i) > 0.3;
+PAD.axis = (p, i) => { const v = p.axes[i] || 0; return Math.abs(v) < PAD.DEAD ? 0 : (v - Math.sign(v) * PAD.DEAD) / (1 - PAD.DEAD); };
+PAD.setup = function () {
+  if (typeof navigator === 'undefined' || !navigator.getGamepads) return;
+  addEventListener('gamepadconnected', e => { PAD.seen = true; PAD.idx = e.gamepad.index; PAD.prev = []; PAD.held = {}; CTRL.refreshUI(); if (e.gamepad.buttons.length >= 10) toast('Controller connected: triggers work the throttle, bumpers the train brake, A the whistle. Rebind it under Driving in the menu.', '', 5000, 'pad'); });
+  addEventListener('gamepaddisconnected', e => { if (e.gamepad.index === PAD.idx) { PAD.idx = -1; for (const id in PAD.held) CTRL.release(id); PAD.held = {}; if (WALK.stick.pad) { WALK.stick.on = false; WALK.stick.pad = false; WALK.stick.x = WALK.stick.y = 0; } CTRL.refreshUI(); } });
+};
+/* once a frame from the main loop */
+PAD.poll = function (dt) {
+  if (!PAD.seen) return;
+  const p = PAD.get(); if (!p) return;
+  const n = Math.min(p.buttons.length, PAD_NAMES.length), now = [];
+  for (let i = 0; i < n; i++) now[i] = PAD.down(p, i);
+  const pressed = i => now[i] && !PAD.prev[i];
+  const menuOpen = $('menu').hidden === false;
+  // a button for the Controls list
+  if (CTRL.listen && CTRL.listen.kind === 'pad') {
+    for (let i = 0; i < n; i++) if (pressed(i) && !CTRL.listen.ignore[i]) { CTRL.finishPad(i); break; }
+    for (let i = 0; i < n; i++) if (!now[i]) CTRL.listen && (CTRL.listen.ignore[i] = false);
+  } else if (menuOpen) PAD.menu(p, now, pressed, dt);
+  else if (!PLACE.on) PAD.drive(p, now, pressed, dt);
+  PAD.prev = now;
+};
+/* driving: the bound buttons, and the sticks for looking round and zooming (or walking) */
+PAD.drive = function (p, now, pressed, dt) {
+  if (WALK.on) { PAD.walk(p, now, pressed, dt); return; }
+  if (MAP.visible && pressed(1)) { MAP.close(); return; }
+  const dsl = GAME.isDiesel() ? 1 : 0;
+  for (let i = 0; i < now.length; i++) {
+    const id = CTRL.byBtn[i]; if (!id) continue;
+    const a = CTRL_A[id], trig = PAD_TRIG.includes(i), v = PAD.val(p, i);
+    if (pressed(i)) { PAD.held[id] = { t: 0.28, b: i }; CTRL.act(id, { pad: true, trig, v }); }
+    else if (now[i] && PAD.held[id]) {
+      const h = PAD.held[id], every = a.pr ? a.pr[dsl] : 0;
+      if (id === 'whistle' && trig) S.whistle = 0.3 + 0.7 * v;   // a trigger feathers the whistle
+      if (every > 0) { h.t -= dt * (trig ? Math.max(0.3, v) : 1); if (h.t <= 0) { h.t += every; CTRL.act(id, { pad: true, trig, v }); } }
+    } else if (!now[i] && PAD.held[id] && PAD.held[id].b === i) { delete PAD.held[id]; if (a.hold) CTRL.release(id); }
+  }
+  // right stick looks round, as a drag would
+  const rx = PAD.axis(p, 2), ry = PAD.axis(p, 3);
+  if (rx || ry) PAD.look(rx * 700 * dt, ry * 500 * dt);
+  // left stick: up and down zooms the outside cameras
+  const ly = PAD.axis(p, 1);
+  if (ly && CAM.mode !== 'cab') CAM.dist = clamp(CAM.dist * Math.pow(1.9, ly * dt), 7, 140);
+};
+PAD.look = function (dx, dy) {
+  if (WALK.on) { WALK.look(dx, dy); return; }
+  const k = 0.006;
+  if (CAM.mode === 'chase') { CAM.yaw -= dx * k; CAM.pitch = clamp(CAM.pitch + dy * k * 0.8, -0.16, 1.35); }
+  else if (CAM.mode === 'cab') { CAB.lookTo = null; CAM.cabYaw = clamp(CAM.cabYaw - dx * k * 0.7, -2.2, 2.2); CAM.cabPitch = clamp(CAM.cabPitch - dy * k * 0.7, -0.8, 0.6); }
+  else if (CAM.mode === 'drone') { CAM.droneYaw -= dx * k; CAM.dronePitch = clamp(CAM.dronePitch + dy * k * 0.6, 0.35, 1.5); }
+};
+/* on foot: left stick walks (pushed all the way, he runs), right stick looks, A boards or sits, B back to the cab, Y the view */
+PAD.walk = function (p, now, pressed, dt) {
+  const lx = PAD.axis(p, 0), ly = PAD.axis(p, 1), st = WALK.stick;
+  if (lx || ly) { st.on = true; st.pad = true; st.x = lx; st.y = ly; }
+  else if (st.pad) { st.on = false; st.pad = false; st.x = st.y = 0; }
+  const rx = PAD.axis(p, 2), ry = PAD.axis(p, 3);
+  if (rx || ry) WALK.look(rx * 700 * dt, ry * 500 * dt);
+  if (pressed(0)) WALK.doAction();
+  if (pressed(1)) WALK.toCab();
+  if (pressed(3)) WALK.toggleView();
+  if (pressed(CTRL.pad.map)) { MAP.visible ? MAP.close() : MAP.open(); }
+  if (pressed(CTRL.pad.pause)) GAME.pause(true);
+};
+
+/* ---------------- the menu with a gamepad ---------------- */
+PAD.focusables = function () {
+  const root = $('menu');
+  return [...root.querySelectorAll('button, summary, input, select, a[href], [tabindex]:not([tabindex="-1"])')]
+    .filter(el => !el.disabled && el.type !== 'hidden' && el.getClientRects().length && getComputedStyle(el).visibility !== 'hidden');
+};
+PAD.focus = function (el) {
+  if (!el) return;
+  const old = document.querySelector('.padFocus'); if (old) old.classList.remove('padFocus');
+  el.classList.add('padFocus');
+  try { el.focus({ preventScroll: true }); } catch (e) { el.focus(); }
+  el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+};
+/* the nearest control that way, favouring ones straight in line */
+PAD.step = function (dir) {
+  const els = PAD.focusables(); if (!els.length) return;
+  let cur = document.activeElement; if (!els.includes(cur)) { PAD.focus($('btnStart') && els.includes($('btnStart')) ? $('btnStart') : els[0]); return; }
+  const r = cur.getBoundingClientRect(), cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+  const [ux, uy] = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] }[dir];
+  let best = null, bs = Infinity;
+  for (const el of els) {
+    if (el === cur) continue;
+    const q = el.getBoundingClientRect();
+    // the gap along the way we are going, edge to edge, and how far off the line it is
+    const along = ux ? (ux > 0 ? q.left - r.right : r.left - q.right) : (uy > 0 ? q.top - r.bottom : r.top - q.bottom);
+    const qx = q.left + q.width / 2, qy = q.top + q.height / 2;
+    const ctr = ux ? (qx - cx) * ux : (qy - cy) * uy;
+    if (ctr <= Math.max(2, (ux ? r.width : r.height) * 0.5)) continue;   // its middle has to lie well past ours that way
+    const off = ux ? Math.max(0, Math.abs(qy - cy) - (r.height + q.height) / 2) : Math.max(0, Math.abs(qx - cx) - (r.width + q.width) / 2);
+    const s = Math.max(0, along) + off * 3 + Math.abs(ux ? qy - cy : qx - cx) * 0.2;
+    if (s < bs) { bs = s; best = el; }
+  }
+  if (best) PAD.focus(best);
+};
+PAD.menu = function (p, now, pressed, dt) {
+  const lx = PAD.axis(p, 0), ly = PAD.axis(p, 1);
+  const dir = now[12] || ly < -0.5 ? 'up' : now[13] || ly > 0.5 ? 'down' : now[14] || lx < -0.5 ? 'left' : now[15] || lx > 0.5 ? 'right' : '';
+  const N = PAD.nav;
+  if (dir && dir !== N.dir) { N.t = 0.38; PAD.navGo(dir); }
+  else if (dir) { N.t -= dt; if (N.t <= 0) { N.t = 0.11; PAD.navGo(dir); } }
+  N.dir = dir;
+  // the right stick scrolls the pane
+  const ry = PAD.axis(p, 3), panes = $('menuPanes'); if (ry && panes) panes.scrollTop += ry * 900 * dt;
+  if (pressed(0)) { const el = document.activeElement; if (el && PAD.focusables().includes(el) && !(el.tagName === 'INPUT' && el.type === 'range')) el.click(); else PAD.step('down'); }
+  if (pressed(4) || pressed(5)) PAD.tab(pressed(5) ? 1 : -1);
+  if (pressed(9) || pressed(1)) {
+    const m = $('menu');
+    if (pressed(1) && m.classList.contains('mini')) menuMini(false);
+    else if (GAME.running && $('btnStart').textContent === 'Resume') $('btnStart').click();
+    else if (pressed(9) && !$('btnStart').disabled) $('btnStart').click();
+  }
+};
+/* left and right on a slider moves it; otherwise the focus moves */
+PAD.navGo = function (dir) {
+  const el = document.activeElement;
+  if (el && el.tagName === 'INPUT' && el.type === 'range' && (dir === 'left' || dir === 'right') && el.classList.contains('padFocus')) {
+    if (dir === 'right') el.stepUp(); else el.stepDown();
+    el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true }));
+    return;
+  }
+  PAD.step(dir);
+};
+PAD.tab = function (d) {
+  const row = $('menuTabs'); if (!row) return;
+  const live = [...row.children].filter(b => !b.hidden); if (!live.length) return;
+  const i = live.findIndex(b => b.getAttribute('aria-selected') === 'true');
+  const b = live[(i + d + live.length) % live.length]; b.click(); PAD.focus(b);
+};
+
+/* ---------------- the Controls list (Driving tab) ---------------- */
+CTRL.startListen = function (id, kind, slot, el) {
+  CTRL.stopListen();
+  const ignore = {}; if (kind === 'pad') { const p = PAD.get(); if (p) for (let i = 0; i < p.buttons.length; i++) ignore[i] = PAD.down(p, i); }
+  CTRL.listen = { id, kind, slot, el, ignore };
+  el.classList.add('listen'); el.textContent = kind === 'pad' ? 'Press a button…' : 'Press a key…';
+  CTRL.setNote(kind === 'pad' ? 'Press a controller button for ' + CTRL_A[id].label.toLowerCase() + '. Esc or click elsewhere to cancel.' : 'Press a key for ' + CTRL_A[id].label.toLowerCase() + '. Esc cancels, Backspace clears it.');
+};
+CTRL.stopListen = function () { if (!CTRL.listen) return; CTRL.listen = null; CTRL.refreshUI(); };
+CTRL.finishKey = function (code) {
+  const L = CTRL.listen; if (!L) return;
+  let lost = null;
+  if (code === 'Escape') { CTRL.stopListen(); CTRL.setNote(''); return; }
+  if (code === 'Backspace' || code === 'Delete') { CTRL.bindKey(L.id, L.slot, ''); CTRL.listen = null; CTRL.refreshUI(); CTRL.setNote(CTRL_A[L.id].label + ': key cleared.'); return; }
+  if (CTRL_RESERVED.includes(code)) { CTRL.setNote(CTRL.keyName(code) + ' is kept for the menu. Pick another key.'); return; }
+  lost = CTRL.bindKey(L.id, L.slot, code);
+  CTRL.listen = null; CTRL.refreshUI();
+  CTRL.setNote(lost ? `${CTRL.keyName(code)} was on ${CTRL_A[lost].label.toLowerCase()}; that is now on ${CTRL.keys[lost].length ? CTRL.keys[lost].map(CTRL.keyName).join(' / ') : 'no key'}.` : `${CTRL_A[L.id].label}: ${CTRL.keyName(code)}.`);
+};
+CTRL.finishPad = function (btn) {
+  const L = CTRL.listen; if (!L) return;
+  const lost = CTRL.bindPad(L.id, btn);
+  CTRL.listen = null; CTRL.refreshUI();
+  CTRL.setNote(lost ? `${CTRL.padName(btn)} was on ${CTRL_A[lost].label.toLowerCase()}; that has no button now.` : `${CTRL_A[L.id].label}: ${CTRL.padName(btn)}.`);
+};
+CTRL.setNote = function (t) { CTRL.note = t; const n = $('ctrlNote'); if (n) n.textContent = t; };
+CTRL.buildUI = function () {
+  const box = $('ctrlList'); if (!box) return;
+  let h = '<div class="ctrlHead"><span></span><span>Key</span><span>Alt key</span><span>Gamepad</span></div>', g = '';
+  for (const a of CTRL_ACTIONS) {
+    if (a.g !== g) { g = a.g; h += `<div class="ctrlGrp">${g}</div>`; }
+    h += `<div class="ctrlRow" data-id="${a.id}"><span>${a.label}</span>`
+      + `<button type="button" class="kb" data-kind="key" data-slot="0"></button><button type="button" class="kb" data-kind="key" data-slot="1"></button>`
+      + `<button type="button" class="kb pad" data-kind="pad"></button></div>`;
+  }
+  box.innerHTML = h;
+  box.addEventListener('click', e => {
+    const b = e.target.closest('button.kb'); if (!b) return;
+    const id = b.parentElement.dataset.id;
+    if (CTRL.listen && CTRL.listen.el === b) { CTRL.stopListen(); CTRL.setNote(''); return; }
+    CTRL.startListen(id, b.dataset.kind, +(b.dataset.slot || 0), b);
+  });
+  box.addEventListener('contextmenu', e => {   // right click clears a slot
+    const b = e.target.closest('button.kb'); if (!b) return; e.preventDefault();
+    const id = b.parentElement.dataset.id; CTRL.stopListen();
+    if (b.dataset.kind === 'pad') CTRL.bindPad(id, -1); else CTRL.bindKey(id, +b.dataset.slot, '');
+    CTRL.refreshUI(); CTRL.setNote(CTRL_A[id].label + ': cleared.');
+  });
+  $('ctrlReset').addEventListener('click', () => { CTRL.stopListen(); CTRL.reset(); CTRL.refreshUI(); CTRL.setNote('Back to the standard keys and buttons.'); });
+  // clicking anywhere else gives up listening
+  addEventListener('pointerdown', e => { if (CTRL.listen && e.target !== CTRL.listen.el) { CTRL.stopListen(); CTRL.setNote(''); } }, true);
+  // a key for the list is taken before anything else sees it
+  addEventListener('keydown', e => { if (!CTRL.listen || CTRL.listen.kind !== 'key') { if (CTRL.listen && e.code === 'Escape') { CTRL.stopListen(); CTRL.setNote(''); e.preventDefault(); e.stopImmediatePropagation(); } return; } e.preventDefault(); e.stopImmediatePropagation(); if (!e.repeat) CTRL.finishKey(e.code); }, true);
+  CTRL.refreshUI();
+};
+CTRL.refreshUI = function () {
+  const box = typeof document !== 'undefined' && document.getElementById && $('ctrlList'); if (!box || !box.querySelectorAll) return;
+  for (const row of box.querySelectorAll('.ctrlRow')) {
+    const id = row.dataset.id, ks = CTRL.keys[id] || [];
+    for (const b of row.querySelectorAll('button.kb')) {
+      if (CTRL.listen && CTRL.listen.el === b) continue;
+      b.classList.remove('listen');
+      const t = b.dataset.kind === 'pad' ? CTRL.padName(CTRL.pad[id]) : CTRL.keyName(ks[+b.dataset.slot]);
+      b.textContent = t || '—'; b.classList.toggle('none', !t);
+    }
+  }
+  const st = $('ctrlPad');
+  if (st) st.textContent = PAD.connected() ? `Controller: ${PAD.name.replace(/\s*\(.*?\)\s*/g, ' ').trim() || 'connected'}. In the menu the D-pad or left stick moves, A presses, LB / RB change tab, B or Menu goes back.` : 'No controller found. Plug one in (Xbox, PlayStation or any standard pad) and press a button.';
+  const cl = $('btnClass'); if (cl) cl.title = 'Green class lamps' + (CTRL.keys.classLamps[0] ? ` (${CTRL.keyName(CTRL.keys.classLamps[0])})` : '');
+};
+CTRL.setup = function () { CTRL.buildUI(); PAD.setup(); };
+
+CTRL.load();
 
 /* ============================================================================
    HUD themes and the cursor.
@@ -30774,7 +31140,7 @@ WALK.due = function (st) {
 /* ---------------- input ---------------- */
 const WALK_PASS = ['KeyM', 'KeyP', 'Escape', 'Tab'];
 WALK.key = function (e) {
-  if (WALK_PASS.includes(e.code)) return false;
+  if (WALK_PASS.includes(e.code) || (typeof CTRL !== 'undefined' && ['map', 'pause'].includes(CTRL.keyAct(e.code)))) return false;
   WALK.keys[e.code] = true;
   if (!e.repeat) switch (e.code) {
     case 'KeyF': case 'KeyE': case 'Space': WALK.doAction(); break;
@@ -31622,7 +31988,7 @@ async function loadWorld() {
   for (const st of ROUTE.stations) { st.edge.pose(st.s, FR); st.p = FR.p.clone(); }
   for (const w of ROUTE.water) { w.edge.pose(w.s, FR); w.p = FR.p.clone(); }
   if (ROUTE.coal) { const c = ROUTE.coal; c.edge.pose(c.s, FR); c.p = FR.p.clone(); }
-  setupViewInput($('gl'), camera); PLACE.setup($('gl')); setupLevers(); setupButtons(); setupMap(); WALK.setup(); FLEET.setup();
+  setupViewInput($('gl'), camera); PLACE.setup($('gl')); setupLevers(); setupButtons(); setupMap(); WALK.setup(); FLEET.setup(); CTRL.setup();
   linearizeObject(scene);
   sceneryUpload(renderer);
   AI.lazy = true; makeTrain(); AI.lazy = false;
@@ -32307,6 +32673,7 @@ let chuffQ = 0, chuffQF = 0, pumpT = 0, bellT = 0, idleT = 0, prevV = 0, stopT =
 function loop() {
   requestAnimationFrame(loop);
   let dt = Math.min(clock.getDelta(), 0.05);
+  PAD.poll(dt);
   const T = GAME.train; if (!T) return;
   const active = GAME.running && !S.paused && !S.derailed && !PLACE.on;
   if (active) { simStep(dt, T); SAVE.tick(dt); } else { stepSwitches(dt); if (S.derailed && GAME.running && !S.paused && !PLACE.on) GAME.wreckStep(dt, T); }

@@ -190,55 +190,19 @@ function setupButtons() {
   $('btnMenu').addEventListener('click', () => GAME.pause(true));
   $('btnThrow').addEventListener('click', () => GAME.throwAhead());
   $('btnThrowMini').addEventListener('click', () => GAME.throwAhead());
-  const keys = {};
+  // every driving key is an action in CTRL (11o_ctrl.js), so it can be moved to another key from the menu
   addEventListener('keydown', e => {
     if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
     if (PLACE.on) { PLACE.key(e); return; }
-    if (e.repeat && !['KeyW', 'KeyS', 'KeyQ', 'KeyE', 'KeyZ', 'KeyC', 'KeyA', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Minus', 'Equal', 'NumpadSubtract', 'NumpadAdd'].includes(e.code)) return;
+    const act = CTRL.keyAct(e.code);
+    if (e.repeat && !(act && CTRL_A[act].rep)) return;
     if ($('menu').hidden === false) return;
     if (WALK.on && WALK.key(e)) return;   // on foot the keys walk him about (11j_walk.js)
-    if (e.code === 'Enter' || e.code === 'NumpadEnter') { WALK.leaveCab(); return; }
-    keys[e.code] = true;
-    // skating across the frozen lake: A and D sand the left or right drivers to swing her (10n_ice.js)
-    if ((e.code === 'KeyA' || e.code === 'KeyD') && iceSkating()) { ICE.sk.steer = e.code === 'KeyA' ? 1 : -1; return; }
-    switch (e.code) {
-      case 'KeyW': S.throttle = GAME.isDiesel() ? clamp(Math.round(S.throttle * GAME.notches() + 1) / GAME.notches(), 0, 1) : clamp(S.throttle + 0.04, 0, 1); break;
-      case 'KeyS': S.throttle = GAME.isDiesel() ? clamp(Math.round(S.throttle * GAME.notches() - 1) / GAME.notches(), 0, 1) : clamp(S.throttle - 0.06, 0, 1); break;
-      case 'KeyD': if (GAME.isDiesel()) S.dyn = clamp(S.dyn < 0.06 ? 0.06 : S.dyn + 0.1, 0, 1); break;
-      case 'KeyA': if (GAME.isDiesel()) S.dyn = S.dyn <= 0.07 ? 0 : clamp(S.dyn - 0.1, 0.06, 1); break;
-      case 'ArrowUp': S.reverser = GAME.isDiesel() ? clamp(Math.round(S.reverser) + 1, -1, 1) : clamp(Math.round((S.reverser + 1 / 17) * 17) / 17, -1, 1); e.preventDefault(); break;
-      case 'ArrowDown': S.reverser = GAME.isDiesel() ? clamp(Math.round(S.reverser) - 1, -1, 1) : clamp(Math.round((S.reverser - 1 / 17) * 17) / 17, -1, 1); e.preventDefault(); break;
-      case 'KeyQ': S.brakeH = clamp(S.brakeH - 0.03, 0, 1); break;
-      case 'KeyE': S.brakeH = clamp(S.brakeH + 0.03, 0, 1); break;
-      case 'KeyZ': S.indH = clamp(S.indH - 0.05, 0, 1); break;
-      case 'KeyC': S.indH = clamp(S.indH + 0.05, 0, 1); break;
-      case 'Space': S.whistle = e.shiftKey ? 1 : 0.7; e.preventDefault(); break;
-      case 'KeyB': S.bell = !S.bell; break;
-      case 'KeyJ': if (!GAME.isDiesel() && !(GAME.train && GAME.train.elec)) S.classLamps = !S.classLamps; break;
-      case 'KeyX': S.sander = !S.sander; break;
-      case 'KeyK': if (GAME.isTurbine()) turbineSwitch(); else if (GAME.isDiesel()) S.ditch = !S.ditch; else S.cocks = !S.cocks; break;
-      case 'KeyH': S.light = (S.light + 1) % 3; break;
-      case 'KeyI': $('btnInj').click(); break;
-      case 'KeyF': if (GAME.isDiesel()) break; GAME.manualFire('stoker'); S.stoker = clamp(S.stoker + 0.25, 0, 1.0001) > 1 ? 0 : S.stoker + 0.25; break;
-      case 'KeyL': if (GAME.isDiesel()) break; GAME.manualFire('blower'); S.blower = S.blower > 0.3 ? 0 : 0.65; break;
-      case 'KeyT': GAME.throwAhead(); break;
-      case 'KeyN': CAB.nextLook(); break;
-      case 'KeyU': carPanelToggle(); break;
-      case 'KeyG': PLACE.enter(); break;
-      case 'KeyO': FLEET.toggle(); break;
-      case 'BracketLeft': FLEET.cycle(-1); break;
-      case 'BracketRight': FLEET.cycle(1); break;
-      case 'KeyM': MAP.visible ? MAP.close() : MAP.open(); break;
-      case 'KeyP': GAME.pause(!S.paused); break;
-      case 'Digit1': cycleCamera('chase'); break; case 'Digit2': cycleCamera('cab'); break; case 'Digit3': cycleCamera('side'); break; case 'Digit4': cycleCamera('drone'); break; case 'Digit5': cycleCamera('rear'); break; case 'Digit6': cycleCamera('cine'); break;
-      case 'KeyV': cycleCamera(); break;
-      case 'ArrowLeft': case 'ArrowRight': { const d = (e.code === 'ArrowLeft' ? 1 : -1) * 0.07; if (CAM.mode === 'drone') CAM.droneYaw += d; else if (CAM.mode === 'chase') CAM.yaw += d; else if (CAM.mode === 'cab') CAM.cabYaw = clamp(CAM.cabYaw + d, -2.2, 2.2); e.preventDefault(); break; }
-      case 'Minus': case 'NumpadSubtract': CAM.dist = clamp(CAM.dist * 1.12, 7, 140); break;
-      case 'Equal': case 'NumpadAdd': CAM.dist = clamp(CAM.dist / 1.12, 7, 140); break;
-    }
-    GAME.refreshKeys();
+    if (!act) return;
+    if (CTRL.ownKey(e.code)) e.preventDefault();
+    CTRL.act(act, { shift: e.shiftKey });
   });
-  addEventListener('keyup', e => { keys[e.code] = false; if (e.code === 'KeyA' || e.code === 'KeyD') ICE.sk.steer = 0; if (e.code === 'Space') S.whistle = 0; });
+  addEventListener('keyup', e => { const act = CTRL.keyAct(e.code); if (act) CTRL.release(act); });
 }
 
 /* ---------------- gauges ---------------- */

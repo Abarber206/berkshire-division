@@ -801,7 +801,7 @@ WALK.due = function (st) {
 /* ---------------- input ---------------- */
 const WALK_PASS = ['KeyM', 'KeyP', 'Escape', 'Tab'];
 WALK.key = function (e) {
-  if (WALK_PASS.includes(e.code)) return false;
+  if (WALK_PASS.includes(e.code) || (typeof CTRL !== 'undefined' && ['map', 'pause'].includes(CTRL.keyAct(e.code)))) return false;
   WALK.keys[e.code] = true;
   if (!e.repeat) switch (e.code) {
     case 'KeyF': case 'KeyE': case 'Space': WALK.doAction(); break;
