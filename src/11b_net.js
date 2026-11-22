@@ -178,6 +178,10 @@ function mpClean(r) {
   // (and which of their trains: 0 or missing, the one they drive; else the number of one of their other trains)
   o.hx = Array.isArray(r.hx) && r.hx.length >= 5 && r.hx.length <= 8 && typeof r.hx[0] === 'string' ? [r.hx[0].slice(0, 16), Math.round(n(r.hx[1], 0, 1e9)), n(r.hx[2], 0, 200), n(r.hx[3], -1e5, 1e5), n(r.hx[4], -1e5, 1e5), Math.round(n(r.hx[5], 0, 1e6)), r.hx.length > 6 ? n(r.hx[6], -80, 80) : null, r.hx[7] < 0 ? -1 : 1] : null;
   o.ch = Array.isArray(r.ch) && r.ch.length === 2 ? [Math.round(n(r.ch[0], 0, 1e9)), mpText(r.ch[1], 80)] : null;
+  // their job, the session's pay, and the train of ours they are pushing (11p_mpjobs.js)
+  o.jb = !o.other ? MPJ.clean(r.jb) : null;
+  o.je = MPJ.cleanTally(r.je);
+  o.ps = !o.other ? MPJ.cleanPush(r.ps) : null;
   return o;
 }
 function mpSegDist(p, a, b) {
@@ -442,7 +446,7 @@ MP.leave = function (quiet) {
   MP.bye();
   for (const l of MP.links) l.close();
   if (MP.room) MP.room.close();
-  MPC.leave();
+  MPC.leave(); MPJ.leave(); MP.push = null;
   MP.links = []; MP.room = null; MP.on = false; MP.code = ''; MP.needSpawn = false; MP.spawned = false;
   for (const id of [...MP.peers.keys()]) MP.drop(id, null);
   MP.unwatch(); $('mpPanel').hidden = true;
@@ -487,7 +491,8 @@ MP.ui = function () {
   $('btnPlayers').hidden = !MP.on;
   $('mpCount').textContent = n;
   $('mpPanelCode').textContent = MP.code;
-  if (MP.jobOn !== MP.on) { MP.jobOn = MP.on; jobMenu(); }
+  if (MP.jobOn !== MP.on) { MP.jobOn = MP.on; MPJ.sig = ''; jobMenu(); }
+  MPJ.tick();
 };
 MP.say = function (msg, warn) { const s = $('mpStatus'); s.textContent = msg; if (warn) s.style.color = 'var(--approach)'; setTimeout(() => { s.style.color = ''; MP.ui(); }, 3500); };
 MP.talk = function (text) {
@@ -518,7 +523,9 @@ MP.receive = function (raw) {
     toast(performance.now() - MP.joinedAt < 3000 ? `${st.nm} is in the room.` : `${st.nm} joined the room.`, 'good', 3200);
     MP.ui();
   } else if (st.q <= p.q) return;
+  const prev = p.q >= 0 ? p.st : undefined;
   p.q = st.q; p.st = st; p.at = performance.now();
+  MPJ.receive(p, prev, st);
   // round trip from their echo of our send time, less the time they held it before replying
   p.ts = st.ts; p.rx = p.at;
   if (st.ak) { const rtt = p.at - st.ak[0] - st.ak[1]; if (rtt > 0 && rtt < 5000) p.rtt = p.rtt ? p.rtt * 0.85 + rtt * 0.15 : rtt; }
@@ -627,6 +634,9 @@ MP.state = function () {
   if (MP.lt) st.lt = MP.lt;
   if (MP.hit) st.hx = MP.hit;
   if (MP.chat) st.ch = MP.chat;
+  { const jb = MPJ.out(); if (jb) st.jb = jb; }
+  if (MPJ.earn || MPJ.n) st.je = [MPJ.earn, MPJ.n];
+  if (MP.push) st.ps = MP.push;
   return st;
 };
 MP.send = function () {
@@ -744,7 +754,7 @@ MP.post = function (dt) {
      until the two are clear, instead of the pair locking together. */
 const MP_END = 10, MP_TOUCH = 1.25, MP_SIDESWIPE = 2.2;
 MP.contact = function (T) {
-  if (!MP.on || !MP.spawned || !T) return;
+  if (!MP.on || !MP.spawned || !T) { S.pushF = 0; return; }
   const front = _mpA, rear = _mpB; mpEnds(T, front, rear);
   const fwd = T.lead.fwd, now = performance.now();
   for (const { p, h, rt } of MP.trains()) {
@@ -796,6 +806,8 @@ MP.contact = function (T) {
     }
     if (!any) { touch[0] = touch[1] = null; if (h.ghost && !MP.overlaps(T, rt)) h.ghost = false; }
   }
+  // shoving someone's train, or being shoved: the pusher's effort crosses over (11p_mpjobs.js)
+  MPJ.pushOut(T); MPJ.pushIn(T);
 };
 /* n or more of our tracked points within a car width of their train: the two are inside each other */
 MP.overlaps = function (T, rt, n = 1) {
@@ -879,7 +891,8 @@ MP.tags = function () {
     if (d > 4500 || _mpD.z > 1 || _mpD.z < -1 || Math.abs(_mpD.x) > 1.1 || Math.abs(_mpD.y) > 1.1) { el.style.display = 'none'; continue; }
     el.style.display = '';
     el.style.transform = `translate(${Math.round((_mpD.x * 0.5 + 0.5) * W)}px,${Math.round((-_mpD.y * 0.5 + 0.5) * H)}px) translate(-50%,-100%)`;
-    const nm = p.st.nm + (p.st.pz ? ' (in menu)' : ''), ds = fmtMi(d);
+    const jd = mpjLive(p.st.jb) && mpjDef(p.st.jb[0]);
+    const nm = p.st.nm + (p.st.pz ? ' (in menu)' : ''), ds = fmtMi(d) + (jd ? ' · ' + (jd.assist ? 'Pusher' : jd.name) : '');
     if (el.children[1].textContent !== nm) el.children[1].textContent = nm;
     if (el.children[2].textContent !== ds) el.children[2].textContent = ds;
   }
@@ -888,24 +901,28 @@ MP.panel = function () {
   const box = $('mpList'); if (!box) return;
   const T = GAME.train, me = T && MP.spawned ? T.lead.pos : null;
   box.textContent = '';
-  const row = (color, name, sub, right, peerId) => {
+  // the job each player is on, and what the session has paid them (11p_mpjobs.js)
+  const work = (jb, je) => { const j = jb ? MPJ.status({ jb }) : '', t = je && (je[0] || je[1]) ? `$${je[0].toLocaleString()} from ${je[1]} job${je[1] === 1 ? '' : 's'} this session` : ''; return [j, t].filter(Boolean).join(' · '); };
+  const row = (color, name, sub, right, peerId, job) => {
     const r = document.createElement('div'); r.className = 'mpP';
     const dot = document.createElement('i'); dot.style.background = color; r.appendChild(dot);
     const mid = document.createElement('div'); mid.className = 'mpN';
     const b = document.createElement('b'); b.textContent = name; mid.appendChild(b);
-    const s = document.createElement('span'); s.textContent = sub; mid.appendChild(s); r.appendChild(mid);
+    const s = document.createElement('span'); s.textContent = sub; mid.appendChild(s);
+    if (job) { const em = document.createElement('em'); em.textContent = job; mid.appendChild(em); }
+    r.appendChild(mid);
     const rr = document.createElement('span'); rr.className = 'mpS'; rr.textContent = right; r.appendChild(rr);
     if (peerId) { const w = document.createElement('button'); w.className = 'btn'; w.textContent = 'Watch'; w.disabled = !(MP.peers.get(peerId).rt); w.addEventListener('click', () => MP.watch(peerId)); r.appendChild(w); }
     box.appendChild(r);
   };
-  row(MP.color, MP.name + ' (you)', MP.last ? mpLocoLabel(MP.last) : 'In the menu', MP.spawned ? Math.round(Math.abs(S.v) / MPH) + ' mph' : '');
+  row(MP.color, MP.name + ' (you)', MP.last ? mpLocoLabel(MP.last) : 'In the menu', MP.spawned ? Math.round(Math.abs(S.v) / MPH) + ' mph' : '', null, work(MPJ.out(), [MPJ.earn, MPJ.n]));
   for (const p of MP.peers.values()) {
     const st = p.st;
     let right = st.e >= 0 ? Math.round(Math.abs(st.v) / MPH) + ' mph' : '';
     if (st.dr) right = 'Derailed'; else if (st.pz && st.e >= 0) right = 'In the menu';
     if (me && p.rt && p.rt.placed) right += ' · ' + fmtMi(me.distanceTo(p.rt.train.lead.pos));
     const more = p.trains ? [...p.trains.values()].filter(h => h.rt && h.rt !== p.rt).length : 0;
-    row(p.color, st.nm, mpLocoLabel(st) + (more ? ` · +${more} train${more > 1 ? 's' : ''}` : '') + (p.rtt ? ` · ${Math.round(p.rtt / 2)} ms` : ''), right, p.id);
+    row(p.color, st.nm, mpLocoLabel(st) + (more ? ` · +${more} train${more > 1 ? 's' : ''}` : '') + (p.rtt ? ` · ${Math.round(p.rtt / 2)} ms` : ''), right, p.id, work(st.jb, st.je));
   }
 };
 MP.drawMap = function (g, tx, ty, opt) {

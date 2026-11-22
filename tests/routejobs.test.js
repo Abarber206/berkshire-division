@@ -16,7 +16,7 @@ const SKIP = !fs.existsSync(THREE_JS) && !process.env.CI && 'tests/vendor/three.
 const built = {};
 function railroad(key) {
   if (built[key]) return built[key];
-  const files = ['01_util.js', '02_track.js', '03_route.js', '03c_mountain.js', '03d_frost.js', '04_world.js', '04b_mountain.js', '11d_jobs.js'];
+  const files = ['01_util.js', '02_track.js', '03_route.js', '03c_mountain.js', '03d_frost.js', '04_world.js', '04b_mountain.js', '11d_jobs.js', '11p_mpjobs.js'];
   const ctx = { console, Math, URLSearchParams, performance: { now: () => 0 }, self: {}, window: {}, location: { search: '?route=' + key },
     document: { createElement: () => ({ getContext: () => null }), getElementById: () => null }, localStorage: { getItem: () => null, setItem() {} } };
   vm.createContext(ctx);
