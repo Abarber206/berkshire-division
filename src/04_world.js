@@ -360,7 +360,8 @@ function makeFieldTexture() {
   const tex = new THREE.DataTexture(data, w, h, THREE.RGBAFormat);
   tex.magFilter = THREE.NearestFilter; tex.minFilter = THREE.NearestFilter; tex.generateMipmaps = false; tex.needsUpdate = true;
   const plant = (fi, fj) => { const i = fi - i0, j = fj - j0; if (i >= 0 && j >= 0 && i < w && j < h) { data[(j * w + i) * 4 + 3] = 255; tex.needsUpdate = true; } };
-  return { tex, i0, j0, w, h, plant };
+  const planted = (fi, fj) => { const i = fi - i0, j = fj - j0; return i >= 0 && j >= 0 && i < w && j < h && data[(j * w + i) * 4 + 3] > 0; };
+  return { tex, i0, j0, w, h, plant, planted };
 }
 const CROP_GLSL = `
   {
@@ -1040,7 +1041,7 @@ function updateTrackLOD(cam) {
   // buildings and signals stay until the fog has hidden them, so they never blink out in clear air
   const far = fogFar(6500);
   updateWire(cp);
-  for (const b of WORLD.binGroups || []) b.visible = b.userData.c.distanceTo(cp) - b.userData.r < Math.max(3400, far);
+  for (const b of WORLD.binGroups || []) b.visible = b.userData.c.distanceTo(cp) - b.userData.r < Math.max(3400, fogFar(9500));   // clear air shows towns further (the haze's thin tail)
   for (const sg of SCN.signals) { const d = Math.hypot(sg.X - cp.x, -sg.N - cp.z); for (const h of sg.heads) h.visible = d < Math.max(3500, far); }
   let hiBudget = 1;
   for (const t of WORLD.tiles) {

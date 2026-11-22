@@ -49,8 +49,12 @@ const CLOUD_GLSL_NOISE = `
 
 function buildClouds(scene) {
   const lite = GFX.lite;
-  const W = lite ? 448 : 1024, H = lite ? 144 : 288, STEPS = lite ? 12 : 22;
-  const opt = { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, format: THREE.RGBAFormat, depthBuffer: false, stencilBuffer: false, generateMipmaps: false };
+  // a computer marches a finer panorama: at 1024 across, one texel was ~9 screen pixels wide and cloud edges came out in steps
+  const W = lite ? 448 : 1536, H = lite ? 144 : 416, STEPS = lite ? 12 : 22;
+  // half float where it can be drawn into: the picture blends in 12% a frame, and in 8 bits the small steps of a
+  // dim golden-hour sky round away, so the blend stalls in visible bands (and silver edges brighter than 1 clip)
+  const half = !!(typeof POST !== 'undefined' && POST.halfOK);
+  const opt = { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, format: THREE.RGBAFormat, type: half ? THREE.HalfFloatType : THREE.UnsignedByteType, depthBuffer: false, stencilBuffer: false, generateMipmaps: false };
   const rts = [new THREE.WebGLRenderTarget(W, H, opt), new THREE.WebGLRenderTarget(W, H, opt)];
   for (const r of rts) { r.texture.wrapS = THREE.RepeatWrapping; r.texture.wrapT = THREE.ClampToEdgeWrapping; }
   const noise = cloudNoiseTex(), map = cloudMapTex();
@@ -139,7 +143,7 @@ function buildClouds(scene) {
   const qs = new THREE.Scene(), qc = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
   const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mat); quad.frustumCulled = false; qs.add(quad);
   // the layer over the sky: a sphere inside the far plane, drawn after the stars and moon
-  const LU = { uPano: { value: rts[0].texture }, uNoise: { value: noise }, uCam: U.uCam, uDrift: U.uDrift, uBase: U.uBase, uDetail: { value: lite ? 0.6 : 1 }, uFade: { value: 1 } };
+  const LU = { uPano: { value: rts[0].texture }, uRes: U.uRes, uNoise: { value: noise }, uCam: U.uCam, uDrift: U.uDrift, uBase: U.uBase, uDetail: { value: lite ? 0.6 : 1 }, uFade: { value: 1 } };
   const lay = new THREE.Mesh(new THREE.SphereGeometry(24000, 48, 24), new THREE.ShaderMaterial({
     uniforms: LU, side: THREE.BackSide, transparent: true, depthWrite: false, depthTest: true, fog: false,
     blending: THREE.CustomBlending, blendSrc: THREE.OneFactor, blendDst: THREE.OneMinusSrcAlphaFactor, blendSrcAlpha: THREE.OneFactor, blendDstAlpha: THREE.OneMinusSrcAlphaFactor,
@@ -150,13 +154,20 @@ function buildClouds(scene) {
       }`,
     fragmentShader: `#include <common>
       #include <logdepthbuf_pars_fragment>
-      uniform sampler2D uPano, uNoise; uniform vec3 uCam; uniform vec2 uDrift; uniform float uBase, uDetail, uFade; varying vec3 vDir;
+      uniform sampler2D uPano, uNoise; uniform vec3 uCam; uniform vec2 uDrift, uRes; uniform float uBase, uDetail, uFade; varying vec3 vDir;
       ${CLOUD_GLSL_NOISE}
       void main(){
         #include <logdepthbuf_fragment>
         vec3 d = normalize( vDir ); if ( d.y < -0.03 ) discard;
         vec2 uv = vec2( atan( d.x, -d.z ) / 6.2831853 + 0.5, sqrt( clamp( d.y, 0.0, 1.0 ) ) );
-        vec4 c = texture2D( uPano, uv );
+        // bicubic (B-spline, from four bilinear taps): magnified, plain bilinear draws a soft edge as a staircase
+        vec2 tp = uv * uRes - 0.5, fi = floor( tp ), fr = tp - fi;
+        vec2 w0 = ( 1.0 - fr ) * ( 1.0 - fr ) * ( 1.0 - fr ) / 6.0, w1 = ( 4.0 - 6.0 * fr * fr + 3.0 * fr * fr * fr ) / 6.0;
+        vec2 w3 = fr * fr * fr / 6.0, w2 = 1.0 - w0 - w1 - w3;
+        vec2 s0 = w0 + w1, s1 = w2 + w3, t0 = ( fi - 0.5 + w1 / s0 ) / uRes, t1 = ( fi + 1.5 + w3 / s1 ) / uRes;
+        t0.y = max( t0.y, 0.5 / uRes.y ); t1.y = min( t1.y, 1.0 - 0.5 / uRes.y );
+        vec4 c = ( texture2D( uPano, vec2( t0.x, t0.y ) ) * s0.x + texture2D( uPano, vec2( t1.x, t0.y ) ) * s1.x ) * s0.y
+               + ( texture2D( uPano, vec2( t0.x, t1.y ) ) * s0.x + texture2D( uPano, vec2( t1.x, t1.y ) ) * s1.x ) * s1.y;
         if ( c.a < 0.003 ) discard;
         // fine detail on the panorama's soft edges, fixed to the clouds as they drift
         vec2 q = ( d.xz * max( uBase - uCam.y, 200.0 ) / max( d.y, 0.04 ) + uCam.xz + uDrift ) / 130.0;
@@ -165,6 +176,8 @@ function buildClouds(scene) {
         c *= clamp( 1.0 + ( n - 0.5 ) * 1.3 * e, 0.0, 1.5 );
         c.a = min( c.a, 1.0 );
         c *= smoothstep( -0.03, 0.004, d.y ) * uFade;
+        // a half-step of noise before the 8-bit scene buffer, so soft gradients in the cloud don't step
+        c.rgb += ( fract( 52.9829189 * fract( dot( gl_FragCoord.xy, vec2( 0.06711056, 0.00583715 ) ) ) ) - 0.5 ) / 255.0 * c.a;
         gl_FragColor = c;
       }`,
   }));

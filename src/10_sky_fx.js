@@ -19,7 +19,12 @@ const SKY = { hour: 6 + 40 / 60, weather: 'clear', dark: 0, night: false, look: 
   #ifdef FOG_EXP2
     float fogH = max( 0.0, cameraPosition.y + vFogWorld.y * 0.5 - fogHaze.x );
     float fogD = fogDensity * mix( 1.0, 0.4 + 0.6 * exp( - fogH / max( fogHaze.y, 1.0 ) ), fogHaze.z );
-    float fogFactor = 1.0 - exp( - fogD * fogD * fogDepth * fogDepth );
+    float fogX = fogD * fogDepth, fogT = exp( - fogX * fogX );
+    // in clear air, past the distance where the haze has taken two thirds of the view, what is left fades on slowly
+    // (plain exponential, as real haze does), so the ridges and tree lines 10 to 15 km off still show, faint and blue,
+    // instead of the world ending in a wall of haze. Thick fog keeps the squared curve, which hides everything past the draw distances
+    if ( fogX > 1.0 ) fogT = mix( fogT, max( fogT, 0.3679 * exp( - 0.75 * ( fogX - 1.0 ) ) ), 1.0 - smoothstep( 0.00028, 0.0005, fogDensity ) );
+    float fogFactor = 1.0 - fogT;
     float fogS = max( dot( normalize( vFogWorld ), fogSunDir ), 0.0 );
     vec3 fogC = fogColor + fogSunColor * ( pow( fogS, 12.0 ) * 0.3 + pow( fogS, 3.0 ) * 0.07 );
     gl_FragColor.rgb = mix( gl_FragColor.rgb, fogC, fogFactor );
@@ -79,6 +84,8 @@ function buildSky(scene, renderer) {
         c += uMoonC * (pow(m, 900.0)*6.0*(1.0-uGray) + pow(m, 12.0)*0.35*(1.0-uGray*0.7) + pow(m,3.0)*0.12);
         vec3 g = vec3(dot(c, vec3(0.3,0.5,0.2)));
         c = mix(c, g*vec3(0.95,0.98,1.03), uGray);
+        // a half-step of noise before the 8-bit scene buffer, so the long dim gradient of a low sun doesn't band
+        c += (fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715)))) - 0.5) / 255.0;
         gl_FragColor = vec4(c, 1.0); }`,
   });
   const dome = new THREE.Mesh(new THREE.SphereGeometry(9000, 40, 20), mat);
