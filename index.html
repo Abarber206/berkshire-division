@@ -30041,8 +30041,7 @@ PAD.step = function (dir) {
     const along = ux ? (ux > 0 ? q.left - r.right : r.left - q.right) : (uy > 0 ? q.top - r.bottom : r.top - q.bottom);
     const qx = q.left + q.width / 2, qy = q.top + q.height / 2;
     const ctr = ux ? (qx - cx) * ux : (qy - cy) * uy;
-    if (ctr <= 2 && along < -2) continue;
-    if (along < -Math.min(r.width, r.height) * 0.5 && ctr <= 0) continue;
+    if (ctr <= Math.max(2, (ux ? r.width : r.height) * 0.5)) continue;   // its middle has to lie well past ours that way
     const off = ux ? Math.max(0, Math.abs(qy - cy) - (r.height + q.height) / 2) : Math.max(0, Math.abs(qx - cx) - (r.width + q.width) / 2);
     const s = Math.max(0, along) + off * 3 + Math.abs(ux ? qy - cy : qx - cx) * 0.2;
     if (s < bs) { bs = s; best = el; }
