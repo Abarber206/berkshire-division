@@ -52,7 +52,7 @@ async function loadWorld() {
   terrainLoMerge(scene);
   buildFarTerrain(scene); if (!WORLD.custom) buildWater(scene); if (WORLD.frost) frBuildIce(scene);
   prog(0.52, WORLD.custom ? `Laying ${fmtMi(ROUTE.mainLen)} of track on ${PLAY_LAYOUT.name || 'your layout'}…` : `Laying ${(ROUTE.mainLen / MILE).toFixed(1)} miles of jointed rail…`); await frame();
-  buildTrack(scene); buildTrackHash();
+  buildTrack(scene); buildTrackHash(); trackGapGrid();
   prog(0.68, WORLD.frost ? 'Cutting the shelf into Raven Cliff…' : WORLD.mtn ? 'Boring Summit tunnel and raising the Bear Run trestle…' : 'Raising depots, towers and the river bridge…'); await frame();
   if (WORLD.custom) { buildStations(); buildSignals(scene); }
   else if (WORLD.frost) { buildStations(); buildSignals(scene); buildSigns(); frBuildScenery(scene); }
@@ -80,6 +80,7 @@ async function loadWorld() {
   linearizeObject(scene);
   sceneryUpload(renderer);
   AI.lazy = true; makeTrain(); AI.lazy = false;
+  SCN.gapGrid = null;   // the editor can move the track from here on
   // Raven Lake is a moonlit night until you pick another time in the menu (nothing is saved for it)
   GAME.frostNight = !!WORLD.frost;
   applyLook(GAME.frostNight ? 'night' : GAME.settings.time, GAME.settings.weather, renderer, scene);
@@ -91,13 +92,40 @@ async function loadWorld() {
   if (hot && hot.snapshot) hot.snapshot(() => GAME.snapshot());
   const resume = data => { if (data && data.running) GAME.restore(data); };
   if (hot && hot.ready) hot.ready(resume); else resume(hot && hot.data ? hot.data : {});
+  // every shader in the world is handed to the driver at once and compiled in parallel (on its own threads where the
+  // browser can), instead of one after another inside the first frame with the page frozen
+  await warmShaders();
   requestAnimationFrame(loop);
-  // the first frame compiles the shaders, so Start waits for it: the menu is never frozen while it looks ready
+  // the first frame compiles anything left over, so Start waits for it: the menu is never frozen while it looks ready
   await frame(); await frame();
   prog(1, WORLD.custom ? `${PLAY_LAYOUT.name || 'Your layout'} · ${fmtMi(ROUTE.mainLen)} of track · ${NET.switches.length} switches` : `${(ROUTE.mainLen / MILE).toFixed(1)} mi mainline · ${NET.switches.length} switches · ${WORLD.treeCount.toLocaleString()} trees`);
   $('btnStart').disabled = false;
 }
 
+/* Compile the scene's shaders without waiting on each one. three r128 only asks the driver about a program when it
+   checks it for errors or first draws with it, so with the error check off renderer.compile just queues the work;
+   KHR_parallel_shader_compile then lets us poll until it is done while the page stays live. Each program is checked
+   for errors afterwards, as three would have done. */
+async function warmShaders() {
+  const t0 = performance.now(), gl = renderer.getContext(), par = gl.getExtension('KHR_parallel_shader_compile');
+  const before = new Set(renderer.info.programs), chk = renderer.debug.checkShaderErrors;
+  renderer.debug.checkShaderErrors = false;
+  try {
+    // the world is drawn into the post target when that is on, and three bakes the target's encoding into each shader
+    const was = renderer.getRenderTarget();
+    if (POST.on && POST.rt) renderer.setRenderTarget(POST.rt);
+    renderer.compile(scene, camera);
+    renderer.setRenderTarget(was);
+  } finally { renderer.debug.checkShaderErrors = chk; }
+  const fresh = renderer.info.programs.filter(p => !before.has(p));
+  if (par) {
+    const done = p => gl.getProgramParameter(p.program, par.COMPLETION_STATUS_KHR);
+    for (let i = 0; i < 600 && !fresh.every(done); i++) await new Promise(r => setTimeout(r, 16));
+  }
+  for (const p of fresh) if (!gl.getProgramParameter(p.program, gl.LINK_STATUS)) console.error('THREE.WebGLProgram: shader error', p.name, gl.getProgramInfoLog(p.program));
+  WARM = { n: fresh.length, ms: Math.round(performance.now() - t0), par: !!par };
+}
+let WARM = null;
 function resetState() {
   Object.assign(S, { throttle: 0, reverser: 0, brakeH: 0.12, indH: 0.6, sander: false, cocks: true, bell: false, light: SKY.night ? 2 : 1, injector: false, blower: 0.35, stoker: 0.45, whistle: 0,
     v: 0, vw: 0, slip: false, slide: false, slideN: 0, theta: 0, odo: 0, P: 238, Psc: 0, W: 0.62, fire: 0.55, coal: 19958, water: 83280, sand: 1800, MR: 140, ER: 90, pumping: false,

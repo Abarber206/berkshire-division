@@ -1159,15 +1159,30 @@ function M(x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0, sx = 1, sy = 1, sz = 1) 
 function mergeGeos(list) {
   let n = 0; const parts = [];
   let hasColor = false;
-  for (const g of list) { const gg = g.index ? g.toNonIndexed() : g; if (!gg.attributes.normal) gg.computeVertexNormals(); parts.push(gg); n += gg.attributes.position.count; if (gg.attributes.color) hasColor = true; }
+  // an indexed part with plain attributes (nearly all of them) is unrolled straight into the output below, the same
+  // values toNonIndexed would give without making a copy of it first; anything else goes through toNonIndexed
+  const plain = g => { for (const k of ['position', 'normal', 'uv', 'color']) { const a = g.attributes[k]; if (a && (a.isInterleavedBufferAttribute || a.normalized)) return false; } return !!g.attributes.normal; };
+  for (const g of list) {
+    const gg = g.index && !plain(g) ? g.toNonIndexed() : g; if (!gg.attributes.normal) gg.computeVertexNormals();
+    parts.push(gg); n += gg.index ? gg.index.count : gg.attributes.position.count; if (gg.attributes.color) hasColor = true;
+  }
   const pos = new Float32Array(n * 3), nor = new Float32Array(n * 3), uv = new Float32Array(n * 2), col = hasColor ? new Float32Array(n * 3) : null;
   let o = 0;
+  const unroll = (src, ix, dst, sz, at) => { for (let i = 0, c = ix.length; i < c; i++) { const s = ix[i] * sz, d = (at + i) * sz; for (let k = 0; k < sz; k++) dst[d + k] = src[s + k]; } };
   for (const g of parts) {
-    const c = g.attributes.position.count;
-    pos.set(g.attributes.position.array, o * 3);
-    nor.set(g.attributes.normal.array, o * 3);
-    if (g.attributes.uv) uv.set(g.attributes.uv.array, o * 2);
-    if (col) { if (g.attributes.color) col.set(g.attributes.color.array, o * 3); else col.fill(1, o * 3, (o + c) * 3); }
+    const A = g.attributes;
+    if (g.index) {
+      const ix = g.index.array, c = ix.length;
+      unroll(A.position.array, ix, pos, 3, o); unroll(A.normal.array, ix, nor, 3, o);
+      if (A.uv) unroll(A.uv.array, ix, uv, 2, o);
+      if (col) { if (A.color) unroll(A.color.array, ix, col, 3, o); else col.fill(1, o * 3, (o + c) * 3); }
+      o += c; continue;
+    }
+    const c = A.position.count;
+    pos.set(A.position.array, o * 3);
+    nor.set(A.normal.array, o * 3);
+    if (A.uv) uv.set(A.uv.array, o * 2);
+    if (col) { if (A.color) col.set(A.color.array, o * 3); else col.fill(1, o * 3, (o + c) * 3); }
     o += c;
   }
   const out = new THREE.BufferGeometry();
@@ -1178,6 +1193,8 @@ function mergeGeos(list) {
   out.computeBoundingSphere();
   return out;
 }
+/* one number for a grid cell (i, j), for Maps of cells: |i|, |j| up to a million */
+const cellKey = (i, j) => (i + 1048576) * 2097152 + (j + 1048576);
 /* Collects geometry per material key, then merges into one mesh per key. */
 class GeoBin {
   constructor() { this.bins = {}; }
@@ -1195,7 +1212,7 @@ class GeoBin {
       // snow on the engines and cars: snowMat (10i_snow.js) gives the outside its coat and keeps the inside dry;
       // keys marked 'in:' (inBin) are inside a cab built into the body's own bin, so they stay dry too
       const inside = k.startsWith('in:'), mk = inside ? k.slice(3) : k;
-      const mesh = new THREE.Mesh(mergeGeos(this.bins[k]), typeof snowMat === 'function' ? snowMat(mats, mk, inside ? { ...opt, cast: false } : opt) : mats[mk]);
+      const mesh = new THREE.Mesh(this.merged ? this.bins[k][0] : mergeGeos(this.bins[k]), typeof snowMat === 'function' ? snowMat(mats, mk, inside ? { ...opt, cast: false } : opt) : mats[mk]);
       mesh.castShadow = opt.cast !== false && !(mats[mk] && mats[mk].userData.noShadow);
       mesh.receiveShadow = opt.receive !== false;
       mesh.name = mk;
@@ -1203,6 +1220,13 @@ class GeoBin {
     }
     return g;
   }
+  /* the merged geometry of each bin, to keep and build again later with GeoBin.of (the same shapes, shared) */
+  merge() {
+    const out = {}; for (const k in this.bins) if (this.bins[k].length) out[k] = mergeGeos(this.bins[k]);
+    if (this.pieces) Object.defineProperty(out, 'pieces', { value: this.pieces });   // the model checks (tests/geocheck.js) list the parts
+    return out;
+  }
+  static of(merged) { const b = new GeoBin(); b.merged = true; for (const k in merged) b.bins[k] = [merged[k]]; if (merged.pieces) b.pieces = merged.pieces; return b; }
 }
 /* a view of a GeoBin for the inside of a cab: the same bins, every key marked 'in:' so build() keeps it dry of snow */
 function inBin(gb) {
@@ -4831,6 +4855,20 @@ function inFoot(X, N, pad) {
 }
 /* distance from a plan point to the nearest track centre line, leaving out the edges in skip */
 function trackGap(X, N, skip) {
+  // while the world is built, a grid of the track's points answers the near case (the nearest point within 60 m:
+  // then the full search below finds that same point); anything further falls through to the full search
+  const G = SCN.gapGrid;
+  if (G && G.edges === NET.edges && G.n === NET.edges.length) {
+    const ix = Math.floor(X / 20), iz = Math.floor(N / 20); let d2 = 3600.0001, bx = 0, bz = 0;
+    for (let j = iz - 3; j <= iz + 3; j++) for (let i = ix - 3; i <= ix + 3; i++) {
+      const a = G.cells.get(cellKey(i, j)); if (!a) continue;
+      for (let q = 0; q < a.length; q += 3) {
+        if (skip && skip.includes(G.list[a[q + 2]])) continue;
+        const dx = a[q] - X, dz = a[q + 1] - N, dd = dx * dx + dz * dz; if (dd < d2) { d2 = dd; bx = dx; bz = dz; }
+      }
+    }
+    if (d2 <= 3600) return Math.hypot(bx, bz);
+  }
   let d = Infinity;
   for (const e of NET.edges) {
     if (skip && skip.includes(e)) continue;
@@ -4841,10 +4879,32 @@ function trackGap(X, N, skip) {
   }
   return d;
 }
-function keep(X, N, r) { SCN.keepout.push([X, N, r]); }
+/* the grid for trackGap while the world is built (dropped once it is: the editor changes the track later) */
+function trackGapGrid() {
+  const cells = new Map(), list = NET.edges.slice();
+  trackGap(1e9, 1e9);   // gives every edge its bounding box (e.bb), which the camera reads too
+  list.forEach((e, k) => { for (let i = 0; i < e.n; i++) { const key = cellKey(Math.floor(e.X[i] / 20), Math.floor(e.N[i] / 20)); let a = cells.get(key); if (!a) cells.set(key, a = []); a.push(e.X[i], e.N[i], k); } });
+  SCN.gapGrid = { cells, list, edges: NET.edges, n: NET.edges.length };
+}
+/* keep-out circles, also filed in a 32 m grid under every cell their circle touches, so kept() looks at one corner
+   of the map instead of all of them */
+function keep(X, N, r) {
+  const k = [X, N, r]; SCN.keepout.push(k);
+  const G = SCN.keepGrid || (SCN.keepGrid = new Map());
+  for (let j = Math.floor((N - r) / 32); j <= Math.floor((N + r) / 32); j++) for (let i = Math.floor((X - r) / 32); i <= Math.floor((X + r) / 32); i++) {
+    const key = cellKey(i, j); let a = G.get(key); if (!a) G.set(key, a = []); a.push(k);
+  }
+}
 /* upright solids the camera keeps out of (tree canopies, poles): world x, z, radius, bottom, top, in 40 m cells */
 function solid(x, z, r, y0, y1) { const k = Math.floor(x / 40) + ',' + Math.floor(z / 40); let l = SCN.solids.get(k); if (!l) SCN.solids.set(k, l = []); l.push([x, z, r, y0, y1]); }
-const kept = (X, N, pad = 0) => { for (const k of SCN.keepout) if ((X - k[0]) ** 2 + (N - k[1]) ** 2 < (k[2] + pad) ** 2) return true; return false; };
+const kept = (X, N, pad = 0) => {
+  const G = SCN.keepGrid; if (!G) return false;
+  // a circle within pad of the point overlaps the point's box grown by pad, so it is filed in one of these cells
+  for (let j = Math.floor((N - pad) / 32); j <= Math.floor((N + pad) / 32); j++) for (let i = Math.floor((X - pad) / 32); i <= Math.floor((X + pad) / 32); i++) {
+    const a = G.get(cellKey(i, j)); if (a) for (const k of a) if ((X - k[0]) ** 2 + (N - k[1]) ** 2 < (k[2] + pad) ** 2) return true;
+  }
+  return false;
+};
 /* frame on a line at distance sLine with lateral offset: returns {X,N,y,yaw} */
 function linePlace(line, sLine, lat = 0) {
   const loc = line.locate(sLine); loc.edge.pose(loc.s, FR);
@@ -6079,6 +6139,9 @@ function buildTrackHash() {
     let a = H.get(k); if (!a) H.set(k, a = []); a.push(X, N);
   }
   WORLD.trackHash = H;
+  // the same cells under number keys, for the hot loops that ask many cells at once (no string per cell)
+  const HN = new Map(); for (const [k, a] of H) { const [i, j] = k.split(','); HN.set(cellKey(+i, +j), a); }
+  WORLD.trackHashN = HN;
   // coarse samples for "how far is this field from the railroad"
   const C = []; for (const e of NET.edges) for (let s = 0; s <= e.len; s += 60) C.push(e.xz(s));
   WORLD.trackCoarse = C;
@@ -6093,10 +6156,10 @@ function distToTrack(X, N) {
 }
 /* is any track centre within r metres (any r; distToTrack only sees about 10 m) */
 function trackWithin(X, N, r) {
-  const H = WORLD.trackHash, ix = Math.floor(X / 10), iy = Math.floor(N / 10), c = Math.ceil(r / 10);
+  const H = WORLD.trackHashN, ix = Math.floor(X / 10), iy = Math.floor(N / 10), c = Math.ceil(r / 10), r2 = r * r;
   for (let j = iy - c; j <= iy + c; j++) for (let i = ix - c; i <= ix + c; i++) {
-    const a = H.get(i + ',' + j); if (!a) continue;
-    for (let q = 0; q < a.length; q += 2) if (Math.hypot(a[q] - X, a[q + 1] - N) < r) return true;
+    const a = H.get(cellKey(i, j)); if (!a) continue;
+    for (let q = 0; q < a.length; q += 2) { const dx = a[q] - X, dz = a[q + 1] - N; if (dx * dx + dz * dz < r2) return true; }
   }
   return false;
 }
@@ -10091,7 +10154,7 @@ function coachModel(spec, num, observation, trim = '') {
   // Its geometry is shared by every car of the same kind.
   let inner = null;
   if (typeof coachInterior === 'function') {
-    inner = coachInterior(observation); linearizeObject(inner); shareCarGeos(inner); root.userData.saloon = true;
+    inner = coachInterior(observation); linearizeObject(inner); root.userData.saloon = true;
     inner.name = 'saloon'; inner.traverse(o => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = true; } }); root.add(inner);
   }
   // the windows' light on the ground beside the car at night (10m_winlight.js): the pairs, the glass, and the lamps
@@ -14336,8 +14399,19 @@ function walkoverSeat(b, xs, zc, s, yF) {
   { const za = zc - s * (sw / 2 - 0.07), [x0, y0] = P(-0.07, 0.62), [x1, y1] = P(-0.07, 0.48), [xm, ym] = P(-0.14, 0.55);
     b.tube('ciBrass', [[x0, y0, za], [xm, ym, za], [x1, y1, za]], 0.011, 8, 6); }
 }
+/* Every coach's saloon is the same shape (one kind for an observation car), so it is built once and its merged
+   geometry shared by every car after that: making up a train or the traffic no longer rebuilds hundreds of seats */
+const CI_GEO = {};
 function coachInterior(observation) {
   coachInMaterials();
+  const key = observation ? 'obs' : 'coach';
+  const geos = CI_GEO[key] || (CI_GEO[key] = coachInteriorBin(observation).merge());
+  const grp = GeoBin.of(geos).build(RMAT, { cast: false });
+  grp.name = 'coachInterior'; grp.userData.shared = true;
+  grp.traverse(o => { if (o.isMesh) o.receiveShadow = true; });
+  return grp;
+}
+function coachInteriorBin(observation) {
   const b = new GeoBin(), yF = COACH_IN.yF, yT = CH.yT, hi = COACH_IN.hi, xb = CH.xb, [w0, w1] = CH.win, yE = CH.eave, th = 0.03;
   const zw = hi + th / 2;   // the lining's middle; its inside face is at hi
   // floor: carpet wall to wall, the runner down the aisle
@@ -14471,10 +14545,7 @@ function coachInterior(observation) {
   // seats: a walkover seat for two each side of the aisle at every window pair
   const sw = COACH_IN.seatW, za = COACH_IN.aisle;
   for (const x of pairs) for (const s of [-1, 1]) walkoverSeat(b, x + 0.04, s * (za + sw / 2), s, yF);
-  const grp = b.build(RMAT, { cast: false });
-  grp.name = 'coachInterior';
-  grp.traverse(o => { if (o.isMesh) o.receiveShadow = true; });
-  return grp;
+  return b;
 }
 /* the coach lamps are always on; they matter most after dark. Drawn shades glow from behind. */
 function coachInLight(dark) {
@@ -31975,7 +32046,7 @@ async function loadWorld() {
   terrainLoMerge(scene);
   buildFarTerrain(scene); if (!WORLD.custom) buildWater(scene); if (WORLD.frost) frBuildIce(scene);
   prog(0.52, WORLD.custom ? `Laying ${fmtMi(ROUTE.mainLen)} of track on ${PLAY_LAYOUT.name || 'your layout'}…` : `Laying ${(ROUTE.mainLen / MILE).toFixed(1)} miles of jointed rail…`); await frame();
-  buildTrack(scene); buildTrackHash();
+  buildTrack(scene); buildTrackHash(); trackGapGrid();
   prog(0.68, WORLD.frost ? 'Cutting the shelf into Raven Cliff…' : WORLD.mtn ? 'Boring Summit tunnel and raising the Bear Run trestle…' : 'Raising depots, towers and the river bridge…'); await frame();
   if (WORLD.custom) { buildStations(); buildSignals(scene); }
   else if (WORLD.frost) { buildStations(); buildSignals(scene); buildSigns(); frBuildScenery(scene); }
@@ -32003,6 +32074,7 @@ async function loadWorld() {
   linearizeObject(scene);
   sceneryUpload(renderer);
   AI.lazy = true; makeTrain(); AI.lazy = false;
+  SCN.gapGrid = null;   // the editor can move the track from here on
   // Raven Lake is a moonlit night until you pick another time in the menu (nothing is saved for it)
   GAME.frostNight = !!WORLD.frost;
   applyLook(GAME.frostNight ? 'night' : GAME.settings.time, GAME.settings.weather, renderer, scene);
@@ -32014,13 +32086,40 @@ async function loadWorld() {
   if (hot && hot.snapshot) hot.snapshot(() => GAME.snapshot());
   const resume = data => { if (data && data.running) GAME.restore(data); };
   if (hot && hot.ready) hot.ready(resume); else resume(hot && hot.data ? hot.data : {});
+  // every shader in the world is handed to the driver at once and compiled in parallel (on its own threads where the
+  // browser can), instead of one after another inside the first frame with the page frozen
+  await warmShaders();
   requestAnimationFrame(loop);
-  // the first frame compiles the shaders, so Start waits for it: the menu is never frozen while it looks ready
+  // the first frame compiles anything left over, so Start waits for it: the menu is never frozen while it looks ready
   await frame(); await frame();
   prog(1, WORLD.custom ? `${PLAY_LAYOUT.name || 'Your layout'} · ${fmtMi(ROUTE.mainLen)} of track · ${NET.switches.length} switches` : `${(ROUTE.mainLen / MILE).toFixed(1)} mi mainline · ${NET.switches.length} switches · ${WORLD.treeCount.toLocaleString()} trees`);
   $('btnStart').disabled = false;
 }
 
+/* Compile the scene's shaders without waiting on each one. three r128 only asks the driver about a program when it
+   checks it for errors or first draws with it, so with the error check off renderer.compile just queues the work;
+   KHR_parallel_shader_compile then lets us poll until it is done while the page stays live. Each program is checked
+   for errors afterwards, as three would have done. */
+async function warmShaders() {
+  const t0 = performance.now(), gl = renderer.getContext(), par = gl.getExtension('KHR_parallel_shader_compile');
+  const before = new Set(renderer.info.programs), chk = renderer.debug.checkShaderErrors;
+  renderer.debug.checkShaderErrors = false;
+  try {
+    // the world is drawn into the post target when that is on, and three bakes the target's encoding into each shader
+    const was = renderer.getRenderTarget();
+    if (POST.on && POST.rt) renderer.setRenderTarget(POST.rt);
+    renderer.compile(scene, camera);
+    renderer.setRenderTarget(was);
+  } finally { renderer.debug.checkShaderErrors = chk; }
+  const fresh = renderer.info.programs.filter(p => !before.has(p));
+  if (par) {
+    const done = p => gl.getProgramParameter(p.program, par.COMPLETION_STATUS_KHR);
+    for (let i = 0; i < 600 && !fresh.every(done); i++) await new Promise(r => setTimeout(r, 16));
+  }
+  for (const p of fresh) if (!gl.getProgramParameter(p.program, gl.LINK_STATUS)) console.error('THREE.WebGLProgram: shader error', p.name, gl.getProgramInfoLog(p.program));
+  WARM = { n: fresh.length, ms: Math.round(performance.now() - t0), par: !!par };
+}
+let WARM = null;
 function resetState() {
   Object.assign(S, { throttle: 0, reverser: 0, brakeH: 0.12, indH: 0.6, sander: false, cocks: true, bell: false, light: SKY.night ? 2 : 1, injector: false, blower: 0.35, stoker: 0.45, whistle: 0,
     v: 0, vw: 0, slip: false, slide: false, slideN: 0, theta: 0, odo: 0, P: 238, Psc: 0, W: 0.62, fire: 0.55, coal: 19958, water: 83280, sand: 1800, MR: 140, ER: 90, pumping: false,

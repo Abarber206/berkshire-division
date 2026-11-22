@@ -459,8 +459,19 @@ function walkoverSeat(b, xs, zc, s, yF) {
   { const za = zc - s * (sw / 2 - 0.07), [x0, y0] = P(-0.07, 0.62), [x1, y1] = P(-0.07, 0.48), [xm, ym] = P(-0.14, 0.55);
     b.tube('ciBrass', [[x0, y0, za], [xm, ym, za], [x1, y1, za]], 0.011, 8, 6); }
 }
+/* Every coach's saloon is the same shape (one kind for an observation car), so it is built once and its merged
+   geometry shared by every car after that: making up a train or the traffic no longer rebuilds hundreds of seats */
+const CI_GEO = {};
 function coachInterior(observation) {
   coachInMaterials();
+  const key = observation ? 'obs' : 'coach';
+  const geos = CI_GEO[key] || (CI_GEO[key] = coachInteriorBin(observation).merge());
+  const grp = GeoBin.of(geos).build(RMAT, { cast: false });
+  grp.name = 'coachInterior'; grp.userData.shared = true;
+  grp.traverse(o => { if (o.isMesh) o.receiveShadow = true; });
+  return grp;
+}
+function coachInteriorBin(observation) {
   const b = new GeoBin(), yF = COACH_IN.yF, yT = CH.yT, hi = COACH_IN.hi, xb = CH.xb, [w0, w1] = CH.win, yE = CH.eave, th = 0.03;
   const zw = hi + th / 2;   // the lining's middle; its inside face is at hi
   // floor: carpet wall to wall, the runner down the aisle
@@ -594,10 +605,7 @@ function coachInterior(observation) {
   // seats: a walkover seat for two each side of the aisle at every window pair
   const sw = COACH_IN.seatW, za = COACH_IN.aisle;
   for (const x of pairs) for (const s of [-1, 1]) walkoverSeat(b, x + 0.04, s * (za + sw / 2), s, yF);
-  const grp = b.build(RMAT, { cast: false });
-  grp.name = 'coachInterior';
-  grp.traverse(o => { if (o.isMesh) o.receiveShadow = true; });
-  return grp;
+  return b;
 }
 /* the coach lamps are always on; they matter most after dark. Drawn shades glow from behind. */
 function coachInLight(dark) {

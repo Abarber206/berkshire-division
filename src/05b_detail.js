@@ -12,6 +12,9 @@ function buildTrackHash() {
     let a = H.get(k); if (!a) H.set(k, a = []); a.push(X, N);
   }
   WORLD.trackHash = H;
+  // the same cells under number keys, for the hot loops that ask many cells at once (no string per cell)
+  const HN = new Map(); for (const [k, a] of H) { const [i, j] = k.split(','); HN.set(cellKey(+i, +j), a); }
+  WORLD.trackHashN = HN;
   // coarse samples for "how far is this field from the railroad"
   const C = []; for (const e of NET.edges) for (let s = 0; s <= e.len; s += 60) C.push(e.xz(s));
   WORLD.trackCoarse = C;
@@ -26,10 +29,10 @@ function distToTrack(X, N) {
 }
 /* is any track centre within r metres (any r; distToTrack only sees about 10 m) */
 function trackWithin(X, N, r) {
-  const H = WORLD.trackHash, ix = Math.floor(X / 10), iy = Math.floor(N / 10), c = Math.ceil(r / 10);
+  const H = WORLD.trackHashN, ix = Math.floor(X / 10), iy = Math.floor(N / 10), c = Math.ceil(r / 10), r2 = r * r;
   for (let j = iy - c; j <= iy + c; j++) for (let i = ix - c; i <= ix + c; i++) {
-    const a = H.get(i + ',' + j); if (!a) continue;
-    for (let q = 0; q < a.length; q += 2) if (Math.hypot(a[q] - X, a[q + 1] - N) < r) return true;
+    const a = H.get(cellKey(i, j)); if (!a) continue;
+    for (let q = 0; q < a.length; q += 2) { const dx = a[q] - X, dz = a[q + 1] - N; if (dx * dx + dz * dz < r2) return true; }
   }
   return false;
 }

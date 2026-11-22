@@ -53,15 +53,30 @@ function M(x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0, sx = 1, sy = 1, sz = 1) 
 function mergeGeos(list) {
   let n = 0; const parts = [];
   let hasColor = false;
-  for (const g of list) { const gg = g.index ? g.toNonIndexed() : g; if (!gg.attributes.normal) gg.computeVertexNormals(); parts.push(gg); n += gg.attributes.position.count; if (gg.attributes.color) hasColor = true; }
+  // an indexed part with plain attributes (nearly all of them) is unrolled straight into the output below, the same
+  // values toNonIndexed would give without making a copy of it first; anything else goes through toNonIndexed
+  const plain = g => { for (const k of ['position', 'normal', 'uv', 'color']) { const a = g.attributes[k]; if (a && (a.isInterleavedBufferAttribute || a.normalized)) return false; } return !!g.attributes.normal; };
+  for (const g of list) {
+    const gg = g.index && !plain(g) ? g.toNonIndexed() : g; if (!gg.attributes.normal) gg.computeVertexNormals();
+    parts.push(gg); n += gg.index ? gg.index.count : gg.attributes.position.count; if (gg.attributes.color) hasColor = true;
+  }
   const pos = new Float32Array(n * 3), nor = new Float32Array(n * 3), uv = new Float32Array(n * 2), col = hasColor ? new Float32Array(n * 3) : null;
   let o = 0;
+  const unroll = (src, ix, dst, sz, at) => { for (let i = 0, c = ix.length; i < c; i++) { const s = ix[i] * sz, d = (at + i) * sz; for (let k = 0; k < sz; k++) dst[d + k] = src[s + k]; } };
   for (const g of parts) {
-    const c = g.attributes.position.count;
-    pos.set(g.attributes.position.array, o * 3);
-    nor.set(g.attributes.normal.array, o * 3);
-    if (g.attributes.uv) uv.set(g.attributes.uv.array, o * 2);
-    if (col) { if (g.attributes.color) col.set(g.attributes.color.array, o * 3); else col.fill(1, o * 3, (o + c) * 3); }
+    const A = g.attributes;
+    if (g.index) {
+      const ix = g.index.array, c = ix.length;
+      unroll(A.position.array, ix, pos, 3, o); unroll(A.normal.array, ix, nor, 3, o);
+      if (A.uv) unroll(A.uv.array, ix, uv, 2, o);
+      if (col) { if (A.color) unroll(A.color.array, ix, col, 3, o); else col.fill(1, o * 3, (o + c) * 3); }
+      o += c; continue;
+    }
+    const c = A.position.count;
+    pos.set(A.position.array, o * 3);
+    nor.set(A.normal.array, o * 3);
+    if (A.uv) uv.set(A.uv.array, o * 2);
+    if (col) { if (A.color) col.set(A.color.array, o * 3); else col.fill(1, o * 3, (o + c) * 3); }
     o += c;
   }
   const out = new THREE.BufferGeometry();
@@ -72,6 +87,8 @@ function mergeGeos(list) {
   out.computeBoundingSphere();
   return out;
 }
+/* one number for a grid cell (i, j), for Maps of cells: |i|, |j| up to a million */
+const cellKey = (i, j) => (i + 1048576) * 2097152 + (j + 1048576);
 /* Collects geometry per material key, then merges into one mesh per key. */
 class GeoBin {
   constructor() { this.bins = {}; }
@@ -89,7 +106,7 @@ class GeoBin {
       // snow on the engines and cars: snowMat (10i_snow.js) gives the outside its coat and keeps the inside dry;
       // keys marked 'in:' (inBin) are inside a cab built into the body's own bin, so they stay dry too
       const inside = k.startsWith('in:'), mk = inside ? k.slice(3) : k;
-      const mesh = new THREE.Mesh(mergeGeos(this.bins[k]), typeof snowMat === 'function' ? snowMat(mats, mk, inside ? { ...opt, cast: false } : opt) : mats[mk]);
+      const mesh = new THREE.Mesh(this.merged ? this.bins[k][0] : mergeGeos(this.bins[k]), typeof snowMat === 'function' ? snowMat(mats, mk, inside ? { ...opt, cast: false } : opt) : mats[mk]);
       mesh.castShadow = opt.cast !== false && !(mats[mk] && mats[mk].userData.noShadow);
       mesh.receiveShadow = opt.receive !== false;
       mesh.name = mk;
@@ -97,6 +114,13 @@ class GeoBin {
     }
     return g;
   }
+  /* the merged geometry of each bin, to keep and build again later with GeoBin.of (the same shapes, shared) */
+  merge() {
+    const out = {}; for (const k in this.bins) if (this.bins[k].length) out[k] = mergeGeos(this.bins[k]);
+    if (this.pieces) Object.defineProperty(out, 'pieces', { value: this.pieces });   // the model checks (tests/geocheck.js) list the parts
+    return out;
+  }
+  static of(merged) { const b = new GeoBin(); b.merged = true; for (const k in merged) b.bins[k] = [merged[k]]; if (merged.pieces) b.pieces = merged.pieces; return b; }
 }
 /* a view of a GeoBin for the inside of a cab: the same bins, every key marked 'in:' so build() keeps it dry of snow */
 function inBin(gb) {
