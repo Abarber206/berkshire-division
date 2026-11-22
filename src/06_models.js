@@ -2164,7 +2164,7 @@ function coachModel(spec, num, observation, trim = '') {
   // Its geometry is shared by every car of the same kind.
   let inner = null;
   if (typeof coachInterior === 'function') {
-    inner = coachInterior(observation); linearizeObject(inner); shareCarGeos(inner); root.userData.saloon = true;
+    inner = coachInterior(observation); linearizeObject(inner); root.userData.saloon = true;
     inner.name = 'saloon'; inner.traverse(o => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = true; } }); root.add(inner);
   }
   // the windows' light on the ground beside the car at night (10m_winlight.js): the pairs, the glass, and the lamps

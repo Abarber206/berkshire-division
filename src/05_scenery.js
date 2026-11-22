@@ -138,6 +138,20 @@ function inFoot(X, N, pad) {
 }
 /* distance from a plan point to the nearest track centre line, leaving out the edges in skip */
 function trackGap(X, N, skip) {
+  // while the world is built, a grid of the track's points answers the near case (the nearest point within 60 m:
+  // then the full search below finds that same point); anything further falls through to the full search
+  const G = SCN.gapGrid;
+  if (G && G.edges === NET.edges && G.n === NET.edges.length) {
+    const ix = Math.floor(X / 20), iz = Math.floor(N / 20); let d2 = 3600.0001, bx = 0, bz = 0;
+    for (let j = iz - 3; j <= iz + 3; j++) for (let i = ix - 3; i <= ix + 3; i++) {
+      const a = G.cells.get(cellKey(i, j)); if (!a) continue;
+      for (let q = 0; q < a.length; q += 3) {
+        if (skip && skip.includes(G.list[a[q + 2]])) continue;
+        const dx = a[q] - X, dz = a[q + 1] - N, dd = dx * dx + dz * dz; if (dd < d2) { d2 = dd; bx = dx; bz = dz; }
+      }
+    }
+    if (d2 <= 3600) return Math.hypot(bx, bz);
+  }
   let d = Infinity;
   for (const e of NET.edges) {
     if (skip && skip.includes(e)) continue;
@@ -148,10 +162,32 @@ function trackGap(X, N, skip) {
   }
   return d;
 }
-function keep(X, N, r) { SCN.keepout.push([X, N, r]); }
+/* the grid for trackGap while the world is built (dropped once it is: the editor changes the track later) */
+function trackGapGrid() {
+  const cells = new Map(), list = NET.edges.slice();
+  trackGap(1e9, 1e9);   // gives every edge its bounding box (e.bb), which the camera reads too
+  list.forEach((e, k) => { for (let i = 0; i < e.n; i++) { const key = cellKey(Math.floor(e.X[i] / 20), Math.floor(e.N[i] / 20)); let a = cells.get(key); if (!a) cells.set(key, a = []); a.push(e.X[i], e.N[i], k); } });
+  SCN.gapGrid = { cells, list, edges: NET.edges, n: NET.edges.length };
+}
+/* keep-out circles, also filed in a 32 m grid under every cell their circle touches, so kept() looks at one corner
+   of the map instead of all of them */
+function keep(X, N, r) {
+  const k = [X, N, r]; SCN.keepout.push(k);
+  const G = SCN.keepGrid || (SCN.keepGrid = new Map());
+  for (let j = Math.floor((N - r) / 32); j <= Math.floor((N + r) / 32); j++) for (let i = Math.floor((X - r) / 32); i <= Math.floor((X + r) / 32); i++) {
+    const key = cellKey(i, j); let a = G.get(key); if (!a) G.set(key, a = []); a.push(k);
+  }
+}
 /* upright solids the camera keeps out of (tree canopies, poles): world x, z, radius, bottom, top, in 40 m cells */
 function solid(x, z, r, y0, y1) { const k = Math.floor(x / 40) + ',' + Math.floor(z / 40); let l = SCN.solids.get(k); if (!l) SCN.solids.set(k, l = []); l.push([x, z, r, y0, y1]); }
-const kept = (X, N, pad = 0) => { for (const k of SCN.keepout) if ((X - k[0]) ** 2 + (N - k[1]) ** 2 < (k[2] + pad) ** 2) return true; return false; };
+const kept = (X, N, pad = 0) => {
+  const G = SCN.keepGrid; if (!G) return false;
+  // a circle within pad of the point overlaps the point's box grown by pad, so it is filed in one of these cells
+  for (let j = Math.floor((N - pad) / 32); j <= Math.floor((N + pad) / 32); j++) for (let i = Math.floor((X - pad) / 32); i <= Math.floor((X + pad) / 32); i++) {
+    const a = G.get(cellKey(i, j)); if (a) for (const k of a) if ((X - k[0]) ** 2 + (N - k[1]) ** 2 < (k[2] + pad) ** 2) return true;
+  }
+  return false;
+};
 /* frame on a line at distance sLine with lateral offset: returns {X,N,y,yaw} */
 function linePlace(line, sLine, lat = 0) {
   const loc = line.locate(sLine); loc.edge.pose(loc.s, FR);
