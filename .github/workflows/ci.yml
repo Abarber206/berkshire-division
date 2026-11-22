@@ -18,6 +18,10 @@ jobs:
           mkdir -p tests/vendor && cd tests/vendor
           npm pack three@0.128.0 --silent
           tar -xzf three-0.128.0.tgz package/build/three.min.js && mv package/build/three.min.js . && rm -rf package three-0.128.0.tgz
+      - name: Headless Chromium for the real-game drives (tests/frostrun.test.js)
+        run: |
+          npm install --no-save --no-package-lock playwright@1.49.1
+          npx playwright install --with-deps chromium
       - name: Physics tests
         run: node --test tests/*.test.js
       - name: Build

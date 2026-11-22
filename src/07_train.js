@@ -76,6 +76,7 @@ class Consist {
   /* place with the front coupler at tp (o = facing direction) */
   place(tp) {
     for (const p of this.pts) { p.tp = tp.clone(); if (p.a) p.tp.advance(-p.a, null); }
+    this.slk = null;   // set down somewhere new: no slack left over from where it was (08b_slack.js)
     this.update(0);
   }
   frontTP() { return this.pts[0].tp; }
