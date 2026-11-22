@@ -111,6 +111,7 @@ function walkSolid(p, skip) {
       const fl = Math.hypot(v.fwd.x, v.fwd.z) || 1, ax = v.fwd.x / fl, az = v.fwd.z / fl;
       pushOut(p, [v.pos.x, v.pos.z, ax, az, -az, ax, v.len / 2 + 0.05, 1.62], WALK_R);
     }
+    if (typeof CROWD !== 'undefined') CROWD.push(p);   // and the travellers waiting on the platforms
   }
 }
 
@@ -366,13 +367,14 @@ WALK.findAction = function () {
   if (best) return best.wait ? { label: best.label, sub: 'Too fast · run alongside', off: true } : best;
   return null;
 };
-WALK.seatTaken = function (v, s) { for (const p of WALK.peers.values()) if (p.seatOf === v && p.seat && Math.abs(p.seat.x - s.x) < 0.1 && Math.abs(p.seat.z - s.z) < 0.1) return true; return false; };
+WALK.seatTaken = function (v, s) { if (typeof CROWD !== 'undefined' && CROWD.seatTaken(v, s)) return true; for (const p of WALK.peers.values()) if (p.seatOf === v && p.seat && Math.abs(p.seat.x - s.x) < 0.1 && Math.abs(p.seat.z - s.z) < 0.1) return true; return false; };
 WALK.sit = function (s) {
   const r = WALK.ride; if (!r) return;
   // the window seat if it is free, else the one by the aisle
   const P = walkPlan(r.v), side = q => Math.sign(q.z - P.mid);
   const row = P.seats.filter(q => Math.abs(q.x - s.x) < 0.01 && side(q) === side(s)).sort((a, b) => Math.abs(b.z - P.mid) - Math.abs(a.z - P.mid));
-  const free = row.find(q => !WALK.seatTaken(r.v, q)) || row[0];
+  // both taken: the nearest free seat in the car
+  const free = row.find(q => !WALK.seatTaken(r.v, q)) || P.seats.filter(q => !WALK.seatTaken(r.v, q)).sort((a, b) => Math.hypot(a.x - s.x, a.z - s.z) - Math.hypot(b.x - s.x, b.z - s.z))[0] || row[0];
   r.seat = free; r.l.set(free.x, P.yF, free.z); r.yaw = free.yaw; WALK.lookYaw = free.look; WALK.lookPitch = -0.05;
   WALK.ui();
 };

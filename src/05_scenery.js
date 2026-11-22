@@ -16,6 +16,7 @@ function sceneryMaterials() {
   SMAT.brick = new THREE.MeshLambertMaterial({ map: brick });
   SMAT.cream = new THREE.MeshLambertMaterial({ color: 0xd8c592, map: siding });
   SMAT.trim = new THREE.MeshLambertMaterial({ color: 0x4d3420 });
+  SMAT.doorway = new THREE.MeshLambertMaterial({ color: 0x17120d });   // an open doorway into the dim waiting room
   SMAT.white = new THREE.MeshLambertMaterial({ color: 0xe9e5d8, map: siding });
   SMAT.barn = new THREE.MeshLambertMaterial({ color: 0x8c2d20, map: siding });
   SMAT.slate = new THREE.MeshLambertMaterial({ color: 0x55585e, map: shingle });
@@ -304,7 +305,7 @@ function depot(pl, name, big) {
   gb.add('cream', boxT(3.1, H - 0.9, 1.35, 2), P(base, 0, 0.9 + (H - 0.9) / 2, W / 2 + 0.6));
   gb.add('trim', new THREE.BoxGeometry(3.3, 0.18, 1.5), P(base, 0, 0.95, W / 2 + 0.6));
   windowsRow(gb, base, -1.0, 1.0, 2.4, W / 2 + 1.275, 0.8, 1.5, 2);
-  windowsRow(gb, base, -L / 2 + 2, -2.6, 2.4, W / 2 - 0.05, 0.9, 1.6, big ? 4 : 2);
+  windowsRow(gb, base, -L / 2 + 2, -3.3, 2.4, W / 2 - 0.05, 0.9, 1.6, big ? 4 : 2);
   windowsRow(gb, base, 2.6, L / 2 - 2, 2.4, W / 2 - 0.05, 0.9, 1.6, big ? 3 : 2);
   windowsRow(gb, base, -L / 2 + 2, L / 2 - 2, 2.4, -W / 2 + 0.05, 0.9, 1.6, big ? 6 : 4, -1);
   // freight doors
@@ -328,7 +329,8 @@ function depot(pl, name, big) {
   gb.add(mat, new THREE.PlaneGeometry(2.9, 0.5), P(base, 0, 3.55, W / 2 + 1.285));
   for (const s of [-1, 1]) gb.add(mat, new THREE.PlaneGeometry(3.4, 0.65), P(base, s * (L / 2 - 0.045), H - 0.8, 0, 0, s * Math.PI / 2, 0));
   // benches on the platform (top at 0.16)
-  for (const bx of [-L / 2 + 2.2, -L / 2 + 5, 3.2]) {
+  const benches = big ? [-L / 2 + 2.2, -L / 2 + 5, 3.2] : [-L / 2 + 1.9, -L / 2 + 3.75, 3.2];
+  for (const bx of benches) {
     const bz = W / 2 + 0.7;
     gb.add('trim', new THREE.BoxGeometry(1.8, 0.06, 0.45), P(base, bx, 0.6, bz));
     gb.add('trim', new THREE.BoxGeometry(1.8, 0.4, 0.05), P(base, bx, 0.83, bz - 0.2));
@@ -342,8 +344,26 @@ function depot(pl, name, big) {
   gb.add('steel', new THREE.CylinderGeometry(0.08, 0.1, 7, 8), P(base, 0, 3.5 + 0.16, W / 2 + 2.4));
   gb.add('steel', new THREE.CylinderGeometry(0.16, 0.18, 0.12, 10), P(base, 0, 0.22, W / 2 + 2.4));
   for (const s of [-1, 1]) gb.add('redPaint', new THREE.BoxGeometry(1.4, 0.3, 0.05), P(base, s * (0.04 + 0.7 * Math.cos(0.7)), 6.3 + 0.7 * Math.sin(0.7), W / 2 + 2.4, 0, 0, s * 0.7));
+  /* the passengers' door beside the bay, open into the waiting room, up two steps and a landing from the platform
+     (the floor is on the brick base, 0.9 m up); the travellers on the platform come and go by it (11q_crowd.js) */
+  const dx = -2.2, dw = 0.95, steps = [[0.3, 0.9], [0.6, 0.653], [0.9, 0.407]];
+  gb.add('doorway', new THREE.BoxGeometry(dw, 2.15, 0.06), P(base, dx, 0.9 + 1.075, W / 2 + 0.033));
+  for (const e of [-1, 1]) gb.add('trim', new THREE.BoxGeometry(0.09, 2.27, 0.08), P(base, dx + e * (dw / 2 + 0.045), 0.9 + 1.135, W / 2 + 0.03));
+  gb.add('trim', new THREE.BoxGeometry(dw + 0.3, 0.12, 0.1), P(base, dx, 0.9 + 2.21, W / 2 + 0.04));
+  let z0 = W / 2;
+  for (const [z1, top] of steps) {
+    gb.add('concrete', boxT(dw + 0.36, top - 0.1, z1 - (z0 - W / 2) + 0.02, 2), P(base, dx, 0.1 + (top - 0.1) / 2, (z0 + W / 2 + z1) / 2));
+    walkDeck(base, dx, (z0 + W / 2 + z1) / 2, dw + 0.36, W / 2 + z1 - z0, top);
+    z0 = W / 2 + z1;
+  }
   keep(pl.X, pl.N, L / 2 + 8);
   SCN.lamps.push(new THREE.Vector3().setFromMatrixPosition(P(base, 0, 3.4, W / 2 + 1.7)));
+  /* the platform as the travellers know it, in the depot's frame (x along, z out to the track, the platform top at 0.16):
+     its length, the depot's face, the track edge, the door and its steps, the benches and what stands in the way */
+  const obs = [[0, W / 2 + 0.6, 1.65 + 0.05, 0.8], [L / 2 + 6, W / 2 + 2.6, 1.45, 0.65], [0, W / 2 + 2.4, 0.25, 0.25]];
+  for (const lx of [-(L / 2 + 20), -(L / 2 + 9), L / 2 + 11, L / 2 + 20]) obs.push([lx, W / 2 + 0.9, 0.2, 0.2]);
+  for (const bx of benches) obs.push([bx, W / 2 + 0.65, 0.95, 0.32]);
+  return { base: base.clone(), L, W, big, PL: L + 50, z0: W / 2 + 0.1, zE: W / 2 + 5.3, top: 0.16, floor: 0.9, door: { x: dx, w: dw, steps }, benches, obs };
 }
 /* A plank walk over both main tracks at the depot, for trains on the far main: planks between the rails
    like a road crossing, and timber decking between the tracks (and out to a depot beyond track 2, or beyond
@@ -1137,7 +1157,7 @@ function buildStations() {
   for (const st of ROUTE.stations) {
     if (st.kind === 'quarry') continue;
     const pl = linePlace(st.line, st.sLine, st.side * (12 + (st.across || 0))); pl.lat = st.side;
-    depot(pl, st.name.toUpperCase(), st.kind === 'depot');
+    st.plat = depot(pl, st.name.toUpperCase(), st.kind === 'depot');
     if (st.line === ROUTE.main && ROUTE.main2 && (!ROUTE.span2 || (st.sLine > ROUTE.span2[0] && st.sLine < ROUTE.span2[1]))) stationCrossing(st);
   }
   for (const w of ROUTE.water) {
