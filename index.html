@@ -16901,6 +16901,7 @@ class Consist {
   /* place with the front coupler at tp (o = facing direction) */
   place(tp) {
     for (const p of this.pts) { p.tp = tp.clone(); if (p.a) p.tp.advance(-p.a, null); }
+    this.slk = null;   // set down somewhere new: no slack left over from where it was (08b_slack.js)
     this.update(0);
   }
   frontTP() { return this.pts[0].tp; }
@@ -22955,6 +22956,7 @@ const ICE = {
   MU: 0.075, TRIP: 0.1,           // wreck bodies on the ice: steel sliding on ice, and a little more for a car going sideways
   CAP_D: 1.1, CAP_A: 0.055,       // m and rad: how close to the far rails a skating train must come to drop back on
   JACK: 3.0,                      // m/s2 of side force: a skating train swung harder than this slides out and jackknifes
+  RUN_V: 11.2,                    // m/s (25 mph, the ice's posted speed): braking hard faster than this, the train buckles
   LV_K: 0.5,                      // in-train side force a car on the ice can stand, against one on ballast
   crackIn: 3, warnT: 0,
   segN: 0, seg: 0, dirty: false,
@@ -23125,7 +23127,7 @@ function iceSkatePose(s, out) {
   out.p.set(_skq.X, FROST.iceY + ICE_RAIL, -_skq.N); out.f.set(c, 0, -sn); out.r.set(sn, 0, c); out.u.set(0, 1, 0);
 }
 function iceSkateEnd() {
-  const k = ICE.sk; k.on = false; k.live = false; k.cap = 0; k.fun = null; k.steer = 0; k.jackT = 0; k.v = 0;
+  const k = ICE.sk; k.on = false; k.live = false; k.cap = 0; k.fun = null; k.steer = 0; k.jackT = 0; k.v = 0; k.run = 0;
   if (k.hud) k.hud.hidden = true;
   iceSkatePads(false);
 }
@@ -23185,9 +23187,14 @@ function iceSkate(dt, T) {
     // so steering alone never pulls past the jackknife limit (shoving with the engine brake still can)
     const steer = k.steer * (0.04 + 0.12 * thr) * Math.min(1, v / 6) * Math.min(1, 30 / Math.max(v, 1));
     const shove = Math.max(0, fLoco - fAll) * (2.2 * k.w + 0.06 * (Math.sign(k.w) || 1)) * Math.min(1, v / 10);
-    const damp = 0.45 + 1.0 * thr + 1.6 * fAll;
+    // a hard brake at speed: the wheels lock and slide on the ice at different rates, the cars run in on the engine
+    // and the train buckles. At the 25 mph the ice is posted for she takes it; much faster and the brake that
+    // steadies a gentle swing folds her up instead.
+    const run = k.run = iceSkateRunIn(fAll, v);
+    const buckle = Math.min(1, run) * 1.8 * k.w + 0.05 * run * (Math.sign(k.w) || 1);   // about a second and a half from the warning to the fold
+    const damp = 0.45 + 1.0 * thr + 1.6 * fAll * (1 - Math.min(1, run));
     k.kickT -= dt; if (k.kickT <= 0) { k.kickT = 0.8 + 2.2 * Math.random(); k.w += (Math.random() - 0.5) * 0.035 * Math.min(1, v / 15) * Math.min(1, 20 / Math.max(v, 1)); }
-    k.w += (steer + shove - damp * k.w) * dt; k.w = clamp(k.w, -0.3, 0.3);
+    k.w += (steer + shove + buckle - damp * k.w) * dt; k.w = clamp(k.w, -0.3, 0.3);
     // lay the path down to here, a metre at a time, turning as she turns (w: anticlockwise)
     const end = u > 0 ? k.hi : k.lo, H0 = k.PH[end + SK_Z], H1 = H0 + k.w * dt;
     if (u > 0) { const n = Math.floor(f) - k.hi; for (let q = 1; q <= n && k.hi + SK_Z + 1 < SK_N; q++) { const j = k.hi + SK_Z, H = lerp(H0, H1, q / n); k.PX[j + 1] = k.PX[j] + Math.cos(H); k.PN[j + 1] = k.PN[j] + Math.sin(H); k.PH[j + 1] = H; k.hi++; } }
@@ -23196,10 +23203,11 @@ function iceSkate(dt, T) {
     // swung too hard: she slides out sideways and the train jackknifes across the ice
     const lat = v * Math.abs(k.w);
     k.jackT = lat > ICE.JACK ? k.jackT + dt : Math.max(0, k.jackT - dt);
-    if (lat > ICE.JACK * 0.7 && ICE.warnT <= 0) { toast('She is sliding out! Ease the swing: train brake or straighten up.', 'bad', 2200, 'skatejack'); ICE.warnT = 2.5; }
+    if (lat > ICE.JACK * 0.7 && ICE.warnT <= 0) { toast(run > 0.3 ? 'The train is buckling! Ease off the brake.' : 'She is sliding out! Ease the swing: train brake or straighten up.', 'bad', 2200, 'skatejack'); ICE.warnT = 2.5; }
     if (k.jackT > 0.6) {
       const j = Math.min(T.vehicles.length - 1, (T.li || 0) + 2), x = T.vehicles[j];
-      GAME.derail(`Jackknifed out on the ice at ${Math.round(v / MPH)} mph: swung too hard, the engine slid out and the train folded up behind her.`, 'Jackknifed', { a: x.a0 + x.len / 2, side: Math.sign(k.w) || 1, k: 1 });
+      GAME.derail(k.run > 0.3 ? `Jackknifed out on the ice at ${Math.round(v / MPH)} mph: braked too hard, too fast. The wheels slid, the cars ran in on the engine and the train folded up across the lake. The ice is good for 25 mph.`
+        : `Jackknifed out on the ice at ${Math.round(v / MPH)} mph: swung too hard, the engine slid out and the train folded up behind her.`, 'Jackknifed', { a: x.a0 + x.len / 2, side: Math.sign(k.w) || 1, k: 1 });
       return;
     }
   } else if (!ahead) k.w *= Math.max(0, 1 - dt * 2);
@@ -23233,6 +23241,9 @@ function iceSkate(dt, T) {
   iceSkateHud(A);
   iceSkateCheckEnd(T);
 }
+/* how hard the cars run in under the brakes out on the ice, 0..1.5: nothing under a light application or at the
+   posted speed, building with a heavy brake (f: the train's average brake, 0..1) the faster she is going */
+function iceSkateRunIn(f, v) { return clamp((f - 0.45) / 0.55, 0, 1) * clamp((v - ICE.RUN_V) / 6, 0, 1.5); }
 /* the lead-in onto the far rails: from the end of the path laid so far (where her front is), a cubic curve that
    leaves along her heading and arrives along the rails at their end, written out a metre at a time, then a few
    metres more straight on along the rails. k.fun.fe is the path position of the rail end. */
@@ -32504,6 +32515,7 @@ GAME.rerail = function () {
   iceSkateReset();   // a train skating the lake (10n_ice.js) goes back on the surveyed line
   $('bigMsg').hidden = true; $('bigMsg').classList.remove('wreck'); S.derailed = false; S.v = 0; S.vw = 0; S.brakeH = 0.12; MP.dirty = true;
   GAME.train.wreck(null); GAME.wrecking = null;
+  GAME.train.slk = null;   // the slack as it stood when she came off would spring back and snap a knuckle on the first pull
   KNOCK.clear();
   if (S.dead) { S.dead = false; S.W = 0.6; S.fire = 0.4; S.P = 180; }
   for (const v of GAME.train.vehicles) { v.brake.BP = 90; v.brake.AR = 90; v.brake.BC = 0; v.brake.emerg = false; }

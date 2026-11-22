@@ -592,6 +592,7 @@ GAME.rerail = function () {
   iceSkateReset();   // a train skating the lake (10n_ice.js) goes back on the surveyed line
   $('bigMsg').hidden = true; $('bigMsg').classList.remove('wreck'); S.derailed = false; S.v = 0; S.vw = 0; S.brakeH = 0.12; MP.dirty = true;
   GAME.train.wreck(null); GAME.wrecking = null;
+  GAME.train.slk = null;   // the slack as it stood when she came off would spring back and snap a knuckle on the first pull
   KNOCK.clear();
   if (S.dead) { S.dead = false; S.W = 0.6; S.fire = 0.4; S.P = 180; }
   for (const v of GAME.train.vehicles) { v.brake.BP = 90; v.brake.AR = 90; v.brake.BC = 0; v.brake.emerg = false; }
