@@ -17278,6 +17278,7 @@ class Train extends Consist {
   dispose() {
     for (const v of this.vehicles) { this.scene.remove(v.root); }
     if (this.diesel) this.units.forEach(m => m.trucks.forEach(t => this.scene.remove(t))); else for (const o of this.steamExtras()) this.scene.remove(o);
+    for (const o of this.helperParts || []) this.scene.remove(o);
     for (const im of this.inst) this.scene.remove(im);
     if (this.head) { this.scene.remove(this.head); this.scene.remove(this.head.target); }
   }
@@ -17290,6 +17291,7 @@ class Train extends Consist {
   setVisible(v) {
     super.setVisible(v);
     if (this.diesel) this.units.forEach(m => m.trucks.forEach(t => { t.visible = v; })); else for (const o of this.steamExtras()) o.visible = v;
+    for (const o of this.helperParts || []) o.visible = v;   // a helper's trucks and running gear, which stand in the scene on their own
   }
 }
 
@@ -17390,7 +17392,7 @@ function trainRoots(t) {
   const out = t.vehicles.map(v => v.root);
   if (t.diesel && t.units) t.units.forEach(m => out.push(...(m.trucks || [])));
   else if (t.steamExtras && t.loco) out.push(...t.steamExtras());
-  return out.concat(t.inst || []);
+  return out.concat(t.inst || [], t.helperParts || []);
 }
 
 /* ---------------- making up the yard ---------------- */
@@ -25894,6 +25896,7 @@ class RemoteTrain {
     const code = extra && extra.code;
     this.train = new Train(scene, st.lk, code ? 'light' : st.ck, Object.assign(mpOpts(st), { remote: true }));
     if (code) { try { mpCompose(this.train, code); } catch (e) { this.train.disposeDeep(); throw e; } }
+    if (extra && extra.pusher) aiPusher(this.train, extra.pusher);   // a timetable train's helper on the rear (11e_traffic.js)
     prepareTrain(this.train);
     this.a0 = this.train.pts[0].a;
     this.tp = null; this.err = 0; this.v = 0; this.theta = 0; this.chuffQ = null; this.idleT = 0; this.bellT = 0.8; this.updT = 0;
@@ -27544,13 +27547,25 @@ Object.assign(TRAFFIC, {
   m22: { name: 'No. 22', sub: 'Westward local', loco: '1225', consist: 'passenger', dir: -1, vmax: 45, accel: 0.28, brake: 0.55, stops: true, seed: 22, mtn: true },
   m21: { name: 'No. 21', sub: 'Eastward mail and express', loco: 'diesel', units: 2, livery: 'kn', consist: 'passenger', dir: 1, vmax: 50, accel: 0.3, brake: 0.6, stops: true, seed: 21, mtn: true },
   m90: { name: 'Extra 2214 East', sub: 'Coal empties', loco: 'diesel', units: 3, livery: 'fle', consist: 'freight', dir: 1, vmax: 30, accel: 0.08, brake: 0.3, seed: 2214, mtn: true },
+  // 26 loads up the 1.9 per cent: more than one engine can lift, so a pusher rides on the rear (AI.vary picks it)
+  m92: { name: 'Extra 2230 East', sub: 'Loaded coal, pusher on the rear', loco: 'diesel', units: 2, livery: 'fle', consist: 'coal', kind: 'freight', dir: 1, vmax: 30, accel: 0.07, brake: 0.3, seed: 2230, mtn: true, pusher: true, climb: 14 },
+  m93: { name: 'Extra 2233 West', sub: 'Westward merchandise', loco: 'diesel', units: 2, livery: 'fle', consist: 'freight', dir: -1, vmax: 35, accel: 0.09, brake: 0.3, seed: 2233, mtn: true },
 });
-/* free running: where each train is on the road when you start (distance along track 1) */
-const FREE_TRAFFIC = [['no12', 13800], ['x2210', 7700], ['no5', 33500], ['x2216', 42000]];
-const MTN_TRAFFIC = [['m90', 12500], ['m22', 31000], ['m21', 43500]];
+/* More on the Berkshire Division: a second local, and coal and merchandise both ways */
+Object.assign(TRAFFIC, {
+  no7: { name: 'No. 7', sub: 'Eastward local', loco: '765', consist: 'passenger', dir: 1, vmax: 60, accel: 0.3, brake: 0.55, stops: true, seed: 7 },
+  x2218: { name: 'Extra 2218 West', sub: 'Westward coal drag', loco: 'diesel', units: 3, livery: 'fle', consist: 'coal', kind: 'freight', dir: -1, vmax: 40, accel: 0.09, brake: 0.3, seed: 2218 },
+  x2224: { name: 'Extra 2224 East', sub: 'Eastward hot shot', loco: 'diesel', units: 2, livery: 'fle', consist: 'timefreight', kind: 'freight', dir: 1, vmax: 55, accel: 0.15, brake: 0.35, seed: 2224 },
+});
+/* free running: where each train is on the road when you start (distance along track 1).
+   The third number marks the trains added for a busy road: a phone, short of memory, runs the timetable without them. */
+const FREE_TRAFFIC = [['no12', 13800], ['x2210', 7700], ['no5', 33500], ['x2216', 42000], ['no7', 21500, 1], ['x2218', 27500, 1], ['x2224', 45000, 1]];
+const MTN_TRAFFIC = [['m90', 12500], ['m22', 31000], ['m21', 43500], ['m92', 22500, 1], ['m93', 16000, 1]];
 /* the facing switch of the passing siding each way: a slow train with a faster one behind it goes in there */
 const PASSING = { 1: 'Kenton East', '-1': 'Fostoria East' }, MTN_PASSING = { 1: 'Big Laurel West', '-1': 'Glen Iron East' };
 const passingSw = dir => (WORLD.mtn ? MTN_PASSING : PASSING)[dir];
+/* a phone runs the lighter timetable: every train is a whole set of models in memory, seen or not */
+const AI_PHONE = typeof navigator !== 'undefined' && /iPhone|iPad|Android/i.test(navigator.userAgent || '');
 const DWELL = 35, TERMINAL_DWELL = 90;
 
 /* Every train made up gets an engine from the roster for its kind of work, so the traffic is never the same twice:
@@ -27562,17 +27577,25 @@ const AI_ROSTER = {
 };
 const AI_LIVERIES = ['nkp', 'prr', 'nyc', 'bo', 'co', 'nw', 'pm', 'fle', 'kn', 'ss'];
 const AI_RECKLESS = 0.25;
+const AI_PUSHERS = [['diesel', 3], ['1308', 2], ['4014', 1]];
 /* the engine and crew for this run of train def; v: a choice made before (a save) to keep */
 AI.vary = function (def, v, job) {
   const r = Math.random, d = Object.assign({}, def);
   if (!v) {
-    const list = (AI_ROSTER[def.consist] || []).filter(([k]) => LOCO_SPEC[k]);
+    const list = (AI_ROSTER[def.kind || def.consist] || []).filter(([k]) => LOCO_SPEC[k]);
     let loco = def.loco;
     if (list.length) { let x = r() * list.reduce((a, [, w]) => a + w, 0); for (const [k, w] of list) if ((x -= w) <= 0) { loco = k; break; } }
-    const freight = def.consist === 'freight';
+    const freight = (def.kind || def.consist) === 'freight';
     v = { loco, units: loco === 'diesel' ? (freight ? 2 + (r() < 0.4 ? 1 : 0) : 1 + (r() < 0.5 ? 1 : 0)) : 1,
       livery: loco === 'diesel' ? AI_LIVERIES[(r() * AI_LIVERIES.length) | 0] : def.livery, reckless: !job && r() < AI_RECKLESS ? 1 : 0 };
+    if (def.pusher) {   // the pusher: a pair of diesels, a Mallet (what the coal roads pushed with) or the Big Boy
+      let x = r() * 6, pk = 'diesel';
+      for (const [k, w] of AI_PUSHERS) if ((x -= w) <= 0) { pk = k; break; }
+      if (!LOCO_SPEC[pk]) pk = 'diesel';
+      v.push = { loco: pk, units: pk === 'diesel' ? 2 : 1, livery: pk === 'diesel' ? AI_LIVERIES[(r() * AI_LIVERIES.length) | 0] : undefined };
+    }
   }
+  if (v.push && LOCO_SPEC[v.push.loco]) d.push = v.push;
   d.loco = LOCO_SPEC[v.loco] ? v.loco : def.loco; d.units = v.units || def.units; d.livery = v.livery || def.livery;
   // what each engine can do with the train: steam pulls away slower than a diesel and its top speed is its own
   const steam = !LOCO_SPEC[d.loco].diesel;
@@ -27587,11 +27610,32 @@ AI.vary = function (def, v, job) {
   return d;
 };
 
+/* couple helper p ({ loco, units, livery }) on behind the rear of train T, facing the way it runs, as the pusher
+   up the grade. It is built as a light engine and its vehicles are taken into T, worked as a helper MU'd to the
+   head end (07_train.js helperAnimate); its trucks and running gear, which stand in the scene on their own, are
+   kept in T.helperParts so they hide, show and go away with the train. */
+function aiPusher(T, p) {
+  const opts = { units: Math.max(1, Math.min(3, p.units || 1)), remote: true, dark: true };
+  if (p.livery && LIVERIES[p.livery]) opts.livery = p.livery;
+  const road = ROAD_SHORT, X = new Train(T.scene, p.loco, 'light', opts); ROAD_SHORT = road;
+  for (const im of X.inst) T.scene.remove(im);
+  const parts = X.diesel ? X.units.flatMap(m => m.trucks || []) : X.steamExtras().filter(Boolean);
+  for (const o of parts) linearizeObject(o);
+  T.helperParts = (T.helperParts || []).concat(parts);
+  X.vehicles.forEach((v, i) => {
+    X.release(v); v.helper = { g: 'ai', loco: p.loco, opts: {}, i };
+    if (v.kind === 'tender') v.mass = helperTender(X);
+    T.markerLamps(v); T.vehicles.push(v);
+  });
+  T.layout(); T.buildInstances();
+  return T;
+}
+
 class AITrain extends RemoteTrain {
   constructor(id, def) {
     const st = { lk: def.loco, ck: def.consist, u: def.units || 1, lv: def.livery || 'ss', mx: false, cu: null, no: null };
     const road = ROAD_SHORT;
-    super(null, st, { seed: def.seed });
+    super(null, st, { seed: def.seed, pusher: def.push });
     ROAD_SHORT = road;
     this.id = id; this.def = def; this.name = def.name;
     this.st = Object.assign(st, { hl: 2, wh: 0, bl: false, dl: true, rpm: 300, ex: 0, rv: 0.6 });
@@ -27654,10 +27698,16 @@ class AITrain extends RemoteTrain {
     const L = sw.legs.map(l => l.edge.line);
     if (L[0] === ROUTE.main && L[1] === ROUTE.main2) return this.dir > 0 ? 0 : 1;
     const ps = passingSw(this.dir);
-    if (sw.name !== ps || this.yieldTo) return this.yieldTo && sw.name === ps ? 1 : 0;
+    if (sw.name !== ps || this.yieldTo) return this.yieldTo && sw.name === ps && !this.sidingTaken(sw) ? 1 : 0;
     const f = this.follower();
-    if (f) { this.yieldTo = f; this.yieldT = 0; return 1; }
+    if (f && !this.sidingTaken(sw)) { this.yieldTo = f; this.yieldT = 0; return 1; }
     return 0;
+  }
+  /* something already stands in the siding off switch sw (yours, a cut, another train): no room to get in */
+  sidingTaken(sw) {
+    const ln = sw.legs[1].edge.line; if (!ln) return false;
+    for (const [e, l] of IX.index()) if (e.line === ln && l.some(x => x.c !== this.train)) return true;
+    return false;
   }
   /* a faster train coming up behind us on our track, within a few miles */
   follower() {
@@ -27733,6 +27783,24 @@ class AITrain extends RemoteTrain {
     if (p.e.line !== ROUTE.main2) return null;
     const loc = ROUTE.main2.locate(ROUTE.to2(st.sLine)); return { e: loc.edge, s: loc.s };
   }
+  /* the grade under the train, rise per metre the way it runs: the mean of the grades under its two ends */
+  gradeNow() {
+    const g = tp => { const e = tp.e; if (!e.elev) return 0; const a = clamp(tp.s - 15, 0, e.len), b = clamp(tp.s + 15, 0, e.len); return b - a > 1 ? (e.elev(b) - e.elev(a)) / (b - a) * tp.o : 0; };
+    return 0.5 * (g(this.train.endTP('front')) + g(this.train.endTP('rear')));
+  }
+  /* the speed (mph) the train can hold on the grade it is on. Up a heavy grade a loaded freight drops to its
+     climbing speed (its pusher and a big engine help), a passenger train a good deal less; down one, the crew
+     holds it back on the air and the retainers, harder the steeper it is. */
+  gradeCap() {
+    const g = this.grade || 0, def = this.def, freight = (def.kind || def.consist) === 'freight';
+    if (g > 0.006) {
+      const big = def.loco === '4014' || def.loco === '1308' || (def.loco === 'diesel' && (def.units || 1) >= 3);
+      const c = (def.climb || (freight ? 18 : 38)) + (def.push ? 6 : 0) + (big ? 3 : 0);
+      return Math.max(10, c * Math.min(3, 0.019 / g));
+    }
+    if (g < -0.012) return Math.max(12, (freight ? 26 : 42) * Math.sqrt(0.019 / -g));
+    return 999;
+  }
   inSiding() { const k = this.train.endTP('front').e.kind; return k === 'siding' || k === 'yard'; }
   /* the train t has gone past us: its rear is ahead of our front along the main */
   passedBy(t) {
@@ -27759,11 +27827,13 @@ class AITrain extends RemoteTrain {
       this.lookT = 0.25;
       const hit = carAhead(T, 1, Math.min(this.authLeft + 50, 1500), carIndex());
       this.block = hit && hit.d < this.authLeft + 20 ? hit : null;
+      this.grade = this.gradeNow();
     }
     // speed allowed: track limits under the train and ahead, our own top speed, and stopping where we must
     let vt = def.vmax * MPH;
     const lim = def.lim || 1;   // a reckless crew takes the track speed as a suggestion
     for (const p of T.pts) vt = Math.min(vt, p.tp.e.limit * MPH * lim);
+    vt = Math.min(vt, this.gradeCap() * MPH);
     // each target is a speed to be down to at a distance ahead; brake to meet the hardest of them (a reckless crew leaves it late)
     const b = def.brake * 0.85 * (def.brakeAt || 1), v = this.v, ahead = x => x - this.odo;
     let need = 0;
@@ -27900,11 +27970,17 @@ AI.clear = function () {
 AI.setup = function () {
   AI.clear();
   if (!AI.enabled()) return;
-  const job = JOB.wanted(), list = job ? job.traffic || [] : typeof TUT !== 'undefined' && TUT.want ? [] : WORLD.frost ? [] : WORLD.mtn ? MTN_TRAFFIC : FREE_TRAFFIC;   // Raven Lake is yours alone
+  const job = JOB.wanted(), list = job ? job.traffic || [] : typeof TUT !== 'undefined' && TUT.want ? [] : AI.list();
   // while the game is still loading the trains are made up one at a time after the menu is ready (AI.lazy, set by
   // loadWorld), so the menu is not kept waiting for them; AI.flush() finishes the job at once when you start
   if (AI.lazy) { AI.pending = list.slice(); AI.drip(); return; }
   for (const [id, s] of list) AI.spawn(id, s);
+};
+/* free running's timetable for this railroad: the full one, or on a phone the trains without the busy-road mark */
+AI.list = function (phone = AI_PHONE) {
+  if (WORLD.frost) return [];   // Raven Lake is yours alone
+  const all = WORLD.mtn ? MTN_TRAFFIC : FREE_TRAFFIC;
+  return all.filter(x => !(phone && x[2])).map(x => [x[0], x[1]]);
 };
 AI.drip = function () {
   setTimeout(() => {
@@ -32426,7 +32502,7 @@ function buildMenu() {
   segButtons('optGrime', GRM_LEVELS, 'grime', k => { grmLevel(k); saveSettings(); });
   segButtons('optWeather', WEATHER, 'weather', k => { if (GAME.ready) applyLook(null, k); saveSettings(); });
   segButtons('optFire', { easy: { name: 'Easy', sub: 'Fireman, and the reverser hooks up for you' }, auto: { name: 'Fireman', sub: 'Stoker & water handled, you work the reverser' }, hand: { name: 'Hand fired', sub: 'You run the boiler' } }, 'fire', k => { applyFireSetting(k); GAME.refreshKeys(); saveSettings(); });
-  segButtons('optTraffic', { on: { name: 'Timetable', sub: ROUTE_KEY === 'frost' ? 'No timetable trains out on the ice' : ROUTE_KEY === 'laurel' ? 'No. 21, No. 22 and coal trains on the mountain' : 'No. 5, No. 12 and freights on the road' }, off: { name: 'Clear road', sub: 'Just you and the signals' } }, 'traffic', () => { if (GAME.ready && GAME.train) AI.setup(); saveSettings(); });
+  segButtons('optTraffic', { on: { name: 'Timetable', sub: ROUTE_KEY === 'frost' ? 'No timetable trains out on the ice' : ROUTE_KEY === 'laurel' ? 'No. 21, No. 22, coal with a pusher and merchandise' : 'Two locals, an express and four freights' }, off: { name: 'Clear road', sub: 'Just you and the signals' } }, 'traffic', () => { if (GAME.ready && GAME.train) AI.setup(); saveSettings(); });
   specGrid();
   jobSetup();
   volumeSliders();

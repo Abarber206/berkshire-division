@@ -129,3 +129,43 @@ test('each AI train gets an engine from its roster, and about one free-running c
   const d = AI.vary(TRAFFIC.x2210, { loco: 'diesel', units: 3, livery: 'prr', reckless: 1 });
   assert.equal(d.loco, 'diesel'); assert.equal(d.units, 3); assert.equal(d.livery, 'prr'); assert.ok(d.reckless);
 });
+
+test('free running fills every route but Raven Lake, and a phone runs the lighter timetable', () => {
+  const sim = h.load(), { AI, TRAFFIC, MTN_TRAFFIC, FREE_TRAFFIC } = sim, W = sim.ctx.WORLD;
+  for (const [id] of [...FREE_TRAFFIC, ...MTN_TRAFFIC]) assert.ok(TRAFFIC[id], `${id} is in the timetable`);
+  assert.equal(AI.list(false).length, 7); assert.equal(AI.list(true).length, 4);
+  W.mtn = true;
+  assert.equal(AI.list(false).length, 5); assert.equal(AI.list(true).length, 3);
+  for (const [id] of AI.list(false)) assert.ok(TRAFFIC[id].mtn, `${id} runs over the mountain`);
+  W.frost = true;
+  assert.equal(AI.list(false).length, 0, 'Raven Lake is yours alone');
+  W.mtn = W.frost = false;
+  // each way on both routes
+  for (const L of [FREE_TRAFFIC, MTN_TRAFFIC]) for (const dir of [1, -1]) assert.ok(L.filter(([id]) => TRAFFIC[id].dir === dir).length >= 2);
+});
+
+test('the loaded coal over the mountain gets a pusher, and it comes back the same from a save', () => {
+  const sim = h.load(), { AI, TRAFFIC, LOCO_SPEC } = sim, seen = new Set();
+  for (let i = 0; i < 200; i++) {
+    const d = AI.vary(TRAFFIC.m92, null, false);
+    assert.ok(d.push && LOCO_SPEC[d.push.loco], 'a pusher on the rear'); seen.add(d.push.loco);
+    if (d.push.loco === 'diesel') assert.equal(d.push.units, 2);
+    assert.ok(LOCO_SPEC[d.loco]);
+    assert.ok(!AI.vary(TRAFFIC.m90, null, false).push, 'the empties go up without one');
+  }
+  assert.ok(seen.size >= 2, `pushers seen: ${[...seen]}`);
+  const d = AI.vary(TRAFFIC.m92, { loco: 'diesel', units: 3, livery: 'nw', push: { loco: '1308', units: 1 } });
+  assert.equal(d.push.loco, '1308');
+});
+
+test('up a heavy grade a freight slows to its climbing speed (faster with a pusher), and holds back going down', () => {
+  const sim = h.load(), { AITrain, TRAFFIC } = sim;
+  const cap = (def, grade) => AITrain.prototype.gradeCap.call({ def, grade });
+  const fr = TRAFFIC.m93, coal = Object.assign({}, TRAFFIC.m92, { push: { loco: 'diesel', units: 2 } }), pass = TRAFFIC.m21;
+  assert.ok(cap(fr, 0) > 100, 'level track: no grade limit');
+  assert.ok(cap(fr, 0.019) < 25 && cap(fr, 0.019) >= 10, `merchandise up 1.9%: ${cap(fr, 0.019)}`);
+  assert.ok(cap(fr, 0.01) > cap(fr, 0.019), 'an easier grade, a faster climb');
+  assert.ok(cap(coal, 0.019) > cap(Object.assign({}, coal, { push: null }), 0.019), 'the pusher helps');
+  assert.ok(cap(pass, 0.019) > cap(fr, 0.019), 'a passenger train climbs faster than a freight');
+  assert.ok(cap(fr, -0.019) < 30 && cap(pass, -0.019) > cap(fr, -0.019), 'held back downhill');
+});

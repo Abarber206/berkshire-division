@@ -13,7 +13,7 @@ const FILES = ['01_util.js', '02_track.js', '06_models.js', '06d_cab.js', '06e_h
 const EXPORTS = ['S', 'SLK', 'slackStep', 'ENV', 'GAME', 'autoCutoff', 'railPatch', 'applyFireSetting', 'CARS', 'JOB', 'LOCO_SPEC', 'HSR', 'HS_AERO', 'setVehicle', 'hsLimit', 'turnoutDerailMph', 'Consist', 'Cut', 'physicsStep', 'brakeZone', 'brakeLabel', 'consistMass',
   'COUPLE_OK', 'COUPLE_HARD', 'COUPLE_DAMAGE', 'COUPLE_WRECK', 'KN_CLOSED', 'KN_OPEN', 'KN_LIFTED', 'HANDBRAKE', 'MPH', 'LBF', 'STON', 'PSI',
   'curveUnbalanced', 'CURVE_WARN', 'CURVE_TIP', 'CURVE_HOLD', 'PathBuilder', 'Network', 'TrackPos', 'FOUL_LEN', 'POINTS_CLEAR',
-  'IX', 'AI', 'TRAFFIC', 'routeWalk', 'PLACE', 'PLACE_SNAP', 'PLACE_CLEAR', 'endCoupler', 'carVehicle', 'signalRoute', 'signalAspect', 'swPair',
+  'IX', 'AI', 'TRAFFIC', 'AITrain', 'MTN_TRAFFIC', 'FREE_TRAFFIC', 'routeWalk', 'PLACE', 'PLACE_SNAP', 'PLACE_CLEAR', 'endCoupler', 'carVehicle', 'signalRoute', 'signalAspect', 'swPair',
   'MPC', 'mpcBeats', 'trainCode', 'carToken', 'carTokenIn', 'trackDelta', 'Train', 'CONSISTS', 'SAVE', 'IND', 'INDUSTRIES', 'LADING', 'LOAD_TONS', 'IND_WORK', 'YARD_TURN', 'YARD_CUTS', 'consistOut', 'seatConsist', 'vehicleIn', 'stateOut', 'jobOut', 'jobIn', 'tpOut', 'lineOut',
   'steamK', 'BB', 'BBT', 'ML', 'MLT', 'bbDrift', 'CTL', 'ctlTravel', 'ctlSetTravel', 'pullToWhistle', 'whistleToPull', 'dialAngle', 'glassLevel', 'stokerNext', 'CAB_READ', 'DIALS',
   'FLEET', 'fleetPark', 'fleetResume', 'isTrainC', 'fleetOut', 'powerOf', 'FLEET_WORLD', 'crewNew', 'crewStep', 'turbinePower', 'GT', 'GTE', 'GTP', 'turbineSwitch', 'turbineState', 'jointPts', 'helperTender', 'helperK', 'CAREER', 'CAREER_PRICE', 'JOBS', 'JOB_SPAWNS', 'JOB_MARKS', 'TUT', 'TUT_STEPS', 'CTRL', 'CTRL_A', 'CTRL_ACTIONS', 'PAD', 'PAD_NAMES'];
